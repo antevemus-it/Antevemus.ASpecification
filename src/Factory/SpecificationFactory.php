@@ -1,0 +1,855 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Antevemus\ASpecification\Factory;
+
+use Antevemus\ASpecification\AbstractCompositeSpecification;
+use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Contracts\Factory\ICollectionSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\IComparisonSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\IDateSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\ILogicalSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\ISpecialSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\ISpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\ISpecificationWrapperFactory;
+use Antevemus\ASpecification\Contracts\Factory\IStringSpecificationFactory;
+use Antevemus\ASpecification\Contracts\Factory\ITypeSpecificationFactory;
+use Antevemus\ASpecification\Contracts\ICompositeSpecification;
+use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
+use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\OrSpecification;
+use Antevemus\ASpecification\Specifications\String\DateStringSpecification;
+use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\RegexSpecification;
+use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Factory\Traits\CollectionSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\ComparisonSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\DateSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\LogicalSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\SpecialSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\SpecificationWrapperOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\StringSpecificationOperationsTrait;
+use Antevemus\ASpecification\Factory\Traits\TypeSpecificationOperationsTrait;
+use DateTimeInterface;
+
+/**
+ * SpecificationFactory - Facade Concreta e Unificada para Criação de Especificações
+ *
+ * Ponto de entrada central para construção idiomática e fluente de qualquer especificação.
+ * Agrega e implementa todas as 8 interfaces de fábrica da biblioteca através de composição
+ * de sub-fábricas especializadas e decomposição modular via Traits por família de operações.
+ *
+ * Funcionalidades:
+ * - Acessores segmentados tipados: type(), comparison(), logical(), special(), string(), date(), collection(), wrapper()
+ * - Implementação unificada direta de todos os métodos das 8 famílias de fábricas via Traits especializados
+ * - Resolução transparente e contravariante/covariante de colisões de métodos idiomáticos
+ * - Construtor imutável com fábrica estática create()
+ *
+ * @version    0.1
+ * @package    Antevemus\ASpecification
+ * @subpackage Factory
+ * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
+ * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @license    MIT
+ */
+final class SpecificationFactory implements
+    ITypeSpecificationFactory,
+    IComparisonSpecificationFactory,
+    ILogicalSpecificationFactory,
+    ISpecialSpecificationFactory,
+    IStringSpecificationFactory,
+    IDateSpecificationFactory,
+    ICollectionSpecificationFactory,
+    ISpecificationWrapperFactory
+{
+    use TypeSpecificationOperationsTrait;
+    use ComparisonSpecificationOperationsTrait;
+    use LogicalSpecificationOperationsTrait;
+    use SpecialSpecificationOperationsTrait;
+    use StringSpecificationOperationsTrait;
+    use DateSpecificationOperationsTrait;
+    use CollectionSpecificationOperationsTrait;
+    use SpecificationWrapperOperationsTrait;
+
+    private readonly ITypeSpecificationFactory $typeFactory;
+    private readonly IComparisonSpecificationFactory $comparisonFactory;
+    private readonly ILogicalSpecificationFactory $logicalFactory;
+    private readonly ISpecialSpecificationFactory $specialFactory;
+    private readonly IStringSpecificationFactory $stringFactory;
+    private readonly IDateSpecificationFactory $dateFactory;
+    private readonly ICollectionSpecificationFactory $collectionFactory;
+    private readonly ISpecificationWrapperFactory $wrapperFactory;
+
+    /**
+     * Inicializa a fábrica de especificações instanciando as sub-fábricas especializadas.
+     */
+    public function __construct()
+    {
+        $this->typeFactory = new class extends AbstractTypeSpecificationFactory {
+            /** {@inheritdoc} */
+            public function createSpecificationFor(string $type): ICompositeSpecification
+            {
+                $this->validateType($type);
+                return new class($type) extends AbstractCompositeSpecification {
+                    /** {@inheritdoc} */
+                    protected function isSpecifyingAllInstancesOfItsType(): bool
+                    {
+                        return false;
+                    }
+                };
+            }
+        };
+
+        $this->comparisonFactory = new class extends AbstractComparisonSpecificationFactory {
+            /** {@inheritdoc} */
+            public function equalTo(mixed $value): ISpecification
+            {
+                return new EqualSpecification($value);
+            }
+
+            /** {@inheritdoc} */
+            public function lessThan(mixed $value): ISpecification
+            {
+                return new LessThanSpecification($value);
+            }
+
+            /** {@inheritdoc} */
+            public function lessThanOrEqualTo(mixed $value): ISpecification
+            {
+                return (new LessThanSpecification($value))->or(new EqualSpecification($value));
+            }
+
+            /** {@inheritdoc} */
+            public function greaterThan(mixed $value): ISpecification
+            {
+                return new GreaterThanSpecification($value);
+            }
+
+            /** {@inheritdoc} */
+            public function greaterThanOrEqualTo(mixed $value): ISpecification
+            {
+                return (new GreaterThanSpecification($value))->or(new EqualSpecification($value));
+            }
+
+            /** {@inheritdoc} */
+            public function in(mixed ...$values): ISpecification
+            {
+                if (empty($values)) {
+                    return new AlwaysFalseSpecification();
+                }
+                $spec = new EqualSpecification($values[0]);
+                for ($i = 1, $len = count($values); $i < $len; $i++) {
+                    $spec = $spec->or(new EqualSpecification($values[$i]));
+                }
+                return $spec;
+            }
+        };
+
+        $this->logicalFactory = new class extends AbstractLogicalSpecificationFactory {
+            /** {@inheritdoc} */
+            public function allOf(ISpecification ...$specifications): ISpecification
+            {
+                if (empty($specifications)) {
+                    return new AlwaysTrueSpecification();
+                }
+                $spec = $specifications[0];
+                for ($i = 1, $len = count($specifications); $i < $len; $i++) {
+                    $spec = $spec->and($specifications[$i]);
+                }
+                return $spec;
+            }
+
+            /** {@inheritdoc} */
+            public function anyOf(ISpecification ...$specifications): ISpecification
+            {
+                if (empty($specifications)) {
+                    return new AlwaysFalseSpecification();
+                }
+                $spec = $specifications[0];
+                for ($i = 1, $len = count($specifications); $i < $len; $i++) {
+                    $spec = $spec->or($specifications[$i]);
+                }
+                return $spec;
+            }
+
+            /** {@inheritdoc} */
+            public function not(ISpecification $specification): ISpecification
+            {
+                return new NotSpecification($specification);
+            }
+        };
+
+        $this->specialFactory = new class extends AbstractSpecialSpecificationFactory {
+            /** {@inheritdoc} */
+            public function alwaysTrue(): ISpecification
+            {
+                return new AlwaysTrueSpecification();
+            }
+
+            /** {@inheritdoc} */
+            public function alwaysFalse(): ISpecification
+            {
+                return new AlwaysFalseSpecification();
+            }
+
+            /** {@inheritdoc} */
+            public function isNull(): ISpecification
+            {
+                return new class extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate === null;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string
+                    {
+                        return 'mixed';
+                    }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isNotNull(): ISpecification
+            {
+                return new NotNullSpecification();
+            }
+
+            /** {@inheritdoc} */
+            public function isTrue(): ISpecification
+            {
+                return new EqualSpecification(true);
+            }
+
+            /** {@inheritdoc} */
+            public function isFalse(): ISpecification
+            {
+                return new EqualSpecification(false);
+            }
+        };
+
+        $this->stringFactory = new class extends AbstractStringSpecificationFactory {
+            /** {@inheritdoc} */
+            public function isBlank(): ISpecification
+            {
+                return new RegexSpecification('/^\s*$/');
+            }
+
+            /** {@inheritdoc} */
+            public function equalIgnoringCase(string $value): ISpecification
+            {
+                return new EqualIgnoreCaseStringSpecification($value);
+            }
+
+            /** {@inheritdoc} */
+            public function matchesRegex(string $pattern): ISpecification
+            {
+                $this->validateRegexPattern($pattern);
+                return new RegexSpecification($pattern);
+            }
+
+            /** {@inheritdoc} */
+            public function matchesWildcard(string $wildcardExpression): ISpecification
+            {
+                return new WildcardSpecification($wildcardExpression);
+            }
+
+            /** {@inheritdoc} */
+            public function matchesWildcardIgnoringCase(string $wildcardExpression): ISpecification
+            {
+                return new WildcardExpressionMatcherIgnoreCaseStringSpecification($wildcardExpression);
+            }
+
+            /** {@inheritdoc} */
+            public function contains(string $substring, bool $caseSensitive = true): ISpecification
+            {
+                $flags = $caseSensitive ? '' : 'i';
+                return new RegexSpecification('/' . preg_quote($substring, '/') . '/' . $flags);
+            }
+
+            /** {@inheritdoc} */
+            public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
+            {
+                $flags = $caseSensitive ? '' : 'i';
+                return new RegexSpecification('/^' . preg_quote($prefix, '/') . '/' . $flags);
+            }
+
+            /** {@inheritdoc} */
+            public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
+            {
+                $flags = $caseSensitive ? '' : 'i';
+                return new RegexSpecification('/' . preg_quote($suffix, '/') . '$/' . $flags);
+            }
+
+            /** {@inheritdoc} */
+            public function hasLength(ISpecification $lengthSpecification): ISpecification
+            {
+                return new class($lengthSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly ISpecification $lengthSpec) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!is_string($candidate)) return false;
+                        return $this->lengthSpec->isSatisfiedBy(strlen($candidate));
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'string'; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isValidDate(?string $format = null): ISpecification
+            {
+                return new DateStringSpecification($format ?? 'Y-m-d');
+            }
+        };
+
+        $this->dateFactory = new class extends AbstractDateSpecificationFactory {
+            /** {@inheritdoc} */
+            public function before(DateTimeInterface $date): ISpecification
+            {
+                return new class($date) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly DateTimeInterface $target) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate < $this->target;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function after(DateTimeInterface $date): ISpecification
+            {
+                return new class($date) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly DateTimeInterface $target) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate > $this->target;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function at(DateTimeInterface $date): ISpecification
+            {
+                return new class($date) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly DateTimeInterface $target) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate == $this->target;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function beforeOrAt(DateTimeInterface $date): ISpecification
+            {
+                return new class($date) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly DateTimeInterface $target) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate <= $this->target;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function afterOrAt(DateTimeInterface $date): ISpecification
+            {
+                return new class($date) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly DateTimeInterface $target) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate >= $this->target;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function between(DateTimeInterface $start, DateTimeInterface $end): ISpecification
+            {
+                return new class($start, $end) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(
+                        private readonly DateTimeInterface $start,
+                        private readonly DateTimeInterface $end
+                    ) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate >= $this->start && $candidate <= $this->end;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isToday(): ISpecification
+            {
+                return new class extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!$candidate instanceof DateTimeInterface) return false;
+                        $now = new \DateTimeImmutable();
+                        return $candidate->format('Y-m-d') === $now->format('Y-m-d');
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isPast(): ISpecification
+            {
+                return new class extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate < new \DateTimeImmutable();
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isFuture(): ISpecification
+            {
+                return new class extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        return $candidate instanceof DateTimeInterface && $candidate > new \DateTimeImmutable();
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return DateTimeInterface::class; }
+                };
+            }
+        };
+
+        $this->collectionFactory = new class extends AbstractCollectionSpecificationFactory {
+            /** {@inheritdoc} */
+            public function hasSize(ISpecification $sizeSpecification): ISpecification
+            {
+                return new class($sizeSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly ISpecification $sizeSpec) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (is_array($candidate) || $candidate instanceof \Countable) {
+                            return $this->sizeSpec->isSatisfiedBy(count($candidate));
+                        }
+                        if ($candidate instanceof \Traversable) {
+                            return $this->sizeSpec->isSatisfiedBy(iterator_count($candidate));
+                        }
+                        return false;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'iterable'; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function isEmpty(): ISpecification
+            {
+                return $this->hasSize(new EqualSpecification(0));
+            }
+
+            /** {@inheritdoc} */
+            public function include(ISpecification $countSpecification, ISpecification $elementSpecification): ISpecification
+            {
+                return new class($countSpecification, $elementSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(
+                        private readonly ISpecification $countSpec,
+                        private readonly ISpecification $elementSpec
+                    ) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!is_iterable($candidate)) return false;
+                        $count = 0;
+                        foreach ($candidate as $item) {
+                            if ($this->elementSpec->isSatisfiedBy($item)) $count++;
+                        }
+                        return $this->countSpec->isSatisfiedBy($count);
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'iterable'; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function includePercentageOf(ISpecification $percentageSpecification, ISpecification $elementSpecification): ISpecification
+            {
+                return new class($percentageSpecification, $elementSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(
+                        private readonly ISpecification $percentageSpec,
+                        private readonly ISpecification $elementSpec
+                    ) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!is_iterable($candidate)) return false;
+                        $total = 0;
+                        $matching = 0;
+                        foreach ($candidate as $item) {
+                            $total++;
+                            if ($this->elementSpec->isSatisfiedBy($item)) $matching++;
+                        }
+                        if ($total === 0) return false;
+                        $pct = ($matching / $total) * 100.0;
+                        return $this->percentageSpec->isSatisfiedBy($pct);
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'iterable'; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function all(ISpecification $elementSpecification): ISpecification
+            {
+                return new CollectionSpecification($elementSpecification);
+            }
+
+            /** {@inheritdoc} */
+            public function any(ISpecification $elementSpecification): ISpecification
+            {
+                return new class($elementSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly ISpecification $elementSpec) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!is_iterable($candidate)) return false;
+                        foreach ($candidate as $item) {
+                            if ($this->elementSpec->isSatisfiedBy($item)) return true;
+                        }
+                        return false;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'iterable'; }
+                };
+            }
+
+            /** {@inheritdoc} */
+            public function none(ISpecification $elementSpecification): ISpecification
+            {
+                return new class($elementSpecification) extends AbstractSpecification {
+                    /** {@inheritdoc} */
+                    public function __construct(private readonly ISpecification $elementSpec) {}
+                    /** {@inheritdoc} */
+                    public function isSatisfiedBy(mixed $candidate): bool
+                    {
+                        if (!is_iterable($candidate)) return false;
+                        foreach ($candidate as $item) {
+                            if ($this->elementSpec->isSatisfiedBy($item)) return false;
+                        }
+                        return true;
+                    }
+                    /** {@inheritdoc} */
+                    public function getType(): string { return 'iterable'; }
+                };
+            }
+        };
+
+        $this->wrapperFactory = new class extends AbstractSpecificationWrapperFactory {};
+    }
+
+    /**
+     * Cria uma nova instância da fábrica unificada de especificações.
+     *
+     * @return self
+     */
+    public static function create(): self
+    {
+        return new self();
+    }
+
+    // ==========================================
+    // 1. Acessores Segmentados Tipados
+    // ==========================================
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações de tipo/classe.
+     *
+     * @return ITypeSpecificationFactory
+     */
+    public function type(): ITypeSpecificationFactory
+    {
+        return $this->typeFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações de comparação de valores.
+     *
+     * @return IComparisonSpecificationFactory
+     */
+    public function comparison(): IComparisonSpecificationFactory
+    {
+        return $this->comparisonFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações lógicas e booleanas.
+     *
+     * @return ILogicalSpecificationFactory
+     */
+    public function logical(): ILogicalSpecificationFactory
+    {
+        return $this->logicalFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações especiais (tautologias, contradições, nulos).
+     *
+     * @return ISpecialSpecificationFactory
+     */
+    public function special(): ISpecialSpecificationFactory
+    {
+        return $this->specialFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações de strings e expressões regulares.
+     *
+     * @return IStringSpecificationFactory
+     */
+    public function string(): IStringSpecificationFactory
+    {
+        return $this->stringFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações de data e hora.
+     *
+     * @return IDateSpecificationFactory
+     */
+    public function date(): IDateSpecificationFactory
+    {
+        return $this->dateFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em especificações de coleções e iteráveis.
+     *
+     * @return ICollectionSpecificationFactory
+     */
+    public function collection(): ICollectionSpecificationFactory
+    {
+        return $this->collectionFactory;
+    }
+
+    /**
+     * Obtém a sub-fábrica especializada em envelopamento e adaptação de especificações.
+     *
+     * @return ISpecificationWrapperFactory
+     */
+    public function wrapper(): ISpecificationWrapperFactory
+    {
+        return $this->wrapperFactory;
+    }
+
+    // ==========================================
+    // 2. Resolução de Colisões de Assinaturas
+    // ==========================================
+
+    private function wrapAsComposite(ISpecification $specification): ICompositeSpecification
+    {
+        if ($specification instanceof ICompositeSpecification) {
+            return $specification;
+        }
+
+        return new class($specification) extends AbstractCompositeSpecification {
+            /** {@inheritdoc} */
+            public function __construct(private readonly ISpecification $inner)
+            {
+                parent::__construct($inner->getType());
+            }
+
+            /** {@inheritdoc} */
+            public function isSatisfiedBy(?object $candidate): bool
+            {
+                return $this->inner->isSatisfiedBy($candidate);
+            }
+
+            /** {@inheritdoc} */
+            protected function isSpecifyingAllInstancesOfItsType(): bool
+            {
+                return false;
+            }
+        };
+    }
+
+    /**
+     * Resolve polimorficamente a criação de especificação de tipo ou envelopamento.
+     *
+     * @param ISpecification|string  Nome da classe/tipo ou especificação a envelopar
+     * @return ICompositeSpecification
+     */
+    public function a(ISpecification|string $target): ICompositeSpecification
+    {
+        if (is_string($target)) {
+            return $this->typeFactory->a($target);
+        }
+        return $this->wrapAsComposite($this->wrapperFactory->a($target));
+    }
+
+    /**
+     * Resolve polimorficamente a criação de especificação de tipo ou envelopamento (alias de a).
+     *
+     * @param ISpecification|string  Nome da classe/tipo ou especificação a envelopar
+     * @return ICompositeSpecification
+     */
+    public function an(ISpecification|string $target): ICompositeSpecification
+    {
+        if (is_string($target)) {
+            return $this->typeFactory->an($target);
+        }
+        return $this->wrapAsComposite($this->wrapperFactory->an($target));
+    }
+
+    /**
+     * Resolve polimorficamente a verificação de tipo ou envelopamento de especificação.
+     *
+     * @param ISpecification|string  Nome da classe/tipo ou especificação
+     * @return ICompositeSpecification
+     */
+    public function isA(ISpecification|string $target): ICompositeSpecification
+    {
+        if (is_string($target)) {
+            return $this->typeFactory->isA($target);
+        }
+        return $this->wrapAsComposite($this->wrapperFactory->isA($target));
+    }
+
+    /**
+     * Resolve polimorficamente a verificação de tipo ou envelopamento de especificação (alias de isA).
+     *
+     * @param ISpecification|string  Nome da classe/tipo ou especificação
+     * @return ICompositeSpecification
+     */
+    public function isAn(ISpecification|string $target): ICompositeSpecification
+    {
+        if (is_string($target)) {
+            return $this->typeFactory->isAn($target);
+        }
+        return $this->wrapAsComposite($this->wrapperFactory->isAn($target));
+    }
+
+    /**
+     * Cria especificação para todos os elementos de uma coleção ou tipo.
+     *
+     * @param ISpecification|string  Tipo das instâncias ou especificação de cada elemento
+     * @return ICompositeSpecification
+     */
+    public function all(ISpecification|string $target): ICompositeSpecification
+    {
+        if (is_string($target)) {
+            return $this->typeFactory->all($target);
+        }
+        return $this->wrapAsComposite($this->collectionFactory->all($target));
+    }
+
+    /**
+     * Cria especificação de igualdade ou envelopa uma especificação existente.
+     *
+     * @param mixed  Valor a comparar ou ISpecification a envelopar
+     * @return ISpecification
+     */
+    public function is(mixed $value): ISpecification
+    {
+        if ($value instanceof ISpecification) {
+            return $this->wrapperFactory->is($value);
+        }
+        return $this->comparisonFactory->is($value);
+    }
+
+    /**
+     * Cria especificação de limite temporal anterior ou comparação menor que.
+     *
+     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @return ISpecification
+     */
+    public function before(mixed $value): ISpecification
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $this->dateFactory->before($value);
+        }
+        return $this->comparisonFactory->before($value);
+    }
+
+    /**
+     * Alias para before().
+     *
+     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @return ISpecification
+     */
+    public function isBefore(mixed $value): ISpecification
+    {
+        return $this->before($value);
+    }
+
+    /**
+     * Cria especificação de limite temporal posterior ou comparação maior que.
+     *
+     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @return ISpecification
+     */
+    public function after(mixed $value): ISpecification
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $this->dateFactory->after($value);
+        }
+        return $this->comparisonFactory->after($value);
+    }
+
+    /**
+     * Alias para after().
+     *
+     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @return ISpecification
+     */
+    public function isAfter(mixed $value): ISpecification
+    {
+        return $this->after($value);
+    }
+
+}

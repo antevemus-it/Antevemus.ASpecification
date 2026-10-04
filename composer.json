@@ -1,0 +1,52 @@
+{
+    "name": "antevemus/aspecification",
+    "description": "Enterprise Specification Pattern Framework for PHP 8.4+ (DDD, Notification Pattern, SQL Query Visitor, Adianti TCriteria, DAG Repositories)",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/antevemus-it/Antevemus.ASpecification",
+    "support": {
+        "source": "https://github.com/antevemus-it/Antevemus.ASpecification",
+        "issues": "https://github.com/antevemus-it/Antevemus.ASpecification/issues",
+        "docs": "https://github.com/antevemus-it/Antevemus.ASpecification#readme"
+    },
+    "keywords": [
+        "specification",
+        "specification-pattern",
+        "design-pattern",
+        "domain-driven-design",
+        "ddd",
+        "business-rules",
+        "validation",
+        "query-builder",
+        "filtering",
+        "composable",
+        "php8",
+        "generics"
+    ],
+    "authors": [
+        {
+            "name": "Heliton Junior - CTO @ Antevemus Soluções Inovadoras em TI Ltda.",
+            "email": "contato@antevemus.com.br",
+            "homepage": "https://antevemus.com.br"
+        }
+    ],
+    "require": {
+        "php": ">=8.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Antevemus\\ASpecification\\": "src/"
+        },
+        "files": [
+            "src/DSL/functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Antevemus\\ASpecification\\Tests\\": "tests/"
+        }
+    }
+}

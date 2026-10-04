@@ -1,0 +1,571 @@
+# Antevemus ASpecification
+
+<p align="left">
+  <a href="README.md">🇺🇸 English</a> &nbsp;|&nbsp; <strong>🇧🇷 Português (Brasil)</strong>
+</p>
+
+[![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Suites%20Pass%20(579%20Assertions)-success)](tests/run_all.php)
+[![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
+[![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
+
+> **Framework Corporativo do Padrão Specification para PHP 8.4+**  
+> Portagem completa, moderna e de alta fidelidade do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD, TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
+
+---
+
+## 🏛️ Origem & Fundamentação Teórica
+
+O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenharia de software e Domain-Driven Design (DDD):
+
+1. **O Paper Seminal Original**:
+   Baseado no artigo clássico [The Specifications Pattern (PDF)](http://www.martinfowler.com/apsupp/spec.pdf), de **Eric Evans e Martin Fowler (2002)**, que formalizou o encapsulamento de predicados e regras de negócio em objetos combináveis de primeira classe para:
+   - **Validação de Objetos**: Verificar se um objeto atende a critérios específicos.
+   - **Seleção e Filtragem**: Consultar entidades em repositórios sem vazar SQL ou detalhes de infraestrutura.
+   - **Construção e Satisfação de Restrições**: Especificar o que é necessário para instanciar ou transicionar entidades.
+
+2. **A Biblioteca de Origem: Domian (Java)**:
+   Este projeto é a evolução moderna e portagem para o ecossistema PHP do framework [Domian (Domain-Driven Design for Java)](https://domian.sourceforge.net/index.html), criado originalmente por **Eirik Torske** e **Bjørn Nordlund**, distribuído sob a **Apache License, Version 2.0**. O Domian foi pioneiro em unificar álgebra booleana, teoria dos conjuntos (Venn), especificações de coleções, arquitetura de repositórios particionados em Grafo Acíclico Dirigido (DAG) e sincronização concorrente.
+
+---
+
+## 🌟 Principais Recursos
+
+- 🎯 **Fluent Chaining & DSL em Linguagem Natural**: Escreva especificações expressivas e legíveis como sentenças de domínio (`Spec::specify(Customer::class)->where('gender', is('FEMALE'))->and('membershipDate', isBefore($oneYearAgo))`).
+- 🛡️ **Notification Pattern & Diagnóstico Rico (Zero Exceptions)**: Avalie regras sem lançar exceções de fluxo com `evaluate()`, obtendo `SpecificationResult` com lista detalhada de `SpecificationFailure`, códigos de erro (`withCode()`), mensagens de negócio (`because()`) e metadados.
+- ⚡ **SQL Query Visitor & Multi-SGBD (Módulo 12)**: Tradução direta da AST de especificações para cláusulas `WHERE` parametrizadas e seguras (`:p1`, `:p2`) com suporte a 12 drivers corporativos (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite e ANSI).
+- 🔗 **TCriteria Builder & Adianti Database Bridge (Módulo 13)**: Compilação direta de regras de domínio puro em objetos nativos `TCriteria` e `TFilter` do Adianti Framework, com inversão lógica de De Morgan para negações, preservação rigorosa de parênteses e precedência, e suporte fluente a paginação (`limit`, `offset`), ordenação (`orderBy`, `direction`) e agrupamento (`groupBy`).
+- 🧩 **Dynamic Rule Engine & Requisitos Documentais (Módulo 11)**: Compilação dinâmica a partir de catálogos relacionais de banco de dados (`RuleDefinition`), triagem operacional de vereditos por severidade (`BLOCK`, `WARN`, `LOG`), e álgebra de requisitos documentais (`ALL`, `ANY`, `ONE_OF_SET`).
+- ✂️ **Satisfação Parcial (`remainderUnsatisfiedBy`)**: Isole cirurgicamente em tempo de execução quais cláusulas específicas falharam para um determinado candidato.
+- 📐 **Álgebra Booleana Completa & Subsunção**: Composição lógica rigorosa (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), detecção de tautologias/contradições e cálculos de subsunção (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`).
+- 🗄️ **Arquitetura de Repositórios & Particionamento em Grafo (DAG)**:
+  - Descarte antecipado $O(1)$ de ramos em árvores de consulta através de disjunção de especificações.
+  - Implementações em memória (`InMemoryRepository`), nulas (`NullRepository`) e fake (`FakePartitionRepository`).
+  - Persistência desacoplada em disco (`FilePerEntityRepository`, `SingleFileRepository`) com serialização intercambiável (`JsonEntitySerializer` e `PhpNativeEntitySerializer`).
+  - Cache híbrido $L1$ (RAM) + $L2$ (Disco) via `InMemoryAndFileRepository`.
+- 🔒 **Controle de Concorrência & Locks Atômicos**: Primitivas `ISynchronizer` prontas para ambientes multithread e multiprocesso com semáforos SysV IPC (`SemaphoreSynchronizer`) e locks de arquivo (`flock`).
+- ⏱️ **Telemetria de Alta Precisão & Benchmarking**: Cronômetro em nanossegundos (`StopWatch` via `hrtime`) e utilitários de diagnóstico hierárquico e consumo de memória (`InstrumentationUtils`).
+
+---
+
+## 🎯 Nossos Diferenciais
+
+Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limita a verificações booleanas primitivas (`isSatisfiedBy: bool`) e o framework Java Domian original concentrava-se em reflexão em tempo de execução e coleções em memória, o **Antevemus ASpecification** foi concebido para os desafios de alta complexidade de microsserviços modernos, APIs corporativas e sistemas legados de missão crítica:
+
+| Recurso / Capacidade | Domian (Java Original) | Bibliotecas Comuns de Specification (PHP) | **Antevemus ASpecification** |
+| :--- | :---: | :---: | :---: |
+| **Notification Pattern (Zero Exceptions)** | ❌ Apenas booleano | ❌ Apenas booleano ou exceptions | ✅ `evaluate()`, lista agregada de `SpecificationFailure`, códigos e razões |
+| **Classificação por Severidade** | ❌ Não possui | ❌ Não possui | ✅ `BLOCK` (impeditivo), `WARN` (alerta operacional) e `LOG` (auditoria) |
+| **Compilador SQL Multi-SGBD** | ❌ Não possui | ❌ Raro / restrito a 1 banco | ✅ **12 Dialetos** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI) |
+| **Adianti Framework Database Bridge** | ❌ Não aplicável | ❌ Não possui | ✅ `TCriteria` & `TFilter` nativos, De Morgan automático e parênteses estritos |
+| **ALinq Synergy & Coleções Funcionais** | ❌ Não possui | ❌ Não possui | ✅ Compilador GoF de AST para predicados LINQ de curto-circuito e `ALinqBridge` |
+| **Navegação em Propriedades Aninhadas** | ⚠️ Reflexão estrita | ⚠️ Apenas métodos públicos | ✅ **Dot-notation** (`PropertyAccessor`) em objetos profundos e arrays associativos |
+| **Dynamic Rule Engine (Banco de Dados)** | ❌ Não possui | ❌ Não possui | ✅ Compilação dinâmica a partir de catálogos relacionais (`RuleDefinition`) |
+| **Álgebra de Requisitos Documentais** | ❌ Não possui | ❌ Não possui | ✅ Modos `ALL`, `ANY` e `ONE_OF_SET` com vereditos agregados |
+| **Fluent Chaining & DSL de Domínio** | ⚠️ Básico | ⚠️ Parcial | ✅ Sintaxe em prosa inglesa (`Spec::specify()->where()->and()->or()`) + helpers funcionais (`prop()`, `is()`, `not()`) |
+| **Álgebra Booleana de Venn & Remainder** | ✅ Completo | ❌ Inexistente na maioria | ✅ `isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith` e `remainderUnsatisfiedBy` |
+| **Particionamento DAG $O(1)$** | ✅ Presente | ❌ Raro | ✅ Repositórios com descarte antecipado de ramos disjuntos |
+| **Concorrência Multiprocesso & IPC** | ⚠️ Java Threads / Locks | ❌ Não suportado | ✅ Semáforos SysV IPC (`SemaphoreSynchronizer`) e locks atômicos de arquivo |
+| **Tipagem Estrita e Recursos Modernos** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legado | ✅ **PHP 8.4+** nativo (Enums, First-class callables, Readonly, Traits modulares) |
+
+---
+
+## 📋 Requisitos
+
+- **PHP**: `^8.4` ou superior (testado e homologado no PHP 8.4)
+- **Extensões PHP**:
+  - `ext-json` (para serialização JSON)
+  - `ext-mbstring` (para operações de string case-insensitive)
+  - `ext-sysvsem` *(opcional, recomendado para semáforos de concorrência em Linux)*
+
+---
+
+## 🚀 Instalação
+
+```bash
+composer require antevemus/aspecification
+```
+
+---
+
+## 💡 Exemplos de Uso
+
+### 1. Fluent Chaining em Linguagem Natural
+
+Inspirado na sintaxe do Domian em Java, combine regras encadeadas de forma limpa e intuitiva:
+
+```php
+use Antevemus\ASpecification\Spec;
+use function Antevemus\ASpecification\DSL\specify;
+use function Antevemus\ASpecification\DSL\is;
+use function Antevemus\ASpecification\DSL\not;
+use function Antevemus\ASpecification\DSL\isBefore;
+
+// Especificação: Clientes do sexo feminino associados há mais de 1 ano,
+// OU clientes masculinos com mais de 10 anos de idade.
+$spec = Spec::specify(Customer::class)
+    ->where('gender', Spec::equalTo('FEMALE'))
+    ->and('membershipDate', Spec::before($oneYearAgo))
+    ->or('gender', Spec::equalTo('MALE'))
+    ->and('birthDate', Spec::not(Spec::afterOrAt($tenYearsAgo)));
+
+// Avaliação booleana tradicional
+if ($spec->isSatisfiedBy($customer)) {
+    // Regra atendida com sucesso!
+}
+```
+
+---
+
+### 2. Notification Pattern & Diagnóstico Rico (Sem Exceções)
+
+Em cenários corporativos e validação de formulários/APIs, use `evaluate()` para capturar todas as violações sem interromper o fluxo com exceções:
+
+```php
+$adultSpec = Spec::property('age', Spec::greaterThanOrEqualTo(18))
+    ->because('O cliente deve ter atingido a maioridade legal.')
+    ->withCode('CLI_001');
+
+$activeSpec = Spec::property('status', Spec::equalTo('ACTIVE'))
+    ->because('Apenas cadastros ativos podem receber crédito.')
+    ->withCode('CLI_002');
+
+$approvalRule = $adultSpec->and($activeSpec);
+
+$result = $approvalRule->evaluate($customer);
+
+if (!$result->isSatisfied) {
+    echo "Falha na validação (" . count($result->failures) . " erros encontrados):
+";
+    foreach ($result->failures as $failure) {
+        echo sprintf(" - [%s] %s: %s
+", $failure->code, $failure->property, $failure->message);
+    }
+}
+```
+
+---
+
+### 3. Satisfação Parcial (`remainderUnsatisfiedBy`)
+
+Descubra exatamente qual subconjunto de regras falhou para uma entidade:
+
+```php
+$onboardingSpec = Spec::specify(User::class)
+    ->where('emailVerified', Spec::isTrue())
+    ->and('termsAccepted', Spec::isTrue())
+    ->and('profileComplete', Spec::isTrue());
+
+$remainder = $onboardingSpec->remainderUnsatisfiedBy($user);
+
+if ($remainder !== null) {
+    // $remainder contém APENAS as cláusulas não atendidas pelo usuário!
+    echo "Pendências do onboarding: " . (string) $remainder;
+}
+```
+
+---
+
+### 4. Repositórios Particionados em Grafo (DAG)
+
+Crie repositórios que subdividem coleções em partições lógicas indexadas por especificações:
+
+```php
+use Antevemus\ASpecification\Repositories\InMemoryRepository;
+use Antevemus\ASpecification\Repositories\PartitionRepository;
+
+$rootRepo = new InMemoryRepository();
+
+// Cria uma partição exclusiva para clientes VIP
+$vipSpec = Spec::property('vip', Spec::equalTo(true));
+$vipPartition = $rootRepo->makePartition($vipSpec);
+
+// Inserções e consultas no repositório particionado
+$vipPartition->put($vipCustomer);
+
+// Consultas aproveitam descarte O(1) de ramos disjuntos
+$results = $vipPartition->findAll(Spec::property('balance', Spec::greaterThan(1000)));
+```
+
+---
+
+### 5. Persistência Desacoplada e Cache Híbrido L1/L2
+
+```php
+use Antevemus\ASpecification\Repositories\File\InMemoryAndFileRepository;
+use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
+
+// Repositório com velocidade de leitura em RAM (L1) e durabilidade em disco (L2)
+$repo = new InMemoryAndFileRepository(
+    storagePath: '/var/data/customers.json',
+    serializer: new JsonEntitySerializer(Customer::class)
+);
+
+$repo->put($newCustomer); // Salva em memória e sincroniza no arquivo
+```
+
+---
+
+### 6. Telemetria e Benchmarking
+
+```php
+use Antevemus\ASpecification\Helpers\StopWatch;
+use Antevemus\ASpecification\Helpers\InstrumentationUtils;
+
+$watch = StopWatch::createStarted();
+
+// Executa operação de alta volumetria
+$entities = $repo->findAll($complexSpec);
+
+$watch->stop();
+echo "Consulta executada em: " . $watch->formatElapsed() . "\n";
+echo InstrumentationUtils::formatMemoryUsage() . "\n";
+```
+
+---
+
+### 7. Dynamic Rule Engine & Requisitos Documentais (Catálogo de Banco de Dados)
+
+Permite compilar regras de negócio dinâmicas e matrizes de documentos obrigatórios diretamente a partir de tabelas relacionais de catálogo (ex.: PostgreSQL, MySQL):
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Engine\RuleAction;
+use Antevemus\ASpecification\Engine\DocumentRequirementMode;
+use Antevemus\ASpecification\Engine\RuleDefinition;
+use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
+
+// 1. Configura o Registry com Handlers plugáveis para os tipos de regra
+$registry = Spec::ruleRegistry();
+$registry->registerClosure('max_ocorrencias_por_contrato', function ($rule) {
+    return Spec::specify(Contrato::class)
+        ->must(fn($c) => $c->getOcorrenciasCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+});
+
+// 2. Cria a Engine dinâmica conectada ao Catálogo
+$engine = Spec::engine($meuCatalogoRepository, $registry);
+
+// 3. Valida a entidade para o escopo e cenário desejados
+$verdict = $engine->validate(
+    target: $contrato,
+    escopo: 'contrato_locacao',
+    cenario: 'contrato_locacao_ativacao'
+);
+
+if ($verdict->hasBlockingErrors()) {
+    // Violações graves com ação 'bloquear' (ex: HTTP 403 Forbidden)
+    return response()->json([
+        'status' => 403,
+        'erros' => $verdict->getBlockingFailures(),
+        'fundamentos_legais' => $verdict->getLegalBases(),
+    ], 403);
+}
+
+if ($verdict->hasWarnings()) {
+    // Alertas não impeditivos com ação 'alertar'
+    NotificationService::dispatch($verdict->getWarningFailures());
+}
+```
+
+---
+
+### 8. SQL Query Visitor & Multi-SGBD (WHERE Parametrizado)
+
+Traduz diretamente árvores complexas de especificações de domínio para cláusulas `WHERE` parametrizadas, imunes a injeção SQL, com quoting automático de identificadores e funções nativas por SGBD:
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Sql\SqlDialect;
+
+// 1. Constrói a regra de domínio puro
+$spec = Spec::property('ativo', Spec::equalTo(true))
+    ->and(
+        Spec::property('salario', Spec::greaterThan(5000))
+            ->or(Spec::property('cidade', Spec::wildcard('São*')))
+    );
+
+// 2. Compila para PostgreSQL com mapeamento de colunas
+$whereClause = Spec::toSql(
+    specification: $spec,
+    dialect: SqlDialect::POSTGRESQL,
+    fieldMapper: [
+        'ativo'   => 'st_ativo',
+        'salario' => 'vl_salario',
+        'cidade'  => 'ds_cidade'
+    ]
+);
+
+echo $whereClause->getSql();
+// '("st_ativo" = :p1 AND ("vl_salario" > :p2 OR "ds_cidade" LIKE :p3))'
+
+print_r($whereClause->getBindings());
+// ['p1' => true, 'p2' => 5000, 'p3' => 'São%']
+
+// 3. Suporte a todos os drivers corporativos (SQL Server, Oracle, Firebird, MySQL, SQLite, etc.)
+$whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
+// '([ativo] = :p1 AND ([salario] > :p2 OR [cidade] LIKE :p3))'
+
+$whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
+// '(`ativo` = :p1 AND (`salario` > :p2 OR `cidade` LIKE :p3))'
+```
+
+---
+
+### 9. TCriteria Builder (Adianti Framework Database Bridge - Módulo 13)
+
+Traduza qualquer árvore de especificações de domínio puro para instâncias nativas de `Adianti\Database\TCriteria` e `TFilter`, preservando a precedência booleana por aninhamento e aplicando as **Leis de De Morgan** para negações:
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Criteria\TCriteriaBuilder;
+
+// 1. Especificação de domínio com conjunção, disjunção e negação
+$spec = Spec::property('ativo', Spec::equalTo(true))
+    ->and(
+        Spec::property('salario', Spec::greaterThan(5000))
+            ->or(Spec::property('cidade', Spec::wildcard('São*')))
+    )
+    ->and(Spec::property('status', Spec::not(Spec::equalTo('CANCELADO'))));
+
+// 2. Compilação direta via Facade estática com mapeamento de colunas
+$criteria = Spec::toCriteria(
+    specification: $spec,
+    fieldMap: [
+        'ativo'   => 'st_ativo',
+        'salario' => 'vl_salario',
+        'cidade'  => 'ds_cidade',
+        'status'  => 'tp_status'
+    ],
+    properties: [
+        'order'     => 'vl_salario',
+        'direction' => 'desc',
+        'limit'     => 50,
+        'offset'    => 0
+    ]
+);
+
+echo $criteria->dump();
+// '(st_ativo = TRUE AND (vl_salario > 5000 OR ds_cidade LIKE 'São%') AND tp_status <> 'CANCELADO')'
+
+// 3. Compilação fluente com paginação e ordenação encadeadas
+$criteriaFluent = Spec::criteriaBuilder($spec)
+    ->withFieldMapping(['salario' => 'vl_salario'])
+    ->orderBy('vl_salario', 'desc')
+    ->limit(20)
+    ->offset(40)
+    ->groupBy('departamento_id')
+    ->toCriteria();
+
+// 4. Invocação direta a partir de qualquer instância de ISpecification
+$criteriaFromInstance = $spec->toCriteria();
+```
+
+---
+
+### 10. ALinq Synergy & Coleções Fluentes LINQ (Módulo 14)
+
+Interoperabilidade nativa de alto desempenho com a biblioteca **[`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection)**:
+
+#### 10.1 Resolução Avançada de Propriedades com Dot Notation (`PropertyAccessor`)
+Avalie propriedades em objetos com getters ou métodos booleanos, arrays associativos e caminhos aninhados profundos:
+
+```php
+use Antevemus\ASpecification\Spec;
+
+// Regra navegando por objetos/arrays aninhados
+$vipInSP = Spec::property('address.city', Spec::equalTo('São Paulo'))
+    ->and(Spec::property('profile.score', Spec::greaterThan(90)));
+
+$user = (object)[
+    'address' => (object)['city' => 'São Paulo'],
+    'profile' => ['score' => 95]
+];
+
+$result = $vipInSP->evaluate($user);
+// $result->isSatisfied === true
+```
+
+#### 10.2 Compilador de AST para Predicados LINQ (`ALinqSpecificationVisitor`)
+Converta árvores de especificações em um `Closure(mixed $candidate): bool` compilado com operadores de curto-circuito (`&&`, `||`, `!`), sem overhead:
+
+```php
+use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
+
+// Compila a especificação em um predicado executável
+$predicate = ALinqSpecificationVisitor::createPredicate($vipInSP);
+
+// Diretamente utilizável em coleções ALinq ou array_filter nativo
+$aprovados = $minhaColecaoAlinq->where($predicate);
+```
+
+#### 10.3 Repositórios em Memória Fluentes com `ALinqBridge`
+Conecte repositórios em memória e iteráveis diretamente a pipelines LINQ (ordenação, paginação, agrupamento e agregações):
+
+```php
+use Antevemus\ASpecification\Linq\ALinqBridge;
+
+// 1. Filtragem fluente a partir de qualquer iterável
+$techItems = ALinqBridge::filter($produtos, $specTech)
+    ->orderByDescending(fn($p) => $p->price)
+    ->take(10)
+    ->toArray();
+
+// 2. Consulta tipada direta no InMemoryRepository retornando ALinqCollection
+$topCustomers = $inMemoryRepo->findAsLinqCollection($specApproved)
+    ->orderBy(fn($c) => $c->getPoints())
+    ->take(5)
+    ->toArray();
+
+// 3. Conversão completa do repositório em memória para ALinqCollection
+$mediaPontos = $inMemoryRepo->asLinqCollection()->average(fn($c) => $c->getPoints());
+```
+
+---
+
+## 🏗️ Estrutura de Diretórios
+
+```
+src/
+├── Contracts/                 # Interfaces formais segregadas (ISP)
+│   ├── Entities/             # IEntity, ITransientEntity
+│   ├── Factory/              # ITypeSpecificationFactory, IComparison..., ILogical...
+│   ├── Repositories/         # IRepository, IPartitionRepository, IPersistent...
+│   ├── Concurrent/           # ISynchronizer
+│   ├── Helpers/              # IStopWatch, IInstrumentationUtils
+│   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog...
+│   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause
+├── Entities/                  # Classes base abstratas de entidades e UUIDs
+├── Specifications/            # Implementações concretas de regras
+│   ├── Comparison/           # Equal, GreaterThan, LessThan, RelationalOperator
+│   ├── Logical/              # AlwaysTrue, AlwaysFalse, JointDenial (NOR)
+│   ├── String/               # Regex, Wildcard, DateString, EnumName
+│   ├── Collection/           # CollectionSpecification, AllEntities, Unique
+│   └── Reflection/           # FieldParameterized, MethodParameterized
+├── Repositories/              # Repositórios concretos e particionamento
+│   ├── File/                 # SingleFileRepository, FilePerEntityRepository
+│   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
+├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
+├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, Builders
+│   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException
+│   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
+│   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET
+├── Sql/                       # SQL Query Visitor & Multi-SGBD Engine (Módulo 12)
+│   ├── Dialects/             # Abstract, Ansi, PostgreSql, MySql, SqlServer, Oracle, Firebird, Sqlite
+│   ├── Exceptions/           # SqlVisitorException, NonTranslatableSpecificationException...
+│   ├── SqlDialect.php        # Enum com todos os drivers: sqlsrv, mssql, oracle, oci, mysql, etc.
+│   ├── SqlQueryVisitor.php   # Visitor GoF que compila a AST em SQL parametrizado
+│   ├── SqlWhereClause.php    # Cláusula WHERE segura com bindings
+│   └── FieldMapper.php       # Mapeador de propriedades para colunas físicas
+├── Criteria/                  # TCriteria Builder & Adianti Database Bridge (Módulo 13)
+│   ├── Exceptions/           # CriteriaBuilderException, NonTranslatableCriteriaException
+│   ├── CriteriaSpecificationVisitor.php # Visitor GoF que compila a AST para TCriteria/TFilter
+│   └── TCriteriaBuilder.php  # Builder fluente com paginação, ordenação e mapeamento de campos
+├── Linq/                      # ALinq Synergy & Coleções Fluentes (Módulo 14)
+│   ├── ALinqBridge.php       # Ponte fluente entre repositórios e coleções ALinq
+│   └── ALinqSpecificationVisitor.php # Compilador de AST para predicados funcionais LINQ
+├── Factory/                   # SpecificationFactory unificada (140+ métodos)
+│   └── Traits/               # 8 Traits modulares (Type, Comparison, Logical, Special, String, Date, Collection, Wrapper)
+├── Results/                   # SpecificationResult, SpecificationFailure
+├── Helpers/                   # PropertyAccessor (dot notation), StopWatch, InstrumentationUtils
+├── DSL/                       # Funções globais de apoio para syntax fluente
+└── Spec.php                   # Facade principal da biblioteca
+```
+
+---
+
+## 🧪 Qualidade de Código & Testes
+
+A biblioteca possui cobertura total de testes unitários e de integração, garantindo zero regressões:
+
+```bash
+php tests/run_all.php
+```
+
+```text
+====================================================================
+ ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
+====================================================================
+
+• [SUITE] Módulo 1: Especificações e Álgebra Booleana... ✅ PASS (25 asserções)
+• [SUITE] Módulo 2: Entidades e Identificadores... ✅ PASS (8 asserções)
+• [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (5 asserções)
+• [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (4 asserções)
+• [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (6 asserções)
+• [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (38 asserções)
+• [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (35 asserções)
+• [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (61 asserções)
+• [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (70 asserções)
+• [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (41 asserções)
+• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (69 asserções)
+• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (102 asserções)
+• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (43 asserções)
+• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (72 asserções)
+
+====================================================================
+ RESULTADO FINAL: 14/14 SUÍTES APROVADAS (100% PASS)
+ TOTAL DE ASSERÇÕES: 579 | TEMPO: ~45ms | REGRESSÕES: 0
+====================================================================
+```
+
+- **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
+- **Rastreabilidade Java (Domian):** 100% de paridade conceitual com o framework original.
+- **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
+- **ALinq Synergy & Coleções Fluentes:** Sinergia nativa com `Antevemus.AlinqCollection`, com compilador `ALinqSpecificationVisitor`, resolução flexível de propriedades `PropertyAccessor` (dot notation) e integração em `InMemoryRepository`.
+- **Multi-SGBD SQL Translator:** 12 drivers homologados com quoting de identificadores e prepared statements.
+- **Adianti Database Bridge:** Conversão completa para `TCriteria`/`TFilter` com De Morgan e precedência.
+
+---
+
+## 🗺️ Roadmap & Próximos Passos
+
+O **Antevemus ASpecification** continua em evolução contínua com marcos de curto, médio e longo prazo. Para a lista completa e detalhada de iniciativas, consulte o documento oficial:
+
+👉 **[Consulte o ROADMAP.md completo](ROADMAP.md)**
+
+Principais destaques planejados:
+1. **Internacionalização das DocBlocks em PHP (EN)** (padronização PSR-5/19 em inglês)
+2. **PHP 8.4 Attributes Declarativos** (`#[AssertSpec]`, `#[ValidateRule]`)
+3. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis)
+4. **Compiladores AST para GraphQL & OpenAPI 3.1**
+5. **Doctrine ORM & Laravel Eloquent Query Visitors**
+6. **Disparo Reativo de Domain Events**
+
+---
+
+## ⚖️ Atribuição, Licença Upstream & Agradecimentos
+
+O **Antevemus ASpecification** expressa seu mais profundo respeito e agradecimento aos autores originais que estabeleceram os fundamentos teóricos e práticos deste padrão:
+
+- **Eirik Torske** (Administrador do Projeto & Arquiteto Principal) e **Bjørn Nordlund** (Desenvolvedor & Contribuidor), criadores do framework **[Domian (Java)](https://domian.sourceforge.net/)**, cujo trabalho pioneiro em álgebra booleana, operações de teoria dos conjuntos de Venn (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) e arquitetura de repositórios particionados serviu como base arquitetural inspiradora para este projeto.
+- **Eric Evans** e **Martin Fowler**, pela autoria do seminal paper *[Specifications (2002)](http://www.martinfowler.com/apsupp/spec.pdf)* e pelas obras fundamentais sobre Domain-Driven Design (DDD).
+
+### Conformidade com a Licença Apache 2.0
+O framework original **Domian** é distribuído sob os termos da **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright &copy; Eirik Torske and Domian contributors). Em plena conformidade com a Seção 4 da referida licença:
+- As atribuições de autoria e direitos autorais do projeto original são integralmente preservadas.
+- O arquivo [NOTICE.md](NOTICE.md) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) contêm a declaração formal de procedência, avisos e textos integrais das licenças de terceiros.
+- Esta implementação independente e reescrita moderna para PHP 8.4+ é disponibilizada à comunidade sob a licença **MIT**.
+
+---
+
+## 📚 Referências & Bibliografia
+
+- **[Domian Specification Framework](https://domian.sourceforge.net/index.html)**: Projeto Java original criado por Eirik Torske.
+- **[The Specifications Pattern - Eric Evans & Martin Fowler](http://www.martinfowler.com/apsupp/spec.pdf)**: Artigo fundamental que introduziu o padrão.
+- **[Domain-Driven Design: Tackling Complexity in the Heart of Software](https://www.domainlanguage.com/ddd/)**: Obra de referência de Eric Evans sobre modelagem de domínio rica.
+- **[Design Patterns: Elements of Reusable Object-Oriented Software](https://en.wikipedia.org/wiki/Design_Patterns)**: Padrões GoF de referência (Composite, Decorator, Visitor, Factory).
+
+---
+
+## 📄 Licença
+
+Distribuído sob a licença **MIT**. Consulte os arquivos [LICENSE](LICENSE), [NOTICE.md](NOTICE.md) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) para obter mais informações.
+
+---
+
+## 👨‍💻 Autor & Manutenção
+
+**Heliton Junior (CTO)**  
+- E-mail: [contato@antevemus.com.br](mailto:contato@antevemus.com.br)  
+- Website: [antevemus.com.br](https://antevemus.com.br)  
+- Organização: **Antevemus Soluções Inovadoras em TI Ltda.**
