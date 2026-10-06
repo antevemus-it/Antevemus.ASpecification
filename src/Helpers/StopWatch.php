@@ -7,22 +7,22 @@ namespace Antevemus\ASpecification\Helpers;
 use Antevemus\ASpecification\Contracts\Helpers\IStopWatch;
 
 /**
- * StopWatch - Cronometro de alta precisao para benchmarking e medicao de latencia
+ * StopWatch - High-Precision Stopwatch for Benchmarking and Latency Measurement
  *
- * Utiliza o relogio monotonico de alta resolucao do PHP (hrtime) com suporte a nanossegundos,
- * permitindo medir o tempo de execucao de queries em repositorios, particionamento e avaliacoes.
+ * Utilizes PHP's high-resolution monotonic clock (hrtime) with nanosecond precision,
+ * enabling precise measurement of repository queries, partitioning traversal, and specification evaluation.
  *
- * Funcionalidades:
- * - Medicao com resolucao de nanossegundos via hrtime(true)
- * - Maquina de estados segura (READY, STARTED, STOPPED)
- * - Registro e historico de voltas intermediarias (laps)
- * - Formatacao automatica legivel (ns, us, ms, s)
+ * Features:
+ * - Nanosecond resolution measurement via hrtime(true)
+ * - Safe state machine (READY, STARTED, STOPPED)
+ * - Intermediary lap timing recording and history
+ * - Automatic human-readable time formatting (ns, µs, ms, s)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class StopWatch implements IStopWatch
@@ -38,9 +38,9 @@ class StopWatch implements IStopWatch
     private array $laps = [];
 
     /**
-     * Instancia um novo cronometro. Se $autoStart for true, inicia imediatamente.
+     * Instantiate a new stopwatch. If $autoStart is true, starts timing immediately.
      *
-     * @param bool $autoStart Se true, inicia a contagem no construtor
+     * @param bool $autoStart If true, starts counting upon instantiation
      */
     public function __construct(bool $autoStart = false)
     {
@@ -50,7 +50,7 @@ class StopWatch implements IStopWatch
     }
 
     /**
-     * Factory estatica para criacao e inicio imediato.
+     * Static factory creating and starting stopwatch immediately.
      *
      * @return self
      */
@@ -66,7 +66,7 @@ class StopWatch implements IStopWatch
     {
         $now = hrtime(true);
         if ($this->state === self::STATE_STOPPED) {
-            // Retomando ou reiniciando contagem
+            // Resuming or restarting count
             $this->startTime = $now;
         } else {
             $this->startTime = $now;

@@ -1,35 +1,35 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ICollectionSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractCollectionSpecificationFactory class.
+ * AbstractCollectionSpecificationFactory - Base abstract factory for collection specifications
  *
- * Classe abstrata base para fábricas de especificações de coleções.
+ * Provides default implementations for alias methods and validation helpers for
+ * concrete collection specification implementations.
  *
- * Fornece implementações padrão para métodos alias e helpers para
- * implementações concretas de especificações de coleções.
- *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractCollectionSpecificationFactory implements ICollectionSpecificationFactory
 {
     /**
-     * Valida uma especificação de tamanho/contagem.
+     * Validates a size/count specification.
      *
-     * Método auxiliar para implementações concretas validarem especificações
-     * numéricas antes de criar especificações de coleção.
+     * Helper method for concrete implementations to validate numeric specifications
+     * prior to creating collection specifications.
      *
-     * @param ISpecification $specification Especificação a validar
-     * @throws \InvalidArgumentException Se a especificação for null
+     * @param ISpecification $specification Specification to validate
+     * @throws \InvalidArgumentException If specification is null
      */
     protected function validateSpecification(ISpecification $specification): void
     {
@@ -39,10 +39,10 @@ abstract class AbstractCollectionSpecificationFactory implements ICollectionSpec
     }
 
     /**
-     * Valida um valor de percentual.
+     * Validates a percentage value.
      *
-     * @param int $percentage Percentual a validar
-     * @throws \InvalidArgumentException Se o percentual estiver fora do intervalo 0-100
+     * @param int $percentage Percentage value to validate (0-100)
+     * @throws \InvalidArgumentException If percentage is out of range
      */
     protected function validatePercentage(int $percentage): void
     {

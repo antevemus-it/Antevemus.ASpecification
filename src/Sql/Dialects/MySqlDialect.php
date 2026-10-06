@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 /**
- * MySqlDialect - Dialeto Especializado para MySQL e MariaDB
+ * MySqlDialect - Specialized Dialect for MySQL and MariaDB
  *
- * Provê suporte a identificadores com backticks (`coluna`), busca case-sensitive com BINARY,
- * booleanos numéricos (1/0) e operador REGEXP.
+ * Provides support for backtick delimiters (`column`), case-sensitive matching with BINARY,
+ * numeric boolean representation (1/0), and the native REGEXP operator.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class MySqlDialect extends AbstractSqlDialect

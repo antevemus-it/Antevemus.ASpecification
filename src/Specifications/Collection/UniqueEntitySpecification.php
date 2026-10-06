@@ -10,24 +10,24 @@ use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * UniqueEntitySpecification - Especificação de unicidade por identidade de entidade
+ * UniqueEntitySpecification - Entity identity uniqueness leaf specification.
  *
- * Especificação folha concreta satisfeita exclusivamente por instâncias da mesma classe
- * que compartilhem o mesmo identificador de entidade (getEntityId()).
+ * Concrete leaf specification satisfied exclusively by instances of the same class
+ * sharing the identical entity identifier (getEntityId()).
  *
- * Funcionalidades:
- * - Validação exata de classe e identidade de entidade
- * - Subsunção por disjunção imediata contra outras especificações de unicidade distintas
- * - Igualdade estrutural por identidade e classe
+ * Features:
+ * - Exact class and entity identifier validation
+ * - Immediate disjointness against distinct uniqueness specifications
+ * - Structural equality checking by identity and entity class
  *
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class UniqueEntitySpecification extends AbstractSpecification implements ILeafSpecification
@@ -37,8 +37,8 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     private readonly string $entityClass;
 
     /**
-     * @param T|string|int $entityOrId Entidade de referência ou identificador escalar
-     * @param class-string<T>|null $entityClass Classe da entidade (opcional quando informado ID escalar)
+     * @param T|string|int $entityOrId Reference entity instance or scalar identifier
+     * @param class-string<T>|null $entityClass Target entity class (optional when scalar ID provided)
      */
     public function __construct(
         IEntity|string|int $entityOrId,
@@ -56,7 +56,7 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     }
 
     /**
-     * Retorna a entidade de referência, se disponível.
+     * Returns the reference entity, if available.
      *
      * @return T|null
      */
@@ -66,7 +66,7 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     }
 
     /**
-     * Retorna o identificador único esperado pela especificação.
+     * Returns the expected unique entity identifier.
      */
     public function getExpectedId(): mixed
     {
@@ -131,7 +131,7 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     }
 
     /**
-     * Verifica igualdade estrutural.
+     * Checks structural equality.
      */
     public function equals(mixed $other): bool
     {

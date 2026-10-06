@@ -7,25 +7,25 @@ namespace Antevemus\ASpecification\Concurrent;
 use RuntimeException;
 
 /**
- * SemaphoreSynchronizer - Sincronizador Read/Write Lock Baseado em Semáforos Contadores
+ * SemaphoreSynchronizer - Read/Write Lock Synchronizer Based on Counting Semaphores
  *
- * Porta fiel da implementação Java net.sourceforge.domian.util.concurrent.locks.SemaphoreSynchronizer.
- * Utiliza o modelo de contagem de permissões com capacidade alta (10.000 permissões concorrentes)
- * para leituras paralelas não-bloqueantes e aquisição total de permissões para isolamento
- * exclusivo de mutações/escritas, com suporte integral a reentrância.
+ * Direct port of the Java implementation net.sourceforge.domian.util.concurrent.locks.SemaphoreSynchronizer.
+ * Utilizes a permit-counting model with high capacity (10,000 concurrent permits)
+ * for non-blocking parallel reads, and drains all permits for exclusive isolation
+ * during atomic mutations/writes, with full reentrancy support.
  *
- * Funcionalidades:
- * - Controle de capacidade de concorrência com 10.000 permissões padrão (MAX_NUMBER_OF_CONCURRENT_PERMITS)
- * - Modo concorrente com consumo unitário de permissões (callConcurrently / runConcurrently)
- * - Modo exclusivo com drenagem total de permissões garantindo acesso atômico único
- * - Tolerância e detecção transparente de reentrância evitando auto-deadlock
- * - Métodos de introspecção estrutural de estado (getAvailablePermits, isExclusiveLocked)
+ * Features:
+ * - High concurrency capacity with 10,000 default permits (MAX_NUMBER_OF_CONCURRENT_PERMITS)
+ * - Concurrent mode consuming single permits (callConcurrently / runConcurrently)
+ * - Exclusive mode draining all permits to guarantee atomic isolated access
+ * - Transparent reentrancy detection preventing self-deadlocks
+ * - State introspection methods (getAvailablePermits, isExclusiveLocked)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SemaphoreSynchronizer extends AbstractSynchronizer
@@ -39,9 +39,9 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     private int $exclusiveDepth = 0;
 
     /**
-     * Inicializa o sincronizador com o número máximo de permissões concorrentes.
+     * Initialize the synchronizer with maximum concurrent permit limit.
      *
-     * @param int $maxPermits Quantidade máxima de permissões concorrentes simultâneas (padrão 10.000)
+     * @param int $maxPermits Maximum simultaneous concurrent permits (default 10,000)
      */
     public function __construct(int $maxPermits = self::MAX_NUMBER_OF_CONCURRENT_PERMITS)
     {
@@ -54,7 +54,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
      */
     public function callConcurrently(callable $action): mixed
     {
-        // Reentrância: se já detém o lock exclusivo ou concorrente, executa diretamente
+        // Reentrancy: if already holding exclusive or concurrent lock, execute directly
         if ($this->exclusiveDepth > 0 || $this->concurrentDepth > 0) {
             $this->concurrentDepth++;
             try {
@@ -80,7 +80,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
      */
     public function callExclusively(callable $action): mixed
     {
-        // Reentrância: se já detém o lock exclusivo, executa diretamente
+        // Reentrancy: if already holding exclusive lock, execute directly
         if ($this->exclusiveDepth > 0) {
             $this->exclusiveDepth++;
             try {
@@ -102,7 +102,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Indica se a thread/contexto corrente já detém permissão de execução (reentrância).
+     * Indicate whether current thread/call stack already acquired execution permission (reentrancy).
      *
      * @return bool
      */
@@ -112,7 +112,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Retorna a quantidade de permissões concorrentes atualmente disponíveis.
+     * Return currently available concurrent permits.
      *
      * @return int
      */
@@ -122,7 +122,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Retorna o total configurado de permissões concorrentes.
+     * Return maximum configured concurrent permits.
      *
      * @return int
      */
@@ -132,7 +132,7 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Indica se o lock exclusivo está ativo no momento.
+     * Indicate whether exclusive lock is currently active.
      *
      * @return bool
      */
@@ -142,25 +142,25 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Adquire 1 permissão concorrente.
+     * Acquire 1 concurrent permit.
      *
      * @return void
      */
     private function acquireConcurrentPermit(): void
     {
         if ($this->exclusiveLocked) {
-            throw new RuntimeException("Bloqueio exclusivo ativo: não é possível adquirir permissão concorrente.");
+            throw new RuntimeException("Exclusive lock is active: cannot acquire concurrent permit.");
         }
 
         if ($this->availablePermits <= 0) {
-            throw new RuntimeException("Capacidade máxima de permissões concorrentes ({$this->maxPermits}) esgotada.");
+            throw new RuntimeException("Maximum concurrent permit capacity ({$this->maxPermits}) exhausted.");
         }
 
         $this->availablePermits--;
     }
 
     /**
-     * Libera 1 permissão concorrente.
+     * Release 1 concurrent permit.
      *
      * @return void
      */
@@ -172,32 +172,32 @@ class SemaphoreSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Adquire lock exclusivo drenando todas as permissões.
+     * Acquire exclusive lock by draining all permits.
      *
      * @return void
      */
     private function acquireExclusiveLock(): void
     {
         if ($this->exclusiveLocked) {
-            throw new RuntimeException("Lock exclusivo já adquirido por outra operação.");
+            throw new RuntimeException("Exclusive lock already acquired by another operation.");
         }
 
         if ($this->availablePermits < $this->maxPermits) {
-            throw new RuntimeException("Existem operações concorrentes ativas ({$this->availablePermits}/{$this->maxPermits}): aguarde término antes do lock exclusivo.");
+            throw new RuntimeException("Concurrent operations active ({$this->availablePermits}/{$this->maxPermits}): wait for completion before acquiring exclusive lock.");
         }
 
         $this->exclusiveLocked = true;
-        $this->availablePermits = 0; // Drena todas as permissões
+        $this->availablePermits = 0; // Drain all permits
     }
 
     /**
-     * Libera lock exclusivo restaurando todas as permissões.
+     * Release exclusive lock by restoring all permits.
      *
      * @return void
      */
     private function releaseExclusiveLock(): void
     {
         $this->exclusiveLocked = false;
-        $this->availablePermits = $this->maxPermits; // Restaura permissões
+        $this->availablePermits = $this->maxPermits; // Restore permits
     }
 }

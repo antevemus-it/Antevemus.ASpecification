@@ -10,31 +10,31 @@ use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AllEntitiesSpecification - Especificação universal de entidades
+ * AllEntitiesSpecification - Universal leaf specification for entities.
  *
- * Especificação folha concreta que é satisfeita por qualquer objeto do tipo de entidade especificado
- * (por padrão qualquer implementação de IEntity). Atua como elemento neutro (generalização máxima)
- * no motor de subsunção do grafo de particionamento.
+ * Concrete leaf specification satisfied by any object of the specified entity type
+ * (defaults to implementations of IEntity). Acts as the maximal generalization identity
+ * in the repository partition DAG and subsumption engine.
  *
- * Funcionalidades:
- * - Aceitação de qualquer candidato compatível com o tipo de entidade alvo
- * - Generalização axiomática de qualquer especificação que atue sobre o mesmo tipo ou subtipo
- * - Verificação de igualdade estrutural (equals)
+ * Features:
+ * - Acceptance of any candidate matching the target entity type
+ * - Axiomatic generalization over any specification targeting the same type or subtype
+ * - Structural equality checking (`equals`)
  *
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpecification
 {
     /**
-     * @param string $targetType FQN da classe ou interface alvo (padrão: IEntity::class)
+     * @param string $targetType Target class or interface FQCN (defaults to IEntity::class)
      */
     public function __construct(
         private readonly string $targetType = IEntity::class
@@ -100,7 +100,7 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
     }
 
     /**
-     * Verifica igualdade estrutural.
+     * Checks structural equality.
      */
     public function equals(mixed $other): bool
     {

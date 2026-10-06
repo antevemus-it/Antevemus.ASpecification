@@ -8,24 +8,23 @@ use RuntimeException;
 use Throwable;
 
 /**
- * FileLockSynchronizer - Sincronizador de Concorrência Multi-Processo via File Locks (flock)
+ * FileLockSynchronizer - Multi-Process Concurrency Synchronizer via OS File Locks (flock)
  *
- * Implementa o padrão Read/Write Lock sobre o sistema de arquivos utilizando a primitiva
- * nativa flock() do sistema operacional. Suporta bloqueios compartilhados (LOCK_SH) para
- * leituras concorrentes em paralelo e bloqueios exclusivos (LOCK_EX) para escritas atômicas,
- * com detecção de reentrância para prevenir auto-deadlocks.
+ * Implements the Read/Write Lock pattern on the filesystem using the native OS flock() primitive.
+ * Supports shared locks (LOCK_SH) for parallel concurrent reads and exclusive locks (LOCK_EX)
+ * for atomic writes, with reentrancy tracking to prevent self-deadlocks.
  *
- * Funcionalidades:
- * - Suporte a bloqueios compartilhados (LOCK_SH) e exclusivos (LOCK_EX)
- * - Rastreamento de reentrância para chamadas aninhadas no mesmo processo
- * - Liberação garantida de descritores e travas via blocos try/finally
- * - Timeout configurável com tentativas não-bloqueantes (LOCK_NB) e backoff
+ * Features:
+ * - Shared (LOCK_SH) and exclusive (LOCK_EX) lock mode support
+ * - Reentrancy tracking for nested calls originating within the same process
+ * - Guaranteed descriptor and lock release via try/finally blocks
+ * - Configurable timeout with non-blocking attempts (LOCK_NB) and exponential backoff
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class FileLockSynchronizer extends AbstractSynchronizer
@@ -36,10 +35,10 @@ class FileLockSynchronizer extends AbstractSynchronizer
     private int $exclusiveDepth = 0;
 
     /**
-     * Inicializa o sincronizador com o arquivo de lock de destino.
+     * Initialize the synchronizer with target lock file path.
      *
-     * @param string|null $lockFilePath Caminho para o arquivo de trava (null para arquivo temporário padrão)
-     * @param int $lockTimeoutMs Tempo limite em milissegundos para obtenção do lock (padrão 3000ms)
+     * @param string|null $lockFilePath Path to lock file (null for default temp file)
+     * @param int $lockTimeoutMs Timeout limit in milliseconds for acquiring the lock (default 3000ms)
      */
     public function __construct(?string $lockFilePath = null, int $lockTimeoutMs = 3000)
     {
@@ -52,7 +51,7 @@ class FileLockSynchronizer extends AbstractSynchronizer
      */
     public function callConcurrently(callable $action): mixed
     {
-        // Reentrância: se já detém o lock exclusivo ou concorrente, executa diretamente
+        // Reentrancy: if already holding exclusive or concurrent lock, execute directly
         if ($this->exclusiveDepth > 0 || $this->concurrentDepth > 0) {
             $this->concurrentDepth++;
             try {
@@ -77,7 +76,7 @@ class FileLockSynchronizer extends AbstractSynchronizer
      */
     public function callExclusively(callable $action): mixed
     {
-        // Reentrância: se já detém o lock exclusivo, executa diretamente
+        // Reentrancy: if already holding exclusive lock, execute directly
         if ($this->exclusiveDepth > 0) {
             $this->exclusiveDepth++;
             try {
@@ -98,10 +97,10 @@ class FileLockSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Executa a ação adquirindo e liberando a trava no arquivo com timeout.
+     * Execute callable by acquiring and releasing a file lock with timeout.
      *
      * @template T
-     * @param int $lockType LOCK_SH ou LOCK_EX
+     * @param int $lockType LOCK_SH or LOCK_EX
      * @param callable(): T $action
      * @return T
      * @throws RuntimeException
@@ -110,7 +109,7 @@ class FileLockSynchronizer extends AbstractSynchronizer
     {
         $handle = @fopen($this->lockFilePath, 'c+');
         if ($handle === false) {
-            throw new RuntimeException("Não foi possível abrir o arquivo de sincronização: {$this->lockFilePath}");
+            throw new RuntimeException("Could not open synchronization file: {$this->lockFilePath}");
         }
 
         $startTime = microtime(true);
@@ -127,7 +126,7 @@ class FileLockSynchronizer extends AbstractSynchronizer
         if (!$acquired) {
             fclose($handle);
             throw new RuntimeException(
-                "Timeout de {$this->lockTimeoutMs}ms excedido ao tentar obter lock para: {$this->lockFilePath}"
+                "Timeout of {$this->lockTimeoutMs}ms exceeded while acquiring lock for: {$this->lockFilePath}"
             );
         }
 
@@ -140,7 +139,7 @@ class FileLockSynchronizer extends AbstractSynchronizer
     }
 
     /**
-     * Retorna o caminho do arquivo de lock utilizado.
+     * Return the path of the lock file in use.
      *
      * @return string
      */

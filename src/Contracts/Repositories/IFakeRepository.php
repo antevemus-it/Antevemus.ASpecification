@@ -7,24 +7,23 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 
 /**
- * IFakeRepository - Marcador de repositório dublê/teste
+ * IFakeRepository - Marker Interface for Test Double / Fake Repositories
  *
- * Interface marcadora de classificação para repositórios dublês (test doubles,
- * mocks, stubs ou repositórios de simulação/apoio a testes).
- * Repositórios marcados com esta interface são classificados como 'fake' na promoção
- * e não se propõem a persistir ou reter entidades de forma produtiva.
+ * Classification marker interface for test double repositories (mocks,
+ * stubs, test simulators). Repositories marked with this interface are
+ * classified as 'fake' during repository promotion and do not retain entities for production.
  *
- * Funcionalidades:
- * - Classificação semântica de repositórios dublês de teste
- * - Preservação do tipo durante promoção de repositório
+ * Features:
+ * - Semantic classification of test double repositories
+ * - Type preservation during repository promotion
  *
  * @template T of IEntity
  * @extends IRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IFakeRepository extends IRepository

@@ -1,35 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\IStringSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractStringSpecificationFactory class.
+ * AbstractStringSpecificationFactory - Base abstract factory for string specifications
  *
- * Classe abstrata base para fábricas de especificações de strings.
+ * Provides default alias methods and validation helpers for concrete string specifications.
  *
- * Fornece implementações padrão para métodos alias e métodos auxiliares
- * de validação para implementações concretas.
- *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractStringSpecificationFactory implements IStringSpecificationFactory
 {
     /**
-     * Valida um padrão de expressão regular.
+     * Validates a regular expression pattern.
      *
-     * Método auxiliar para implementações concretas validarem padrões regex
-     * antes de criar especificações.
+     * Helper method for concrete implementations to validate regex patterns
+     * prior to creating specifications.
      *
-     * @param string $pattern Padrão regex a validar
-     * @throws \InvalidArgumentException Se o padrão for inválido
+     * @param string $pattern Regex pattern to validate
+     * @throws \InvalidArgumentException If pattern is invalid
      */
     protected function validateRegexPattern(string $pattern): void
     {
@@ -37,7 +36,7 @@ abstract class AbstractStringSpecificationFactory implements IStringSpecificatio
             throw new \InvalidArgumentException('Regex pattern cannot be empty');
         }
 
-        // Tentar compilar o padrão para validar
+        // Test compiling the pattern to validate
         $result = @preg_match($pattern, '');
         if ($result === false) {
             throw new \InvalidArgumentException("Invalid regex pattern: {$pattern}");
@@ -45,14 +44,14 @@ abstract class AbstractStringSpecificationFactory implements IStringSpecificatio
     }
 
     /**
-     * Valida uma string de valor.
+     * Validates a string value.
      *
-     * Método auxiliar para implementações concretas validarem strings
-     * antes de criar especificações.
+     * Helper method for concrete implementations to validate strings
+     * prior to creating specifications.
      *
-     * @param string $value String a validar
-     * @param bool $allowEmpty Se strings vazias são permitidas (padrão: false)
-     * @throws \InvalidArgumentException Se a string for inválida
+     * @param string $value String to validate
+     * @param bool $allowEmpty Whether empty strings are permitted (default: false)
+     * @throws \InvalidArgumentException If string is invalid
      */
     protected function validateString(string $value, bool $allowEmpty = false): void
     {

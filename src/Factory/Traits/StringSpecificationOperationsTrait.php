@@ -7,28 +7,30 @@ namespace Antevemus\ASpecification\Factory\Traits;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * StringSpecificationOperationsTrait - Trait agregador de operações sobre strings e expressões textuais (IStringSpecificationFactory).
+ * StringSpecificationOperationsTrait - Trait aggregating string and textual expression operations (IStringSpecificationFactory).
  *
- * Funcionalidades:
- * - Verificação de strings em branco e comprimento
- * - Comparações case-insensitive e regex
- * - Casamento por wildcard e sub-strings (contains, startsWith, endsWith)
+ * Provides delegation methods forwarding to the underlying string specification factory.
  *
- * @version    0.1
+ * Features:
+ * - Blank string and length validation
+ * - Case-insensitive comparisons and regex matching
+ * - Wildcard pattern matching and substring containment (contains, startsWith, endsWith)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait StringSpecificationOperationsTrait
 {
     /**
-     * Cria especificação que verifica string vazia ou em branco.
+     * Creates a specification verifying whether a string is empty or blank.
      *
-     * Verifica se a string é null, vazia ("") ou contém apenas espaços em branco.
+     * Evaluates to true if the string is null, empty (""), or contains only whitespace characters.
      *
-     * @return ISpecification<string> Especificação de string em branco
+     * @return ISpecification<string> Blank string specification
      */
     public function isBlank(): ISpecification
     {
@@ -36,7 +38,7 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para isBlank().
+     * Alias for isBlank().
      *
      * @return ISpecification<string>
      */
@@ -46,11 +48,11 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica igualdade ignorando case.
+     * Creates a specification verifying string equality ignoring case.
      *
-     * Compara strings de forma case-insensitive.
+     * Compares strings in a case-insensitive manner.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $factory->equalIgnoringCase('HELLO');
      * $spec->isSatisfiedBy('hello'); // true
@@ -58,8 +60,8 @@ trait StringSpecificationOperationsTrait
      * $spec->isSatisfiedBy('hi');    // false
      * </code>
      *
-     * @param string $value String para comparação
-     * @return ISpecification<string> Especificação de igualdade case-insensitive
+     * @param string $value Target string for comparison
+     * @return ISpecification<string> Case-insensitive equality specification
      */
     public function equalIgnoringCase(string $value): ISpecification
     {
@@ -67,9 +69,9 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para equalIgnoringCase().
+     * Alias for equalIgnoringCase().
      *
-     * @param string $value String para comparação
+     * @param string $value Target string for comparison
      * @return ISpecification<string>
      */
     public function equalsIgnoringCase(string $value): ISpecification
@@ -78,9 +80,9 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para equalIgnoringCase().
+     * Alias for equalIgnoringCase().
      *
-     * @param string $value String para comparação
+     * @param string $value Target string for comparison
      * @return ISpecification<string>
      */
     public function isEqualIgnoringCase(string $value): ISpecification
@@ -89,18 +91,18 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica match com expressão regular.
+     * Creates a specification verifying regex pattern matching.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $factory->matchesRegex('/^[A-Z]{3}-\d{3}$/');
      * $spec->isSatisfiedBy('ABC-123'); // true
      * $spec->isSatisfiedBy('abc-123'); // false
      * </code>
      *
-     * @param string $pattern Padrão de expressão regular (PCRE)
-     * @return ISpecification<string> Especificação de match regex
-     * @throws \InvalidArgumentException Se o padrão regex for inválido
+     * @param string $pattern Regular expression pattern (PCRE)
+     * @return ISpecification<string> Regex match specification
+     * @throws \InvalidArgumentException If regex pattern is invalid
      */
     public function matchesRegex(string $pattern): ISpecification
     {
@@ -108,9 +110,9 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para matchesRegex().
+     * Alias for matchesRegex().
      *
-     * @param string $pattern Padrão de expressão regular (PCRE)
+     * @param string $pattern Regular expression pattern (PCRE)
      * @return ISpecification<string>
      */
     public function matchesRegularExpression(string $pattern): ISpecification
@@ -119,9 +121,9 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para matchesRegex().
+     * Alias for matchesRegex().
      *
-     * @param string $pattern Padrão de expressão regular (PCRE)
+     * @param string $pattern Regular expression pattern (PCRE)
      * @return ISpecification<string>
      */
     public function matches(string $pattern): ISpecification
@@ -130,12 +132,12 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica match com expressão wildcard.
+     * Creates a specification verifying wildcard expression matching.
      *
-     * Suporta wildcards: * (qualquer sequência) e ? (qualquer caractere).
-     * Case-sensitive por padrão.
+     * Supports wildcards: * (any sequence) and ? (single character).
+     * Case-sensitive by default.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $factory->matchesWildcard('user_*');
      * $spec->isSatisfiedBy('user_123'); // true
@@ -143,8 +145,8 @@ trait StringSpecificationOperationsTrait
      * $spec->isSatisfiedBy('admin_123'); // false
      * </code>
      *
-     * @param string $wildcardExpression Expressão com wildcards (* e ?)
-     * @return ISpecification<string> Especificação de match wildcard
+     * @param string $wildcardExpression Wildcard pattern expression (* and ?)
+     * @return ISpecification<string> Wildcard match specification
      */
     public function matchesWildcard(string $wildcardExpression): ISpecification
     {
@@ -152,11 +154,11 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para matchesWildcard().
+     * Alias for matchesWildcard().
      *
-     * Uso idiomático SQL: "like 'user_%'"
+     * Idiomatic SQL-like usage: "like 'user_%'"
      *
-     * @param string $wildcardExpression Expressão com wildcards (* e ?)
+     * @param string $wildcardExpression Wildcard pattern expression (* and ?)
      * @return ISpecification<string>
      */
     public function like(string $wildcardExpression): ISpecification
@@ -165,12 +167,12 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica match com wildcard ignorando case.
+     * Creates a specification verifying wildcard matching ignoring case.
      *
-     * Similar a matchesWildcard() mas case-insensitive.
+     * Similar to matchesWildcard() but case-insensitive.
      *
-     * @param string $wildcardExpression Expressão com wildcards (* e ?)
-     * @return ISpecification<string> Especificação de match wildcard case-insensitive
+     * @param string $wildcardExpression Wildcard pattern expression (* and ?)
+     * @return ISpecification<string> Case-insensitive wildcard specification
      */
     public function matchesWildcardIgnoringCase(string $wildcardExpression): ISpecification
     {
@@ -178,11 +180,11 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se string contém substring.
+     * Creates a specification verifying whether a string contains a substring.
      *
-     * @param string $substring Substring a procurar
-     * @param bool $caseSensitive Se a busca deve ser case-sensitive (padrão: true)
-     * @return ISpecification<string> Especificação de contenção de substring
+     * @param string $substring Substring to search for
+     * @param bool $caseSensitive Whether search is case-sensitive (default: true)
+     * @return ISpecification<string> Substring containment specification
      */
     public function contains(string $substring, bool $caseSensitive = true): ISpecification
     {
@@ -190,11 +192,11 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se string começa com prefixo.
+     * Creates a specification verifying whether a string starts with a prefix.
      *
-     * @param string $prefix Prefixo esperado
-     * @param bool $caseSensitive Se a verificação deve ser case-sensitive (padrão: true)
-     * @return ISpecification<string> Especificação de início com prefixo
+     * @param string $prefix Expected prefix
+     * @param bool $caseSensitive Whether prefix check is case-sensitive (default: true)
+     * @return ISpecification<string> Prefix specification
      */
     public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
     {
@@ -202,11 +204,11 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se string termina com sufixo.
+     * Creates a specification verifying whether a string ends with a suffix.
      *
-     * @param string $suffix Sufixo esperado
-     * @param bool $caseSensitive Se a verificação deve ser case-sensitive (padrão: true)
-     * @return ISpecification<string> Especificação de término com sufixo
+     * @param string $suffix Expected suffix
+     * @param bool $caseSensitive Whether suffix check is case-sensitive (default: true)
+     * @return ISpecification<string> Suffix specification
      */
     public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
     {
@@ -214,10 +216,10 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica comprimento da string.
+     * Creates a specification verifying string length against an integer specification.
      *
-     * @param ISpecification<int> $lengthSpecification Especificação para o comprimento
-     * @return ISpecification<string> Especificação de comprimento de string
+     * @param ISpecification<int> $lengthSpecification Specification for length value
+     * @return ISpecification<string> String length specification
      */
     public function hasLength(ISpecification $lengthSpecification): ISpecification
     {
@@ -225,12 +227,12 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se string é uma data válida.
+     * Creates a specification verifying whether a string is a valid date.
      *
-     * Tenta fazer parse da string como data usando formatos comuns do PHP.
-     * Suporta formatos: Y-m-d, d/m/Y, d-m-Y, d.m.Y, Ymd, etc.
+     * Attempts to parse string as date using standard PHP date formats.
+     * Supports formats: Y-m-d, d/m/Y, d-m-Y, d.m.Y, Ymd, etc.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $factory->isValidDate();
      * $spec->isSatisfiedBy('2025-01-15'); // true
@@ -238,8 +240,8 @@ trait StringSpecificationOperationsTrait
      * $spec->isSatisfiedBy('invalid');    // false
      * </code>
      *
-     * @param string|null $format Formato específico de data (opcional). Se null, tenta formatos comuns
-     * @return ISpecification<string> Especificação de validação de data
+     * @param string|null $format Specific date format (optional). If null, tries common formats
+     * @return ISpecification<string> Date validity specification
      */
     public function isValidDate(?string $format = null): ISpecification
     {
@@ -247,9 +249,9 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Alias para isValidDate().
+     * Alias for isValidDate().
      *
-     * @param string|null $format Formato específico de data (opcional)
+     * @param string|null $format Specific date format (optional)
      * @return ISpecification<string>
      */
     public function isDate(?string $format = null): ISpecification
@@ -258,10 +260,10 @@ trait StringSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que valida se a string corresponde a um case de um Enum PHP.
+     * Creates a specification validating whether a string matches a case in a PHP Enum.
      *
-     * @param class-string $enumClass A classe do Enum a ser validada.
-     * @return ISpecification<string>
+     * @param class-string $enumClass The target Enum class name
+     * @return ISpecification<string> Enum case specification
      */
     public function enumCase(string $enumClass): ISpecification
     {

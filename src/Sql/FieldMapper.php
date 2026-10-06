@@ -8,28 +8,28 @@ use Closure;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 
 /**
- * FieldMapper - Mapeador Canônico de Nomes de Propriedades para Colunas SQL
+ * FieldMapper - Canonical Property Name to SQL Column Mapper
  *
- * Mapeia propriedades do modelo de domínio para nomes físicos de colunas no banco de dados,
- * suportando mapas associativos estáticos, prefixos de tabela padrão ou Closures dinâmicas.
+ * Maps domain model properties to physical database column names,
+ * supporting static associative maps, default table prefixes, or dynamic Closures.
  *
- * Funcionalidades:
- * - Mapeamento direto de dicionário (array associativo)
- * - Adição automática de alias/prefixo de tabela configurável (ex: 'c.')
- * - Conversão automática de camelCase para snake_case como fallback
+ * Features:
+ * - Direct dictionary mapping (associative array)
+ * - Automatic addition of configurable table alias/prefix (e.g. 'c.')
+ * - Automatic conversion from camelCase to snake_case as fallback
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class FieldMapper implements IFieldMapper
 {
     /**
-     * @param array<string, string>|Closure(string): string|null $mapping Mapa ou callback
-     * @param string|null $tableAlias Alias padrão opcional (ex: 'c')
+     * @param array<string, string>|Closure(string): string|null $mapping Mapping dictionary or callback
+     * @param string|null $tableAlias Optional default table alias (e.g. 'c')
      */
     public function __construct(
         private readonly array|Closure|null $mapping = null,
@@ -38,7 +38,7 @@ class FieldMapper implements IFieldMapper
     }
 
     /**
-     * Resolve uma instância de IFieldMapper a partir de array, closure ou instância existente.
+     * Resolve an IFieldMapper instance from array, closure, or existing mapper.
      *
      * @param IFieldMapper|array<string, string>|Closure(string): string|null $mapper
      * @param string|null $tableAlias
@@ -53,7 +53,7 @@ class FieldMapper implements IFieldMapper
     }
 
     /**
-     * Alias conciso para mapField().
+     * Concise alias for mapField().
      *
      * @param string $propertyName
      * @return string

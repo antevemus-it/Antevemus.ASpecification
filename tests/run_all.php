@@ -18,6 +18,7 @@ use Antevemus\ASpecification\Tests\Unit\Module11_DynamicRuleEngineTest;
 use Antevemus\ASpecification\Tests\Unit\Module12_SqlVisitorAndDialectsTest;
 use Antevemus\ASpecification\Tests\Unit\Module13_TCriteriaBuilderTest;
 use Antevemus\ASpecification\Tests\Unit\Module14_ALinqSynergyTest;
+use Antevemus\ASpecification\Tests\Unit\Module15_AttributesTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -38,6 +39,7 @@ $suites = [
     'Módulo 12: SQL Query Visitor & Multi-SGBD Dialects' => new Module12_SqlVisitorAndDialectsTest(),
     'Módulo 13: TCriteria Builder & Adianti Database Bridge' => new Module13_TCriteriaBuilderTest(),
     'Módulo 14: ALinq Synergy & Coleções Fluentes LINQ' => new Module14_ALinqSynergyTest(),
+    'Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])' => new Module15_AttributesTest(),
 ];
 
 $startTime = microtime(true);

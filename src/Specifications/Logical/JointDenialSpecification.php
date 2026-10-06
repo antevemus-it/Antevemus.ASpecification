@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\Logical;
 
 use Antevemus\ASpecification\AbstractSpecification;
@@ -8,27 +10,32 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
- * JointDenialSpecification class.
+ * JointDenialSpecification - Composite specification representing logical NOR (Joint Denial).
  *
- * Implementação do operador lógico NOR (Negação Conjunta).
- * Retorna true apenas se ambas as especificações repassadas retornarem false.
+ * Satisifed if and only if BOTH operand specifications evaluate to false:
+ * candidate satisfies NEITHER left NOR right specification.
+ *
+ * Features:
+ * - Binary joint denial logic: NOT (left OR right)
+ * - Composite operand inspection (left, right, specifications list)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class JointDenialSpecification extends AbstractSpecification implements ICompositeSpecification
 {
     use SubsumptionAndEqualityTrait;
+
     /**
-     * @param ISpecification<T> $left Especificação do lado esquerdo
-     * @param ISpecification<T> $right Especificação do lado direito
+     * @param ISpecification<T> $left Left-hand side specification
+     * @param ISpecification<T> $right Right-hand side specification
      */
     public function __construct(
         private readonly ISpecification $left,
@@ -37,10 +44,10 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
     }
 
     /**
-     * Verifica se o candidato falha em ambas as regras (NOR).
+     * Verifies whether the candidate fails both rules (NOR logic).
      *
-     * @param mixed $candidate Objeto ou valor a ser validado
-     * @return bool
+     * @param mixed $candidate Object or value to evaluate
+     * @return bool True if candidate satisfies neither specification
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {

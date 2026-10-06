@@ -8,16 +8,18 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\Repositories\ITextualFormatRepository;
 
 /**
- * TextualFormatPartitionRepository - Repositório particionado com formato textual
+ * TextualFormatPartitionRepository - Partitioned entity repository with textual serialization format
+ *
+ * Specialization of PersistentPartitionRepository that implements ITextualFormatRepository.
  *
  * @template T of IEntity
  * @extends PersistentPartitionRepository<T>
  * @implements ITextualFormatRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class TextualFormatPartitionRepository extends PersistentPartitionRepository implements ITextualFormatRepository

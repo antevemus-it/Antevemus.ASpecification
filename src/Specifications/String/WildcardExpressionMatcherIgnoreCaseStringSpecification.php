@@ -1,36 +1,42 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 
 /**
- * WildcardExpressionMatcherIgnoreCaseStringSpecification class.
+ * WildcardExpressionMatcherIgnoreCaseStringSpecification - Leaf specification for case-insensitive wildcard matching.
  *
- * Valida se o candidato atende a um padrão de curinga simples (ex: *.txt) ignorando caixa (Case Insensitive).
+ * Validates whether the candidate string matches a wildcard pattern (e.g. `*.txt`) in a case-insensitive manner.
+ *
+ * Features:
+ * - Case-insensitive glob matching using lowercase conversion and `fnmatch`
+ * - Safe rejection of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpecification
 {
     /**
-     * Inicializa a especificação com um padrão.
+     * Initializes the specification with an expected wildcard pattern.
      *
-     * @param string $pattern O padrão esperado (ex: *.txt).
+     * @param string $pattern Expected wildcard pattern (e.g. `*.txt`)
      */
     public function __construct(private readonly string $pattern)
     {
     }
 
     /**
-     * Retorna o padrão de curinga configurado.
+     * Returns the configured wildcard pattern.
      *
      * @return string
      */
@@ -40,10 +46,10 @@ class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpe
     }
 
     /**
-     * Verifica se a string atende ao padrão de curinga (case insensitive).
+     * Verifies whether the string candidate matches the wildcard pattern (case-insensitive).
      *
-     * @param mixed $candidate A string a ser validada.
-     * @return bool
+     * @param mixed $candidate String candidate to validate
+     * @return bool True if candidate matches pattern case-insensitively
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {

@@ -12,28 +12,28 @@ use Antevemus\ASpecification\Contracts\Repositories\IRepository;
 use Antevemus\ASpecification\Repositories\PartitionRepository;
 
 /**
- * InstrumentationUtils - Utilitarios de telemetria, diagnostico e inspecao de grafos
+ * InstrumentationUtils - Telemetry, Diagnostic, and Graph Inspection Utilities
  *
- * Fornece metodos estaticos para inspecao de consumo de memoria, contagem e navegacao
- * em arvores de particionamento DAG e geracao de dumps estruturados de especificacoes.
+ * Provides static utility methods for memory consumption tracking, node counting,
+ * hierarchy navigation across DAG partition repositories, and structured dumps of specification trees.
  *
- * Funcionalidades:
- * - Formatacao de memoria consumida e pico em unidades SI (B, KB, MB)
- * - Inspecao visual e hierarquica de repositorios e suas subparticoes
- * - Contagem precisa de nos e profundidade do DAG de particionamento
- * - Dump hierarquico de arvores sintaticas de especificacoes (conjuncoes, disjuncoes, folhas)
+ * Features:
+ * - Formatting of allocated and peak memory in human-readable SI units (B, KB, MB)
+ * - Visual hierarchical inspection of partitioned repositories and subpartitions
+ * - Accurate counting of nodes and recursive depth across partition trees
+ * - Hierarchical formatted dumps of specification AST trees (composites and leaves)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class InstrumentationUtils implements IInstrumentationUtils
 {
     /**
-     * Construtor privado para impedir instanciacao de classe estatica utilitaria.
+     * Private constructor to prevent instantiation of static utility class.
      */
     private function __construct()
     {
@@ -65,8 +65,7 @@ final class InstrumentationUtils implements IInstrumentationUtils
         if ($repository instanceof IPartitionRepository) {
             $spec = $repository->getSpecification();
             $specClass = $spec !== null ? (new \ReflectionClass($spec))->getShortName() : 'all';
-            $output = sprintf("%s* [Partition] %s (spec: %s)
-", $prefix, $className, $specClass);
+            $output = sprintf("%s* [Partition] %s (spec: %s)\n", $prefix, $className, $specClass);
 
             foreach ($repository->getDirectPartitions() as $child) {
                 if ($child instanceof IRepository) {
@@ -77,8 +76,7 @@ final class InstrumentationUtils implements IInstrumentationUtils
             return $output;
         }
 
-        return sprintf("%s- [Repository] %s
-", $prefix, $className);
+        return sprintf("%s- [Repository] %s\n", $prefix, $className);
     }
 
     /**
@@ -86,7 +84,7 @@ final class InstrumentationUtils implements IInstrumentationUtils
      */
     public static function countPartitionNodes(IPartitionRepository $partition): int
     {
-        $count = 1; // O proprio no
+        $count = 1; // Current root node
 
         foreach ($partition->getDirectPartitions() as $child) {
             if ($child instanceof IPartitionRepository) {
@@ -104,8 +102,7 @@ final class InstrumentationUtils implements IInstrumentationUtils
     {
         $prefix = str_repeat('  ', $indent);
         $className = (new \ReflectionClass($specification))->getShortName();
-        $output = sprintf("%s- %s
-", $prefix, $className);
+        $output = sprintf("%s- %s\n", $prefix, $className);
 
         if ($specification instanceof ICompositeSpecification) {
             try {
@@ -123,7 +120,7 @@ final class InstrumentationUtils implements IInstrumentationUtils
                     }
                 }
             } catch (\Throwable) {
-                // Fallback silencioso
+                // Silent fallback
             }
         }
 
@@ -131,9 +128,9 @@ final class InstrumentationUtils implements IInstrumentationUtils
     }
 
     /**
-     * Formata um valor numerico em bytes para representacao humana.
+     * Format byte count into human-readable unit string.
      *
-     * @param int $bytes Quantidade de bytes
+     * @param int $bytes Byte count
      * @return string
      */
     private static function formatBytes(int $bytes): string

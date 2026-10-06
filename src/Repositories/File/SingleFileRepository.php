@@ -11,43 +11,43 @@ use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
 
 /**
- * SingleFileRepository - Repositório que persiste todas as entidades em um arquivo único
+ * SingleFileRepository - Entity repository persisting all entities in a single central document
  *
- * Mantém a coleção de entidades indexada por identidade única e persiste todos os
- * registros em um documento central (JSON, XML ou binário) com gravação atômica.
+ * Maintains the entity collection indexed by unique identity and persists all records
+ * into a single document (JSON, XML, or binary) with atomic write semantics.
  *
- * Funcionalidades:
- * - Persistência centralizada em arquivo único
- * - Suporte a write-through imediato (ReadWrite) ou sob demanda (Snapshot)
- * - Recarga segura e lock compartilhado para leitura
+ * Features:
+ * - Centralized single-file persistence
+ * - Support for immediate write-through (ReadWrite) or on-demand snapshot (Snapshot)
+ * - Safe reloading and shared locking for concurrent reads
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SingleFileRepository extends AbstractFileRepository
 {
     /**
-     * @var array<string, T> Mapa em memória de [id => entidade]
+     * @var array<string, T> In-memory map of [id => entity]
      */
     protected array $entities = [];
 
     /**
-     * Indica se o arquivo já foi carregado para a memória.
+     * Indicates whether the file has already been loaded into memory.
      */
     protected bool $isLoaded = false;
 
     /**
-     * @param string $storagePath Caminho do arquivo único (ex: storage/orders.json)
-     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Classe da entidade ou serializador
-     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Modo de persistência ou serializador
-     * @param IEntitySerializer|null $serializer Serializador
-     * @param string|null $repositoryId ID do repositório
+     * @param string $storagePath Single file path (e.g. storage/orders.json)
+     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Entity class or serializer
+     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Persistence mode or serializer
+     * @param IEntitySerializer|null $serializer Serializer
+     * @param string|null $repositoryId Repository ID
      */
     public function __construct(
         string $storagePath,
@@ -332,7 +332,9 @@ class SingleFileRepository extends AbstractFileRepository
     }
 
     /**
-     * Retorna a quantidade total de entidades em memória.
+     * Returns the total count of entities in memory.
+     *
+     * @return int
      */
     public function countTotal(): int
     {
@@ -341,7 +343,7 @@ class SingleFileRepository extends AbstractFileRepository
     }
 
     /**
-     * Garante que o arquivo foi lido antes de qualquer operação.
+     * Ensures the file is loaded into memory prior to any operation.
      */
     private function ensureLoaded(): void
     {

@@ -7,29 +7,31 @@ namespace Antevemus\ASpecification\Factory\Traits;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * LogicalSpecificationOperationsTrait - Trait agregador de operações lógicas booleanas (ILogicalSpecificationFactory).
+ * LogicalSpecificationOperationsTrait - Trait aggregating boolean logical operations (ILogicalSpecificationFactory).
  *
- * Funcionalidades:
- * - Álgebra booleana (allOf, anyOf, not, neitherOf)
- * - Aliases expressivos (shouldBeAllOf, isBoth, shouldBeOneOf, either, etc.)
+ * Provides delegation methods forwarding to the underlying logical specification factory.
  *
- * @version    0.1
+ * Features:
+ * - Boolean algebra (allOf, anyOf, not, neitherOf)
+ * - Expressive DSL aliases (shouldBeAllOf, isBoth, shouldBeOneOf, either, etc.)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait LogicalSpecificationOperationsTrait
 {
     /**
-     * Cria especificação composta que verifica se TODAS as especificações são satisfeitas (AND lógico).
+     * Creates a composite specification verifying whether ALL supplied specifications are satisfied (Logical AND).
      *
-     * Equivalente a: spec1 AND spec2 AND spec3 AND ...
+     * Equivalent to: spec1 AND spec2 AND spec3 AND ...
      *
-     * @param ISpecification ...$specifications Lista de especificações que devem todas ser verdadeiras
-     * @return ISpecification Especificação composta com operador AND
-     * @throws \InvalidArgumentException Se nenhuma especificação for fornecida
+     * @param ISpecification ...$specifications Specifications that must all evaluate to true
+     * @return ISpecification Composite specification with AND operator
+     * @throws \InvalidArgumentException If no specifications are provided
      */
     public function allOf(ISpecification ...$specifications): ISpecification
     {
@@ -37,13 +39,13 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação composta que verifica se QUALQUER especificação é satisfeita (OR lógico).
+     * Creates a composite specification verifying whether ANY supplied specification is satisfied (Logical OR).
      *
-     * Equivalente a: spec1 OR spec2 OR spec3 OR ...
+     * Equivalent to: spec1 OR spec2 OR spec3 OR ...
      *
-     * @param ISpecification ...$specifications Lista de especificações onde pelo menos uma deve ser verdadeira
-     * @return ISpecification Especificação composta com operador OR
-     * @throws \InvalidArgumentException Se nenhuma especificação for fornecida
+     * @param ISpecification ...$specifications Specifications where at least one must evaluate to true
+     * @return ISpecification Composite specification with OR operator
+     * @throws \InvalidArgumentException If no specifications are provided
      */
     public function anyOf(ISpecification ...$specifications): ISpecification
     {
@@ -51,12 +53,12 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que inverte o resultado da especificação fornecida (NOT lógico).
+     * Creates a specification that inverts the result of the given specification (Logical NOT).
      *
-     * Equivalente a: NOT spec
+     * Equivalent to: NOT spec
      *
-     * @param ISpecification $specification Especificação a ser invertida
-     * @return ISpecification Especificação negada
+     * @param ISpecification $specification Specification to invert
+     * @return ISpecification Negated specification
      */
     public function not(ISpecification $specification): ISpecification
     {
@@ -64,13 +66,13 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se NENHUMA das especificações é satisfeita (NOR lógico).
+     * Creates a specification verifying whether NONE of the specifications are satisfied (Logical NOR).
      *
-     * Equivalente a: NOT (spec1 OR spec2 OR spec3 OR ...)
+     * Equivalent to: NOT (spec1 OR spec2 OR spec3 OR ...)
      *
-     * @param ISpecification ...$specifications Lista de especificações que todas devem ser falsas
-     * @return ISpecification Especificação composta com operador NOR
-     * @throws \InvalidArgumentException Se nenhuma especificação for fornecida
+     * @param ISpecification ...$specifications Specifications that must all evaluate to false
+     * @return ISpecification Composite specification with NOR operator
+     * @throws \InvalidArgumentException If no specifications are provided
      */
     public function neitherOf(ISpecification ...$specifications): ISpecification
     {
@@ -78,11 +80,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf().
+     * Alias for allOf().
      *
-     * Uso fluente: "shouldBeAllOf spec1, spec2"
+     * Fluent usage: "shouldBeAllOf spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function shouldBeAllOf(ISpecification ...$specifications): ISpecification
@@ -91,11 +93,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf() com exatamente 2 especificações.
+     * Alias for allOf() with exactly 2 specifications.
      *
-     * Uso fluente: "shouldBeBoth spec1, spec2"
+     * Fluent usage: "shouldBeBoth spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function shouldBeBoth(ISpecification ...$specifications): ISpecification
@@ -104,11 +106,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf().
+     * Alias for allOf().
      *
-     * Uso fluente: "shouldBe spec1, spec2"
+     * Fluent usage: "shouldBe spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function shouldBe(ISpecification ...$specifications): ISpecification
@@ -117,11 +119,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf().
+     * Alias for allOf().
      *
-     * Uso fluente: "isAllOf spec1, spec2"
+     * Fluent usage: "isAllOf spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isAllOf(ISpecification ...$specifications): ISpecification
@@ -130,11 +132,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf() com exatamente 2 especificações.
+     * Alias for allOf() with exactly 2 specifications.
      *
-     * Uso fluente: "isBoth spec1, spec2"
+     * Fluent usage: "isBoth spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isBoth(ISpecification ...$specifications): ISpecification
@@ -143,11 +145,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para allOf() com exatamente 2 especificações.
+     * Alias for allOf() with exactly 2 specifications.
      *
-     * Uso fluente: "both spec1, spec2"
+     * Fluent usage: "both spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function both(ISpecification ...$specifications): ISpecification
@@ -156,11 +158,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "shouldBeOneOf spec1, spec2, spec3"
+     * Fluent usage: "shouldBeOneOf spec1, spec2, spec3"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function shouldBeOneOf(ISpecification ...$specifications): ISpecification
@@ -169,11 +171,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "shouldBeEitherOf spec1, spec2"
+     * Fluent usage: "shouldBeEitherOf spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function shouldBeEitherOf(ISpecification ...$specifications): ISpecification
@@ -182,11 +184,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "isOneOf spec1, spec2, spec3"
+     * Fluent usage: "isOneOf spec1, spec2, spec3"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isOneOf(ISpecification ...$specifications): ISpecification
@@ -195,11 +197,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "isEitherOf spec1, spec2"
+     * Fluent usage: "isEitherOf spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isEitherOf(ISpecification ...$specifications): ISpecification
@@ -208,11 +210,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "isEitherThe spec1, spec2"
+     * Fluent usage: "isEitherThe spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isEitherThe(ISpecification ...$specifications): ISpecification
@@ -221,11 +223,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "isEither spec1, spec2"
+     * Fluent usage: "isEither spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function isEither(ISpecification ...$specifications): ISpecification
@@ -234,11 +236,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "oneOf spec1, spec2, spec3"
+     * Fluent usage: "oneOf spec1, spec2, spec3"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function oneOf(ISpecification ...$specifications): ISpecification
@@ -247,11 +249,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "eitherOf spec1, spec2"
+     * Fluent usage: "eitherOf spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function eitherOf(ISpecification ...$specifications): ISpecification
@@ -260,11 +262,11 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Alias para anyOf().
+     * Alias for anyOf().
      *
-     * Uso fluente: "either spec1, spec2"
+     * Fluent usage: "either spec1, spec2"
      *
-     * @param ISpecification ...$specifications Lista de especificações
+     * @param ISpecification ...$specifications List of specifications
      * @return ISpecification
      */
     public function either(ISpecification ...$specifications): ISpecification
@@ -273,7 +275,7 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se o candidato equivale ao valor default do seu tipo.
+     * Creates a specification verifying whether the candidate matches the default value of its type.
      *
      * @return ISpecification
      */

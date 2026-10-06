@@ -1,24 +1,26 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Repositories;
 
 /**
- * Interface IVolatileRepository.
+ * IVolatileRepository - Marker Interface for Volatile Repositories
  *
- * Interface de marcação (Marker Interface) para repositórios Voláteis.
- * Um repositório volátil não suporta durabilidade: todos os dados gravados nele
- * são perdidos após o término da execução ou encerramento do processo.
+ * Semantic marker interface for volatile repositories.
+ * A volatile repository does not support durability: all stored entities
+ * are lost once execution finishes or the process terminates.
  *
  * @template T of \Antevemus\ASpecification\Contracts\Entities\IEntity
  * @extends IRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IVolatileRepository extends IRepository
 {
-    // Interface de marcação puramente semântica
+    // Pure semantic marker interface
 }

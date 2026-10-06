@@ -5,30 +5,30 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Engine;
 
 /**
- * IDocumentPresenceEvaluator - Contrato para Verificação de Existência Documental
+ * IDocumentPresenceEvaluator - Contract for Document Existence Evaluation
  *
- * Permite ao compilador documental consultar se determinado documento obrigatório
- * está anexado, aprovado ou presente no contexto do objeto em validação.
+ * Allows the document compiler to query whether a specific required document
+ * is attached, approved, or present within the context of the target object.
  *
- * Funcionalidades:
- * - Avaliação de presença documental sobre entidades de domínio ou estruturas de dados
- * - Suporte a contexto estendido (ex: competência de aluguel, data de validade)
+ * Features:
+ * - Document presence evaluation over domain entities or data structures
+ * - Support for extended context metadata (e.g., rental tenure, expiration date)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IDocumentPresenceEvaluator
 {
     /**
-     * Avalia se o documento identificado pelo código fornecido está presente e válido no alvo.
+     * Evaluates whether the document identified by the given code is present and valid in the target.
      *
-     * @param object|array $target Objeto ou payload sob avaliação
-     * @param string $codigoTipoDocumento Código técnico do tipo de documento
-     * @param array<string, mixed> $context Metadados adicionais de contexto
+     * @param object|array $target Target object or payload under evaluation
+     * @param string $codigoTipoDocumento Technical identifier code of the document type
+     * @param array<string, mixed> $context Additional contextual metadata
      * @return bool
      */
     public function hasDocument(object|array $target, string $codigoTipoDocumento, array $context = []): bool;

@@ -1,139 +1,135 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts;
 
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
- * ISpecification interface.
+ * ISpecification - Core interface for the Evans/Fowler Specification pattern.
  *
- * Part of the Evans/Fowler Specifications pattern.
- *
- * Interface que define o contrato para implementação do padrão de design Specification.
- * O padrão Specification permite encapsular regras de negócio em objetos reutilizáveis
- * que podem ser combinados usando operadores lógicos (AND, OR, NOT).
+ * Encapsulates business logic rules into reusable, composable predicate objects
+ * that can be chained using boolean algebraic operators (AND, OR, NOT).
  *
  * Note on type parameterization:
- * Domain specifications are typed. It is only relevant to send candidate objects of
- * correct type to a Specification for approval. PHP generics (via PHPDoc) should be
- * used when creating specifications, making this specification type vs. candidate type
- * a static analysis issue.
+ * Domain specifications are typed. Only send candidate objects of the correct type
+ * to a specification for validation. PHP generics (via PHPDoc @template) ensure static analysis
+ * correctness.
  *
- * Este padrão é especialmente útil para:
- * - Validação de objetos complexos
- * - Filtragem e seleção de objetos em coleções
- * - Construção de consultas dinâmicas
- * - Separação de lógica de negócio da lógica de acesso a dados
- * - Análise de subsunção entre especificações
+ * Features:
+ * - Candidate evaluation (isSatisfiedBy, evaluate with Notification Pattern)
+ * - Boolean composition (and, or, not, andNot, orNot, where)
+ * - Subsumption algebra (isGeneralizationOf, isSpecialCaseOf, isDisjointWith, isIntersectionOf, intersectsWith)
+ * - AST Visitor support (accept, toSql, toCriteria)
+ * - Failure notification context (because, withCode)
  *
  * @template T
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  * @see        https://www.martinfowler.com/apsupp/spec.pdf The Specifications Pattern
  */
 interface ISpecification
 {
-
     /**
-     * Cria uma especificação parametrizada baseada em um campo/propriedade acessível do objeto.
+     * Creates a parameterized specification targeting an accessible property or getter of the candidate.
      *
-     * Este método é um alias do método 'and' e permite criar especificações fluentes
-     * baseadas em propriedades específicas do objeto candidato.
+     * This method acts as an entry point for fluent property-level specifications.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $baseSpec->where('address', new CitySpecification('São Paulo'))
      *                  ->and(new AgeSpecification(18));
      * </code>
      *
      * @template F
-     * @param string $accessibleObjectName Nome da propriedade/método acessível a ser especificado
-     * @param ISpecification<F> $accessibleObjectSpecification Especificação acoplada ao objeto acessível
-     * @return ICompositeSpecification<T> Uma conjunção desta especificação com a especificação do objeto acessível
-     * @throws \InvalidArgumentException Se qualquer um dos parâmetros for null
-     * @throws \BadMethodCallException Se este método for chamado duas vezes na mesma expressão (restrição de interface fluente)
+     * @param string $accessibleObjectName Name of the accessible property or method
+     * @param ISpecification<F> $accessibleObjectSpecification Specification coupled to the property value
+     * @return ICompositeSpecification<T> Conjunction of this specification with the property specification
+     * @throws \InvalidArgumentException If any parameter is invalid or null
+     * @throws \BadMethodCallException If called multiple times consecutively in the same expression
      */
     public function where(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification;
 
     /**
-     * Cria uma conjunção (AND lógico) de duas especificações.
+     * Creates a logical conjunction (AND) with another specification or a property specification.
      *
-     * Combina esta especificação com outra usando o operador lógico AND.
-     * A especificação resultante só é satisfeita quando AMBAS as especificações
-     * (esta e a outra) são satisfeitas.
+     * Combines this specification with another using boolean AND logic.
+     * The resulting composite is satisfied only when BOTH specifications are satisfied.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $adultSpec = new AgeSpecification(18);
      * $verifiedSpec = new EmailVerifiedSpecification();
      * $combined = $adultSpec->and($verifiedSpec);
+     * // Or property-scoped:
+     * $spec->and('role', Spec::is('admin'));
      * </code>
      *
-     * @param ISpecification<T> $otherSpecification A outra especificação a ser combinada
-     * @return ICompositeSpecification<T> Nova especificação composta: esta especificação AND a outra especificação
-     * @throws \InvalidArgumentException Se o parâmetro for null
-     * @throws \InvalidArgumentException Se o tipo do objeto acessível e o tipo da especificação não forem compatíveis
-     * @throws \BadMethodCallException Se este método não for colocado após uma cláusula 'where' (restrição de interface fluente)
+     * @param ISpecification<T>|string $otherSpecification The other specification or property name
+     * @param ISpecification<mixed>|null $propertySpecification Property specification (when first argument is string)
+     * @return ICompositeSpecification<T> New composite specification: this AND other
+     * @throws \InvalidArgumentException If parameter is null or types are incompatible
+     * @throws \BadMethodCallException If invoked out of order in fluent chain
      */
     public function and(ISpecification|string $otherSpecification, ?ISpecification $propertySpecification = null): ICompositeSpecification;
 
     /**
-     * Cria uma disjunção (OR lógico) de duas especificações.
+     * Creates a logical disjunction (OR) with another specification or a property specification.
      *
-     * Combina esta especificação com outra usando o operador lógico OR.
-     * Suporta tanto composição de especificações quanto encadeamento fluente de propriedades.
+     * Combines this specification with another using boolean OR logic.
+     * The resulting composite is satisfied when EITHER specification is satisfied.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $adminSpec = new RoleSpecification('admin');
      * $ownerSpec = new OwnerSpecification($userId);
      * $hasAccess = $adminSpec->or($ownerSpec);
-     * // Ou parametrizado:
+     * // Or property-scoped:
      * $spec->or('gender', Spec::is('MALE'));
      * </code>
      *
-     * @param ISpecification<T>|string $otherSpecification A outra especificação ou nome da propriedade
-     * @param ISpecification<mixed>|null $propertySpecification A especificação da propriedade (quando o 1º argumento for string)
-     * @return ICompositeSpecification<T> Nova especificação composta: esta especificação OR a outra especificação
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<T>|string $otherSpecification The other specification or property name
+     * @param ISpecification<mixed>|null $propertySpecification Property specification (when first argument is string)
+     * @return ICompositeSpecification<T> New composite specification: this OR other
+     * @throws \InvalidArgumentException If parameter is null or invalid
      */
     public function or(ISpecification|string $otherSpecification, ?ISpecification $propertySpecification = null): ICompositeSpecification;
 
     /**
-     * Inverte esta especificação usando o operador lógico NOT.
+     * Inverts this specification using logical NOT.
      *
-     * Cria uma nova especificação que é satisfeita quando esta
-     * especificação NÃO é satisfeita, e vice-versa.
+     * Creates a new specification satisfied when this specification is NOT satisfied, and vice-versa.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $adultSpec = new AgeSpecification(18);
      * $minorSpec = $adultSpec->not();
      * </code>
      *
-     * @return ICompositeSpecification<T> Nova especificação que representa a negação lógica
+     * @return ICompositeSpecification<T> Negated specification
      */
     public function not(): ICompositeSpecification;
 
     /**
-     * Aceita um visitor para percorrer a árvore de especificações (Visitor Pattern).
+     * Accepts a visitor to traverse the specification AST (Visitor Pattern).
      *
      * @template TResult
-     * @param ISpecificationVisitor $visitor O visitor a ser aceito
-     * @return mixed O resultado produzido pelo visitor
+     * @param ISpecificationVisitor $visitor Visitor instance
+     * @return mixed Result produced by the visitor
      */
     public function accept(ISpecificationVisitor $visitor): mixed;
 
     /**
-     * Traduz esta especificação em uma cláusula WHERE parametrizada para banco de dados relacional.
+     * Translates this specification into a parameterized relational SQL WHERE clause.
      *
-     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Dialeto alvo (ex: 'pgsql', 'mysql', 'sqlsrv', 'oracle', 'firebird')
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Mapeamento opcional de propriedades para colunas
-     * @return \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause
+     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Target dialect ('pgsql', 'mysql', 'sqlsrv', 'oracle', 'sqlite', 'firebird', 'ansi')
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Property-to-column mapper
+     * @return \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause Parameterized SQL clause
      */
     public function toSql(
         \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect = 'ansi',
@@ -141,11 +137,11 @@ interface ISpecification
     ): \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 
     /**
-     * Traduz esta especificação em um objeto TCriteria do Adianti Framework.
+     * Translates this specification into an Adianti Framework TCriteria instance.
      *
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Mapeamento opcional de propriedades para colunas
-     * @param array<string, mixed> $properties Propriedades como 'order', 'limit', 'offset', 'direction', 'group'
-     * @return mixed Instância de \Adianti\Database\TCriteria
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Property-to-column mapper
+     * @param array<string, mixed> $properties Criteria configuration ('order', 'limit', 'offset', 'direction', 'group')
+     * @return mixed \Adianti\Database\TCriteria instance
      */
     public function toCriteria(
         \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
@@ -153,192 +149,147 @@ interface ISpecification
     ): mixed;
 
     /**
-     * Retorna o tipo (classe) do objeto candidato que esta especificação valida.
+     * Returns the target candidate type (FQCN) validated by this specification.
      *
-     * Em PHP, este método retorna o nome completo da classe (FQCN) que esta
-     * especificação está preparada para validar.
-     *
-     * @return class-string<T> O nome completo da classe do tipo da especificação
+     * @return class-string<T> Fully qualified class or interface name
      */
     public function getType(): string;
 
     /**
-     * Verifica se o candidato satisfaz a especificação (Specification satisfaction).
+     * Evaluates whether the candidate satisfies this specification.
      *
-     * Este método é o núcleo do padrão Specification. Ele recebe um objeto
-     * candidato e retorna verdadeiro se o objeto satisfaz a regra de negócio
-     * encapsulada pela especificação, ou falso caso contrário.
+     * Core evaluation method. Returns true if candidate satisfies the encapsulated business rule, false otherwise.
+     * Null candidates never satisfy a specification.
      *
-     * Importante: null nunca é aprovado por uma especificação.
-     *
-     * @param T|null $candidate O objeto candidato a ser validado
-     * @return bool Retorna true se o candidato satisfaz a especificação, false caso contrário (null sempre retorna false)
+     * @param T|null $candidate Candidate object to evaluate
+     * @return bool True if candidate satisfies the specification, false otherwise
      */
     public function isSatisfiedBy(?object $candidate): bool;
 
     /**
-     * Verifica subsunção de especificação (Specification subsumption) - Generalização.
+     * Checks specification subsumption - Generalization.
      *
-     * Dado:
-     * - Conjunto K contendo candidatos especificados por specA: specA->isSatisfiedBy($candidate)
-     * - Conjunto L contendo candidatos especificados por specB: specB->isSatisfiedBy($candidate)
+     * Determines whether this specification is a generalization of another specification.
+     * If true, any candidate satisfying the other specification also satisfies this specification.
      *
-     * Então:
-     * Se specA->isGeneralizationOf(specB) => Conjunto K contém Conjunto L [K ∪ L = K]
-     *
-     * Em outras palavras, se esta especificação é uma generalização da outra,
-     * então todo objeto aprovado pela outra especificação também será aprovado por esta.
-     *
-     * Exemplo:
+     * Example:
      * <code>
      * $animalSpec = new TypeSpecification(Animal::class);
      * $dogSpec = new TypeSpecification(Dog::class);
-     * $animalSpec->isGeneralizationOf($dogSpec); // true - Animal é mais geral que Dog
+     * $animalSpec->isGeneralizationOf($dogSpec); // true
      * </code>
      *
-     * @param ISpecification<T> $otherSpecification A especificação candidata
-     * @return bool True se esta especificação é uma generalização da especificação candidata
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<T> $otherSpecification Candidate specification to compare
+     * @return bool True if this specification is a generalization of the other
+     * @throws \InvalidArgumentException If parameter is null
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool;
 
     /**
-     * Verifica subsunção de especificação (Specification subsumption) - Especialização.
+     * Checks specification subsumption - Specialization.
      *
-     * Dado:
-     * - Conjunto K contendo candidatos especificados por specA: specA->isSatisfiedBy($candidate)
-     * - Conjunto L contendo candidatos especificados por specB: specB->isSatisfiedBy($candidate)
+     * Determines whether this specification is a special case of another specification.
+     * If true, any candidate satisfying this specification also satisfies the other specification.
      *
-     * Então:
-     * Se specA->isSpecialCaseOf(specB) => Conjunto L contém Conjunto K [K ∪ L = L]
-     *
-     * Em outras palavras, se esta especificação é um caso especial da outra,
-     * então todo objeto aprovado por esta também será aprovado pela outra.
-     *
-     * Exemplo:
+     * Example:
      * <code>
      * $dogSpec = new TypeSpecification(Dog::class);
      * $animalSpec = new TypeSpecification(Animal::class);
-     * $dogSpec->isSpecialCaseOf($animalSpec); // true - Dog é caso especial de Animal
+     * $dogSpec->isSpecialCaseOf($animalSpec); // true
      * </code>
      *
-     * @param ISpecification<T> $otherSpecification A especificação candidata
-     * @return bool True se esta especificação é um caso especial da especificação candidata
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<T> $otherSpecification Candidate specification to compare
+     * @return bool True if this specification is a special case of the other
+     * @throws \InvalidArgumentException If parameter is null
      */
     public function isSpecialCaseOf(ISpecification $otherSpecification): bool;
 
     /**
-     * Verifica se duas especificações são disjuntas (não possuem objetos em comum).
+     * Checks whether two specifications are disjoint (mutually exclusive).
      *
-     * Duas especificações são disjuntas se os dois conjuntos de objetos satisfatórios
-     * não possuem objetos em comum (interseção vazia).
+     * Two specifications are disjoint if no candidate can satisfy both simultaneously (empty intersection).
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $adultSpec = new AgeGreaterThanSpecification(18);
      * $childSpec = new AgeLessThanSpecification(12);
-     * $adultSpec->isDisjointWith($childSpec); // true - não há sobreposição
+     * $adultSpec->isDisjointWith($childSpec); // true
      * </code>
      *
-     * @param ISpecification<mixed> $otherSpecification A especificação candidata
-     * @return bool True se esta especificação é disjunta com a especificação candidata
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<mixed> $otherSpecification Candidate specification to compare
+     * @return bool True if specifications are disjoint
+     * @throws \InvalidArgumentException If parameter is null
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool;
 
     /**
-     * Verifica se esta especificação representa a interseção com outra especificação.
+     * Checks whether this specification is an intersection of another specification.
      *
-     * Uma especificação é uma interseção de outra se o conjunto de objetos satisfatórios
-     * desta especificação é exatamente a interseção dos conjuntos de objetos satisfatórios
-     * de duas outras especificações.
+     * Verifies semantic equivalence with an intersection (logical AND) of specifications.
      *
-     * Em outras palavras, verifica se esta especificação é semanticamente equivalente
-     * a uma operação AND de outras especificações.
-     *
-     * Exemplo:
-     * <code>
-     * $ageRange = new AgeRangeSpecification(18, 65); // idade entre 18 e 65
-     * $minAge = new AgeGreaterThanSpecification(18);
-     * $maxAge = new AgeLessThanSpecification(65);
-     * $combined = $minAge->and($maxAge);
-     * $ageRange->isIntersectionOf($combined); // Pode retornar true se forem semanticamente equivalentes
-     * </code>
-     *
-     * @param ISpecification<T> $otherSpecification A especificação candidata
-     * @return bool True se esta especificação é uma interseção da especificação candidata
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<T> $otherSpecification Candidate specification to compare
+     * @return bool True if this specification is an intersection of the other
+     * @throws \InvalidArgumentException If parameter is null
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool;
 
     /**
-     * Verifica se esta especificação possui interseção não-vazia com outra especificação.
+     * Checks whether this specification has a non-empty intersection with another specification.
      *
-     * Duas especificações possuem interseção se existe pelo menos um objeto que
-     * satisfaz ambas as especificações. Este método é o oposto lógico de isDisjointWith().
+     * Opposite of isDisjointWith(). True if at least one candidate can satisfy both specifications.
      *
-     * Exemplo:
-     * <code>
-     * $adultSpec = new AgeGreaterThanSpecification(18); // idade > 18
-     * $youngSpec = new AgeLessThanSpecification(30);    // idade < 30
-     * $adultSpec->intersectsWith($youngSpec); // true - pessoas entre 18 e 30 satisfazem ambas
-     *
-     * $childSpec = new AgeLessThanSpecification(12);    // idade < 12
-     * $adultSpec->intersectsWith($childSpec); // false - nenhum objeto satisfaz ambas
-     * </code>
-     *
-     * @param ISpecification<mixed> $otherSpecification A especificação candidata
-     * @return bool True se existe pelo menos um objeto que satisfaz ambas as especificações
-     * @throws \InvalidArgumentException Se o parâmetro for null
+     * @param ISpecification<mixed> $otherSpecification Candidate specification to compare
+     * @return bool True if specifications intersect
+     * @throws \InvalidArgumentException If parameter is null
      */
     public function intersectsWith(ISpecification $otherSpecification): bool;
 
     /**
-     * Avalia o candidato retornando um objeto rico de resultado (Notification Pattern).
+     * Evaluates candidate returning a rich result object (Notification Pattern).
      *
-     * Ao contrário de isSatisfiedBy() que retorna um booleano simples, este método
-     * provê rastreabilidade completa das falhas, mensagens amigáveis e códigos de erro.
+     * Unlike isSatisfiedBy() which returns a boolean, evaluate() provides detailed error traceability,
+     * reasons, failure codes, and execution metadata.
      *
-     * @param mixed $candidate Objeto ou valor candidato a ser avaliado
-     * @return SpecificationResult Resultado da avaliação com detalhes de aprovação ou falhas
+     * @param mixed $candidate Candidate object or value to evaluate
+     * @return SpecificationResult Evaluation result containing verdicts and failure notifications
      */
     public function evaluate(mixed $candidate): SpecificationResult;
 
     /**
-     * Define uma mensagem amigável personalizada para explicar o motivo de uma eventual falha.
+     * Enriches this specification with a human-readable explanation of why it failed.
      *
-     * @param string $reason Mensagem explicando a finalidade ou a violação da regra
-     * @return static Nova instância enriquecida com a razão descrita
+     * @param string $reason Failure explanation or business requirement context
+     * @return static Enriched specification instance
      */
     public function because(string $reason): static;
 
     /**
-     * Define um código identificador (regulatório, legal ou de negócio) associado a esta regra.
+     * Enriches this specification with an error code (business or regulatory identifier).
      *
-     * @param string $code Código identificador do erro (ex.: 'INQ_004', 'APOL_002')
-     * @return static Nova instância enriquecida com o código especificado
+     * @param string $code Error or rule identifier (e.g. 'RULE_102', 'CREDIT_LIMIT_EXCEEDED')
+     * @return static Enriched specification instance
      */
     public function withCode(string $code): static;
 
     /**
-     * Cria uma conjunção negada (AND NOT lógico) de duas especificações.
+     * Creates a negated conjunction (logical AND NOT) with another specification.
      *
-     * Atalho idiomático fluente equivalente a $this->and($otherSpecification->not()).
+     * Fluent shortcut equivalent to $this->and($otherSpecification->not()).
      *
-     * @param ISpecification<T> $otherSpecification A especificação cuja negação será exigida
-     * @return ICompositeSpecification<T> Nova especificação composta: esta AND NOT outra
+     * @param ISpecification<T>|string $otherSpecification Specification to negate or property name
+     * @param ISpecification<mixed>|null $propertySpecification Property specification (when first argument is string)
+     * @return ICompositeSpecification<T> New composite specification: this AND NOT other
      */
     public function andNot(ISpecification|string $otherSpecification, ?ISpecification $propertySpecification = null): ICompositeSpecification;
 
     /**
-     * Cria uma disjunção com negação (OR NOT lógico) de duas especificações.
+     * Creates a negated disjunction (logical OR NOT) with another specification.
      *
-     * Atalho idiomático fluente equivalente a $this->or($otherSpecification->not()).
+     * Fluent shortcut equivalent to $this->or($otherSpecification->not()).
      *
-     * @param ISpecification<T>|string $otherSpecification A especificação cuja negação será aceita ou nome da propriedade
-     * @param ISpecification<mixed>|null $propertySpecification A especificação da propriedade (quando o 1º argumento for string)
-     * @return ICompositeSpecification<T> Nova especificação composta: esta OR NOT outra
+     * @param ISpecification<T>|string $otherSpecification Specification to negate or property name
+     * @param ISpecification<mixed>|null $propertySpecification Property specification (when first argument is string)
+     * @return ICompositeSpecification<T> New composite specification: this OR NOT other
      */
     public function orNot(ISpecification|string $otherSpecification, ?ISpecification $propertySpecification = null): ICompositeSpecification;
 }

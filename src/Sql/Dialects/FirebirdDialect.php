@@ -5,22 +5,22 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 /**
- * FirebirdDialect - Dialeto Especializado para Firebird e InterBase (firebird, fbird, ibase)
+ * FirebirdDialect - Specialized Dialect for Firebird and InterBase (firebird, fbird, ibase)
  *
- * Provê suporte a identificadores delimitados ("coluna"), booleanos inteiros (1/0)
- * e busca case-insensitive com LOWER().
+ * Provides support for delimited identifiers ("column"), numeric boolean flags (1/0),
+ * and case-insensitive textual filtering with LOWER().
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class FirebirdDialect extends AbstractSqlDialect
 {
     /**
-     * @param string $family Identificador específico ('firebird', 'fbird' ou 'ibase')
+     * @param string $family Specific driver family ('firebird', 'fbird', or 'ibase')
      */
     public function __construct(
         private readonly string $family = 'firebird'

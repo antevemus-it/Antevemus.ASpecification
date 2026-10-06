@@ -9,22 +9,22 @@ use DateTimeImmutable;
 use DateTimeInterface;
 
 /**
- * EntityPersistenceMetaData - Metadados de persistência de entidade
+ * EntityPersistenceMetaData - Entity Persistence Metadata Implementation
  *
- * Implementação padrão dos metadados de ciclo de vida e persistência de uma entidade.
- * Mantém histórico temporal e contadores de operações de leitura e gravação.
+ * Default implementation of entity persistence and lifecycle metadata.
+ * Maintains temporal history and counters for read and write operations.
  *
- * Funcionalidades:
- * - Contagem precisa de leituras e gravações
- * - Rastreamento da primeira e última ocorrência de leitura
- * - Rastreamento da primeira e última ocorrência de gravação
- * - Inicialização com timestamp de criação
+ * Features:
+ * - Accurate counting of read and write operations
+ * - Tracking of first and last read occurrences
+ * - Tracking of first and last write occurrences
+ * - Initialization with creation timestamp
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class EntityPersistenceMetaData implements IEntityPersistenceMetaData
@@ -37,11 +37,11 @@ class EntityPersistenceMetaData implements IEntityPersistenceMetaData
     private ?DateTimeInterface $lastWrite = null;
 
     /**
-     * Construtor de metadados de persistência.
-     * Na criação, a data de gravação informada (ou atual) define a primeira e última gravação inicial,
-     * enquanto os contadores iniciam em zero.
+     * Constructs persistence metadata.
+     * At creation time, the provided (or current) timestamp defines both first and last initial write,
+     * while counters start at zero.
      *
-     * @param DateTimeInterface|null $initialWriteTime Timestamp inicial de gravação/criação
+     * @param DateTimeInterface|null $initialWriteTime Initial creation/write timestamp
      */
     public function __construct(?DateTimeInterface $initialWriteTime = null)
     {

@@ -1,20 +1,22 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ISpecialSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractSpecialSpecificationFactory class.
+ * AbstractSpecialSpecificationFactory - Base abstract factory for special specifications
  *
- * Classe abstrata base para fábricas de especificações especiais.
+ * Base abstract class defining contract for special constant and nullability specifications.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractSpecialSpecificationFactory implements ISpecialSpecificationFactory

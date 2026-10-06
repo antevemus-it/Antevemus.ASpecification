@@ -5,27 +5,26 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Repositories\File;
 
 /**
- * FileNameSanitizer - Sanitizador de identificadores para nomes de arquivo cross-platform
+ * FileNameSanitizer - Cross-platform file name sanitizer for entity identifiers
  *
- * Converte identificadores de entidades em nomes de arquivos seguros para sistemas
- * de arquivos Windows, Linux e macOS, preservando UUIDs, inteiros e strings
- * alfanuméricas de forma limpa e reversível.
+ * Converts entity identifiers into safe file names across Windows, Linux, and macOS
+ * filesystems, cleanly and reversibly preserving UUIDs, integers, and alphanumeric strings.
  *
- * Funcionalidades:
- * - Sanitização de caracteres reservados (/ \\ : * ? \" < > |)
- * - Dessanitização reversível
+ * Features:
+ * - Sanitization of reserved filesystem characters (/ \\ : * ? \" < > |)
+ * - Reversible de-sanitization back to original identifier
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class FileNameSanitizer
 {
     /**
-     * Sanitiza um ID de entidade para uso seguro como nome de arquivo.
+     * Sanitizes an entity ID for safe usage as a file name.
      *
      * @param string|int $id
      * @return string
@@ -34,19 +33,19 @@ final class FileNameSanitizer
     {
         $strId = (string)$id;
 
-        // Se for alfanumérico padrão, traço, underscore ou ponto (ex: UUID, inteiros, slugs)
+        // Standard alphanumeric, hyphen, underscore, or dot (e.g., UUID, integers, slugs)
         if (preg_match("/^[a-zA-Z0-9_.-]+$/", $strId)) {
             return $strId;
         }
 
-        // Substituição segura de caracteres reservados por representação hex
+        // Safe replacement of reserved characters by hex representation
         return preg_replace_callback("/[^a-zA-Z0-9_.-]/", function (array $matches): string {
             return "~" . bin2hex($matches[0]);
         }, $strId) ?? $strId;
     }
 
     /**
-     * Reverte a sanitização para recuperar o ID original da entidade.
+     * Reverts sanitization to recover the original entity ID.
      *
      * @param string $sanitized
      * @return string

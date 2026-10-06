@@ -9,32 +9,32 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use Countable;
 
 /**
- * RuleEngineVerdict - Veredito Operacional Estruturado da Dynamic Rule Engine
+ * RuleEngineVerdict - Structured Operational Verdict from Dynamic Rule Engine
  *
- * Agrega o veredito emitido pela avaliação de regras de negócio e documentos,
- * particionando as falhas de acordo com suas ações operacionais (bloqueios HTTP 403, alertas e logs).
+ * Aggregates the verdict emitted by business rule and document evaluations,
+ * partitioning failures according to their operational actions (HTTP 403 blocks, warnings, and audit logs).
  *
- * Funcionalidades:
- * - Classificação automática de violações por severidade (Blocking, Warning, Log)
- * - Consulta de aprovação global (isSatisfied) e verificação de impedimentos (hasBlockingErrors)
- * - Extração direta de códigos de violação, mensagens amigáveis e fundamentos legais
- * - Encapsulamento transparente do SpecificationResult original
+ * Features:
+ * - Automated categorization of violations by severity (Blocking, Warning, Log)
+ * - Global approval query (isSatisfied) and impediment check (hasBlockingErrors)
+ * - Direct extraction of failure codes, user-facing reasons, and statutory legal bases
+ * - Transparent encapsulation of underlying SpecificationResult
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class RuleEngineVerdict implements Countable
 {
     /**
-     * @param bool $isSatisfied True se nenhuma falha foi registrada
-     * @param list<SpecificationFailure> $blockingFailures Violações com ação 'bloquear'
-     * @param list<SpecificationFailure> $warningFailures Violações com ação 'alertar'
-     * @param list<SpecificationFailure> $logFailures Violações com ação 'apenas_log'
-     * @param SpecificationResult $specificationResult Resultado original do Notification Pattern
+     * @param bool $isSatisfied True if no failure was registered
+     * @param list<SpecificationFailure> $blockingFailures Violations with 'bloquear' (block) action
+     * @param list<SpecificationFailure> $warningFailures Violations with 'alertar' (warn) action
+     * @param list<SpecificationFailure> $logFailures Violations with 'apenas_log' (log) action
+     * @param SpecificationResult $specificationResult Original result from Notification Pattern
      */
     public function __construct(
         public bool $isSatisfied,
@@ -46,7 +46,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Cria um veredito aprovado sem violações.
+     * Creates an approved verdict without violations.
      *
      * @return self
      */
@@ -63,7 +63,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Constrói o veredito operacional particionando as falhas do SpecificationResult por ação.
+     * Constructs the operational verdict by partitioning SpecificationResult failures by action.
      *
      * @param SpecificationResult $result
      * @return self
@@ -105,7 +105,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Verifica se todas as regras foram cumpridas com sucesso.
+     * Checks whether all rules were successfully satisfied.
      *
      * @return bool
      */
@@ -115,7 +115,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Verifica se existem violações de bloqueio que impedem a transição de estado.
+     * Checks if there are blocking violations preventing the operational transition.
      *
      * @return bool
      */
@@ -125,7 +125,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Verifica se existem advertências que exigem ciência do usuário.
+     * Checks if there are warning violations requiring user awareness.
      *
      * @return bool
      */
@@ -135,7 +135,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Verifica se existem registros exclusivos de auditoria/log.
+     * Checks if there are audit/log-only violations.
      *
      * @return bool
      */
@@ -145,7 +145,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna todas as falhas com ação 'bloquear'.
+     * Returns all failures with 'bloquear' (block) action.
      *
      * @return list<SpecificationFailure>
      */
@@ -155,7 +155,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna todas as falhas com ação 'alertar'.
+     * Returns all failures with 'alertar' (warn) action.
      *
      * @return list<SpecificationFailure>
      */
@@ -165,7 +165,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna todas as falhas com ação 'apenas_log'.
+     * Returns all failures with 'apenas_log' (log) action.
      *
      * @return list<SpecificationFailure>
      */
@@ -175,7 +175,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna todas as falhas registradas, independente da ação.
+     * Returns all recorded failures regardless of action.
      *
      * @return list<SpecificationFailure>
      */
@@ -185,7 +185,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna os códigos de negócio ou regulatórios de todas as falhas registradas.
+     * Returns the business or regulatory codes of all recorded failures.
      *
      * @return list<string>
      */
@@ -195,7 +195,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna as mensagens explicativas de todas as falhas registradas.
+     * Returns explanatory reason messages for all recorded failures.
      *
      * @return list<string>
      */
@@ -205,7 +205,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna a lista de fundamentos legais extraídos dos metadados das falhas.
+     * Returns the list of statutory legal bases extracted from failure metadata.
      *
      * @return list<string>
      */
@@ -225,7 +225,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Retorna o total de violações registradas.
+     * Returns total count of recorded violations.
      *
      * @return int
      */

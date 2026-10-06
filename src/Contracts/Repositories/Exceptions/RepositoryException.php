@@ -8,30 +8,30 @@ use RuntimeException;
 use Throwable;
 
 /**
- * RepositoryException - Exceção base para falhas em repositórios
+ * RepositoryException - Base Exception for Repository Operations
  *
- * Exceção base lançada por repositórios do ecossistema Specification quando ocorre
- * uma falha interna na execução de operações de armazenamento, consulta ou particionamento.
+ * Base exception thrown by repositories in the Specification ecosystem when
+ * an internal error occurs during storage, querying, or partitioning operations.
  *
- * Funcionalidades:
- * - Encapsulamento de falhas internas com causa original (Throwable)
- * - Identificação explícita da operação que falhou
+ * Features:
+ * - Encapsulation of internal failures with root cause chaining (Throwable)
+ * - Explicit identification of the failing repository operation
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class RepositoryException extends RuntimeException
 {
     /**
-     * Construtor da exceção de repositório.
+     * Constructs a repository exception.
      *
-     * @param string $message Mensagem descritiva da falha
-     * @param int $code Código numérico de erro
-     * @param Throwable|null $previous Exceção anterior que causou a falha
+     * @param string $message Descriptive error message
+     * @param int $code Numeric error code
+     * @param Throwable|null $previous Previous exception that caused this failure
      */
     public function __construct(string $message = '', int $code = 0, ?Throwable $previous = null)
     {

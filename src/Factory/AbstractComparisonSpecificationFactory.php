@@ -1,32 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\IComparisonSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractComparisonSpecificationFactory class.
+ * AbstractComparisonSpecificationFactory - Base abstract factory for comparison specifications
  *
- * Classe abstrata base para fábricas de especificações de comparação.
+ * Provides default alias methods and validation helpers for comparison specifications.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractComparisonSpecificationFactory implements IComparisonSpecificationFactory
 {
     /**
-     * Valida o valor fornecido.
+     * Validates the provided value.
      *
-     * Método auxiliar para implementações concretas validarem os valores
-     * antes de criar as especificações.
+     * Helper method for concrete implementations to validate values
+     * prior to creating specifications.
      *
-     * @param mixed $value Valor a ser validado
-     * @throws \InvalidArgumentException Se o valor for inválido
+     * @param mixed $value Value to validate
+     * @throws \InvalidArgumentException If value is null
      */
     protected function validateValue(mixed $value): void
     {

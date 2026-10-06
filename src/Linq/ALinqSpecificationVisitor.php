@@ -28,29 +28,29 @@ use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Closure;
 
 /**
- * ALinqSpecificationVisitor - Visitor compilador de especificações para predicados executáveis
+ * ALinqSpecificationVisitor - Specification AST Compiler to Executable Predicates
  *
- * Percorre uma Árvore de Sintaxe Abstrata (AST) de especificações e compila um predicado
- * funcional Closure(mixed): bool de alta performance, otimizado para filtragem de coleções
- * ALinqCollection e consultas em memória.
+ * Traverses an Abstract Syntax Tree (AST) of specifications and compiles a high-performance
+ * functional Closure(mixed): bool predicate, optimized for ALinqCollection filtering
+ * and in-memory candidate evaluation.
  *
- * Funcionalidades:
- * - Compilação de especificações compostas (AND, OR, NOT, NOR) em operadores de curto-circuito (&&, ||)
- * - Avaliação de PropertySpecification integrada ao PropertyAccessor (dot notation, arrays, getters)
- * - Avaliação de folhas relacionais (=, !=, <, <=, >, >=, regex, wildcard, case-insensitive)
- * - Execução direta compatível com ALinqCollection::where() e ALinqQueryBuilder
+ * Features:
+ * - Compilation of composite specifications (AND, OR, NOT, NOR) to short-circuit operators (&&, ||)
+ * - Evaluation of PropertySpecification integrated with PropertyAccessor (dot notation, arrays, getters)
+ * - Evaluation of relational and pattern leaves (=, !=, <, <=, >, >=, regex, wildcard, case-insensitive)
+ * - Direct execution compatible with ALinqCollection::where() and ALinqQueryBuilder
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class ALinqSpecificationVisitor implements ISpecificationVisitor
 {
     /**
-     * Compila uma especificação em um predicado executável.
+     * Compile a specification tree into an executable predicate closure.
      *
      * @param ISpecification $specification
      * @return Closure(mixed $candidate): bool
@@ -65,7 +65,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Atalho estático para compilar uma especificação diretamente em um predicado Closure.
+     * Static shortcut to compile a specification directly into an executable Closure predicate.
      *
      * @param ISpecification $specification
      * @return Closure(mixed $candidate): bool
@@ -76,7 +76,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila e retorna o predicado para a especificação informada.
+     * Compile and return the executable predicate for the given specification.
      *
      * @param ISpecification $specification
      * @return Closure(mixed $candidate): bool
@@ -171,7 +171,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila inspeção de propriedade com PropertyAccessor.
+     * Compile property inspection using PropertyAccessor.
      */
     private function compilePropertySpecification(PropertySpecification $specification): Closure
     {
@@ -193,7 +193,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila conjunção lógica AND.
+     * Compile logical conjunction (AND).
      */
     private function compileAnd(AndSpecification $specification): Closure
     {
@@ -204,7 +204,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila disjunção lógica OR.
+     * Compile logical disjunction (OR).
      */
     private function compileOr(OrSpecification $specification): Closure
     {
@@ -215,7 +215,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila negação lógica NOT.
+     * Compile logical negation (NOT).
      */
     private function compileNot(NotSpecification $specification): Closure
     {
@@ -225,7 +225,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila negação conjunta NOR (Joint Denial).
+     * Compile joint denial (NOR).
      */
     private function compileJointDenial(JointDenialSpecification $specification): Closure
     {
@@ -236,7 +236,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila casamento por wildcard.
+     * Compile wildcard pattern matching.
      */
     private function compileWildcard(string $pattern, bool $caseInsensitive): Closure
     {
@@ -249,7 +249,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila verificação de todos os itens de uma coleção.
+     * Compile verification across all elements in an iterable collection.
      */
     private function compileCollectionSpecification(CollectionSpecification $specification): Closure
     {
@@ -270,7 +270,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compila composição genérica agregando todos os sub-critérios via AND.
+     * Compile generic composite aggregating all child criteria via logical AND.
      */
     private function compileGenericComposite(ICompositeSpecification $specification): Closure
     {

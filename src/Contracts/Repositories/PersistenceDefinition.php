@@ -5,60 +5,60 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Repositories;
 
 /**
- * PersistenceDefinition - Modalidades de persistência de repositórios
+ * PersistenceDefinition - Persistence Modalities and Capabilities for Repositories
  *
- * Define as modalidades e características de persistência para repositórios
- * do ecossistema de especificações (Specification Pattern).
+ * Defines persistence modalities and operational characteristics for repositories
+ * within the Specification Pattern ecosystem.
  *
- * Funcionalidades:
- * - Identificação de persistência exclusiva em arquivo (FileOnly)
- * - Identificação de persistência delegada a terceiros (DelegatedOnly)
- * - Identificação de persistência puramente em memória (MemoryOnly)
- * - Suporte a persistência assíncrona periódica em arquivo (MemoryAsyncFile)
- * - Suporte a persistência assíncrona delegada (MemoryAsyncDelegated)
- * - Verificação de características (baseado em arquivo, memória, assíncrono)
+ * Features:
+ * - Identification of physical file-only storage (FileOnly)
+ * - Identification of delegated third-party persistence (DelegatedOnly)
+ * - Identification of volatile purely in-memory persistence (MemoryOnly)
+ * - Support for periodic asynchronous file persistence (MemoryAsyncFile)
+ * - Support for delegated asynchronous persistence (MemoryAsyncDelegated)
+ * - Introspection of storage characteristics (file-based, memory-based, asynchronous)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 enum PersistenceDefinition: string
 {
-    /** Repositório que persiste exclusivamente em arquivos físicos no disco. */
+    /** Repository persisting exclusively to physical disk files. */
     case FileOnly = 'FILE_ONLY';
 
-    /** Repositório cuja persistência é delegada a um mecanismo externo. */
+    /** Repository whose persistence is delegated to an external mechanism. */
     case DelegatedOnly = 'DELEGATED_ONLY';
 
-    /** Repositório puramente em memória, volátil. */
+    /** Purely in-memory, volatile repository. */
     case MemoryOnly = 'MEMORY_ONLY';
 
-    /** Repositório transitório não persistido. */
+    /** Transient, non-persisted repository. */
     case Transient = 'TRANSIENT';
 
-    /** Repositório em memória com gravação assíncrona periódica em arquivo. */
+    /** In-memory repository with periodic asynchronous file recording. */
     case MemoryAsyncFile = 'MEMORY_ASYNC_FILE';
 
-    /** Repositório em memória com gravação assíncrona delegada a mecanismo externo. */
+    /** In-memory repository with asynchronous persistence delegated externally. */
     case MemoryAsyncDelegated = 'MEMORY_ASYNC_DELEGATED';
 
-    /** Repositório persistente em arquivo com leitura e gravação síncronas habilitadas. */
+    /** Persistent file repository with synchronous read and write enabled. */
     case ReadWrite = 'READ_WRITE';
 
-    /** Repositório persistente em arquivo restrito exclusivamente a operações de leitura. */
+    /** Persistent file repository restricted exclusively to read operations. */
     case ReadOnly = 'READ_ONLY';
 
-    /** Repositório persistente em arquivo restrito exclusivamente a operações de gravação. */
+    /** Persistent file repository restricted exclusively to write operations. */
     case WriteOnly = 'WRITE_ONLY';
 
-    /** Repositório persistente que sincroniza com o disco em modo snapshot (load/store/close). */
+    /** Persistent repository synchronizing with disk in snapshot mode (load/store/close). */
     case Snapshot = 'SNAPSHOT';
 
     /**
-     * Cria definição em modo Somente Leitura (ReadOnly).
+     * Creates definition in ReadOnly mode.
      */
     public static function createReadOnly(): self
     {
@@ -66,7 +66,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Cria definição em modo Somente Escrita (WriteOnly).
+     * Creates definition in WriteOnly mode.
      */
     public static function createWriteOnly(): self
     {
@@ -74,7 +74,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Cria definição em modo Leitura e Escrita (ReadWrite).
+     * Creates definition in ReadWrite mode.
      */
     public static function createReadWrite(): self
     {
@@ -82,7 +82,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Cria definição em modo Snapshot.
+     * Creates definition in Snapshot mode.
      */
     public static function createSnapshot(): self
     {
@@ -90,7 +90,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a definição bloqueia gravações (ReadOnly).
+     * Indicates whether definition blocks write operations (ReadOnly).
      */
     public function isReadOnly(): bool
     {
@@ -98,7 +98,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a definição bloqueia leituras (WriteOnly).
+     * Indicates whether definition blocks read operations (WriteOnly).
      */
     public function isWriteOnly(): bool
     {
@@ -106,7 +106,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a persistência é baseada em arquivo físico.
+     * Indicates whether persistence is based on physical disk files.
      */
     public function isFileBased(): bool
     {
@@ -119,7 +119,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a persistência ocorre exclusivamente em arquivo.
+     * Indicates whether persistence occurs exclusively via physical files.
      */
     public function isFileOnly(): bool
     {
@@ -127,7 +127,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se o repositório opera primariamente em memória.
+     * Indicates whether repository operates primarily in-memory.
      */
     public function isMemoryBased(): bool
     {
@@ -135,7 +135,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se o repositório opera exclusivamente em memória.
+     * Indicates whether repository operates exclusively in-memory.
      */
     public function isMemoryOnly(): bool
     {
@@ -143,7 +143,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a persistência é delegada a mecanismo externo.
+     * Indicates whether persistence is delegated to an external mechanism.
      */
     public function isDelegated(): bool
     {
@@ -151,7 +151,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se a persistência é exclusivamente delegada a mecanismo externo.
+     * Indicates whether persistence is exclusively delegated to an external mechanism.
      */
     public function isDelegatedOnly(): bool
     {
@@ -159,7 +159,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Indica se suporta persistência assíncrona em segundo plano.
+     * Indicates whether asynchronous background persistence is supported.
      */
     public function isAsyncSupported(): bool
     {
@@ -167,7 +167,7 @@ enum PersistenceDefinition: string
     }
 
     /**
-     * Alias semântico para isAsyncSupported.
+     * Semantic alias for isAsyncSupported.
      */
     public function supportsAsyncPersistence(): bool
     {

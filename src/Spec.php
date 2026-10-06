@@ -2,6 +2,29 @@
 
 declare(strict_types=1);
 
+/**
+ * Spec - Unified static facade for the Specification pattern
+ *
+ * Provides static entry points and fluent ergonomic shortcuts for constructing,
+ * composing, and evaluating specifications across the Antevemus.ASpecification library.
+ *
+ * Features:
+ * - Fluent typed composite specification creation (specify)
+ * - Logical composition shortcuts (allOf, anyOf, not)
+ * - Value and relational comparison operators (is, equalTo, greaterThan, lessThan, in)
+ * - Temporal and calendar date validations (before, isBefore, after, isAfter, between)
+ * - String evaluation and collection cardinality (contains, startsWith, isEmpty, hasSize)
+ * - Declarative attribute validation runner (validateAttributes, assertAttributes)
+ * - Dynamic redirection via __callStatic to underlying SpecificationFactory
+ *
+ * @version    1.1.0
+ * @package    Antevemus\ASpecification
+ * @subpackage Facade
+ * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
+ * @license    MIT
+ */
+
 namespace Antevemus\ASpecification;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
@@ -10,40 +33,19 @@ use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use DateTimeInterface;
 
-/**
- * Spec - Facade estática unificada para o padrão Specification
- *
- * Provê atalhos estáticos e ergonomia em linguagem natural para criação, composição
- * e avaliação de especificações na biblioteca Antevemus.ASpecification.
- *
- * Funcionalidades:
- * - Atalhos tipados para composição lógica (allOf, anyOf, not)
- * - Criação de especificações parametrizadas de tipo (specify)
- * - Atalhos para comparações de valor (is, equalTo, equal, greaterThan, lessThan, in)
- * - Atalhos para comparações temporais (before, isBefore, after, isAfter, between)
- * - Atalhos para verificações de texto e coleções (contains, startsWith, isEmpty)
- * - Redirecionamento dinâmico via __callStatic para toda a SpecificationFactory
- *
- * @version    0.1
- * @package    Antevemus\ASpecification
- * @subpackage Facade
- * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
- * @license    MIT
- */
 final class Spec
 {
     private static ?SpecificationFactory $factory = null;
 
     /**
-     * Construtor privado para impedir instanciação direta da Facade.
+     * Private constructor to prevent direct instantiation of static facade.
      */
     private function __construct()
     {
     }
 
     /**
-     * Obtém a instância compartilhada da SpecificationFactory.
+     * Retrieves the shared singleton instance of SpecificationFactory.
      *
      * @return SpecificationFactory
      */
@@ -56,9 +58,9 @@ final class Spec
     }
 
     /**
-     * Configura ou substitui a instância interna da SpecificationFactory (útil para testes com mock).
+     * Configures or replaces the shared SpecificationFactory instance (useful for testing/mocking).
      *
-     * @param SpecificationFactory|null $factory
+     * @param SpecificationFactory|null $factory Custom factory instance
      * @return void
      */
     public static function setFactory(?SpecificationFactory $factory): void
@@ -67,13 +69,13 @@ final class Spec
     }
 
     // ==========================================
-    // 1. Tipo e Especificações Parametrizadas
+    // 1. Type and Parameterized Specifications
     // ==========================================
 
     /**
-     * Inicia a construção de uma especificação parametrizada vinculada a uma classe de domínio.
+     * Initiates construction of a parameterized composite specification bound to a domain class.
      *
-     * @param string $type Nome completo da classe ou interface (ex.: Customer::class)
+     * @param string $type FQCN or interface name (e.g. Customer::class)
      * @return ICompositeSpecification
      */
     public static function specify(string $type): ICompositeSpecification
@@ -82,11 +84,11 @@ final class Spec
     }
 
     /**
-     * Cria uma especificação vinculada a uma propriedade ou atributo de objeto/entidade.
+     * Creates a specification bound to an object property or entity attribute.
      *
-     * @param string $propertyName Nome da propriedade
-     * @param ISpecification $specification Regra a ser aplicada sobre o valor da propriedade
-     * @param ISpecification|null $baseSpecification Especificação do tipo base (default: AlwaysTrue)
+     * @param string $propertyName Target property name or dot-notation path
+     * @param ISpecification $specification Rule evaluated against property value
+     * @param ISpecification|null $baseSpecification Base root specification (default: AlwaysTrue)
      * @return PropertySpecification
      */
     public static function property(
@@ -102,13 +104,13 @@ final class Spec
     }
 
     // ==========================================
-    // 2. Operadores de Composição Lógica
+    // 2. Logical Composition Operators
     // ==========================================
 
     /**
-     * Cria uma conjunção lógica (AND) contendo todas as especificações fornecidas.
+     * Creates a logical conjunction (AND) requiring all given specifications to be met.
      *
-     * @param ISpecification ...$specifications
+     * @param ISpecification ...$specifications Specifications to combine
      * @return ISpecification
      */
     public static function allOf(ISpecification ...$specifications): ISpecification
@@ -117,9 +119,9 @@ final class Spec
     }
 
     /**
-     * Cria uma disjunção lógica (OR) contendo qualquer uma das especificações fornecidas.
+     * Creates a logical disjunction (OR) requiring at least one specification to be met.
      *
-     * @param ISpecification ...$specifications
+     * @param ISpecification ...$specifications Specifications to combine
      * @return ISpecification
      */
     public static function anyOf(ISpecification ...$specifications): ISpecification
@@ -128,9 +130,9 @@ final class Spec
     }
 
     /**
-     * Inverte a especificação fornecida através de negação lógica (NOT).
+     * Inverts the given specification via logical negation (NOT).
      *
-     * @param ISpecification $specification
+     * @param ISpecification $specification Specification to invert
      * @return ISpecification
      */
     public static function not(ISpecification $specification): ISpecification
@@ -139,13 +141,13 @@ final class Spec
     }
 
     // ==========================================
-    // 3. Comparação de Valores e Identidade
+    // 3. Value Comparison and Identity
     // ==========================================
 
     /**
-     * Cria uma especificação de igualdade de valor ou de envolvimento sintático (wrapper).
+     * Creates an equality or identity leaf specification for a value.
      *
-     * @param mixed $value
+     * @param mixed $value Expected value
      * @return ISpecification
      */
     public static function is(mixed $value): ISpecification
@@ -154,9 +156,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser igual ao valor esperado.
+     * Specifies that candidate value must equal the expected value.
      *
-     * @param mixed $value
+     * @param mixed $value Expected value
      * @return ISpecification
      */
     public static function equalTo(mixed $value): ISpecification
@@ -165,9 +167,9 @@ final class Spec
     }
 
     /**
-     * Alias de equalTo.
+     * Syntactic alias for equalTo().
      *
-     * @param mixed $value
+     * @param mixed $value Expected value
      * @return ISpecification
      */
     public static function equal(mixed $value): ISpecification
@@ -176,9 +178,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser diferente do valor esperado.
+     * Specifies that candidate value must NOT equal the given value.
      *
-     * @param mixed $value
+     * @param mixed $value Value not allowed
      * @return ISpecification
      */
     public static function notEqual(mixed $value): ISpecification
@@ -187,9 +189,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser estritamente maior que o limite.
+     * Specifies that candidate value must be strictly greater than threshold.
      *
-     * @param mixed $value
+     * @param mixed $value Exclusive lower bound
      * @return ISpecification
      */
     public static function greaterThan(mixed $value): ISpecification
@@ -198,9 +200,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser maior ou igual ao limite.
+     * Specifies that candidate value must be greater than or equal to threshold.
      *
-     * @param mixed $value
+     * @param mixed $value Inclusive lower bound
      * @return ISpecification
      */
     public static function greaterThanOrEqualTo(mixed $value): ISpecification
@@ -209,9 +211,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser estritamente menor que o limite.
+     * Specifies that candidate value must be strictly less than threshold.
      *
-     * @param mixed $value
+     * @param mixed $value Exclusive upper bound
      * @return ISpecification
      */
     public static function lessThan(mixed $value): ISpecification
@@ -220,9 +222,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve ser menor ou igual ao limite.
+     * Specifies that candidate value must be less than or equal to threshold.
      *
-     * @param mixed $value
+     * @param mixed $value Inclusive upper bound
      * @return ISpecification
      */
     public static function lessThanOrEqualTo(mixed $value): ISpecification
@@ -231,9 +233,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o valor deve pertencer ao conjunto fornecido.
+     * Specifies that candidate value must belong to the given set.
      *
-     * @param mixed ...$values
+     * @param mixed ...$values Accepted values
      * @return ISpecification
      */
     public static function in(mixed ...$values): ISpecification
@@ -242,13 +244,13 @@ final class Spec
     }
 
     // ==========================================
-    // 4. Comparações Temporais (Datas/Horas)
+    // 4. Temporal Comparisons (Dates / Instants)
     // ==========================================
 
     /**
-     * Especifica que a data/valor deve ser estritamente anterior.
+     * Specifies that date/value must precede the given upper bound.
      *
-     * @param mixed $value
+     * @param mixed $value Upper bound date/value
      * @return ISpecification
      */
     public static function before(mixed $value): ISpecification
@@ -257,9 +259,9 @@ final class Spec
     }
 
     /**
-     * Alias de before() espelhando o Java Domian.
+     * Fluent alias for before() mirroring Java Domain conventions.
      *
-     * @param mixed $value
+     * @param mixed $value Upper bound date/value
      * @return ISpecification
      */
     public static function isBefore(mixed $value): ISpecification
@@ -268,9 +270,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a data/valor deve ser estritamente posterior.
+     * Specifies that date/value must succeed the given lower bound.
      *
-     * @param mixed $value
+     * @param mixed $value Lower bound date/value
      * @return ISpecification
      */
     public static function after(mixed $value): ISpecification
@@ -279,9 +281,9 @@ final class Spec
     }
 
     /**
-     * Alias de after() espelhando o Java Domian.
+     * Fluent alias for after() mirroring Java Domain conventions.
      *
-     * @param mixed $value
+     * @param mixed $value Lower bound date/value
      * @return ISpecification
      */
     public static function isAfter(mixed $value): ISpecification
@@ -290,9 +292,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a data deve ser exatamente no momento fornecido.
+     * Specifies exact chronological timestamp match.
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Target timestamp
      * @return ISpecification
      */
     public static function at(DateTimeInterface $date): ISpecification
@@ -301,9 +303,9 @@ final class Spec
     }
 
     /**
-     * Alias de at().
+     * Syntactic alias for at().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Target timestamp
      * @return ISpecification
      */
     public static function atTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -312,9 +314,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a data deve ser anterior ou igual ao momento fornecido.
+     * Specifies that date must be before or at the given threshold (<=).
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive upper bound
      * @return ISpecification
      */
     public static function beforeOrAt(DateTimeInterface $date): ISpecification
@@ -323,9 +325,9 @@ final class Spec
     }
 
     /**
-     * Alias de beforeOrAt().
+     * Syntactic alias for beforeOrAt().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive upper bound
      * @return ISpecification
      */
     public static function beforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -334,9 +336,9 @@ final class Spec
     }
 
     /**
-     * Alias de beforeOrAt().
+     * Fluent alias for beforeOrAt().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive upper bound
      * @return ISpecification
      */
     public static function isBeforeOrAt(DateTimeInterface $date): ISpecification
@@ -345,9 +347,9 @@ final class Spec
     }
 
     /**
-     * Alias de beforeOrAtTheSameTimeAs().
+     * Long fluent alias for beforeOrAtTheSameTimeAs().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive upper bound
      * @return ISpecification
      */
     public static function isBeforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -356,9 +358,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a data deve ser posterior ou igual ao momento fornecido.
+     * Specifies that date must be after or at the given threshold (>=).
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive lower bound
      * @return ISpecification
      */
     public static function afterOrAt(DateTimeInterface $date): ISpecification
@@ -367,9 +369,9 @@ final class Spec
     }
 
     /**
-     * Alias de afterOrAt().
+     * Syntactic alias for afterOrAt().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive lower bound
      * @return ISpecification
      */
     public static function afterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -378,9 +380,9 @@ final class Spec
     }
 
     /**
-     * Alias de afterOrAt().
+     * Fluent alias for afterOrAt().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive lower bound
      * @return ISpecification
      */
     public static function isAfterOrAt(DateTimeInterface $date): ISpecification
@@ -389,9 +391,9 @@ final class Spec
     }
 
     /**
-     * Alias de afterOrAtTheSameTimeAs().
+     * Long fluent alias for afterOrAtTheSameTimeAs().
      *
-     * @param DateTimeInterface $date
+     * @param DateTimeInterface $date Inclusive lower bound
      * @return ISpecification
      */
     public static function isAfterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -400,10 +402,10 @@ final class Spec
     }
 
     /**
-     * Especifica intervalo temporal fechado [start, end].
+     * Specifies closed temporal interval [start, end].
      *
-     * @param DateTimeInterface $start
-     * @param DateTimeInterface $end
+     * @param DateTimeInterface $start Interval start timestamp
+     * @param DateTimeInterface $end Interval end timestamp
      * @return ISpecification
      */
     public static function between(DateTimeInterface $start, DateTimeInterface $end): ISpecification
@@ -412,11 +414,11 @@ final class Spec
     }
 
     // ==========================================
-    // 5. Constantes e Estados Especiais
+    // 5. Constants and Special States
     // ==========================================
 
     /**
-     * Cria uma especificação tautológica universal que é sempre satisfeita (True).
+     * Creates universal tautology specification always satisfied (True).
      *
      * @return ISpecification
      */
@@ -426,7 +428,7 @@ final class Spec
     }
 
     /**
-     * Cria uma especificação de contradição que nunca é satisfeita (False).
+     * Creates universal contradiction specification never satisfied (False).
      *
      * @return ISpecification
      */
@@ -436,7 +438,7 @@ final class Spec
     }
 
     /**
-     * Especifica que o candidato deve ser estritamente nulo (null).
+     * Specifies candidate must be strictly null (`=== null`).
      *
      * @return ISpecification
      */
@@ -446,7 +448,7 @@ final class Spec
     }
 
     /**
-     * Especifica que o candidato não pode ser nulo.
+     * Specifies candidate must NOT be null (`!== null`).
      *
      * @return ISpecification
      */
@@ -456,7 +458,7 @@ final class Spec
     }
 
     /**
-     * Especifica que o candidato deve ser estritamente booleano true.
+     * Specifies candidate must be strictly boolean true.
      *
      * @return ISpecification
      */
@@ -466,7 +468,7 @@ final class Spec
     }
 
     /**
-     * Especifica que o candidato deve ser estritamente booleano false.
+     * Specifies candidate must be strictly boolean false.
      *
      * @return ISpecification
      */
@@ -476,7 +478,7 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia de caracteres deve estar vazia ou conter apenas espaços em branco.
+     * Specifies string must be empty or composed solely of whitespace.
      *
      * @return ISpecification
      */
@@ -486,7 +488,7 @@ final class Spec
     }
 
     /**
-     * Especifica que o candidato deve equivaler ao valor default do seu tipo (null, false, 0, vazio).
+     * Specifies candidate equals default value of its type (null, false, 0, empty).
      *
      * @return ISpecification
      */
@@ -496,13 +498,13 @@ final class Spec
     }
 
     // ==========================================
-    // 6. Strings e Coleções
+    // 6. Strings and Collections
     // ==========================================
 
     /**
-     * Especifica que a cadeia deve casar com a expressão regular fornecida.
+     * Specifies string must match regular expression pattern.
      *
-     * @param string $pattern Expressão regular no formato PCRE (ex.: '/^[0-9]+$/')
+     * @param string $pattern Regular expression in PCRE format (e.g. '/^[0-9]+$/')
      * @return ISpecification
      */
     public static function matches(string $pattern): ISpecification
@@ -511,9 +513,9 @@ final class Spec
     }
 
     /**
-     * Alias para matches() para validação de expressão regular.
+     * Syntactic alias for matches().
      *
-     * @param string $pattern
+     * @param string $pattern PCRE pattern
      * @return ISpecification
      */
     public static function regex(string $pattern): ISpecification
@@ -522,9 +524,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve casar com o padrão wildcard (* e ?).
+     * Specifies string must match wildcard expression (* and ?).
      *
-     * @param string $pattern
+     * @param string $pattern Wildcard string
      * @return ISpecification
      */
     public static function wildcard(string $pattern): ISpecification
@@ -533,9 +535,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve casar com o padrão wildcard ignorando maiúsculas e minúsculas.
+     * Specifies string must match wildcard expression ignoring case.
      *
-     * @param string $pattern
+     * @param string $pattern Wildcard string
      * @return ISpecification
      */
     public static function wildcardIgnoreCase(string $pattern): ISpecification
@@ -544,9 +546,9 @@ final class Spec
     }
 
     /**
-     * Alias longo para wildcardIgnoreCase().
+     * Long alias for wildcardIgnoreCase().
      *
-     * @param string $pattern
+     * @param string $pattern Wildcard string
      * @return ISpecification
      */
     public static function wildcardExpressionMatcherIgnoreCase(string $pattern): ISpecification
@@ -555,9 +557,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve ser idêntica ignorando maiúsculas e minúsculas.
+     * Specifies string equals target value ignoring case.
      *
-     * @param string $value
+     * @param string $value Expected string
      * @return ISpecification
      */
     public static function equalIgnoreCase(string $value): ISpecification
@@ -566,10 +568,10 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve conter a subcadeia informada.
+     * Specifies string contains given substring.
      *
-     * @param string $substring Subcadeia a ser procurada
-     * @param bool $caseSensitive Define se a busca diferencia maiúsculas de minúsculas
+     * @param string $substring Search substring
+     * @param bool $caseSensitive Case sensitivity toggle (default: true)
      * @return ISpecification
      */
     public static function contains(string $substring, bool $caseSensitive = true): ISpecification
@@ -578,10 +580,10 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve iniciar com o prefixo informado.
+     * Specifies string begins with prefix.
      *
-     * @param string $prefix Prefixo esperado
-     * @param bool $caseSensitive Define se a busca diferencia maiúsculas de minúsculas
+     * @param string $prefix Expected prefix
+     * @param bool $caseSensitive Case sensitivity toggle (default: true)
      * @return ISpecification
      */
     public static function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
@@ -590,10 +592,10 @@ final class Spec
     }
 
     /**
-     * Especifica que a cadeia deve terminar com o sufixo informado.
+     * Specifies string ends with suffix.
      *
-     * @param string $suffix Sufixo esperado
-     * @param bool $caseSensitive Define se a busca diferencia maiúsculas de minúsculas
+     * @param string $suffix Expected suffix
+     * @param bool $caseSensitive Case sensitivity toggle (default: true)
      * @return ISpecification
      */
     public static function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
@@ -602,7 +604,7 @@ final class Spec
     }
 
     /**
-     * Especifica que a coleção ou cadeia deve ser vazia.
+     * Specifies collection, array, or string is empty (count or length is 0).
      *
      * @return ISpecification
      */
@@ -612,9 +614,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o tamanho da coleção deve satisfazer a especificação fornecida.
+     * Specifies collection size satisfies the given size specification.
      *
-     * @param ISpecification $sizeSpecification Especificação aplicada à contagem de elementos
+     * @param ISpecification $sizeSpecification Specification applied to element count
      * @return ISpecification
      */
     public static function hasSize(ISpecification $sizeSpecification): ISpecification
@@ -623,9 +625,9 @@ final class Spec
     }
 
     /**
-     * Especifica que o comprimento da cadeia deve satisfazer a especificação fornecida.
+     * Specifies string character count satisfies length specification.
      *
-     * @param ISpecification $lengthSpecification Especificação aplicada ao número de caracteres
+     * @param ISpecification $lengthSpecification Specification applied to string length
      * @return ISpecification
      */
     public static function hasLength(ISpecification $lengthSpecification): ISpecification
@@ -634,9 +636,9 @@ final class Spec
     }
 
     /**
-     * Especifica que a string deve corresponder ao nome de um case em um Enum PHP 8+.
+     * Specifies string matches a declared case name of a PHP 8+ UnitEnum or BackedEnum.
      *
-     * @param class-string $enumClass A classe do enum nativo.
+     * @param class-string $enumClass Enum class name
      * @return ISpecification
      */
     public static function enumCase(string $enumClass): ISpecification
@@ -649,10 +651,10 @@ final class Spec
     // ==========================================
 
     /**
-     * Cria e instancia um DynamicSpecificationEngine pronto para orquestração de regras.
+     * Creates and instantiates a DynamicSpecificationEngine ready for rule orchestration.
      *
-     * @param \Antevemus\ASpecification\Contracts\Engine\IRuleCatalog|null $catalog Catálogo de regras
-     * @param \Antevemus\ASpecification\Contracts\Engine\IRuleSpecificationRegistry|null $registry Registro de handlers
+     * @param \Antevemus\ASpecification\Contracts\Engine\IRuleCatalog|null $catalog Rule catalog
+     * @param \Antevemus\ASpecification\Contracts\Engine\IRuleSpecificationRegistry|null $registry Handlers registry
      * @return \Antevemus\ASpecification\Engine\DynamicSpecificationEngine
      */
     public static function engine(
@@ -666,7 +668,7 @@ final class Spec
     }
 
     /**
-     * Cria uma nova instância de RuleSpecificationRegistry para registro de handlers.
+     * Creates a new instance of RuleSpecificationRegistry for registering handlers.
      *
      * @return \Antevemus\ASpecification\Engine\RuleSpecificationRegistry
      */
@@ -680,11 +682,11 @@ final class Spec
     // ==========================================
 
     /**
-     * Traduz uma especificação em uma cláusula WHERE parametrizada (Multi-SGBD).
+     * Translates a specification into a parameterized WHERE clause (Multi-SGBD).
      *
-     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Especificação a traduzir
-     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Dialeto alvo (pgsql, mysql, sqlsrv, oracle, firebird, etc.)
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Mapeamento opcional de propriedades para colunas
+     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to translate
+     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Target dialect (pgsql, mysql, sqlsrv, oracle, firebird, etc.)
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Optional property-to-column mapping
      * @return \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause
      */
     public static function toSql(
@@ -696,10 +698,10 @@ final class Spec
     }
 
     /**
-     * Cria uma instância de SqlQueryVisitor configurada para o dialeto e mapeamento fornecidos.
+     * Creates an instance of SqlQueryVisitor configured for dialect and field mappings.
      *
-     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap
+     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Target dialect
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Field mapper
      * @return \Antevemus\ASpecification\Sql\SqlQueryVisitor
      */
     public static function sqlVisitor(
@@ -714,12 +716,12 @@ final class Spec
     // ==========================================
 
     /**
-     * Traduz uma especificação em um objeto TCriteria do Adianti Framework.
+     * Translates a specification into an Adianti Framework TCriteria object.
      *
-     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Especificação a traduzir
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Mapeamento opcional de propriedades para colunas
-     * @param array<string, mixed> $properties Propriedades como 'order', 'limit', 'offset', 'direction', 'group'
-     * @return \Adianti\Database\TCriteria
+     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to translate
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Optional property-to-column mapping
+     * @param array<string, mixed> $properties Criteria options ('order', 'limit', 'offset', 'direction', 'group')
+     * @return mixed TCriteria instance
      */
     public static function toCriteria(
         \Antevemus\ASpecification\Contracts\ISpecification $specification,
@@ -730,10 +732,10 @@ final class Spec
     }
 
     /**
-     * Cria uma instância de TCriteriaBuilder para compilação fluente.
+     * Creates an instance of TCriteriaBuilder for fluent compilation.
      *
-     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification
-     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap
+     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to compile
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Field mapper
      * @return \Antevemus\ASpecification\Criteria\TCriteriaBuilder
      */
     public static function criteriaBuilder(
@@ -744,14 +746,95 @@ final class Spec
     }
 
     // ==========================================
-    // 10. Fallback Dinâmico
+    // 10. Declarative Attributes Validation (PHP 8.4)
     // ==========================================
 
     /**
-     * Redireciona chamadas estáticas não explicitamente definidas para a SpecificationFactory.
+     * Validate an object annotated with #[AssertSpec] and #[ValidateRule] attributes.
      *
-     * @param string $name
-     * @param array<mixed> $arguments
+     * @param object $target The target object (DTO, Entity, Value Object, Form Request)
+     * @return \Antevemus\ASpecification\Results\SpecificationResult
+     */
+    public static function validateAttributes(object $target): \Antevemus\ASpecification\Results\SpecificationResult
+    {
+        return \Antevemus\ASpecification\Attributes\AttributeValidator::validate($target);
+    }
+
+    /**
+     * Assert that an object satisfies all #[AssertSpec] and #[ValidateRule] attributes,
+     * throwing an AttributeValidationException on any failure.
+     *
+     * @param object $target The target object to validate
+     * @throws \Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException
+     */
+    public static function assertAttributes(object $target): void
+    {
+        \Antevemus\ASpecification\Attributes\AttributeValidator::assert($target);
+    }
+
+    // ==========================================
+    // 11. ALinq & Lazy Streaming Integration
+    // ==========================================
+
+    /**
+     * Converts an iterable or InMemoryRepository into a fluent ALinqCollection.
+     *
+     * @param iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items
+     * @return object Instance of \Antevemus\ALinq\ALinqCollection
+     */
+    public static function linq(iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items): object
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::toCollection($items);
+    }
+
+    /**
+     * Filters an iterable or InMemoryRepository with a specification, returning an ALinqCollection.
+     *
+     * @param iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items
+     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification
+     * @return object Filtered \Antevemus\ALinq\ALinqCollection
+     */
+    public static function filterLinq(
+        iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items,
+        \Antevemus\ASpecification\Contracts\ISpecification $specification
+    ): object {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::filter($items, $specification);
+    }
+
+    /**
+     * Converts an iterable, generator, or InMemoryRepository into a streaming ALinqLazyCollection with O(1) RAM.
+     *
+     * @param iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source
+     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
+     */
+    public static function linqLazy(iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source): object
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::toLazyCollection($source);
+    }
+
+    /**
+     * Filters a stream or generator with constant O(1) RAM using a specification, returning an ALinqLazyCollection.
+     *
+     * @param iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source
+     * @param \Antevemus\ASpecification\Contracts\ISpecification $specification
+     * @return object Filtered \Antevemus\ALinq\ALinqLazyCollection
+     */
+    public static function filterLazy(
+        iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source,
+        \Antevemus\ASpecification\Contracts\ISpecification $specification
+    ): object {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($source, $specification);
+    }
+
+    // ==========================================
+    // 12. Dynamic Factory Fallback
+    // ==========================================
+
+    /**
+     * Forwards undeclared static calls to the underlying SpecificationFactory instance.
+     *
+     * @param string $name Method name
+     * @param array<mixed> $arguments Method arguments
      * @return mixed
      */
     public static function __callStatic(string $name, array $arguments): mixed

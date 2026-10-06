@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -7,35 +9,35 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 
 /**
- * NullRepository class.
+ * NullRepository - Null Object Pattern Repository Implementation
  *
- * Implementação do NullObject Pattern para o contrato de Repositório.
- * Não armazena nada, não retorna nada, não levanta exceções. 
- * É desenhado puramente para mocks estruturais rápidos ou serviços inócuos 
- * que obrigatoriamente dependam da injeção de dependência de um IRepository.
+ * Implementation of the Null Object Pattern for the Repository contract.
+ * Stores nothing, returns nothing, throws no exceptions.
+ * Designed purely for fast structural test mocks or innocuous services
+ * that strictly require dependency injection of an IRepository.
  *
- * Funcionalidades:
- * - Implementação inócua de todas as operações de persistência e consulta
- * - Retornos neutros seguros (0, array vazio, null, false)
- * - Validações de especificação mantidas para conformidade de contrato
+ * Features:
+ * - Harmless no-op implementation of all persistence and query operations
+ * - Safe neutral return values (0, empty array, null, false)
+ * - Specification validations maintained for contract compliance
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class NullRepository extends AbstractRepository implements IVolatileRepository
 {
     /**
-     * Retorna sempre zero (Null Object).
+     * Always returns zero (Null Object).
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return int Sempre 0
+     * @param ISpecification $specification Filter specification
+     * @return int Always 0
      */
     public function countAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
@@ -44,22 +46,22 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
     }
 
     /**
-     * Retorna um iterável vazio (Null Object).
+     * Returns an empty iterable (Null Object).
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return iterable<T> Sempre vazio
+     * @param ISpecification $specification Filter specification
+     * @return iterable<T> Always empty
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
         $this->validateSpecification($specification);
-        return []; // Em PHP, array vazio é um iterable válido sem yield
+        return []; // In PHP, empty array is a valid iterable without yielding
     }
 
     /**
-     * Retorna uma lista vazia (Null Object).
+     * Returns an empty array (Null Object).
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return array<T> Sempre vazio
+     * @param ISpecification $specification Filter specification
+     * @return array<T> Always empty
      */
     public function findAllEntitiesSpecifiedBy(ISpecification $specification): array
     {
@@ -68,9 +70,9 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
     }
 
     /**
-     * Retorna sempre null (Null Object).
+     * Always returns null (Null Object).
      *
-     * @param ISpecification $specification Regra de filtragem
+     * @param ISpecification $specification Filter specification
      * @return null
      */
     public function findSingleEntitySpecifiedBy(ISpecification $specification): ?IEntity
@@ -80,40 +82,40 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
     }
 
     /**
-     * Operação inócua (Null Object).
+     * No-op operation (Null Object).
      *
      * @param IEntity $entity
      * @return void
      */
     public function put(IEntity $entity): void
     {
-        // Null Object Pattern - não faz nada
+        // Null Object Pattern - no-op
     }
 
     /**
-     * Operação inócua (Null Object).
+     * No-op operation (Null Object).
      *
      * @param array<IEntity> $collectionOfEntities
      * @return void
      */
     public function putAll(array $collectionOfEntities): void
     {
-        // Null Object Pattern - não faz nada
+        // Null Object Pattern - no-op
     }
 
     /**
-     * Operação inócua (Null Object).
+     * No-op operation (Null Object).
      *
      * @param IEntity $entity
      * @return void
      */
     public function update(IEntity $entity): void
     {
-        // Null Object Pattern - não faz nada
+        // Null Object Pattern - no-op
     }
 
     /**
-     * Operação inócua (Null Object).
+     * No-op operation (Null Object).
      *
      * @param IEntity $entity
      * @param ISpecification|null $deltaSpecification
@@ -121,14 +123,14 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
     {
-        // Null Object Pattern - não faz nada
+        // Null Object Pattern - no-op
     }
 
     /**
-     * Retorna sempre 0 (Null Object).
+     * Always returns 0 (Null Object).
      *
      * @param ISpecification $specification
-     * @return int Sempre 0
+     * @return int Always 0
      */
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
@@ -137,10 +139,10 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
     }
 
     /**
-     * Retorna sempre false (Null Object).
+     * Always returns false (Null Object).
      *
      * @param IEntity $entity
-     * @return bool Sempre false
+     * @return bool Always false
      */
     public function remove(IEntity $entity): bool
     {

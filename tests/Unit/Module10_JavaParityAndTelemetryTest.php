@@ -156,7 +156,7 @@ class Module10_JavaParityAndTelemetryTest extends TestCase
             $orSpec->remainderUnsatisfiedBy($candidatePartial);
         } catch (InvalidArgumentException $e) {
             $threw = true;
-            $this->assertTrue(str_contains($e->getMessage(), 'disjuntivas não é suportada'));
+            $this->assertTrue(str_contains($e->getMessage(), 'disjunctive') || str_contains($e->getMessage(), 'disjuntivas'));
         }
         $this->assertTrue($threw);
     }

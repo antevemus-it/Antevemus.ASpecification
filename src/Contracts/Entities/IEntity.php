@@ -1,43 +1,50 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Entities;
 
 use DateTimeImmutable;
 
 /**
- * Interface IEntity.
+ * IEntity - Primary Contract for Domain Entities
  *
- * Contrato primário para todas as entidades de domínio da aplicação.
- * Garante que a entidade possua uma identidade única e um registro de momento de criação.
+ * Guarantees that domain entities have a unique, non-null identity
+ * and an immutable creation timestamp.
  *
- * @version    0.1
+ * Features:
+ * - Immutable entity identifier access (getEntityId)
+ * - Creation timestamp extraction (getTimeOfCreation)
+ * - Identity-based equivalence check (equals)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Entities
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IEntity
 {
     /**
-     * Uma entidade de domínio sempre deve possuir um ID único, final e não-nulo.
-     * O retorno é `mixed` para abranger a possibilidade de primitivos (int, string) ou Value Objects estruturados.
+     * A domain entity must always possess a unique, final, and non-null identifier.
+     * Return type is mixed to accommodate primitive types (int, string) or structured Value Objects.
      *
-     * @return mixed A identidade da entidade
+     * @return mixed The unique entity identity
      */
     public function getEntityId(): mixed;
 
     /**
-     * Uma entidade de domínio sempre origina de um momento específico no tempo.
+     * A domain entity always originates from a specific instant in time.
      *
-     * @return DateTimeImmutable O momento da criação em memória desta instância da entidade
+     * @return DateTimeImmutable The creation timestamp of this in-memory entity instance
      */
     public function getTimeOfCreation(): DateTimeImmutable;
     
     /**
-     * Avalia se a entidade é equivalente a outra baseada puramente na identidade.
+     * Determine whether this entity is equivalent to another based strictly on identity.
      *
-     * @param IEntity $other A entidade a ser comparada
+     * @param IEntity $other Target entity to compare against
      * @return bool
      */
     public function equals(IEntity $other): bool;

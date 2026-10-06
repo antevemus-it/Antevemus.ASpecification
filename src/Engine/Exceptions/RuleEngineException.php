@@ -7,20 +7,20 @@ namespace Antevemus\ASpecification\Engine\Exceptions;
 use RuntimeException;
 
 /**
- * RuleEngineException - Exceção Base para Falhas na Dynamic Rule Engine
+ * RuleEngineException - Base Exception for Dynamic Rule Engine Failures
  *
- * Lançada quando ocorrem erros operacionais, de configuração ou de compilação
- * durante o ciclo de vida do motor dinâmico de especificações.
+ * Thrown when operational, configuration, or compilation failures occur
+ * during the lifecycle of the dynamic specification engine.
  *
- * Funcionalidades:
- * - Exceção base tipada para o subsistema de Engine
- * - Rastreabilidade com mensagem e causa original
+ * Features:
+ * - Typed base exception for the Engine subsystem
+ * - Preserves contextual message and root cause
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class RuleEngineException extends RuntimeException

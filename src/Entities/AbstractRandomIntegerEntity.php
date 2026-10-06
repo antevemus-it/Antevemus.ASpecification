@@ -1,21 +1,26 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Entities;
 
 /**
- * AbstractRandomIntegerEntity class.
+ * AbstractRandomIntegerEntity - Abstract Test Fixture Entity with Random Integer Identifier
  *
- * Classe abstrata que provê automaticamente um Integer aleatório
- * para a entidade a partir do momento em que é instanciada.
- * 
- * ATENÇÃO: Esta classe é desenhada puramente para a construção simples e read-friendly 
- * em testes unitários. NÃO UTILIZE ESTA CLASSE EM AMBIENTES DE PRODUÇÃO!
+ * Automatically assigns a pseudo-random integer identity upon instantiation.
  *
- * @version    0.1
+ * CAUTION: Designed solely for testing, rapid fixture generation, and benchmarking.
+ * DO NOT USE THIS CLASS IN PRODUCTION DOMAIN MODELS!
+ *
+ * Features:
+ * - Automatic random 64-bit integer identity generation
+ * - Readonly entityId property protection
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Entities
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractRandomIntegerEntity extends AbstractEntity
@@ -23,7 +28,7 @@ abstract class AbstractRandomIntegerEntity extends AbstractEntity
     protected readonly int $entityId;
 
     /**
-     * Construtor que gera automaticamente um identificador inteiro aleatório.
+     * Constructor generating a pseudo-random positive integer identifier.
      */
     public function __construct()
     {
@@ -34,7 +39,7 @@ abstract class AbstractRandomIntegerEntity extends AbstractEntity
     /**
      * {@inheritdoc}
      *
-     * @return int O inteiro gerado da entidade
+     * @return int The generated random entity integer identifier
      */
     public final function getEntityId(): int
     {

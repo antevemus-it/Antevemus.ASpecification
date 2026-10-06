@@ -9,22 +9,22 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
- * AlwaysTrueSpecification - Especificação folha tautológica (sempre satisfeita)
+ * AlwaysTrueSpecification - Tautological leaf specification (always satisfied).
  *
- * Representa a especificação universal para o tipo configurado, servindo como
- * elemento neutro na conjunção (AND) e raiz de subsunção universal.
+ * Represents the universal specification for the configured type, serving as the
+ * identity element in conjunctions (AND) and the root of universal subsumption.
  *
- * Funcionalidades:
- * - Avaliação constante `true` para qualquer candidato
- * - Generalização universal de qualquer especificação compatível em tipo (RF-10)
+ * Features:
+ * - Constant `true` evaluation for any candidate
+ * - Universal generalization over all type-compatible specifications (RF-10)
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class AlwaysTrueSpecification extends AbstractSpecification
@@ -32,7 +32,7 @@ class AlwaysTrueSpecification extends AbstractSpecification
     use SubsumptionAndEqualityTrait;
 
     /**
-     * @param class-string<T>|string $type Tipo do candidato
+     * @param class-string<T>|string $type Candidate type designation
      */
     public function __construct(
         private readonly string $type = "mixed"

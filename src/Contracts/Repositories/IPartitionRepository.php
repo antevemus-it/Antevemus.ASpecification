@@ -9,138 +9,138 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use InvalidArgumentException;
 
 /**
- * IPartitionRepository - Contrato de repositório particionado em grafo
+ * IPartitionRepository - Contract for Graph-Partitioned Repositories
  *
- * Contrato para nós de um repositório particionado estruturado como Grafo Acíclico Dirigido (DAG).
- * Cada partição delimita um subconjunto de entidades por meio de uma ISpecification,
- * otimizando consultas via descarte antecipado O(1) de ramos disjuntos e
- * direcionando inserções e remoções de forma hierárquica por subsunção.
+ * Contract for nodes of a partitioned repository structured as a Directed Acyclic Graph (DAG).
+ * Each partition bounds a subset of entities via an ISpecification,
+ * optimizing queries via O(1) early branch pruning of disjoint paths and
+ * hierarchically routing insertions and removals via subsumption.
  *
- * Funcionalidades:
- * - Identificação estrutural (isRoot, isLeaf, getRootPartition, getParentRepository)
- * - Consulta de especificações de delimitação (getSpecification, getParentSpecification)
- * - Acesso ao repositório subjacente encapsulado (getUnderlyingRepository)
- * - Adição de partições por especificação, com identificador e com repositório customizado
- * - Localização inteligente de partição por especificação (findPartition)
- * - Obtenção de partições diretas, todas as partições e filtragem de partições
- * - Obtenção exclusiva de entidades locais (getEntitiesOfThisPartitionOnly)
- * - Reparticionamento dinâmico de entidade e do repositório completo
+ * Features:
+ * - Structural graph inspection (isRoot, isLeaf, getRootPartition, getParentRepository)
+ * - Bounding specification retrieval (getSpecification, getParentSpecification)
+ * - Underlying encapsulated repository access (getUnderlyingRepository)
+ * - Partition addition by specification, with custom ID or custom repository
+ * - Intelligent partition location by specification (findPartition)
+ * - Retrieval of direct child partitions, all partitions, and filtered partitions
+ * - Local-only entity querying (getEntitiesOfThisPartitionOnly)
+ * - Dynamic single-entity and full-graph repartitioning
  *
  * @template T of IEntity
  * @extends IRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IPartitionRepository extends IRepository
 {
     /**
-     * Retorna o tipo de entidade (FQN da classe ou interface) gerenciada por este repositório.
+     * Returns the entity type (FQN class or interface) managed by this repository.
      */
     public function getEntityType(): string;
 
     /**
-     * Informa se este nó de partição é a raiz do grafo.
+     * Reports whether this partition node is the root of the graph.
      */
     public function isRoot(): bool;
 
     /**
-     * Retorna o nó raiz deste grafo de partições.
+     * Returns the root node of this partition graph.
      *
      * @return IPartitionRepository<T>
      */
     public function getRootPartition(): IPartitionRepository;
 
     /**
-     * Informa se este nó de partição é folha (sem sub-partições filhas).
+     * Reports whether this partition node is a leaf (no child partitions).
      */
     public function isLeaf(): bool;
 
     /**
-     * Retorna o repositório particionado pai deste nó, ou null se este nó for a raiz.
+     * Returns the parent partitioned repository node, or null if this node is root.
      *
      * @return IPartitionRepository<T>|null
      */
     public function getParentRepository(): ?IPartitionRepository;
 
     /**
-     * Retorna a especificação associada ao nó pai, ou null se este nó for a raiz.
+     * Returns the specification associated with the parent node, or null if root.
      *
      * @return ISpecification<T>|null
      */
     public function getParentSpecification(): ?ISpecification;
 
     /**
-     * Retorna a especificação que delimita esta partição, ou null caso seja uma raiz irrestrita.
+     * Returns the specification bounding this partition, or null if unconstrained root.
      *
      * @return ISpecification<T>|null
      */
     public function getSpecification(): ?ISpecification;
 
     /**
-     * Retorna o repositório subjacente (alvo) encapsulado por este nó.
+     * Returns the underlying repository encapsulated by this node.
      *
      * @return IRepository<T>
      */
     public function getUnderlyingRepository(): IRepository;
 
     /**
-     * Adiciona uma nova partição delimitada pela especificação informada.
-     * Instancia automaticamente um repositório compatível do mesmo tipo da base.
+     * Adds a new partition bounded by the provided specification.
+     * Automatically instantiates a compatible repository matching base type.
      *
-     * @param ISpecification<T> $specification Especificação delimitadora da partição
-     * @return IPartitionRepository<T> A partição criada e posicionada no grafo
-     * @throws InvalidArgumentException Se a especificação for nula ou inválida
+     * @param ISpecification<T> $specification Bounding specification for the partition
+     * @return IPartitionRepository<T> Created and positioned partition node
+     * @throws InvalidArgumentException If specification is null or invalid
      */
     public function addPartition(ISpecification $specification): IPartitionRepository;
 
     /**
-     * Adiciona uma nova partição informando a especificação delimitadora e um identificador explícito.
+     * Adds a new partition with a bounding specification and an explicit identifier.
      *
-     * @param ISpecification<T> $specification Especificação delimitadora da partição
-     * @param string $partitionId Identificador único da partição (obrigatório em repositórios persistentes)
-     * @return IPartitionRepository<T> A partição criada e posicionada no grafo
-     * @throws InvalidArgumentException Se a especificação for nula ou o identificador for inválido/repetido
+     * @param ISpecification<T> $specification Bounding specification for the partition
+     * @param string $partitionId Unique partition ID (required for persistent repositories)
+     * @return IPartitionRepository<T> Created and positioned partition node
+     * @throws InvalidArgumentException If specification is null or identifier is invalid/duplicate
      */
     public function addPartitionWithId(ISpecification $specification, string $partitionId): IPartitionRepository;
 
     /**
-     * Adiciona uma nova partição informando a especificação e a instância concreta de repositório a utilizar.
+     * Adds a new partition with a bounding specification and a concrete repository instance.
      *
-     * @param ISpecification<T> $specification Especificação delimitadora da partição
-     * @param IRepository<T> $repository Repositório concreto que armazenará as entidades da partição
-     * @return IPartitionRepository<T> A partição criada e posicionada no grafo
-     * @throws InvalidArgumentException Se a especificação ou repositório forem nulos/inválidos
+     * @param ISpecification<T> $specification Bounding specification for the partition
+     * @param IRepository<T> $repository Concrete repository storing partition entities
+     * @return IPartitionRepository<T> Created and positioned partition node
+     * @throws InvalidArgumentException If specification or repository is null/invalid
      */
     public function addPartitionWithRepository(ISpecification $specification, IRepository $repository): IPartitionRepository;
 
     /**
-     * Localiza a partição mais especializada que corresponde ou generaliza a especificação informada.
+     * Locates the most specialized partition matching or generalizing the given specification.
      *
-     * @param ISpecification<T> $specification Especificação buscada
-     * @return IPartitionRepository<T>|null A partição encontrada ou null
+     * @param ISpecification<T> $specification Sought specification
+     * @return IPartitionRepository<T>|null Found partition node or null
      */
     public function findPartition(ISpecification $specification): ?IPartitionRepository;
 
     /**
-     * Retorna a lista de partições filhas diretas deste nó.
+     * Returns the list of direct child partitions of this node.
      *
      * @return array<IPartitionRepository<T>>
      */
     public function getDirectPartitions(): array;
 
     /**
-     * Retorna todas as partições sob este nó em profundidade no grafo.
+     * Returns all descending partitions under this node in depth-first traversal.
      *
      * @return array<IPartitionRepository<T>>
      */
     public function getAllPartitions(): array;
 
     /**
-     * Coleta partições sob este nó, opcionalmente filtrando por uma especificação.
+     * Collects partitions under this node, optionally filtering by specification.
      *
      * @param ISpecification<T>|null $filterSpecification
      * @return array<IPartitionRepository<T>>
@@ -148,26 +148,26 @@ interface IPartitionRepository extends IRepository
     public function collectPartitions(?ISpecification $filterSpecification = null): array;
 
     /**
-     * Retorna apenas as entidades residentes diretamente na coleção deste nó,
-     * sem agregar entidades de sub-partições filhas.
+     * Returns only the entities directly residing in this node collection,
+     * without aggregating entities from child sub-partitions.
      *
      * @return array<T>
      */
     public function getEntitiesOfThisPartitionOnly(): array;
 
     /**
-     * Reparticiona uma entidade específica após mudança em seu estado interno,
-     * realocando-a para as partições adequadas e removendo-a das partições que não satisfaz mais.
+     * Repartitions a specific entity after internal state change,
+     * reallocating it to matching partitions and removing from partitions it no longer satisfies.
      *
-     * @param T $entity Entidade a ser reavaliada
-     * @return bool True se a entidade mudou de partição, False caso contrário
+     * @param T $entity Entity to re-evaluate
+     * @return bool True if entity changed partitions, false otherwise
      */
     public function repartition(IEntity $entity): bool;
 
     /**
-     * Reparticiona todas as entidades deste nó e de suas sub-partições filhas.
+     * Repartitions all entities in this node and its descending child sub-partitions.
      *
-     * @return int Quantidade total de entidades que foram realocadas
+     * @return int Total number of relocated entities
      */
     public function repartitionAll(): int;
 }

@@ -7,22 +7,22 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 
 /**
- * IBinaryFormatRepository - Marcador de repositório em formato binário
+ * IBinaryFormatRepository - Marker Interface for Binary Format Repositories
  *
- * Interface marcadora de classificação para repositórios persistentes que armazenam
- * entidades em formato binário (serialização nativa, protobuf, bson, etc).
+ * Classification marker interface for persistent repositories storing
+ * entities in binary formats (native serialization, Protobuf, BSON, etc.).
  *
- * Funcionalidades:
- * - Classificação semântica de repositório com mídia binária
- * - Preservação do tipo durante promoção de repositório
+ * Features:
+ * - Semantic classification for repositories with binary media
+ * - Type preservation during repository promotion
  *
  * @template T of IEntity
  * @extends IPersistentRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IBinaryFormatRepository extends IPersistentRepository

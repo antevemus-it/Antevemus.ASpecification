@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql;
 
 /**
- * SqlDialect - Enumeração de Dialetos de Bancos de Dados Relacionais Suportados
+ * SqlDialect - Enumeration of Supported Relational Database Dialects
  *
- * Mapeia os SGBDs compatíveis com o ecossistema Antevemus e Adianti Framework,
- * abrangendo PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite e ANSI padrão.
+ * Maps relational database engines compatible with the Antevemus ecosystem and Adianti Framework,
+ * covering PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, and standard ANSI.
  *
- * Funcionalidades:
- * - Suporte nativo a todos os drivers: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite
- * - Normalização de identificadores e drivers via fromDriver()
- * - Identificação de família arquitetural do dialeto
+ * Features:
+ * - Native driver support: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite
+ * - Normalization of driver names and variants via fromDriver()
+ * - Architectural family classification
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 enum SqlDialect: string
@@ -38,10 +38,10 @@ enum SqlDialect: string
     case IBASE = 'ibase';
 
     /**
-     * Resolve o dialeto a partir de qualquer string de driver recebida.
+     * Resolve dialect enum from driver name string or instance.
      *
-     * @param string|self|null $driver Nome do driver ou SGBD
-     * @param self $default Fallback padrão se desconhecido
+     * @param string|self|null $driver Driver name or RDBMS identifier
+     * @param self $default Fallback dialect if unrecognized
      * @return self
      */
     public static function fromDriver(self|string|null $driver, self $default = self::ANSI): self

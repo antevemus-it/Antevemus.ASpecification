@@ -8,59 +8,59 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use DateTimeInterface;
 
 /**
- * IPersistentEntity - Envelope de entidade e metadados persistentes
+ * IPersistentEntity - Wrapper for Entity and Persistence Metadata
  *
- * Contrato para o envelope (wrapper) que une uma entidade de domínio (IEntity)
- * aos seus respectivos metadados de ciclo de vida em repositórios persistentes.
+ * Contract for the envelope (wrapper) joining a domain entity (IEntity)
+ * to its corresponding lifecycle metadata in persistent repositories.
  *
- * Funcionalidades:
- * - Acesso e substituição da entidade de domínio encapsulada
- * - Acesso e atualização dos metadados de persistência
- * - Encaminhamento direto de registro de leituras e gravações
+ * Features:
+ * - Access and mutation of encapsulated domain entity
+ * - Access and updating of persistence metadata
+ * - Direct forwarding of read and write event notifications
  *
  * @template T of IEntity
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IPersistentEntity
 {
     /**
-     * Retorna a entidade de domínio encapsulada.
+     * Returns the encapsulated domain entity.
      *
      * @return T
      */
     public function getEntity(): IEntity;
 
     /**
-     * Substitui a entidade de domínio encapsulada.
+     * Replaces the encapsulated domain entity.
      *
      * @param T $entity
      */
     public function setEntity(IEntity $entity): void;
 
     /**
-     * Retorna os metadados de persistência associados à entidade.
+     * Returns persistence metadata associated with the entity.
      */
     public function getMetaData(): IEntityPersistenceMetaData;
 
     /**
-     * Atualiza os metadados de persistência associados à entidade.
+     * Updates persistence metadata associated with the entity.
      */
     public function setMetaData(IEntityPersistenceMetaData $metaData): void;
 
     /**
-     * Notifica e registra uma leitura da entidade nos metadados associados.
+     * Notifies and records an entity read in the associated metadata.
      *
      * @param DateTimeInterface|null $timestamp
      */
     public function registerRead(?DateTimeInterface $timestamp = null): void;
 
     /**
-     * Notifica e registra uma gravação da entidade nos metadados associados.
+     * Notifies and records an entity write in the associated metadata.
      *
      * @param DateTimeInterface|null $timestamp
      */

@@ -5,64 +5,64 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Concurrent;
 
 /**
- * ISynchronizer - Contrato para Sincronização de Execução Concorrente e Exclusiva
+ * ISynchronizer - Contract for Concurrent and Exclusive Execution Synchronization
  *
- * Define operações de controle de concorrência baseadas no padrão Read/Write Lock.
- * Permite que blocos de código (callables) sejam executados em modo CONCURRENT
- * (compartilhado para múltiplas leituras simultâneas) ou em modo EXCLUSIVE
- * (acesso atômico e isolado para mutações/escritas críticas).
+ * Defines concurrency control operations based on the Read/Write Lock pattern.
+ * Enables code blocks (callables) to be executed in CONCURRENT mode
+ * (shared across multiple simultaneous reads) or in EXCLUSIVE mode
+ * (atomic, isolated access for critical state mutations/writes).
  *
- * Funcionalidades:
- * - Execução concorrente void (runConcurrently) e com retorno de valor (callConcurrently)
- * - Execução exclusiva void (runExclusively) e com retorno de valor (callExclusively)
- * - Garantia de liberação de travas/permissões via blocos protegidos
+ * Features:
+ * - Void concurrent execution (runConcurrently) and value-returning (callConcurrently)
+ * - Void exclusive execution (runExclusively) and value-returning (callExclusively)
+ * - Guaranteed release of locks/permits via protected execution blocks
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISynchronizer
 {
     /**
-     * Executa uma ação de forma concorrente (compartilhada).
+     * Execute an action concurrently (shared mode).
      *
-     * Ideal para leituras paralelas. Não bloqueia outras operações concorrentes,
-     * mas cede passagem para operações exclusivas pendentes ou ativas.
+     * Ideal for parallel reads. Does not block other concurrent operations,
+     * but yields to pending or active exclusive operations.
      *
-     * @param callable(): void $action Ação a ser executada
+     * @param callable(): void $action Action to execute
      * @return void
      */
     public function runConcurrently(callable $action): void;
 
     /**
-     * Executa uma ação com retorno de valor de forma concorrente (compartilhada).
+     * Execute a value-returning action concurrently (shared mode).
      *
      * @template T
-     * @param callable(): T $action Ação a ser executada
-     * @return T Resultado retornado pela ação
+     * @param callable(): T $action Action to execute
+     * @return T Result returned by the action
      */
     public function callConcurrently(callable $action): mixed;
 
     /**
-     * Executa uma ação de forma exclusiva (isolada).
+     * Execute an action exclusively (isolated mode).
      *
-     * Aguarda todas as operações concorrentes em andamento terminarem,
-     * bloqueia novas operações concorrentes e exclusivas, e executa a ação de forma atômica.
+     * Awaits completion of all currently running concurrent operations,
+     * blocks subsequent concurrent and exclusive operations, and executes atomically.
      *
-     * @param callable(): void $action Ação a ser executada
+     * @param callable(): void $action Action to execute
      * @return void
      */
     public function runExclusively(callable $action): void;
 
     /**
-     * Executa uma ação com retorno de valor de forma exclusiva (isolada).
+     * Execute a value-returning action exclusively (isolated mode).
      *
      * @template T
-     * @param callable(): T $action Ação a ser executada
-     * @return T Resultado retornado pela ação
+     * @param callable(): T $action Action to execute
+     * @return T Result returned by the action
      */
     public function callExclusively(callable $action): mixed;
 }

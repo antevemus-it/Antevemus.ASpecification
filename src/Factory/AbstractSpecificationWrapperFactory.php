@@ -1,33 +1,32 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ISpecificationWrapperFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractSpecificationWrapperFactory class.
+ * AbstractSpecificationWrapperFactory - Base abstract factory for specification wrappers
  *
- * Classe abstrata base para fábricas de wrappers de especificações.
+ * Provides complete implementations for all identity wrapper methods (returning specifications unchanged).
+ * Derived classes may override if custom wrapping behavior is required.
  *
- * Como todos os métodos são wrappers de identidade (retornam a spec sem alterações),
- * esta classe fornece implementação completa. Classes derivadas podem sobrescrever
- * se precisarem de comportamento customizado.
- *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractSpecificationWrapperFactory implements ISpecificationWrapperFactory
 {
     /**
-     * Valida que a especificação não é null.
+     * Validates that the specification is not null.
      *
-     * @param ISpecification $specification Especificação a validar
-     * @throws \InvalidArgumentException Se a especificação for null
+     * @param ISpecification $specification Specification to validate
+     * @throws \InvalidArgumentException If specification is null
      */
     protected function validateSpecification(ISpecification $specification): void
     {

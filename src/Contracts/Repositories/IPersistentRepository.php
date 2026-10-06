@@ -8,80 +8,80 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 
 /**
- * IPersistentRepository - Contrato de repositório persistente
+ * IPersistentRepository - Contract for Persistent Repositories
  *
- * Contrato formal para repositórios persistentes. Um repositório persistente
- * gerencia a gravação e recuperação de entidades em mídias de longo prazo
- * (banco de dados, disco, arquivos físicos, serviços remotos), expondo
- * ciclo de vida explícito (load, store, close), identificador único e metadados.
+ * Formal contract for persistent repositories. A persistent repository
+ * manages storing and retrieving entities across long-term media
+ * (database, filesystem, physical files, remote storage services), exposing
+ * explicit lifecycle methods (load, store, close), a unique identifier, and metadata.
  *
- * Funcionalidades:
- * - Identificação única do repositório (getRepositoryId)
- * - Consulta de diretório de dados em disco (getDataDirectory)
- * - Definição da modalidade de persistência (getPersistenceDefinition)
- * - Descrição de formato de dados (getFormatDescription)
- * - Ciclo de vida: carga (load), gravação (store) e encerramento (close)
- * - Obtenção de metadados de ciclo de vida por entidade (getEntityMetaData)
+ * Features:
+ * - Unique repository identification (getRepositoryId)
+ * - Physical storage directory retrieval (getDataDirectory)
+ * - Persistence mode definition (getPersistenceDefinition)
+ * - Format description reporting (getFormatDescription)
+ * - Explicit lifecycle control: load, store, and close
+ * - Per-entity persistence metadata tracking (getEntityMetaData)
  *
  * @template T of IEntity
  * @extends IRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IPersistentRepository extends IRepository
 {
     /**
-     * Retorna o identificador único do repositório no sistema.
+     * Returns the unique repository identifier in the system.
      */
     public function getRepositoryId(): string;
 
     /**
-     * Retorna o diretório de dados físico utilizado para armazenamento,
-     * ou null caso a persistência não seja baseada em sistema de arquivos local.
+     * Returns the physical filesystem data directory used for storage,
+     * or null if persistence is not based on local disk storage.
      */
     public function getDataDirectory(): ?string;
 
     /**
-     * Retorna a modalidade de persistência deste repositório.
+     * Returns the persistence modality and definition of this repository.
      */
     public function getPersistenceDefinition(): PersistenceDefinition;
 
     /**
-     * Retorna uma descrição curta legível do formato de armazenamento.
+     * Returns a short human-readable description of the storage format.
      */
     public function getFormatDescription(): string;
 
     /**
-     * Carrega os dados da mídia persistente para a memória do repositório.
+     * Loads entities from persistent storage media into repository memory.
      *
-     * @throws RepositoryException Caso ocorra erro de E/S ou inconsistência na carga
+     * @throws RepositoryException If an I/O error or load inconsistency occurs
      */
     public function load(): void;
 
     /**
-     * Grava e sincroniza os dados da memória na mídia de armazenamento de longo prazo.
+     * Stores and synchronizes memory data into persistent storage media.
      *
-     * @throws RepositoryException Caso ocorra erro durante o processo de gravação
+     * @throws RepositoryException If an error occurs during persistence
      */
     public function store(): void;
 
     /**
-     * Fecha o repositório, liberando recursos, locks ou conexões pendentes.
+     * Closes the repository, releasing locks, file handles, or open connections.
      *
-     * @throws RepositoryException Caso ocorra erro durante o fechamento
+     * @throws RepositoryException If an error occurs during closing
      */
     public function close(): void;
 
     /**
-     * Retorna os metadados de persistência associados a uma entidade gerenciada.
+     * Returns persistence metadata associated with a managed entity.
      *
      * @param T $entity
      * @return IEntityPersistenceMetaData|null
-     * @throws RepositoryException Se a operação não for suportada pela implementação
+     * @throws RepositoryException If the operation is not supported by implementation
      */
     public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData;
 }

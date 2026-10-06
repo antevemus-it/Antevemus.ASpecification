@@ -8,32 +8,32 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\RuleEngineVerdict;
 
 /**
- * IDynamicSpecificationEngine - Orquestrador Principal do Motor Dinâmico de Especificações
+ * IDynamicSpecificationEngine - Master Orchestrator for Dynamic Specification Engine
  *
- * Coordena o carregamento de regras do catálogo, a compilação em árvore booleana de
- * especificações, a execução contra a entidade alvo e a emissão do veredito operacional.
+ * Coordinates catalog rule retrieval, Boolean specification tree compilation,
+ * execution against the target entity, and operational verdict generation.
  *
- * Funcionalidades:
- * - Validação integral de regras e obrigatoriedades documentais com um único comando
- * - Compilação isolada de especificações compostas para inspeção ou testes
- * - Acesso aos repositórios de catálogo e registro de handlers
+ * Features:
+ * - Unified rule and document requirement validation in a single command
+ * - Isolated compilation of composite specifications for inspection or testing
+ * - Direct access to rule catalog and handler registry
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IDynamicSpecificationEngine
 {
     /**
-     * Avalia o alvo contra todas as regras e documentos ativos para o escopo e cenário informados.
+     * Evaluates the target against all active rules and document requirements for the specified scope and scenario.
      *
-     * @param object|array $target Entidade de domínio ou estrutura a ser avaliada
-     * @param string $escopo Escopo operacional (ex.: 'contrato_locacao', 'sinistro')
-     * @param string|null $cenario Cenário de negócio opcional
-     * @param array<string, mixed> $context Metadados adicionais de contexto
+     * @param object|array $target Domain entity or data structure under evaluation
+     * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
+     * @param string|null $cenario Optional business scenario
+     * @param array<string, mixed> $context Additional contextual metadata
      * @return RuleEngineVerdict
      */
     public function validate(
@@ -44,11 +44,11 @@ interface IDynamicSpecificationEngine
     ): RuleEngineVerdict;
 
     /**
-     * Compila e retorna a especificação composta unificada sem executá-la imediatamente.
+     * Compiles and returns the unified composite specification without executing it immediately.
      *
-     * @param string $escopo Escopo operacional
-     * @param string|null $cenario Cenário de negócio opcional
-     * @param array<string, mixed> $context Metadados adicionais de contexto
+     * @param string $escopo Operational scope
+     * @param string|null $cenario Optional business scenario
+     * @param array<string, mixed> $context Additional contextual metadata
      * @return ISpecification
      */
     public function compileSpecification(
@@ -58,14 +58,14 @@ interface IDynamicSpecificationEngine
     ): ISpecification;
 
     /**
-     * Retorna o catálogo de regras associado.
+     * Returns the associated rule catalog.
      *
      * @return IRuleCatalog
      */
     public function getCatalog(): IRuleCatalog;
 
     /**
-     * Retorna o registro de handlers de especificação.
+     * Returns the rule specification handler registry.
      *
      * @return IRuleSpecificationRegistry
      */

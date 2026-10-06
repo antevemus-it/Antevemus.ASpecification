@@ -1,5 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
+/**
+ * AbstractSpecification - Abstract foundational specification implementation
+ *
+ * Base abstract specification class providing default implementations for composition,
+ * algebraic analysis, visitor dispatch, and notification pattern integration.
+ *
+ * Features:
+ * - Fluent composition operators (and, or, not, andNot, orNot, where)
+ * - Notification pattern diagnostic integration (evaluate, because, withCode)
+ * - Visitor pattern dispatch for SQL and Criteria translation
+ * - Set algebra analysis hooks (generalization, specialization, disjointness)
+ *
+ * @template T
+ * @implements ISpecification<T>
+ * @version    1.1.0
+ * @package    Antevemus\ASpecification
+ * @subpackage Core
+ * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
+ * @license    MIT
+ */
+
 namespace Antevemus\ASpecification;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
@@ -12,29 +36,6 @@ use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use ReflectionClass;
 
-/**
- * AbstractSpecification class.
- *
- * Classe abstrata base que fornece implementação padrão para os métodos
- * de composição da interface ISpecification.
- *
- * Classes concretas de especificação devem estender esta classe e implementar
- * apenas os métodos abstratos:
- * - isSatisfiedBy(): lógica específica de validação
- * - getType(): retorna o tipo do objeto candidato
- *
- * Os métodos de análise (isGeneralizationOf, isSpecialCaseOf, isDisjointWith)
- * possuem implementação padrão que pode ser sobrescrita quando necessário.
- *
- * @template T
- * @implements ISpecification<T>
- * @version    0.1
- * @package    Antevemus\ASpecification
- * @subpackage Core
- * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
- * @license    MIT
- */
 abstract class AbstractSpecification implements ISpecification
 {
     protected ?string $customReason = null;
@@ -67,7 +68,7 @@ abstract class AbstractSpecification implements ISpecification
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->and($otherSpecification, $propertySpecification->not());
         }
@@ -82,7 +83,7 @@ abstract class AbstractSpecification implements ISpecification
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->or($otherSpecification, $propertySpecification->not());
         }
@@ -144,15 +145,15 @@ abstract class AbstractSpecification implements ISpecification
     }
 
     /**
-     * Gera uma mensagem padrão de falha caso não tenha sido configurada via because().
+     * Generates a default failure message if custom reason is not defined via because().
      *
-     * @param mixed $candidate
-     * @return string
+     * @param mixed $candidate Evaluated candidate instance
+     * @return string Human-readable failure explanation
      */
     protected function getDefaultFailureMessage(mixed $candidate): string
     {
         $ruleName = (new ReflectionClass($this))->getShortName();
-        return sprintf("O candidato não satisfez a regra '%s'.", $ruleName);
+        return sprintf("Candidate failed to satisfy rule '%s'.", $ruleName);
     }
 
     /**
@@ -161,7 +162,7 @@ abstract class AbstractSpecification implements ISpecification
     public function where(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification
     {
         if (empty($accessibleObjectName)) {
-            throw new \InvalidArgumentException('O nome do objeto acessível não pode ser vazio');
+            throw new \InvalidArgumentException('Accessible object name cannot be empty');
         }
 
         return new PropertySpecification($this, $accessibleObjectName, $accessibleObjectSpecification);
@@ -174,13 +175,13 @@ abstract class AbstractSpecification implements ISpecification
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->and(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
         return new AndSpecification($this, $otherSpecification);
@@ -193,22 +194,22 @@ abstract class AbstractSpecification implements ISpecification
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->or(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
         return new OrSpecification($this, $otherSpecification);
     }
 
     /**
-     * Resolve a especificação raiz que representa o tipo candidato desta composição.
+     * Resolves the root type specification representing the candidate type of this composite chain.
      *
-     * @return ISpecification
+     * @return ISpecification Root specification
      */
     protected function resolveRootTypeSpecification(): ISpecification
     {
@@ -252,85 +253,66 @@ abstract class AbstractSpecification implements ISpecification
 
     /**
      * {@inheritdoc}
-     *
-     * Implementação padrão: retorna false.
-     * Subclasses devem sobrescrever este método para fornecer lógica específica.
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Implementação padrão conservadora
         return false;
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Implementação padrão: delega para isGeneralizationOf da outra especificação.
      */
     public function isSpecialCaseOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Se a outra especificação é uma generalização desta, então esta é um caso especial daquela
         return $otherSpecification->isGeneralizationOf($this);
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Implementação padrão: retorna false.
-     * Subclasses devem sobrescrever este método para fornecer lógica específica.
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Implementação padrão conservadora
         return false;
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Implementação padrão: retorna false.
-     * Subclasses devem sobrescrever este método para fornecer lógica específica.
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Implementação padrão conservadora
         return false;
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Implementação padrão: retorna o oposto de isDisjointWith().
-     * Se as especificações não são disjuntas, então elas se intersectam.
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Por padrão, intersectsWith é o oposto lógico de isDisjointWith
         return !$this->isDisjointWith($otherSpecification);
     }
 
     /**
-     * Retorna uma representação em string desta especificação.
+     * Returns string representation of this specification class.
      *
      * @return string
      */

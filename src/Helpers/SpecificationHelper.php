@@ -17,23 +17,23 @@ use RuntimeException;
 use TypeError;
 
 /**
- * SpecificationHelper - Utilitário Concreto de Segurança de Tipos, Identidade e Introspecção
+ * SpecificationHelper - Type-Safety, Identity Extraction, and Introspection Utility
  *
- * Implementa métodos auxiliares para operar sobre especificações com máxima segurança de tipos
- * em tempo de execução, geração automática de especificações únicas de identidade para entidades
- * DDD e utilitários de filtragem sobre coleções.
+ * Implements auxiliary operations for runtime type-safe specification execution,
+ * automatic extraction of DDD identity specifications for domain entities, and
+ * high-performance collection filtering utilities.
  *
- * Funcionalidades:
- * - Validação type-safe graciosa (typeSafeIsSatisfiedBy) sem risco de TypeError fatal
- * - Extração de identidade em 3 níveis desacoplados (IEntity -> getters públicos -> Reflection)
- * - Filtragem otimizada de iteráveis com suporte a type-safe e preservação de chaves
- * - Conversão facilitada para Closure e introspecção estrutural de especificações
+ * Features:
+ * - Graceful type-safe validation (typeSafeIsSatisfiedBy) avoiding fatal TypeErrors
+ * - 3-tier decoupled identity extraction (IEntity -> public getters -> Reflection)
+ * - Optimized iterable filtering with type-safety checks and key preservation
+ * - Idiomatic Closure conversion and structural specification introspection
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SpecificationHelper extends AbstractSpecificationHelper
@@ -44,7 +44,7 @@ class SpecificationHelper extends AbstractSpecificationHelper
     public function typeSafeIsSatisfiedBy(ISpecification $specification, ?object $candidate): bool
     {
         if ($specification === null) {
-            throw new InvalidArgumentException('A especificação fornecida não pode ser null.');
+            throw new InvalidArgumentException('The provided specification cannot be null.');
         }
 
         if ($candidate === null) {
@@ -53,7 +53,7 @@ class SpecificationHelper extends AbstractSpecificationHelper
 
         $expectedType = $specification->getType();
 
-        // Se o tipo especificado for vazio, mixed ou object genérico, valida diretamente
+        // If specified type is empty, mixed, or generic object, validate directly
         if ($expectedType !== '' && $expectedType !== 'mixed' && $expectedType !== 'object') {
             if (!is_a($candidate, $expectedType)) {
                 return false;
@@ -73,12 +73,12 @@ class SpecificationHelper extends AbstractSpecificationHelper
     public function createUniqueSpecificationFor(object $entity): ISpecification
     {
         if ($entity === null) {
-            throw new InvalidArgumentException('A entidade para criação de especificação única não pode ser null.');
+            throw new InvalidArgumentException('Entity for unique specification creation cannot be null.');
         }
 
         $entityClass = get_class($entity);
 
-        // Nível 1: Contrato DDD IEntity::getEntityId()
+        // Tier 1: DDD Contract IEntity::getEntityId()
         if ($entity instanceof IEntity) {
             $id = $entity->getEntityId();
             if ($id !== null && $id !== '') {
@@ -86,7 +86,7 @@ class SpecificationHelper extends AbstractSpecificationHelper
             }
         }
 
-        // Nível 2: Getters públicos padronizados (getEntityId() ou getId())
+        // Tier 2: Standardized public getters (getEntityId() or getId())
         if (method_exists($entity, 'getEntityId')) {
             $id = $entity->getEntityId();
             if ($id !== null && $id !== '') {
@@ -101,7 +101,7 @@ class SpecificationHelper extends AbstractSpecificationHelper
             }
         }
 
-        // Nível 3: Fallback via Reflection inspecionando propriedades de identidade
+        // Tier 3: Reflection fallback inspecting standard identity properties
         $ref = new ReflectionClass($entity);
         $candidateProps = ['entityId', 'id', 'uuid', 'identifier'];
 
@@ -122,22 +122,22 @@ class SpecificationHelper extends AbstractSpecificationHelper
 
         throw new RuntimeException(
             sprintf(
-                "A entidade da classe '%s' não possui propriedades de identidade identificáveis " .
-                "(IEntity::getEntityId, getId(), ou propriedades \$id, \$entityId, \$uuid).",
+                "Entity of class '%s' does not possess identifiable identity properties " .
+                "(IEntity::getEntityId, getId(), or properties \$id, \$entityId, \$uuid).",
                 $entityClass
             )
         );
     }
 
     /**
-     * Filtra uma coleção de elementos utilizando uma especificação.
+     * Filter an iterable dataset of elements using a specification.
      *
      * @template T
-     * @param iterable<T> $candidates Coleção ou array a ser filtrado
-     * @param ISpecification $specification Regra de filtro
-     * @param bool $preserveKeys Se true, mantém as chaves originais do array/iterável
-     * @param bool $typeSafe Se true, utiliza verificação type-safe ignorando candidatos incompatíveis
-     * @return array<T> Elementos que satisfazem a especificação
+     * @param iterable<T> $candidates Dataset or array to filter
+     * @param ISpecification $specification Filter rule
+     * @param bool $preserveKeys If true, preserves original array/iterable keys
+     * @param bool $typeSafe If true, performs type-safe verification ignoring incompatible candidate types
+     * @return array<T> Elements satisfying the specification
      */
     public function filter(
         iterable $candidates,
@@ -165,10 +165,10 @@ class SpecificationHelper extends AbstractSpecificationHelper
     }
 
     /**
-     * Retorna uma Closure nativa pronta para uso em array_filter() a partir de uma especificação.
+     * Return a native Closure ready for use in array_filter() derived from a specification.
      *
-     * @param ISpecification $specification Especificação alvo
-     * @param bool $typeSafe Se true, ativa validação type-safe antes de testar
+     * @param ISpecification $specification Target specification
+     * @param bool $typeSafe If true, enables type-safety check before evaluation
      * @return Closure(mixed): bool
      */
     public function toPredicate(ISpecification $specification, bool $typeSafe = false): Closure
@@ -183,11 +183,11 @@ class SpecificationHelper extends AbstractSpecificationHelper
     }
 
     /**
-     * Realiza a introspecção de uma especificação, retornando um mapa estruturado
-     * contendo metadados sobre seu tipo, composição e propriedades.
+     * Perform structural introspection of a specification, returning a metadata map
+     * describing its type, composition status, and properties.
      *
-     * @param ISpecification $specification Especificação a ser inspecionada
-     * @return array<string, mixed> Mapa com metadados estruturais
+     * @param ISpecification $specification Specification to inspect
+     * @return array<string, mixed> Map containing structural metadata
      */
     public function inspect(ISpecification $specification): array
     {

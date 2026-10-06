@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Tests\Unit;
 
 use Antevemus\ALinq\ALinqCollection;
+use Antevemus\ALinq\ALinqLazyCollection;
 use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Linq\ALinqBridge;
@@ -62,6 +63,9 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testALinqBridgeFluentChainingAndAggregation();
         $this->testInMemoryRepositoryAsLinqCollection();
         $this->testInMemoryRepositoryFindAsLinqCollection();
+        $this->testALinqBridgeLazyStreamingPipeline();
+        $this->testInMemoryRepositoryLazyCollection();
+        $this->testSpecFacadeLazyMethods();
     }
 
     /**
@@ -429,5 +433,123 @@ class Module14_ALinqSynergyTest extends TestCase
         $ordered = $approvedCollection->orderBy(fn($item) => $item->amount)->toArray();
         $this->assertEquals('E-3', $ordered[0]->getEntityId());
         $this->assertEquals('E-2', $ordered[1]->getEntityId());
+    }
+
+    /**
+     * 12. Test ALinqBridge::toLazyCollection() and filterLazy() with generator pipeline in O(1) RAM.
+     */
+    private function testALinqBridgeLazyStreamingPipeline(): void
+    {
+        $this->assertTrue(ALinqBridge::isLazyAvailable());
+
+        $generatorFactory = static function (): \Generator {
+            for ($i = 1; $i <= 10000; $i++) {
+                yield (object)['id' => $i, 'val' => $i * 10];
+            }
+        };
+
+        $lazy = ALinqBridge::toLazyCollection($generatorFactory);
+        $this->assertInstanceOf(ALinqLazyCollection::class, $lazy);
+
+        $specGreaterThan500 = new PropertySpecification(Spec::alwaysTrue(), 'val', new GreaterThanSpecification(500));
+        $filteredLazy = ALinqBridge::filterLazy($generatorFactory, $specGreaterThan500);
+
+        $this->assertInstanceOf(ALinqLazyCollection::class, $filteredLazy);
+
+        $firstThree = array_values($filteredLazy->take(3)->toArray());
+        $this->assertCount(3, $firstThree);
+        $this->assertEquals(510, $firstThree[0]->val);
+        $this->assertEquals(520, $firstThree[1]->val);
+        $this->assertEquals(530, $firstThree[2]->val);
+    }
+
+    /**
+     * 13. Test InMemoryRepository::asLazyCollection() and findAsLazyCollection($spec).
+     */
+    private function testInMemoryRepositoryLazyCollection(): void
+    {
+        $repo = new InMemoryRepository();
+
+        $e1 = new class('LR-1', 'Active', 100) extends AbstractEntity {
+            public function __construct(private string $id, public string $status, public int $score) {
+                parent::__construct();
+            }
+            public function getEntityId(): mixed {
+                return $this->id;
+            }
+        };
+        $e2 = new class('LR-2', 'Inactive', 50) extends AbstractEntity {
+            public function __construct(private string $id, public string $status, public int $score) {
+                parent::__construct();
+            }
+            public function getEntityId(): mixed {
+                return $this->id;
+            }
+        };
+        $e3 = new class('LR-3', 'Active', 250) extends AbstractEntity {
+            public function __construct(private string $id, public string $status, public int $score) {
+                parent::__construct();
+            }
+            public function getEntityId(): mixed {
+                return $this->id;
+            }
+        };
+
+        $repo->put($e1);
+        $repo->put($e2);
+        $repo->put($e3);
+
+        $lazyAll = $repo->asLazyCollection();
+        $this->assertInstanceOf(ALinqLazyCollection::class, $lazyAll);
+        $this->assertEquals(3, $lazyAll->count());
+
+        $specActive = new PropertySpecification(Spec::alwaysTrue(), 'status', new EqualSpecification('Active'));
+        $lazyActive = $repo->findAsLazyCollection($specActive);
+
+        $this->assertInstanceOf(ALinqLazyCollection::class, $lazyActive);
+        $this->assertEquals(2, $lazyActive->count());
+        $this->assertEquals(350, $lazyActive->sum(fn($item) => $item->score));
+    }
+
+    /**
+     * 14. Test Spec::linqLazy() and Spec::filterLazy() fluent facade methods.
+     */
+    private function testSpecFacadeLazyMethods(): void
+    {
+        $data = [
+            ['name' => 'Server 1', 'load' => 25],
+            ['name' => 'Server 2', 'load' => 88],
+            ['name' => 'Server 3', 'load' => 92],
+        ];
+
+        $lazyStream = Spec::linqLazy($data);
+        $this->assertInstanceOf(ALinqLazyCollection::class, $lazyStream);
+
+        $specCriticalLoad = new PropertySpecification(Spec::alwaysTrue(), 'load', new GreaterThanSpecification(80));
+        $criticalStream = Spec::filterLazy($data, $specCriticalLoad);
+
+        $this->assertInstanceOf(ALinqLazyCollection::class, $criticalStream);
+        $criticalNames = array_values($criticalStream->select(fn($s) => $s['name'])->toArray());
+
+        $this->assertEquals(['Server 2', 'Server 3'], $criticalNames);
+
+        // Also test Spec::linqLazy and Spec::filterLazy directly with InMemoryRepository
+        $repo = new InMemoryRepository();
+        $repo->put(new class('S-1', 40) extends AbstractEntity {
+            public function __construct(private string $id, public int $val) { parent::__construct(); }
+            public function getEntityId(): mixed { return $this->id; }
+        });
+        $repo->put(new class('S-2', 90) extends AbstractEntity {
+            public function __construct(private string $id, public int $val) { parent::__construct(); }
+            public function getEntityId(): mixed { return $this->id; }
+        });
+
+        $repoLazy = Spec::linqLazy($repo);
+        $this->assertInstanceOf(ALinqLazyCollection::class, $repoLazy);
+        $this->assertEquals(2, $repoLazy->count());
+
+        $filteredRepoLazy = Spec::filterLazy($repo, new PropertySpecification(Spec::alwaysTrue(), 'val', new GreaterThanSpecification(50)));
+        $this->assertInstanceOf(ALinqLazyCollection::class, $filteredRepoLazy);
+        $this->assertEquals(1, $filteredRepoLazy->count());
     }
 }

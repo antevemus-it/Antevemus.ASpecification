@@ -8,31 +8,33 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use DateTimeInterface;
 
 /**
- * DateSpecificationOperationsTrait - Trait agregador de operações temporais e comparação de datas (IDateSpecificationFactory).
+ * DateSpecificationOperationsTrait - Trait aggregating temporal operations and date comparison specifications.
  *
- * Funcionalidades:
- * - Validação de datas absolutas e relativas (isToday, isPast, isFuture)
- * - Comparações temporais (before, after, between, atTheSameTimeAs)
- * - Parsing flexível de datas em string
+ * Provides delegation methods forwarding to the underlying date specification factory.
  *
- * @version    0.1
+ * Features:
+ * - Absolute and relative date validation (isToday, isPast, isFuture)
+ * - Temporal comparisons (before, after, between, atTheSameTimeAs)
+ * - Flexible string date parsing
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait DateSpecificationOperationsTrait
 {
     /**
-     * Cria especificação que verifica se data é anterior a uma string.
+     * Creates a specification verifying whether a date is prior to a given date string.
      *
-     * Converte string para DateTime usando formato especificado ou formatos comuns.
+     * Converts the string into a DateTime instance using the specified format or common fallback formats.
      *
-     * @param string $dateString String de data
-     * @param string|null $format Formato da data (padrão: tenta formatos comuns)
-     * @return ISpecification<\DateTimeInterface> Especificação de data anterior
-     * @throws \InvalidArgumentException Se a string não puder ser convertida para data
+     * @param string $dateString Date string to parse
+     * @param string|null $format Explicit date format (default: tries common formats)
+     * @return ISpecification<\DateTimeInterface> Prior date specification
+     * @throws \InvalidArgumentException If the string cannot be parsed into a date
      */
     public function beforeString(string $dateString, ?string $format = null): ISpecification
     {
@@ -40,12 +42,12 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é posterior a uma string.
+     * Creates a specification verifying whether a date is after a given date string.
      *
-     * @param string $dateString String de data
-     * @param string|null $format Formato da data (padrão: tenta formatos comuns)
-     * @return ISpecification<\DateTimeInterface> Especificação de data posterior
-     * @throws \InvalidArgumentException Se a string não puder ser convertida para data
+     * @param string $dateString Date string to parse
+     * @param string|null $format Explicit date format (default: tries common formats)
+     * @return ISpecification<\DateTimeInterface> Posterior date specification
+     * @throws \InvalidArgumentException If the string cannot be parsed into a date
      */
     public function afterString(string $dateString, ?string $format = null): ISpecification
     {
@@ -53,10 +55,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é exatamente igual.
+     * Creates a specification verifying whether a date is exactly equal to the target date.
      *
-     * @param \DateTimeInterface $date Data para comparação
-     * @return ISpecification<\DateTimeInterface> Especificação de igualdade de data
+     * @param \DateTimeInterface $date Target date for equality comparison
+     * @return ISpecification<\DateTimeInterface> Date equality specification
      */
     public function at(DateTimeInterface $date): ISpecification
     {
@@ -64,10 +66,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para at().
+     * Alias for at().
      *
-     * @param \DateTimeInterface $date Data para comparação
-     * @return ISpecification<\DateTimeInterface>
+     * @param \DateTimeInterface $date Target date for equality comparison
+     * @return ISpecification<\DateTimeInterface> Date equality specification
      */
     public function atTheSameTimeAs(DateTimeInterface $date): ISpecification
     {
@@ -75,10 +77,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é anterior ou igual.
+     * Creates a specification verifying whether a date is prior to or equal to the target date.
      *
-     * @param \DateTimeInterface $date Data limite (inclusiva)
-     * @return ISpecification<\DateTimeInterface> Especificação de data anterior ou igual
+     * @param \DateTimeInterface $date Upper bound date (inclusive)
+     * @return ISpecification<\DateTimeInterface> Prior or equal date specification
      */
     public function beforeOrAt(DateTimeInterface $date): ISpecification
     {
@@ -86,9 +88,9 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para beforeOrAt().
+     * Alias for beforeOrAt().
      *
-     * @param \DateTimeInterface $date Data limite (inclusiva)
+     * @param \DateTimeInterface $date Upper bound date (inclusive)
      * @return ISpecification<\DateTimeInterface>
      */
     public function beforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -97,10 +99,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para beforeOrAt(). Verifica se a data é anterior ou igual à data limite.
+     * Alias for beforeOrAt(). Verifies whether the date is prior to or equal to the target date.
      *
-     * @param \DateTimeInterface  Data limite
-     * @return ISpecification
+     * @param \DateTimeInterface $date Target date bound
+     * @return ISpecification<\DateTimeInterface>
      */
     public function isBeforeOrAt(DateTimeInterface $date): ISpecification
     {
@@ -108,10 +110,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para beforeOrAt(). Verifica se a data é anterior ou igual à data limite.
+     * Alias for beforeOrAt(). Verifies whether the date is prior to or equal to the target date.
      *
-     * @param \DateTimeInterface  Data limite
-     * @return ISpecification
+     * @param \DateTimeInterface $date Target date bound
+     * @return ISpecification<\DateTimeInterface>
      */
     public function isBeforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
     {
@@ -119,10 +121,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para at(). Verifica se a data é exatamente no mesmo instante temporal.
+     * Alias for at(). Verifies whether the date is at the exact same point in time.
      *
-     * @param \DateTimeInterface  Data para comparação
-     * @return ISpecification
+     * @param \DateTimeInterface $date Target date for comparison
+     * @return ISpecification<\DateTimeInterface>
      */
     public function isAtTheSameTimeAs(DateTimeInterface $date): ISpecification
     {
@@ -130,10 +132,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para afterOrAt(). Verifica se a data é posterior ou igual à data limite.
+     * Alias for afterOrAt(). Verifies whether the date is posterior to or equal to the target date.
      *
-     * @param \DateTimeInterface  Data limite
-     * @return ISpecification
+     * @param \DateTimeInterface $date Target date bound
+     * @return ISpecification<\DateTimeInterface>
      */
     public function isAfterOrAt(DateTimeInterface $date): ISpecification
     {
@@ -141,10 +143,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para afterOrAt(). Verifica se a data é posterior ou igual à data limite.
+     * Alias for afterOrAt(). Verifies whether the date is posterior to or equal to the target date.
      *
-     * @param \DateTimeInterface  Data limite
-     * @return ISpecification
+     * @param \DateTimeInterface $date Target date bound
+     * @return ISpecification<\DateTimeInterface>
      */
     public function isAfterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
     {
@@ -152,11 +154,11 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é anterior ou igual a uma string.
+     * Creates a specification verifying whether a date is prior to or equal to a date string.
      *
-     * @param string $dateString String de data
-     * @param string|null $format Formato da data (padrão: tenta formatos comuns)
-     * @return ISpecification<\DateTimeInterface> Especificação de data anterior ou igual
+     * @param string $dateString Date string to parse
+     * @param string|null $format Explicit date format (default: tries common formats)
+     * @return ISpecification<\DateTimeInterface> Prior or equal date specification
      */
     public function beforeOrAtString(string $dateString, ?string $format = null): ISpecification
     {
@@ -164,10 +166,10 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é posterior ou igual.
+     * Creates a specification verifying whether a date is posterior to or equal to the target date.
      *
-     * @param \DateTimeInterface $date Data limite (inclusiva)
-     * @return ISpecification<\DateTimeInterface> Especificação de data posterior ou igual
+     * @param \DateTimeInterface $date Lower bound date (inclusive)
+     * @return ISpecification<\DateTimeInterface> Posterior or equal date specification
      */
     public function afterOrAt(DateTimeInterface $date): ISpecification
     {
@@ -175,9 +177,9 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Alias para afterOrAt().
+     * Alias for afterOrAt().
      *
-     * @param \DateTimeInterface $date Data limite (inclusiva)
+     * @param \DateTimeInterface $date Lower bound date (inclusive)
      * @return ISpecification<\DateTimeInterface>
      */
     public function afterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
@@ -186,11 +188,11 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é posterior ou igual a uma string.
+     * Creates a specification verifying whether a date is posterior to or equal to a date string.
      *
-     * @param string $dateString String de data
-     * @param string|null $format Formato da data (padrão: tenta formatos comuns)
-     * @return ISpecification<\DateTimeInterface> Especificação de data posterior ou igual
+     * @param string $dateString Date string to parse
+     * @param string|null $format Explicit date format (default: tries common formats)
+     * @return ISpecification<\DateTimeInterface> Posterior or equal date specification
      */
     public function afterOrAtString(string $dateString, ?string $format = null): ISpecification
     {
@@ -198,11 +200,11 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data está entre dois limites.
+     * Creates a specification verifying whether a date is within an inclusive range between two dates.
      *
-     * @param \DateTimeInterface $start Data inicial (inclusiva)
-     * @param \DateTimeInterface $end Data final (inclusiva)
-     * @return ISpecification<\DateTimeInterface> Especificação de intervalo de data
+     * @param \DateTimeInterface $start Start date bound (inclusive)
+     * @param \DateTimeInterface $end End date bound (inclusive)
+     * @return ISpecification<\DateTimeInterface> Range specification
      */
     public function between(DateTimeInterface $start, DateTimeInterface $end): ISpecification
     {
@@ -210,11 +212,11 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é hoje.
+     * Creates a specification verifying whether a date falls on today's calendar day.
      *
-     * Compara apenas a data (ano, mês, dia), ignorando hora/minuto/segundo.
+     * Compares year, month, and day while ignoring time components.
      *
-     * @return ISpecification<\DateTimeInterface> Especificação de data atual
+     * @return ISpecification<\DateTimeInterface> Today specification
      */
     public function isToday(): ISpecification
     {
@@ -222,9 +224,9 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é no passado.
+     * Creates a specification verifying whether a date is in the past.
      *
-     * @return ISpecification<\DateTimeInterface> Especificação de data passada
+     * @return ISpecification<\DateTimeInterface> Past date specification
      */
     public function isPast(): ISpecification
     {
@@ -232,9 +234,9 @@ trait DateSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se data é no futuro.
+     * Creates a specification verifying whether a date is in the future.
      *
-     * @return ISpecification<\DateTimeInterface> Especificação de data futura
+     * @return ISpecification<\DateTimeInterface> Future date specification
      */
     public function isFuture(): ISpecification
     {

@@ -5,44 +5,44 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Sql;
 
 /**
- * ISqlDialect - Contrato para Dialeto de Banco de Dados Relacional
+ * ISqlDialect - Contract for Relational Database Dialects
  *
- * Define o comportamento de escape de identificadores, representação de literais booleanos,
- * operadores de busca textual (LIKE/ILIKE) e suporte a expressões regulares específico de cada SGBD.
+ * Defines identifier escaping, boolean literal formatting,
+ * text search operators (LIKE/ILIKE), and regular expression support specific to each RDBMS.
  *
- * Funcionalidades:
- * - Identificação da família do SGBD (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite)
- * - Delimitação segura de nomes de colunas e tabelas (escapeIdentifier)
- * - Formatação de booleanos em conformidade com o driver (TRUE/FALSE, 1/0, 'Y'/'N')
- * - Cláusulas canônicas de verdade e falsidade tautológica (1=1, 1=0)
- * - Mapeamento idiomático de buscas LIKE e Regex
+ * Features:
+ * - Identification of RDBMS family (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite)
+ * - Safe delimitation of column and table identifiers (escapeIdentifier)
+ * - Driver-compliant boolean formatting (TRUE/FALSE, 1/0, 'Y'/'N')
+ * - Canonical tautological truth and falsity expressions (1=1, 1=0)
+ * - Idiomatic mapping of pattern matching and Regex operators
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISqlDialect
 {
     /**
-     * Retorna o identificador da família do SGBD (ex: 'pgsql', 'mysql', 'sqlsrv', 'oracle', 'firebird', 'sqlite').
+     * Return RDBMS family identifier (e.g. 'pgsql', 'mysql', 'sqlsrv', 'oracle', 'firebird', 'sqlite').
      *
      * @return string
      */
     public function getFamily(): string;
 
     /**
-     * Aplica o delimitador de escape apropriado ao identificador (ex: "coluna", `coluna`, [coluna]).
+     * Apply appropriate escape delimiters to an identifier (e.g. "col", `col`, [col]).
      *
-     * @param string $identifier Nome da coluna ou tabela
+     * @param string $identifier Column or table name
      * @return string
      */
     public function escapeIdentifier(string $identifier): string;
 
     /**
-     * Formata um valor booleano para a sintaxe nativa do SGBD.
+     * Format a boolean value into native RDBMS syntax.
      *
      * @param bool $value
      * @return string
@@ -50,41 +50,41 @@ interface ISqlDialect
     public function formatBoolean(bool $value): string;
 
     /**
-     * Retorna a expressão SQL universalmente avaliada como verdadeira (ex: '1 = 1').
+     * Return universally true SQL condition expression (e.g. '1 = 1').
      *
      * @return string
      */
     public function getTrueCondition(): string;
 
     /**
-     * Retorna a expressão SQL universalmente avaliada como falsa (ex: '1 = 0').
+     * Return universally false SQL condition expression (e.g. '1 = 0').
      *
      * @return string
      */
     public function getFalseCondition(): string;
 
     /**
-     * Formata uma comparação de padrão LIKE com suporte a sensibilidade de caixa.
+     * Format a LIKE pattern comparison with case sensitivity control.
      *
-     * @param string $column Coluna já escapada
-     * @param string $paramPlaceholder Nome do parâmetro nomeado (ex: ':p1')
-     * @param bool $caseSensitive Define se a busca deve diferenciar maiúsculas de minúsculas
+     * @param string $column Pre-escaped column expression
+     * @param string $paramPlaceholder Named parameter placeholder (e.g. ':p1')
+     * @param bool $caseSensitive Whether matching should be case-sensitive
      * @return string
      */
     public function formatLike(string $column, string $paramPlaceholder, bool $caseSensitive = true): string;
 
     /**
-     * Formata uma comparação por Expressão Regular com base no dialeto do SGBD.
+     * Format a regular expression comparison based on RDBMS dialect.
      *
-     * @param string $column Coluna já escapada
-     * @param string $paramPlaceholder Nome do parâmetro nomeado (ex: ':p1')
-     * @param bool $caseSensitive Define se o regex diferencia maiúsculas de minúsculas
+     * @param string $column Pre-escaped column expression
+     * @param string $paramPlaceholder Named parameter placeholder (e.g. ':p1')
+     * @param bool $caseSensitive Whether regex matches case-sensitively
      * @return string
      */
     public function formatRegex(string $column, string $paramPlaceholder, bool $caseSensitive = true): string;
 
     /**
-     * Informa se o dialeto suporta operadores nativos de Expressão Regular em consultas SQL.
+     * Determine whether dialect natively supports regular expression operators in SQL.
      *
      * @return bool
      */

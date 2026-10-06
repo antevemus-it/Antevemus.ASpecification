@@ -1,40 +1,46 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use DateTimeImmutable;
 
 /**
- * DateStringSpecification class.
+ * DateStringSpecification - Leaf specification validating that a string is a valid formatted date.
  *
- * Valida se uma string é uma data válida num formato específico usando PHP DateTimeImmutable.
+ * Validates whether a candidate string conforms strictly to an expected date format using DateTimeImmutable.
+ *
+ * Features:
+ * - Strict roundtrip format validation (`createFromFormat` and re-formatting check)
+ * - Safe handling of non-string and empty string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class DateStringSpecification extends AbstractSpecification
 {
     /**
-     * Inicializa a especificação com um padrão de data.
+     * Initializes the specification with an expected date format.
      *
-     * @param string $format O formato esperado (ex: Y-m-d).
+     * @param string $format Expected format string (e.g. 'Y-m-d')
      */
     public function __construct(private readonly string $format)
     {
     }
 
     /**
-     * Verifica se a string repassada é uma data válida no formato.
+     * Verifies whether the provided string candidate is a valid date matching the expected format.
      *
-     * @param mixed $candidate A string a ser validada.
-     * @return bool
+     * @param mixed $candidate Target string to validate
+     * @return bool True if string is a valid date strictly matching format
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {

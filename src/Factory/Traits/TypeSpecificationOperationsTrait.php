@@ -7,31 +7,32 @@ namespace Antevemus\ASpecification\Factory\Traits;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 
 /**
- * TypeSpecificationOperationsTrait - Trait agregador de operações e aliases da fábrica de tipos (ITypeSpecificationFactory).
+ * TypeSpecificationOperationsTrait - Trait aggregating type specification factory operations and fluent aliases (ITypeSpecificationFactory).
  *
- * Funcionalidades:
- * - Criação de especificações compostas tipadas
- * - Aliases fluentes idiomáticos (the, instanceOf, specify, allOfType, etc.)
+ * Provides delegation methods forwarding to the underlying type specification factory.
  *
- * @version    0.1
+ * Features:
+ * - Creation of typed composite specifications
+ * - Idiomatic fluent aliases (the, instanceOf, specify, allOfType, etc.)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait TypeSpecificationOperationsTrait
 {
     /**
-     * Cria uma especificação composta para um tipo específico.
+     * Creates a composite specification for a specific type or class.
      *
-     * Este é o método principal da factory. Todos os outros métodos são aliases
-     * fluentes que delegam para este método.
+     * This is the primary method of the type factory. All other methods are fluent aliases delegating to it.
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
-     * @return ICompositeSpecification<T> Especificação que verifica se objeto é do tipo especificado
-     * @throws \InvalidArgumentException Se o tipo for vazio ou não existir
+     * @param class-string<T> $type Fully qualified class or interface name
+     * @return ICompositeSpecification<T> Specification verifying whether object is of the specified type
+     * @throws \InvalidArgumentException If type name is empty or class does not exist
      */
     public function createSpecificationFor(string $type): ICompositeSpecification
     {
@@ -39,12 +40,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático em inglês: "the User"
+     * Idiomatic English usage: "the User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function the(string $type): ICompositeSpecification
@@ -53,12 +54,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instanceOf User"
+     * Idiomatic usage: "instanceOf User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instanceOf(string $type): ICompositeSpecification
@@ -67,12 +68,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specify User"
+     * Idiomatic usage: "specify User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specify(string $type): ICompositeSpecification
@@ -81,12 +82,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instancesOf User"
+     * Idiomatic usage: "instancesOf User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instancesOf(string $type): ICompositeSpecification
@@ -95,12 +96,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instanceOfType User"
+     * Idiomatic usage: "instanceOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instanceOfType(string $type): ICompositeSpecification
@@ -109,12 +110,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instancesOfType User"
+     * Idiomatic usage: "instancesOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instancesOfType(string $type): ICompositeSpecification
@@ -123,12 +124,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "anInstanceOfType User"
+     * Idiomatic usage: "anInstanceOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function anInstanceOfType(string $type): ICompositeSpecification
@@ -137,12 +138,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "allOfType User"
+     * Idiomatic usage: "allOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function allOfType(string $type): ICompositeSpecification
@@ -151,12 +152,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "allInstancesOfType User"
+     * Idiomatic usage: "allInstancesOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function allInstancesOfType(string $type): ICompositeSpecification
@@ -165,12 +166,12 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specifyA User"
+     * Idiomatic usage: "specifyA User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specifyA(string $type): ICompositeSpecification
@@ -179,17 +180,16 @@ trait TypeSpecificationOperationsTrait
     }
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specifyAn Entity"
+     * Idiomatic usage: "specifyAn Entity"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specifyAn(string $type): ICompositeSpecification
     {
         return $this->typeFactory->specifyAn($type);
     }
-
 }

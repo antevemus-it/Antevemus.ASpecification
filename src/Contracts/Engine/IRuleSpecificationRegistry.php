@@ -8,27 +8,27 @@ use Closure;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * IRuleSpecificationRegistry - Registro Central de Handlers de Regras de Negócio
+ * IRuleSpecificationRegistry - Central Registry for Business Rule Handlers
  *
- * Gerencia o ciclo de vida e a resolução de fábricas de especificações para cada
- * tipo de regra suportado pela aplicação.
+ * Manages the lifecycle and resolution of specification factories for each
+ * rule type supported by the host application.
  *
- * Funcionalidades:
- * - Registro de instâncias especializadas de IRuleSpecificationHandler
- * - Registro dinâmico de handlers baseados em Closures
- * - Resolução transparente e instanciação da especificação alvo
+ * Features:
+ * - Registration of specialized IRuleSpecificationHandler instances
+ * - Dynamic registration of Closure-based specification factories
+ * - Seamless resolution and compilation of target specifications
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IRuleSpecificationRegistry
 {
     /**
-     * Registra um handler de especificação no catálogo do registro.
+     * Registers a specification handler in the registry.
      *
      * @param IRuleSpecificationHandler $handler
      * @return self
@@ -36,32 +36,32 @@ interface IRuleSpecificationRegistry
     public function register(IRuleSpecificationHandler $handler): self;
 
     /**
-     * Registra um manipulador conciso através de uma Closure.
+     * Registers a concise specification factory via a Closure.
      *
-     * @param string $tipoRegra Chave técnica do tipo de regra
+     * @param string $tipoRegra Technical rule type key
      * @param Closure(IRuleDefinition): ISpecification $factory
      * @return self
      */
     public function registerClosure(string $tipoRegra, Closure $factory): self;
 
     /**
-     * Obtém o handler responsável por processar o tipo de regra especificado.
+     * Retrieves the handler responsible for processing the specified rule type.
      *
-     * @param string $tipoRegra Chave técnica
+     * @param string $tipoRegra Technical rule type key
      * @return IRuleSpecificationHandler|null
      */
     public function getHandler(string $tipoRegra): ?IRuleSpecificationHandler;
 
     /**
-     * Verifica se existe um handler registrado para o tipo de regra.
+     * Checks if a handler is registered for the specified rule type.
      *
-     * @param string $tipoRegra Chave técnica
+     * @param string $tipoRegra Technical rule type key
      * @return bool
      */
     public function hasHandler(string $tipoRegra): bool;
 
     /**
-     * Compila e retorna a especificação para a definição de regra informada.
+     * Compiles and returns the specification for the provided rule definition.
      *
      * @param IRuleDefinition $rule
      * @return ISpecification

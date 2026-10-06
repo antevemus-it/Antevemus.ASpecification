@@ -5,40 +5,40 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Engine;
 
 /**
- * IRuleCatalog - Repositório / Provedor de Definições de Regras e Documentos
+ * IRuleCatalog - Repository / Provider for Rule and Document Definitions
  *
- * Abstrai o acesso à fonte de persistência (PostgreSQL, cache, arquivos JSON) onde
- * o catálogo de regras de negócio e os grupos documentais estão armazenados.
+ * Abstracts access to the underlying persistence source (PostgreSQL, cache, JSON files)
+ * where the business rule catalog and document groups are stored.
  *
- * Funcionalidades:
- * - Recuperação filtrada de regras de negócio ativas por escopo e cenário
- * - Recuperação filtrada de grupos documentais por escopo e cenário
- * - Suporte a filtros adicionais (produto, plano, data de vigência)
+ * Features:
+ * - Filtered retrieval of active business rules by scope and scenario
+ * - Filtered retrieval of document requirement groups by scope and scenario
+ * - Support for custom contextual filters (product code, plan code, validity dates)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IRuleCatalog
 {
     /**
-     * Recupera a coleção de regras de negócio ativas para o escopo e cenário dados.
+     * Retrieves the collection of active business rules for the given scope and scenario.
      *
-     * @param string $escopo Escopo operacional (ex.: 'contrato_locacao', 'sinistro')
-     * @param string|null $cenario Cenário específico (ex.: 'sinistro:ocupado')
-     * @param array<string, mixed> $filters Filtros adicionais (codigo_produto, codigo_plano, etc.)
+     * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
+     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied')
+     * @param array<string, mixed> $filters Additional filters (product_code, plan_code, etc.)
      * @return list<IRuleDefinition>
      */
     public function findRules(string $escopo, ?string $cenario = null, array $filters = []): array;
 
     /**
-     * Recupera a coleção de requisitos documentais para o escopo e cenário dados.
+     * Retrieves the collection of document requirements for the given scope and scenario.
      *
-     * @param string $escopo Escopo operacional (ex.: 'contrato_locacao', 'sinistro')
-     * @param string|null $cenario Cenário específico (ex.: 'sinistro:ocupado')
+     * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
+     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied')
      * @return list<IDocumentRuleDefinition>
      */
     public function findDocumentRules(string $escopo, ?string $cenario = null): array;

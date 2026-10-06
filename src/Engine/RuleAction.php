@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 /**
- * RuleAction - Ação Operacional Resultante da Violação de uma Regra de Negócio
+ * RuleAction - Operational Action Resulting from a Business Rule Violation
  *
- * Define o comportamento operacional e a severidade associada à quebra de uma especificação,
- * espelhando as diretrizes de catálogo de regras (ex.: bloquear HTTP 403, emitir alerta ou apenas log).
+ * Defines the operational behavior and severity associated with a specification violation,
+ * mirroring rule catalog guidelines (e.g. HTTP 403 block, issue warning, or log only).
  *
- * Funcionalidades:
- * - Enumeração tipada para ações operacionais (BLOCK, WARN, LOG)
- * - Métodos auxiliares de verificação de severidade (isBlocking, isWarning, isLogOnly)
- * - Conversor flexível a partir de strings com suporte a fallback
+ * Features:
+ * - Typed enumeration for operational actions (BLOCK, WARN, LOG)
+ * - Helper methods for severity checking (isBlocking, isWarning, isLogOnly)
+ * - Flexible string converter with fallback support
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 enum RuleAction: string
@@ -29,7 +29,7 @@ enum RuleAction: string
     case LOG = 'apenas_log';
 
     /**
-     * Verifica se a ação representa bloqueio impeditivo.
+     * Checks if the action represents an impeding block.
      *
      * @return bool
      */
@@ -39,7 +39,7 @@ enum RuleAction: string
     }
 
     /**
-     * Verifica se a ação representa advertência/alerta não-impeditivo.
+     * Checks if the action represents a non-impeding advisory/warning.
      *
      * @return bool
      */
@@ -49,7 +49,7 @@ enum RuleAction: string
     }
 
     /**
-     * Verifica se a ação representa apenas registro para fins de telemetria/auditoria.
+     * Checks if the action represents an audit-only/log recording.
      *
      * @return bool
      */
@@ -59,10 +59,10 @@ enum RuleAction: string
     }
 
     /**
-     * Cria ou resolve a ação a partir de uma string recebida, usando fallback padrão se inválida.
+     * Resolves the action from an input string, using the default fallback if invalid.
      *
-     * @param string|null $action Texto da ação (ex: 'bloquear', 'alertar', 'apenas_log')
-     * @param self $default Ação padrão caso o valor seja nulo ou desconhecido
+     * @param string|null $action Action string (e.g. 'bloquear', 'alertar', 'apenas_log')
+     * @param self $default Default action if value is null or unrecognized
      * @return self
      */
     public static function fromOrDefault(?string $action, self $default = self::BLOCK): self

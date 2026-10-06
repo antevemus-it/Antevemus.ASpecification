@@ -1,21 +1,26 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Entities;
 
 /**
- * AbstractRandomLongEntity class.
+ * AbstractRandomLongEntity - Abstract Test Fixture Entity with High 64-bit Integer Identifier
  *
- * Classe abstrata que provê automaticamente um Integer aleatório 
- * com um limite inferior mais alto (simulando "Long" do Java).
- * 
- * ATENÇÃO: Desenhado puramente para testes de volume e stress. 
- * NÃO UTILIZE ESTA CLASSE EM AMBIENTES DE PRODUÇÃO!
+ * Automatically assigns a high-range random integer identity (simulating Java 64-bit Long).
  *
- * @version    0.1
+ * CAUTION: Designed purely for stress testing, volume validation, and benchmarks.
+ * DO NOT USE THIS CLASS IN PRODUCTION DOMAIN MODELS!
+ *
+ * Features:
+ * - High-range random integer generation (> 1,000,000,000)
+ * - Readonly entityId property protection
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Entities
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractRandomLongEntity extends AbstractEntity
@@ -23,19 +28,19 @@ abstract class AbstractRandomLongEntity extends AbstractEntity
     protected readonly int $entityId;
 
     /**
-     * Construtor que gera automaticamente um identificador inteiro longo (64-bit) aleatório.
+     * Constructor generating a high-range random integer identifier.
      */
     public function __construct()
     {
         parent::__construct();
-        // Garante que o número gerado será grande (acima de bilhões)
+        // Ensure generated number is large (above billions)
         $this->entityId = random_int(1000000000, PHP_INT_MAX);
     }
 
     /**
      * {@inheritdoc}
      *
-     * @return int O número alto gerado da entidade
+     * @return int The generated high random integer identifier
      */
     public final function getEntityId(): int
     {

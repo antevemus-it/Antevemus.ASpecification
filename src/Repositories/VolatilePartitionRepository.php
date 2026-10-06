@@ -8,22 +8,22 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 
 /**
- * VolatilePartitionRepository - Repositório particionado volátil
+ * VolatilePartitionRepository - Volatile partitioned entity repository
  *
- * Especialização de PartitionRepository que preserva o contrato de IVolatileRepository.
+ * Specialization of PartitionRepository preserving the IVolatileRepository contract.
  *
- * Funcionalidades:
- * - Implementação estrita de IVolatileRepository
- * - Preservação semântica de repositório em memória
+ * Features:
+ * - Strict implementation of IVolatileRepository
+ * - Semantic preservation of in-memory repository partitions
  *
  * @template T of IEntity
  * @extends PartitionRepository<T>
  * @implements IVolatileRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class VolatilePartitionRepository extends PartitionRepository implements IVolatileRepository

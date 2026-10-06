@@ -7,42 +7,42 @@ namespace Antevemus\ASpecification\Criteria\Exceptions;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * NonTranslatableCriteriaException - Exceção para Especificação Incompatível com TCriteria
+ * NonTranslatableCriteriaException - Exception for Specifications Incompatible with TCriteria
  *
- * Lançada quando uma especificação de domínio não pode ser convertida para um filtro
- * ou expressão relacional do Adianti Framework (ex.: validações reflexivas arbitrárias em memória).
+ * Thrown when a domain specification cannot be translated into an Adianti Framework
+ * relational expression or filter (e.g. arbitrary in-memory reflection predicates).
  *
- * Funcionalidades:
- * - Rastreamento da especificação incompatível
- * - Mensagem explicativa com o nome da classe
+ * Features:
+ * - Tracking of the incompatible specification instance
+ * - Explanatory error message including class name and rejection rationale
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class NonTranslatableCriteriaException extends CriteriaBuilderException
 {
     /**
-     * @param ISpecification $specification A especificação não traduzível
-     * @param string|null $reason Motivo opcional da impossibilidade
+     * @param ISpecification $specification The non-translatable specification instance
+     * @param string|null $reason Optional reason explaining translation incompatibility
      */
     public function __construct(
         private readonly ISpecification $specification,
         ?string $reason = null
     ) {
         $className = get_class($specification);
-        $message = "A especificação [{$className}] não pode ser convertida para um TCriteria/TFilter relacional.";
+        $message = "The specification [{$className}] cannot be converted into a relational TCriteria/TFilter.";
         if ($reason !== null) {
-            $message .= " Motivo: {$reason}";
+            $message .= " Reason: {$reason}";
         }
         parent::__construct($message);
     }
 
     /**
-     * Retorna a especificação que gerou o erro de tradução.
+     * Return the specification that caused the translation error.
      *
      * @return ISpecification
      */

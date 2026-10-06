@@ -11,33 +11,33 @@ use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySeriali
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 
 /**
- * FilePerEntityRepository - Repositório que persiste um arquivo individual por entidade
+ * FilePerEntityRepository - Entity repository persisting one file per entity
  *
- * Organiza entidades em um diretório de arquivos individuais indexados pela identidade única
- * (<storageDir>/<sanitizedId>.<ext>), permitindo busca direta O(1) para UniqueEntitySpecification.
+ * Organizes entities into a directory of individual files keyed by unique entity ID
+ * (<storageDir>/<sanitizedId>.<ext>), providing direct O(1) lookups for UniqueEntitySpecification.
  *
- * Funcionalidades:
- * - Persistência particionada por arquivo individual
- * - Otimização O(1) de acesso direto por chave única
- * - Iteração sob demanda no sistema de arquivos
+ * Features:
+ * - Partitioned persistence via individual files
+ * - O(1) optimized direct access by unique key
+ * - On-demand filesystem iteration
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class FilePerEntityRepository extends AbstractFileRepository
 {
     /**
-     * @param string $storagePath Caminho do diretório de armazenamento
-     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Classe da entidade ou serializador
-     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Modo de persistência ou serializador
-     * @param IEntitySerializer|null $serializer Serializador
-     * @param string|null $repositoryId ID do repositório
+     * @param string $storagePath Storage directory path
+     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Entity class or serializer
+     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Persistence mode or serializer
+     * @param IEntitySerializer|null $serializer Serializer
+     * @param string|null $repositoryId Repository ID
      */
     public function __construct(
         string $storagePath,
@@ -54,7 +54,7 @@ class FilePerEntityRepository extends AbstractFileRepository
     }
 
     /**
-     * Retorna o caminho do arquivo para uma entidade com o ID informado.
+     * Returns the file path for an entity with the given ID.
      *
      * @param string|int $id
      * @return string
@@ -81,7 +81,7 @@ class FilePerEntityRepository extends AbstractFileRepository
      */
     public function store(): void
     {
-        // No modelo de um arquivo por entidade, os arquivos já são mantidos individualmente em disco
+        // In the file-per-entity model, files are already persisted individually on disk
     }
 
     /**
@@ -194,7 +194,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             return null;
         }
 
-        // Otimização O(1) para UniqueEntitySpecification
+        // O(1) optimization for UniqueEntitySpecification
         if ($specification instanceof UniqueEntitySpecification) {
             $expectedId = $specification->getExpectedId();
             $target = $this->getFilePath($expectedId);
@@ -230,7 +230,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             return [];
         }
 
-        // Otimização O(1) se for busca única
+        // O(1) optimization if single unique lookup
         if ($specification instanceof UniqueEntitySpecification) {
             $single = $this->findSingleEntitySpecifiedBy($specification);
             return $single !== null ? [$single] : [];
@@ -288,7 +288,9 @@ class FilePerEntityRepository extends AbstractFileRepository
     }
 
     /**
-     * Retorna a quantidade total de arquivos no diretório.
+     * Returns the total count of files in the directory.
+     *
+     * @return int
      */
     public function countTotal(): int
     {
@@ -296,7 +298,7 @@ class FilePerEntityRepository extends AbstractFileRepository
     }
 
     /**
-     * Varre os arquivos no diretório de armazenamento que possuem a extensão configurada.
+     * Scans files in the storage directory matching the configured extension.
      *
      * @return array<string>
      */
@@ -314,7 +316,7 @@ class FilePerEntityRepository extends AbstractFileRepository
     }
 
     /**
-     * Lê e desserializa uma entidade a partir de um arquivo com lock compartilhado.
+     * Reads and deserializes an entity from file under shared lock.
      *
      * @param string $filePath
      * @return IEntity|null

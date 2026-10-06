@@ -1,125 +1,125 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Factory;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * ISpecificationWrapperFactory interface.
+ * ISpecificationWrapperFactory - Factory contract for fluent specification wrappers
  *
- * Contrato para fábricas que criam wrappers fluentes para especificações.
+ * Contract for factories creating fluent wrappers around specifications.
+ * These methods wrap existing specifications with more descriptive and fluent names,
+ * without altering behavior. They are essentially identity functions with expressive names
+ * to improve code readability.
  *
- * Esta interface fornece métodos que encapsulam especificações existentes
- * com nomes mais descritivos e fluentes, sem alterar o comportamento.
- * São essencialmente funções identidade com nomes expressivos para melhorar
- * a legibilidade do código.
- *
- * Exemplo de uso:
+ * Example usage:
  * <code>
- * // Sem wrapper
+ * // Without wrapper
  * $spec = new ActiveUserSpecification();
  *
- * // Com wrapper fluente
+ * // With fluent wrapper
  * $spec = $factory->is(new ActiveUserSpecification());
- * // ou
+ * // or
  * $spec = $factory->isA(new ActiveUserSpecification());
  * </code>
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISpecificationWrapperFactory extends ISpecificationFactory
 {
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "isSatisfiedBy someSpec"
-     * Melhora legibilidade em contextos onde a condição está sendo testada.
+     * Idiomatic usage: "isSatisfiedBy someSpec"
+     * Improves readability in assertion contexts.
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function isSatisfiedBy(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "a someSpec"
+     * Idiomatic usage: "a someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function a(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "an someSpec"
+     * Idiomatic usage: "an someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function an(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "is someSpec"
+     * Idiomatic usage: "is someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function is(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "isA someSpec"
+     * Idiomatic usage: "isA someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function isA(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "isAn someSpec"
+     * Idiomatic usage: "isAn someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function isAn(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "are someSpec"
+     * Idiomatic usage: "are someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function are(ISpecification $specification): ISpecification;
 
     /**
-     * Wrapper fluente que retorna a especificação sem alterações.
+     * Fluent wrapper returning the specification unchanged.
      *
-     * Uso idiomático: "isFrom someSpec"
+     * Idiomatic usage: "isFrom someSpec"
      *
      * @template T
-     * @param ISpecification<T> $specification Especificação a encapsular
-     * @return ISpecification<T> A mesma especificação
+     * @param ISpecification<T> $specification Specification to wrap
+     * @return ISpecification<T> The exact same specification
      */
     public function isFrom(ISpecification $specification): ISpecification;
 }

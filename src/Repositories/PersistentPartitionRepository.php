@@ -12,32 +12,32 @@ use Antevemus\ASpecification\Contracts\Repositories\IPersistentRepository;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 
 /**
- * PersistentPartitionRepository - Repositório particionado persistente
+ * PersistentPartitionRepository - Persistent partitioned entity repository
  *
- * Especialização de PartitionRepository que preserva o contrato de IPersistentRepository
- * e propaga operações de ciclo de vida (load, store, close) para as partições persistentes do grafo (RN-14).
+ * Specialization of PartitionRepository preserving the IPersistentRepository contract
+ * and propagating lifecycle operations (load, store, close) to persistent partitions in the DAG (RN-14).
  *
- * Funcionalidades:
- * - Propagação de carga e gravação para partições persistentes
- * - Exposição de identificador único e modalidade de persistência
- * - Sinalização determinística de não suporte a metadados individuais (RN-14)
+ * Features:
+ * - Load and store propagation across persistent partitions in the graph
+ * - Exposure of unique repository identifier and persistence definition mode
+ * - Deterministic signaling of unsupported individual entity metadata (RN-14)
  *
  * @template T of IEntity
  * @extends PartitionRepository<T>
  * @implements IPersistentRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class PersistentPartitionRepository extends PartitionRepository implements IPersistentRepository
 {
     /**
-     * Conta todas as entidades presentes na partição.
+     * Counts all entities present in the partition.
      *
-     * @return int Quantidade total de entidades
+     * @return int Total number of entities
      */
     public function countAllEntities(): int
     {
@@ -45,9 +45,9 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Retorna o identificador único do repositório particionado.
+     * Returns the unique identifier of the partitioned repository.
      *
-     * @return string Identificador do repositório
+     * @return string Repository identifier
      */
     public function getRepositoryId(): string
     {
@@ -58,9 +58,9 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Retorna o diretório base de armazenamento de dados, caso aplicável.
+     * Returns the base data storage directory, if applicable.
      *
-     * @return string|null Caminho do diretório de dados ou null se em memória pura
+     * @return string|null Path to data directory or null if purely in-memory
      */
     public function getDataDirectory(): ?string
     {
@@ -71,9 +71,9 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Retorna a modalidade de persistência definida para este repositório.
+     * Returns the persistence definition mode configured for this repository.
      *
-     * @return PersistenceDefinition Modalidade de persistência
+     * @return PersistenceDefinition Persistence mode
      */
     public function getPersistenceDefinition(): PersistenceDefinition
     {
@@ -84,9 +84,9 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Retorna a descrição legível do formato de serialização do repositório.
+     * Returns a human-readable description of the repository serialization format.
      *
-     * @return string Descrição do formato
+     * @return string Format description
      */
     public function getFormatDescription(): string
     {
@@ -97,7 +97,7 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Carrega os dados persistentes propagando para todas as sub-partições do grafo.
+     * Loads persistent data, propagating across all sub-partitions in the DAG.
      *
      * @return void
      */
@@ -115,7 +115,7 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Persiste o estado do repositório propagando a gravação no grafo.
+     * Persists repository state, propagating store operations across the DAG.
      *
      * @return void
      */
@@ -133,7 +133,7 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Fecha o repositório liberando recursos e propagando para sub-partições.
+     * Closes the repository, releasing resources and propagating to sub-partitions.
      *
      * @return void
      */
@@ -151,11 +151,11 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Operação não suportada diretamente em nível de partição agregada.
+     * Operation unsupported directly at aggregated partition level.
      *
      * @param IEntity $entity
      * @return IEntityPersistenceMetaData|null
-     * @throws RepositoryException Sempre lançada (RN-14)
+     * @throws RepositoryException Always thrown (RN-14)
      */
     public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData
     {

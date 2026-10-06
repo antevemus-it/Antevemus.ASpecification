@@ -5,22 +5,22 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Concurrent;
 
 /**
- * NullSynchronizer - Implementação No-Op do Padrão Null Object para Sincronização
+ * NullSynchronizer - No-Op Implementation of Null Object Pattern for Synchronization
  *
- * Executa blocos de código imediatamente sem adquirir nenhum lock ou semáforo.
- * Ideal para testes unitários isolados, benchmarks, ambientes estritamente monociclo
- * ou quando a garantia de concorrência é gerenciada por camadas externas.
+ * Executes code blocks immediately without acquiring any locks or semaphores.
+ * Ideal for isolated unit tests, benchmarks, strictly single-threaded environments,
+ * or scenarios where concurrency guarantees are managed by external layers.
  *
- * Funcionalidades:
- * - Execução direta e imediata de callables concorrentes
- * - Execução direta e imediata de callables exclusivas
- * - Zero overhead de I/O de arquivo ou chamadas de sistema operacional
+ * Features:
+ * - Direct, immediate execution of concurrent callables
+ * - Direct, immediate execution of exclusive callables
+ * - Zero overhead from filesystem I/O or operating system system-calls
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class NullSynchronizer extends AbstractSynchronizer

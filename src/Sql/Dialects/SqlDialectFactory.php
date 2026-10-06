@@ -8,19 +8,19 @@ use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Sql\SqlDialect;
 
 /**
- * SqlDialectFactory - Fábrica Concreta de Instâncias de Dialetos SQL
+ * SqlDialectFactory - Concrete Factory for SQL Dialect Instances
  *
- * Instancia a estratégia de dialeto correspondente com base no enum ou string do driver.
+ * Instantiates the matching dialect strategy based on driver enum or string.
  *
- * Funcionalidades:
- * - Resolução para todas as 9 famílias solicitadas (sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib)
- * - Cache de instâncias imutáveis para alta performance
+ * Features:
+ * - Resolution across 9 driver families (sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite, ansi)
+ * - Immutable instance caching for high performance
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class SqlDialectFactory
@@ -29,9 +29,9 @@ final class SqlDialectFactory
     private static array $instances = [];
 
     /**
-     * Cria ou resolve a instância do dialeto solicitado.
+     * Create or resolve the requested dialect instance.
      *
-     * @param ISqlDialect|SqlDialect|string $dialect Enum, string ou instância pré-existente
+     * @param ISqlDialect|SqlDialect|string $dialect Enum, string, or pre-existing instance
      * @return ISqlDialect
      */
     public static function create(ISqlDialect|SqlDialect|string $dialect): ISqlDialect

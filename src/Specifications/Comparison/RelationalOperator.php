@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Specifications\Comparison;
 
 /**
- * RelationalOperator - Enumeracao de operadores relacionais de comparacao
+ * RelationalOperator - Enumeration of relational comparison operators.
  *
- * Representa os operadores de relacao binaria (igualdade, desigualdade, magnitude)
- * utilizados em especificacoes relacionais, com suporte a inversao logica e conversao SQL.
+ * Represents binary relational comparison operators (equality, inequality, magnitude)
+ * used in relational specifications, supporting logical inversion and SQL conversion.
  *
- * Funcionalidades:
- * - Mapeamento de operadores binarios relacionais padrao e estendidos
- * - Inversao logica estrita da relacao binaria (algebra relacional)
- * - Obtencao do simbolo textual canonico compativel com SQL
+ * Features:
+ * - Mapping of standard and extended relational binary operators
+ * - Strict logical relational inversion (relational algebra)
+ * - Canonical SQL-compatible textual symbol representation
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 enum RelationalOperator: string
@@ -34,9 +34,9 @@ enum RelationalOperator: string
     case MUCH_GREATER_THAN = '>>';
 
     /**
-     * Retorna a relacao binaria invertida (negacao logica da operacao).
+     * Returns the inverted binary relation (logical negation of the relational operation).
      *
-     * Exemplo:
+     * Example:
      * - EQUAL ('=') => NOT_EQUAL ('<>')
      * - LESS_THAN ('<') => GREATER_THAN_OR_EQUAL ('>=')
      *
@@ -57,7 +57,7 @@ enum RelationalOperator: string
     }
 
     /**
-     * Retorna a representacao simbolica compativel com padroes SQL.
+     * Returns the symbolic operator string compatible with SQL standards.
      *
      * @return string
      */

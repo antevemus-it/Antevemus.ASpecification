@@ -10,23 +10,23 @@ use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
 
 /**
- * TCriteriaBuilder - Construtor e Compilador de TCriteria a partir de Especificações
+ * TCriteriaBuilder - Builder and Compiler for TCriteria Instances from Specifications
  *
- * Provê uma API fluente e atalhos estáticos para compilar árvores de especificações de domínio
- * em objetos TCriteria do Adianti Framework, com suporte a paginação, ordenação e mapeamento de colunas.
+ * Provides a fluent API and static factory shortcuts to compile domain specification trees
+ * into Adianti Framework TCriteria objects, supporting pagination, sorting, and column mapping.
  *
- * Funcionalidades:
- * - Conversão estática direta via fromSpecification() e create()
- * - Definição fluente de paginação (limit, offset)
- * - Definição fluente de ordenação (orderBy, direction)
- * - Definição fluente de agrupamento (groupBy)
- * - Suporte a mapeamento objeto-relacional de propriedades
+ * Features:
+ * - Direct static compilation via fromSpecification() and create()
+ * - Fluent pagination configuration (limit, offset)
+ * - Fluent sorting specification (orderBy, direction)
+ * - Fluent grouping configuration (groupBy)
+ * - Support for object-relational property name mapping
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class TCriteriaBuilder
@@ -35,8 +35,8 @@ class TCriteriaBuilder
     private array $properties = [];
 
     /**
-     * @param ISpecification $specification Especificação de domínio a ser compilada
-     * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper Mapeador opcional
+     * @param ISpecification $specification Domain specification to compile
+     * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper Optional field mapper
      */
     public function __construct(
         private readonly ISpecification $specification,
@@ -46,11 +46,11 @@ class TCriteriaBuilder
     }
 
     /**
-     * Fábrica estática direta para compilar uma especificação em TCriteria.
+     * Direct static factory to compile a specification into a TCriteria instance.
      *
      * @param ISpecification $specification
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
-     * @param array<string, mixed> $properties Propriedades como 'order', 'limit', 'offset', 'direction', 'group'
+     * @param array<string, mixed> $properties Criteria properties ('order', 'limit', 'offset', 'direction', 'group')
      * @return TCriteria
      */
     public static function fromSpecification(
@@ -66,7 +66,7 @@ class TCriteriaBuilder
     }
 
     /**
-     * Alias estático para fromSpecification().
+     * Static shortcut alias for fromSpecification().
      *
      * @param ISpecification $specification
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
@@ -82,9 +82,9 @@ class TCriteriaBuilder
     }
 
     /**
-     * Define uma propriedade no TCriteria resultante.
+     * Set a configuration property on the resulting TCriteria instance.
      *
-     * @param string $property Nome da propriedade ('order', 'limit', 'offset', 'direction', 'group')
+     * @param string $property Property name ('order', 'limit', 'offset', 'direction', 'group')
      * @param mixed $value
      * @return self
      */
@@ -95,10 +95,10 @@ class TCriteriaBuilder
     }
 
     /**
-     * Define a ordenação do critério de consulta.
+     * Define the query sorting column and direction.
      *
-     * @param string $column Coluna de ordenação
-     * @param string $direction Direção ('asc' ou 'desc')
+     * @param string $column Column name to sort by
+     * @param string $direction Sort direction ('asc' or 'desc')
      * @return self
      */
     public function orderBy(string $column, string $direction = 'asc'): self
@@ -109,10 +109,10 @@ class TCriteriaBuilder
     }
 
     /**
-     * Define limites de paginação.
+     * Set query pagination boundaries.
      *
-     * @param int $limit Quantidade máxima de registros
-     * @param int $offset Deslocamento inicial
+     * @param int $limit Maximum number of records
+     * @param int $offset Starting zero-based offset
      * @return self
      */
     public function limit(int $limit, int $offset = 0): self
@@ -123,9 +123,9 @@ class TCriteriaBuilder
     }
 
     /**
-     * Define agrupamento (GROUP BY).
+     * Define query grouping (GROUP BY).
      *
-     * @param string $column Coluna de agrupamento
+     * @param string $column Grouping column
      * @return self
      */
     public function groupBy(string $column): self
@@ -135,7 +135,7 @@ class TCriteriaBuilder
     }
 
     /**
-     * Compila e retorna a instância de TCriteria configurada.
+     * Compile and return the configured TCriteria instance.
      *
      * @return TCriteria
      */

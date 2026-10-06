@@ -31,24 +31,24 @@ use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 
 /**
- * SqlQueryVisitor - Tradutor da AST de Especificações para Cláusulas WHERE Parametrizadas
+ * SqlQueryVisitor - Specification AST Translator to Parameterized WHERE Clauses
  *
- * Implementa o padrão GoF Visitor para percorrer recursivamente qualquer árvore de especificações,
- * compilando fragmentos de consulta SQL imunes a injeção em conformidade com o dialeto do SGBD.
+ * Implements the GoF Visitor pattern to recursively traverse specification trees,
+ * compiling SQL injection-proof query fragments compliant with specific database dialects.
  *
- * Funcionalidades:
- * - Suporte nativo a múltiplos dialetos (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite)
- * - Mapeamento flexível de campos objeto-relacional via IFieldMapper
- * - Geração de parâmetros nomeados sequenciais e isolados (:p1, :p2, etc.)
- * - Tratamento idiomático de nulos (IS NULL, IS NOT NULL)
- * - Suporte a operadores de igualdade, comparação, LIKE, ILIKE e Regex
+ * Features:
+ * - Multi-dialect support (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI)
+ * - Flexible object-relational property mapping via IFieldMapper
+ * - Sequential isolated named parameter generation (:p1, :p2, etc.)
+ * - Idiomatic null handling (IS NULL, IS NOT NULL)
+ * - Support for relational comparisons, pattern matching (LIKE, ILIKE), and Regular Expressions
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SqlQueryVisitor implements ISpecificationVisitor
@@ -59,9 +59,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
     private ?string $currentColumn = null;
 
     /**
-     * @param ISqlDialect|SqlDialect|string $dialect Dialeto alvo
-     * @param IFieldMapper|array<string, string>|Closure|null $fieldMap Mapeamento de propriedades para colunas
-     * @param string $paramPrefix Prefixo dos parâmetros nomeados
+     * @param ISqlDialect|SqlDialect|string $dialect Target dialect
+     * @param IFieldMapper|array<string, string>|Closure|null $fieldMap Property to column field mapper
+     * @param string $paramPrefix Named parameter prefix
      */
     public function __construct(
         ISqlDialect|SqlDialect|string $dialect = 'ansi',
@@ -75,7 +75,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Reinicia o estado interno de parâmetros para uma nova tradução.
+     * Reset internal parameter counter state for a fresh translation cycle.
      *
      * @return self
      */
@@ -87,7 +87,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz uma especificação em uma cláusula WHERE parametrizada.
+     * Translate a specification into a parameterized WHERE clause.
      *
      * @param ISpecification $specification
      * @return SqlWhereClause
@@ -99,7 +99,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Ponto focal de visitação polimórfica da especificação.
+     * Polymorphic visitation dispatch point for any specification.
      *
      * @param ISpecification $specification
      * @return SqlWhereClause
@@ -140,7 +140,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Define a coluna ativa e visita a especificação interna associada à propriedade.
+     * Set target column context and visit the wrapped inner property specification.
      *
      * @param PropertySpecification $specification
      * @return SqlWhereClause
@@ -160,7 +160,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz uma especificação de negação lógica (NOT).
+     * Translate a logical negation specification (NOT).
      *
      * @param NotSpecification $specification
      * @return SqlWhereClause
@@ -175,7 +175,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Processa especificações compostas genéricas agregando filhos via AND.
+     * Process generic composite specifications by aggregating children via AND.
      *
      * @param ICompositeSpecification $specification
      * @return SqlWhereClause
@@ -192,7 +192,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return $combined;
         }
 
-        throw new NonTranslatableSpecificationException($specification, 'Especificação composta não reconhecida para SQL.');
+        throw new NonTranslatableSpecificationException($specification, 'Unrecognized composite specification for SQL.');
     }
 
     /** {@inheritdoc} */
@@ -202,7 +202,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
         if ($col === null) {
             throw new NonTranslatableSpecificationException(
                 $specification,
-                'Especificações folha de comparação exigem estar aninhadas em uma PropertySpecification para definir a coluna.'
+                'Comparison leaf specifications must be nested in a PropertySpecification to define the target column.'
             );
         }
 
@@ -242,7 +242,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz especificação de igualdade tratando nulos, booleanos e escalares.
+     * Translate equality specification handling nulls, booleans, and scalars.
      *
      * @param EqualSpecification $specification
      * @param string $col
@@ -263,7 +263,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz especificação de desigualdade tratando nulos, booleanos e escalares.
+     * Translate inequality specification handling nulls, booleans, and scalars.
      *
      * @param NotEqualSpecification $specification
      * @param string $col
@@ -284,7 +284,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz comparações relacionais escalares parametrizadas (=, >, <).
+     * Translate parameterized scalar relational comparisons (=, >, <).
      *
      * @param string $col
      * @param string $operator
@@ -298,7 +298,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz especificações de wildcard substituindo * por % e ? por _.
+     * Translate wildcard specifications by replacing * with % and ? with _.
      *
      * @param string $col
      * @param string $rawPattern
@@ -314,7 +314,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz comparação case-insensitive de strings via LIKE.
+     * Translate case-insensitive string equality via LIKE.
      *
      * @param string $col
      * @param mixed $value
@@ -328,7 +328,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz expressões regulares com o dialeto SQL ativo.
+     * Translate regular expressions using active SQL dialect.
      *
      * @param string $col
      * @param string $pattern
@@ -342,7 +342,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Gera um novo nome de parâmetro isolado e retorna o placeholder com seu binding.
+     * Generate an isolated parameter name and return placeholder and binding array.
      *
      * @param mixed $value
      * @return array{name: string, binding: array<string, mixed>}

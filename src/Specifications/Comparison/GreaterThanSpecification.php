@@ -10,23 +10,23 @@ use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
- * GreaterThanSpecification - Especificação folha para comparação `>`
+ * GreaterThanSpecification - Leaf specification for strictly greater than comparison (`>`).
  *
- * Valida se o candidato é estritamente maior que o limite configurado,
- * provendo subsunção intervalar ($x > 10 \supseteq x > 50$) e disjunção.
+ * Validates whether the candidate is strictly greater than the configured threshold,
+ * providing interval subsumption ($x > 10 \supseteq x > 50$) and disjointness.
  *
- * Funcionalidades:
- * - Comparação estrita `>`
- * - Subsunção de intervalos maiores e igualdades superiores (RF-10)
+ * Features:
+ * - Strict magnitude comparison (`>`)
+ * - Subsumption of narrower intervals and superior equalities (RF-10)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements IValueBoundSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class GreaterThanSpecification extends AbstractSpecification implements IValueBoundSpecification
@@ -34,7 +34,7 @@ class GreaterThanSpecification extends AbstractSpecification implements IValueBo
     use SubsumptionAndEqualityTrait;
 
     /**
-     * @param int|float|string $value Limite inferior estrito
+     * @param int|float|string $value Strict lower bound threshold
      */
     public function __construct(
         private readonly int|float|string $value
@@ -42,7 +42,7 @@ class GreaterThanSpecification extends AbstractSpecification implements IValueBo
     }
 
     /**
-     * Retorna o limite inferior configurado.
+     * Returns the configured lower bound threshold.
      */
     public function getValue(): int|float|string
     {
