@@ -5,7 +5,7 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.1.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(623%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
