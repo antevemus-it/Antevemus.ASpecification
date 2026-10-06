@@ -5,8 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
+[![Latest Version](https://img.shields.io/badge/Release-v1.1.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Suites%20Pass%20(579%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(623%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -402,12 +403,95 @@ $topCustomers = $inMemoryRepo->findAsLinqCollection($specApproved)
 $avgPoints = $inMemoryRepo->asLinqCollection()->average(fn($c) => $c->getPoints());
 ```
 
+#### 10.4 Generator-Based Streaming & Lazy Evaluation (`ALinqLazyCollection`) with O(1) Memory
+Process massive, infinite, or file-backed data streams with constant memory footprint by pairing specifications with lazy generators:
+
+```php
+use Antevemus\ASpecification\Linq\ALinqBridge;
+use Antevemus\ASpecification\Spec;
+
+// 1. Stream massive dataset through specification filter with constant O(1) RAM
+$largeLogStream = static function(): \Generator {
+    $handle = fopen('system_events.log', 'rb');
+    while (($line = fgets($handle)) !== false) {
+        yield json_decode($line, true);
+    }
+    fclose($handle);
+};
+
+// Elements are pulled and evaluated lazily on demand
+$criticalEvents = Spec::filterLazy($largeLogStream, $specHighSeverity)
+    ->take(100)
+    ->toArray();
+
+// 2. Stream directly from InMemoryRepository with findAsLazyCollection()
+$activeCustomers = $inMemoryRepo->findAsLazyCollection($specActive)
+    ->select(fn($c) => $c->getEmail())
+    ->take(50)
+    ->toArray();
+```
+
+---
+
+### 11. Declarative Attributes Engine (`#[AssertSpec]`, `#[ValidateRule]`) (Module 15)
+
+In PHP 8.4+, annotate Data Transfer Objects (DTOs), Form Requests, Value Objects, and Domain Entities directly with specifications:
+
+```php
+use Antevemus\ASpecification\Attributes\AssertSpec;
+use Antevemus\ASpecification\Attributes\ValidateRule;
+use Antevemus\ASpecification\Spec;
+
+#[AssertSpec(CustomerMustBeActiveSpec::class, message: 'Customer account is suspended', code: 'CUST_SUSPENDED')]
+class RegisterCustomerDto
+{
+    #[ValidateRule('not_blank', message: 'Name cannot be empty')]
+    public string $name;
+
+    #[ValidateRule('>=', value: 18, message: 'Customer must be at least 18 years old', code: 'UNDERAGE')]
+    public int $age;
+
+    #[ValidateRule('email', message: 'Invalid corporate email format')]
+    public string $email;
+
+    public function __construct(string $name, int $age, string $email)
+    {
+        $this->name = $name;
+        $this->age = $age;
+        $this->email = $email;
+    }
+}
+
+$dto = new RegisterCustomerDto('Alice Smith', 16, 'alice@example.com');
+
+// 1. Non-throwing Notification Pattern validation
+$result = Spec::validateAttributes($dto);
+if (!$result->isSatisfied) {
+    foreach ($result->failures as $failure) {
+        echo "Violation [{$failure->code}]: {$failure->message} (at {$failure->ruleName})\n";
+    }
+}
+
+// 2. Strict throwing assertion
+try {
+    Spec::assertAttributes($dto);
+} catch (\Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException $e) {
+    // Thrown automatically on validation failure with structured details
+    $failures = $e->getResult()->failures;
+}
+```
+
 ---
 
 ## 🏗️ Directory Structure
 
 ```
 src/
+├── Attributes/                # PHP 8.4 Declarative Attributes Engine (Module 15)
+│   ├── AssertSpec.php        # Specification reference attribute
+│   ├── ValidateRule.php      # Inline rule attribute
+│   ├── AttributeValidator.php # High-performance reflection evaluator
+│   └── Exceptions/           # AttributeValidationException
 ├── Contracts/                 # Segregated formal interfaces (ISP)
 │   ├── Entities/             # IEntity, ITransientEntity
 │   ├── Factory/              # ITypeSpecificationFactory, IComparison..., ILogical...
@@ -481,11 +565,12 @@ php tests/run_all.php
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (69 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (102 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (43 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (72 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (91 assertions)
+• [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (25 assertions)
 
 ====================================================================
- FINAL RESULT: 14/14 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 579 | DURATION: ~45ms | REGRESSIONS: 0
+ FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 623 | DURATION: ~53ms | REGRESSIONS: 0
 ====================================================================
 ```
 
@@ -504,13 +589,15 @@ php tests/run_all.php
 
 👉 **[View the complete ROADMAP.md](ROADMAP.md)**
 
-Planned upcoming milestones:
-1. **English DocBlock Internationalization** (PSR-5 / PSR-19 standardization across all classes)
-2. **PHP 8.4 Declarative Attributes** (`#[AssertSpec]`, `#[ValidateRule]`)
-3. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
-4. **GraphQL AST & OpenAPI 3.1 Query Compilers**
-5. **Doctrine ORM & Laravel Eloquent Query Visitors**
-6. **Reactive Domain Event Sourcing Triggers**
+Key highlights & upcoming roadmap:
+1. **English DocBlock Internationalization** (Shipped in v1.1.0)
+2. **PHP 8.4 Declarative Attributes** (`#[AssertSpec]`, `#[ValidateRule]`) (Shipped in v1.1.0)
+3. **ALinq Lazy Streaming Pipeline & O(1) RAM Evaluation** (Shipped in v1.1.0)
+4. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
+5. **GraphQL AST & OpenAPI 3.1 Query Compilers**
+6. **Doctrine ORM & Laravel Eloquent Query Visitors**
+7. **Reactive Domain Event Sourcing Triggers**
+8. **PHP Fibers & Non-Blocking Async Specification Runner**
 
 ---
 

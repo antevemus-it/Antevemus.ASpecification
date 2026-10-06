@@ -7,29 +7,29 @@ namespace Antevemus\ASpecification\Sql;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 
 /**
- * SqlWhereClause - Objeto de Valor Imutável para Cláusula WHERE com Parâmetros
+ * SqlWhereClause - Immutable Value Object for Parameterized WHERE Clauses
  *
- * Encapsula o fragmento SQL seguro e a coleção de parâmetros (bindings) gerados
- * pela visitação da árvore de especificações, pronto para consumo em PDO, Adianti ou DBAL.
+ * Encapsulates safe SQL expressions and parameter bindings generated
+ * by visiting specification trees, ready for consumption in PDO, Adianti, or Doctrine DBAL.
  *
- * Funcionalidades:
- * - Estrutura imutável tipada (readonly)
- * - Composição booleana fluente (and, or) entre cláusulas geradas
- * - Verificação de cláusula nula/vazia
- * - Representação textual direta via Stringable
+ * Features:
+ * - Immutable typed structure (readonly)
+ * - Fluent boolean composition (and, or) between generated clauses
+ * - Null/empty clause detection
+ * - Direct textual representation via Stringable
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class SqlWhereClause implements ISqlWhereClause
 {
     /**
-     * @param string $sql Fragmento SQL da cláusula
-     * @param array<string, mixed> $parameters Mapa associativo de parâmetros (:param => valor)
+     * @param string $sql SQL fragment of the clause
+     * @param array<string, mixed> $parameters Associative parameter map (:param => value)
      */
     public function __construct(
         public string $sql = '',
@@ -38,7 +38,7 @@ final readonly class SqlWhereClause implements ISqlWhereClause
     }
 
     /**
-     * Cria uma cláusula vazia.
+     * Create an empty clause.
      *
      * @return self
      */
@@ -66,7 +66,7 @@ final readonly class SqlWhereClause implements ISqlWhereClause
     }
 
     /**
-     * Combina esta cláusula com outra através do operador lógico AND.
+     * Combine this clause with another using the logical AND operator.
      *
      * @param self $other
      * @return self
@@ -87,7 +87,7 @@ final readonly class SqlWhereClause implements ISqlWhereClause
     }
 
     /**
-     * Combina esta cláusula com outra através do operador lógico OR.
+     * Combine this clause with another using the logical OR operator.
      *
      * @param self $other
      * @return self

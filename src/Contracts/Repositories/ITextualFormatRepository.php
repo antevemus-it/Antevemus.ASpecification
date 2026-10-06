@@ -7,22 +7,22 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 
 /**
- * ITextualFormatRepository - Marcador de repositório em formato textual
+ * ITextualFormatRepository - Marker Interface for Textual Format Repositories
  *
- * Interface marcadora de classificação para repositórios persistentes que armazenam
- * entidades em formato textual (JSON, XML, CSV, YAML, etc).
+ * Classification marker interface for persistent repositories storing
+ * entities in textual formats (JSON, XML, CSV, YAML, etc.).
  *
- * Funcionalidades:
- * - Classificação semântica de repositório com mídia textual
- * - Preservação do tipo durante promoção de repositório
+ * Features:
+ * - Semantic classification for repositories with textual media
+ * - Type preservation during repository promotion
  *
  * @template T of IEntity
  * @extends IPersistentRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ITextualFormatRepository extends IPersistentRepository

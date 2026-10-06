@@ -366,5 +366,8 @@ FodyWeavers.xsd
 .reversa/
 AGENTS.md
 CLAUDE.md
-GEMINI.md_reversa_forward/
-docs/
+GEMINI.md
+
+# Composer
+/vendor/
+/composer.lock

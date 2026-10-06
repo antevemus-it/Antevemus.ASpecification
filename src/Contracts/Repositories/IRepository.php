@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -8,28 +10,28 @@ use InvalidArgumentException;
 use RuntimeException;
 
 /**
- * Interface IRepository.
+ * IRepository - Core Contract for Entity Repositories
  *
- * Contrato definindo um repositório para armazenamento e recuperação
- * de objetos de entidade (IEntity). Todas as buscas e deleções em lote
- * são orientadas a objetos de Especificação.
+ * Core contract defining a repository for storing and querying
+ * entity objects (IEntity). All searches and batch deletions
+ * are driven by Specification objects.
  *
  * @template T of IEntity
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IRepository
 {
     ///////////////////////////////////////////////////////////////////////////
-    // Operações de Repositório
+    // Repository Operations
     ///////////////////////////////////////////////////////////////////////////
 
     /**
-     * Conta o número de entidades aprovadas pela especificação dada.
+     * Counts the number of entities satisfying the given specification.
      *
      * @param ISpecification<T> $specification
      * @return int
@@ -37,15 +39,15 @@ interface IRepository
      */
     public function countAllEntitiesSpecifiedBy(ISpecification $specification): int;
 
-    /** Alias de countAllEntitiesSpecifiedBy */
+    /** Alias of countAllEntitiesSpecifiedBy */
     public function countAll(ISpecification $specification): int;
 
-    /** Alias de countAllEntitiesSpecifiedBy */
+    /** Alias of countAllEntitiesSpecifiedBy */
     public function count(ISpecification $specification): int;
 
     /**
-     * Encontra e retorna todas as entidades aprovadas pela especificação através
-     * de iteração lazy (Generator), economizando RAM.
+     * Finds and yields all entities satisfying the specification via
+     * lazy iteration (Generator), conserving RAM.
      *
      * @param ISpecification<T> $specification
      * @return iterable<T>
@@ -53,14 +55,14 @@ interface IRepository
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable;
 
-    /** Alias de iterateAllEntitiesSpecifiedBy */
+    /** Alias of iterateAllEntitiesSpecifiedBy */
     public function iterateAll(ISpecification $specification): iterable;
 
-    /** Alias de iterateAllEntitiesSpecifiedBy */
+    /** Alias of iterateAllEntitiesSpecifiedBy */
     public function iterate(ISpecification $specification): iterable;
 
     /**
-     * Encontra e retorna todas as entidades aprovadas pela especificação em um array maciço.
+     * Finds and returns all entities satisfying the specification in an array.
      *
      * @param ISpecification<T> $specification
      * @return array<T>
@@ -68,34 +70,34 @@ interface IRepository
      */
     public function findAllEntitiesSpecifiedBy(ISpecification $specification): array;
 
-    /** Alias de findAllEntitiesSpecifiedBy */
+    /** Alias of findAllEntitiesSpecifiedBy */
     public function findAll(ISpecification $specification): array;
 
-    /** Alias de findAllEntitiesSpecifiedBy */
+    /** Alias of findAllEntitiesSpecifiedBy */
     public function find(ISpecification $specification): array;
 
     /**
-     * Encontra e retorna uma única entidade que atenda à especificação.
+     * Finds and returns a single entity satisfying the specification.
      *
      * @param ISpecification<T> $specification
      * @return T|null
-     * @throws RuntimeException Se mais de uma entidade corresponder à especificação
+     * @throws RuntimeException If more than one entity matches the specification
      * @throws InvalidArgumentException
      */
     public function findSingleEntitySpecifiedBy(ISpecification $specification): ?IEntity;
 
-    /** Alias de findSingleEntitySpecifiedBy */
+    /** Alias of findSingleEntitySpecifiedBy */
     public function findSingle(ISpecification $specification): ?IEntity;
 
     /**
-     * Insere a entidade informada neste repositório.
+     * Inserts the given entity into this repository.
      *
-     * @param T $entity A entidade a ser guardada
+     * @param T $entity Entity to store
      */
     public function put(IEntity $entity): void;
 
     /**
-     * Insere múltiplas entidades neste repositório.
+     * Inserts multiple entities into this repository.
      *
      * @param array<T> $collectionOfEntities
      * @throws InvalidArgumentException
@@ -103,63 +105,63 @@ interface IRepository
     public function putAll(array $collectionOfEntities): void;
 
     /**
-     * Atualiza uma entidade existente.
+     * Updates an existing entity.
      *
-     * @param T $entity A entidade a ser atualizada
+     * @param T $entity Entity to update
      */
     public function update(IEntity $entity): void;
 
     /**
-     * Atualiza uma entidade existente, fornecendo uma specification de delta
-     * para locks otimistas (Optimistic Locking).
+     * Updates an existing entity, providing a delta specification
+     * for optimistic concurrency locking.
      *
-     * @param T $entity A entidade
-     * @param ISpecification|null $deltaSpecification Specificação das diferenças
+     * @param T $entity Entity to update
+     * @param ISpecification|null $deltaSpecification Difference specification
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void;
 
     /**
-     * Remove todas as entidades aprovadas pela especificação informada.
+     * Removes all entities satisfying the given specification.
      *
      * @param ISpecification<T> $specification
-     * @return int O número de entidades removidas
+     * @return int Number of removed entities
      * @throws InvalidArgumentException
      */
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int;
 
-    /** Alias de removeAllEntitiesSpecifiedBy */
+    /** Alias of removeAllEntitiesSpecifiedBy */
     public function removeAll(ISpecification $specification): int;
 
-    /** Alias de removeAllEntitiesSpecifiedBy */
+    /** Alias of removeAllEntitiesSpecifiedBy */
     public function removeBy(ISpecification $specification): int;
 
     /**
-     * Remove a entidade específica fornecida.
+     * Removes the specific entity provided.
      *
      * @param T $entity
-     * @return bool True se encontrada e removida, False se não estava presente
+     * @return bool True if found and removed, false if not present
      */
     public function remove(IEntity $entity): bool;
 
     /**
-     * Informa se este repositório possui capacidade nativa de particionamento (reuso de instância).
+     * Reports whether this repository has native partitioning capability (instance reuse).
      *
      * @return bool
      */
     public function isNativelyPartitioned(): bool;
 
     /**
-     * Informa se o repositório indexa recursivamente entidades membro.
+     * Reports whether the repository recursively indexes member entities.
      *
      * @return bool
      */
     public function isRecursivelyIndexing(): bool;
 
     /**
-     * Promove este repositório para um repositório particionado em grafo (DAG),
-     * preservando todas as suas classificações semânticas (Volátil, Persistente, Formato, Fake).
+     * Promotes this repository into a directed acyclic graph (DAG) partitioned repository,
+     * preserving all semantic classifications (Volatile, Persistent, Format, Fake).
      *
-     * @param ISpecification|null $specification Especificação delimitadora da raiz (opcional)
+     * @param ISpecification|null $specification Root bounding specification (optional)
      * @return IPartitionRepository
      */
     public function makePartition(?ISpecification $specification = null): IPartitionRepository;

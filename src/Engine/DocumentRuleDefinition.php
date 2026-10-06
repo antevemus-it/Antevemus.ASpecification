@@ -7,33 +7,33 @@ namespace Antevemus\ASpecification\Engine;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 
 /**
- * DocumentRuleDefinition - Implementação Canônica da Definição de Requisito Documental
+ * DocumentRuleDefinition - Canonical Implementation of Document Requirement Definition
  *
- * Representa os critérios de obrigatoriedade de um tipo documental vinculado a um grupo
- * operacional de validação, mapeando regras relacionais para objetos de valor tipados.
+ * Represents the requirement criteria of a document type linked to an operational
+ * validation group, mapping relational rules to typed value objects.
  *
- * Funcionalidades:
- * - Suporte a regras de obrigatoriedade universal (all), alternativa (any) ou exclusiva (one_of_set)
- * - Agrupamento por set de alternativas (ex: documento de identidade: CPF, RG ou CNH)
- * - Hidratação direta a partir de registros de banco de dados (fromArray)
+ * Features:
+ * - Support for universal (all), alternative (any), or exclusive (one_of_set) requirement rules
+ * - Grouping by alternative sets (e.g. Identity Document: Tax ID, Passport, or Driver License)
+ * - Direct hydration from relational database records (fromArray)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class DocumentRuleDefinition implements IDocumentRuleDefinition
 {
     /**
-     * @param string $grupoCodigo Código estável do grupo documental
-     * @param string $codigoTipoDocumento Código do tipo de documento exigido
-     * @param DocumentRequirementMode $regraObrigatoriedade Modo de exigência (ALL, ANY, ONE_OF_SET)
-     * @param string|null $codigoSetAlternativas Chave do set alternativo para regras ANY ou ONE_OF_SET
-     * @param string|null $condicionalExpressao Expressão de ativação condicional
-     * @param int $ordem Ordem sequencial
-     * @param bool $active Indicador de status ativo
+     * @param string $grupoCodigo Stable document group code
+     * @param string $codigoTipoDocumento Code of the required document type
+     * @param DocumentRequirementMode $regraObrigatoriedade Requirement mode (ALL, ANY, ONE_OF_SET)
+     * @param string|null $codigoSetAlternativas Alternative set key for ANY or ONE_OF_SET rules
+     * @param string|null $condicionalExpressao Conditional activation expression
+     * @param int $ordem Sequential display order
+     * @param bool $active Active status indicator
      */
     public function __construct(
         public string $grupoCodigo,
@@ -47,9 +47,9 @@ final readonly class DocumentRuleDefinition implements IDocumentRuleDefinition
     }
 
     /**
-     * Instancia um requisito documental a partir de um registro associativo de banco de dados.
+     * Instantiates a document requirement from an associative database record.
      *
-     * @param array<string, mixed> $row Registro relacional
+     * @param array<string, mixed> $row Relational database record
      * @return self
      */
     public static function fromArray(array $row): self

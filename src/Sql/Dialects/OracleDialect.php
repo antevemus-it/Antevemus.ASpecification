@@ -5,22 +5,22 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 /**
- * OracleDialect - Dialeto Especializado para Oracle Database (oracle, oci, oci8)
+ * OracleDialect - Specialized Dialect for Oracle Database (oracle, oci, oci8)
  *
- * Provê suporte a identificadores com aspas duplas, booleanos numéricos (1/0),
- * busca case-insensitive com LOWER() e suporte a REGEXP_LIKE nativo.
+ * Provides support for double-quoted identifiers, numeric booleans (1/0),
+ * case-insensitive matching via LOWER(), and native REGEXP_LIKE pattern matching.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class OracleDialect extends AbstractSqlDialect
 {
     /**
-     * @param string $family Identificador específico ('oracle' ou 'oci')
+     * @param string $family Specific driver family ('oracle' or 'oci')
      */
     public function __construct(
         private readonly string $family = 'oracle'

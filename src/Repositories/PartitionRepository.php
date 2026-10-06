@@ -20,28 +20,28 @@ use SplObjectStorage;
 use Throwable;
 
 /**
- * PartitionRepository - Repositório particionado em grafo acíclico dirigido (DAG)
+ * PartitionRepository - Directed Acyclic Graph (DAG) Partitioned Repository
  *
- * Implementação do padrão Decorator / Composite estrutural para particionamento de repositórios.
- * Delimita subconjuntos de entidades através de ISpecifications, otimizando consultas via
- * descarte antecipado O(1) de partições disjuntas e roteando inserções e remoções.
+ * Implementation of the Decorator / Composite structural pattern for repository partitioning.
+ * Delimits subsets of entities via ISpecifications, optimizing queries via
+ * early O(1) branch pruning of disjoint partitions and routing insertions and deletions.
  *
- * Funcionalidades:
- * - Gerenciamento de nós e arestas em grafo acíclico via SplObjectStorage
- * - Preservação de marcadores semânticos (Volatile, Persistent, Fake e formatos)
- * - Roteamento hierárquico de inserções (put/putAll)
- * - Busca agregada com descarte de partições disjuntas e eliminação de duplicatas
- * - Remoção consistente em partições irmãs (RN-07)
- * - Reparticionamento dinâmico de entidades alteradas
+ * Features:
+ * - Node and edge management in a directed acyclic graph via SplObjectStorage
+ * - Preservation of semantic markers (Volatile, Persistent, Fake, and format types)
+ * - Hierarchical insertion routing (put/putAll)
+ * - Aggregated query execution with disjoint partition pruning and duplicate elimination
+ * - Consistent removal across sibling partitions
+ * - Dynamic repartitioning of mutated entities
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPartitionRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class PartitionRepository extends AbstractRepository implements IPartitionRepository
@@ -67,12 +67,12 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     protected string $entityType;
 
     /**
-     * Construtor de PartitionRepository.
+     * Constructs a PartitionRepository.
      *
-     * @param IRepository<T> $underlyingRepository Repositório alvo encapsulado
-     * @param ISpecification<T>|null $specification Especificação delimitadora desta partição
-     * @param IPartitionRepository<T>|null $parentRepository Repositório particionado pai
-     * @param string|null $entityType FQN do tipo de entidade gerenciado
+     * @param IRepository<T> $underlyingRepository Encapsulated target repository
+     * @param ISpecification<T>|null $specification Bounding specification for this partition
+     * @param IPartitionRepository<T>|null $parentRepository Parent partitioned repository
+     * @param string|null $entityType FQN of managed entity type
      */
     public function __construct(
         IRepository $underlyingRepository,
@@ -90,7 +90,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     }
 
     /**
-     * Fábrica polimórfica que preserva a classificação semântica do repositório base.
+     * Polymorphic factory preserving semantic classification of base repository.
      *
      * @template U of IEntity
      * @param IRepository<U> $underlying
@@ -197,14 +197,14 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     public function addPartition(ISpecification $specification): IPartitionRepository
     {
         if ($specification === null) {
-            throw new InvalidArgumentException('A especificação da partição não pode ser nula.');
+            throw new InvalidArgumentException('Partition specification cannot be null.');
         }
 
         if ($this->underlyingRepository instanceof IPersistentRepository) {
-            throw new InvalidArgumentException('Identificador obrigatório para adicionar partição em repositório persistente.');
+            throw new InvalidArgumentException('Identifier required to add partition in persistent repository.');
         }
 
-        // Instancia novo repositório irmão do mesmo tipo
+        // Instantiates new sibling repository of matching type
         $repoClass = get_class($this->underlyingRepository);
         $newRepo = new $repoClass();
 
@@ -217,20 +217,20 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     public function addPartitionWithId(ISpecification $specification, string $partitionId): IPartitionRepository
     {
         if ($specification === null) {
-            throw new InvalidArgumentException('A especificação da partição não pode ser nula.');
+            throw new InvalidArgumentException('Partition specification cannot be null.');
         }
 
         if (trim($partitionId) === '') {
-            throw new InvalidArgumentException('O identificador da partição não pode ser vazio.');
+            throw new InvalidArgumentException('Partition identifier cannot be empty.');
         }
 
         if ($this->underlyingRepository instanceof IPersistentRepository) {
             if ($partitionId === $this->underlyingRepository->getRepositoryId()) {
-                throw new InvalidArgumentException("O identificador '{$partitionId}' não pode repetir o do repositório pai.");
+                throw new InvalidArgumentException("Identifier '{$partitionId}' cannot duplicate parent repository ID.");
             }
         }
 
-        // Instancia novo repositório
+        // Instantiates new repository
         $repoClass = get_class($this->underlyingRepository);
         $newRepo = new $repoClass();
 
@@ -243,14 +243,14 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     public function addPartitionWithRepository(ISpecification $specification, IRepository $repository): IPartitionRepository
     {
         if ($specification === null) {
-            throw new InvalidArgumentException('A especificação da partição não pode ser nula.');
+            throw new InvalidArgumentException('Partition specification cannot be null.');
         }
 
         if ($repository === null) {
-            throw new InvalidArgumentException('O repositório da partição não pode ser nulo.');
+            throw new InvalidArgumentException('Partition repository cannot be null.');
         }
 
-        // Algoritmo de posicionamento no grafo por subsunção (RN-02)
+        // Subsumption positioning algorithm in graph (RN-02)
         $subsumed = false;
         $partitionsToRemove = [];
 
@@ -260,10 +260,10 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
                 continue;
             }
 
-            // (a) Equivalente: substitui P
+            // (a) Equivalent: replaces P
             if ($this->specsEquivalent($specification, $existingSpec)) {
                 $newPartition = self::create($repository, $specification, $this, $this->entityType);
-                // Migra todas as entidades
+                // Migrate all entities
                 foreach ($existingPartition->findAllEntitiesSpecifiedBy($specification) as $entity) {
                     $newPartition->put($entity);
                 }
@@ -272,13 +272,13 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
                 return $newPartition;
             }
 
-            // (b) Caso especial de P: adiciona recursivamente dentro de P
+            // (b) Special case of P: add recursively inside P
             if ($specification->isSpecialCaseOf($existingSpec)) {
                 $existingPartition->addPartitionWithRepository($specification, $repository);
                 $subsumed = true;
             }
 
-            // (c) S generaliza P: nova partição é inserida entre o nó e P
+            // (c) S generalizes P: new partition is inserted between current node and P
             if ($specification->isGeneralizationOf($existingSpec)) {
                 $partitionsToRemove[] = $existingPartition;
             }
@@ -288,7 +288,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             return $this->findPartition($specification) ?? $this;
         }
 
-        // Cria nova partição como filha direta
+        // Creates new partition as direct child
         $newPartition = self::create($repository, $specification, $this, $this->entityType);
 
         if (!empty($partitionsToRemove)) {
@@ -298,7 +298,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             }
         }
 
-        // Migra entidades do nó atual que satisfazem a nova partição (RN-02 c/d)
+        // Migrates entities from current node satisfying new partition (RN-02 c/d)
         $migratedEntities = [];
         foreach ($this->underlyingRepository->findAllEntitiesSpecifiedBy($specification) as $entity) {
             $newPartition->put($entity);
@@ -396,10 +396,10 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
      */
     public function put(IEntity $entity): void
     {
-        // Validação na raiz (RN-03)
+        // Root validation (RN-03)
         if ($this->isRoot() && $this->specification !== null) {
             if (!$this->specification->isSatisfiedBy($entity)) {
-                throw new InvalidArgumentException('Entidade não satisfaz a especificação definida para a raiz.');
+                throw new InvalidArgumentException('Entity does not satisfy specification defined for root.');
             }
         }
 
@@ -412,7 +412,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             }
         }
 
-        // Se não roteada para nenhuma partição filha, guarda neste nó
+        // If not routed to child partition, keep in this node
         if (!$routed) {
             $this->underlyingRepository->put($entity);
         }
@@ -451,7 +451,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
      */
     public function repartition(IEntity $entity): bool
     {
-        // Localiza onde a entidade está atualmente
+        // Locates where the entity currently resides
         $removed = $this->remove($entity);
         $this->rootPartition->put($entity);
         return $removed;
@@ -481,7 +481,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     {
         $removed = false;
 
-        // Remove em todas as partições filhas (RN-07)
+        // Remove across all child partitions (RN-07)
         foreach ($this->subPartitions as $partition) {
             if ($partition->remove($entity)) {
                 $removed = true;
@@ -502,7 +502,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     {
         $this->validateSpecification($specification);
 
-        // Descarte O(1) se disjunta da partição deste nó (RN-06)
+        // O(1) pruning if disjoint from current partition (RN-06)
         if ($this->specification !== null && $this->specification->isDisjointWith($specification)) {
             return 0;
         }
@@ -542,7 +542,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         $this->validateSpecification($specification);
 
         try {
-            // Descarte antecipado O(1) se disjunta (RN-04)
+            // Early O(1) pruning if disjoint (RN-04)
             if ($this->specification !== null && $this->specification->isDisjointWith($specification)) {
                 return [];
             }
@@ -550,7 +550,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             $entities = [];
             $visitedIds = [];
 
-            // Entidades locais do nó
+            // Local node entities
             foreach ($this->underlyingRepository->findAllEntitiesSpecifiedBy($specification) as $entity) {
                 $id = $entity->getEntityId();
                 if (!isset($visitedIds[$id])) {
@@ -559,7 +559,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
                 }
             }
 
-            // Agrega entidades das partições filhas evitando duplicações (RN-05)
+            // Aggregate entities from child partitions avoiding duplicates (RN-05)
             foreach ($this->subPartitions as $partition) {
                 foreach ($partition->findAllEntitiesSpecifiedBy($specification) as $entity) {
                     $id = $entity->getEntityId();
@@ -575,15 +575,15 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             if ($e instanceof InvalidArgumentException) {
                 throw $e;
             }
-            throw new RepositoryException("Falha na operação de consulta no repositório particionado: {$e->getMessage()}", 0, $e);
+            throw new RepositoryException("Failed query operation on partitioned repository: {$e->getMessage()}", 0, $e);
         }
     }
 
     /**
-     * Cria ou anexa uma sub-partição no grafo a partir da especificação informada.
+     * Creates or attaches a sub-partition in the graph from the given specification.
      *
-     * @param ISpecification|null $specification Especificação delimitadora da partição
-     * @return IPartitionRepository Sub-partição criada ou esta instância caso a especificação seja nula
+     * @param ISpecification|null $specification Bounding specification for partition
+     * @return IPartitionRepository Created sub-partition or this instance if specification is null
      */
     public function makePartition(?ISpecification $specification = null): IPartitionRepository
     {

@@ -7,53 +7,53 @@ namespace Antevemus\ASpecification\Contracts\Repositories\Serialization;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 
 /**
- * IEntitySerializer - Contrato agnóstico de serialização e desserialização de entidades
+ * IEntitySerializer - Agnostic Contract for Entity Serialization and Deserialization
  *
- * Define a interface padronizada para conversão bidirecional entre instâncias
- * de IEntity e representações em string (JSON, binário serializado, etc.),
- * garantindo integridade de tipo, valores e identidade única.
+ * Defines the standardized interface for bidirectional conversion between
+ * IEntity instances and string representations (JSON, native binary serialization, etc.),
+ * ensuring type fidelity, values, and unique identity preservation.
  *
- * Funcionalidades:
- * - Serialização de entidade para string formatada
- * - Desserialização a partir de string para instância da classe de entidade alvo
- * - Fornecimento de metadados de formato (Content-Type e extensão de arquivo)
+ * Features:
+ * - Entity serialization to formatted string
+ * - Deserialization from string to target concrete entity class instance
+ * - Provision of format metadata (Content-Type and recommended file extension)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IEntitySerializer
 {
     /**
-     * Serializa uma entidade para representação em string.
+     * Serializes an entity to a string representation.
      *
-     * @param IEntity $entity Entidade a ser serializada
-     * @return string Representação serializada
+     * @param IEntity $entity Entity to serialize
+     * @return string Serialized representation
      */
     public function serialize(IEntity $entity): string;
 
     /**
-     * Desserializa uma string reconstruindo a instância da entidade.
+     * Deserializes a string, reconstructing the target entity instance.
      *
      * @template T of IEntity
-     * @param string $data Dados serializados
-     * @param class-string<T> $entityClass Nome da classe concreta da entidade
+     * @param string $data Serialized payload
+     * @param class-string<T> $entityClass Concrete entity class name
      * @return T
      */
     public function deserialize(string $data, string $entityClass): IEntity;
 
     /**
-     * Retorna o tipo MIME/Content-Type da representação serializada.
+     * Returns the MIME Content-Type of the serialized representation.
      *
      * @return string
      */
     public function getContentType(): string;
 
     /**
-     * Retorna a extensão padrão de arquivo recomendada (ex: json, bin).
+     * Returns the recommended default file extension (e.g. json, bin).
      *
      * @return string
      */

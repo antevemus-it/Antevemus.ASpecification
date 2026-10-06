@@ -7,70 +7,70 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
 use DateTimeInterface;
 
 /**
- * IEntityPersistenceMetaData - Contrato de metadados de ciclo de vida e persistência
+ * IEntityPersistenceMetaData - Contract for Lifecycle and Persistence Metadata
  *
- * Contrato para metadados de persistência associados a uma entidade (IEntity).
- * Mantém contadores e registros temporais de ciclos de leitura e gravação da entidade
- * em mídias de armazenamento. Não possui identidade própria e não é uma entidade consultável.
+ * Contract for persistence metadata associated with an entity (IEntity).
+ * Maintains counters and temporal logs of entity read and write cycles
+ * across storage media. Does not possess its own identity and is not queryable directly.
  *
- * Funcionalidades:
- * - Contagem total de leituras e gravações
- * - Registro de timestamps da primeira e última leitura
- * - Registro de timestamps da primeira e última gravação
- * - Métodos para registro de eventos de ciclo de vida
+ * Features:
+ * - Total read and write operation counters
+ * - First and last read timestamps tracking
+ * - First and last write timestamps tracking
+ * - Lifecycle event registration hooks
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IEntityPersistenceMetaData
 {
     /**
-     * Retorna a quantidade total de vezes que a entidade foi lida/carregada.
+     * Returns the total count of times the entity was read/loaded.
      */
     public function getReadCount(): int;
 
     /**
-     * Retorna a quantidade total de vezes que a entidade foi gravada/persistida.
+     * Returns the total count of times the entity was written/persisted.
      */
     public function getWriteCount(): int;
 
     /**
-     * Retorna a data e hora da primeira operação de leitura registrada, ou null se nunca lida.
+     * Returns the timestamp of the first recorded read operation, or null if never read.
      */
     public function getFirstRead(): ?DateTimeInterface;
 
     /**
-     * Retorna a data e hora da última operação de leitura registrada, ou null se nunca lida.
+     * Returns the timestamp of the last recorded read operation, or null if never read.
      */
     public function getLastRead(): ?DateTimeInterface;
 
     /**
-     * Retorna a data e hora da primeira operação de gravação registrada.
+     * Returns the timestamp of the first recorded write operation.
      */
     public function getFirstWrite(): ?DateTimeInterface;
 
     /**
-     * Retorna a data e hora da última operação de gravação registrada.
+     * Returns the timestamp of the last recorded write operation.
      */
     public function getLastWrite(): ?DateTimeInterface;
 
     /**
-     * Registra uma ocorrência de leitura da entidade, incrementando o contador
-     * e atualizando os timestamps de primeira/última leitura.
+     * Registers an entity read occurrence, incrementing the counter
+     * and updating first/last read timestamps.
      *
-     * @param DateTimeInterface|null $timestamp Data/hora do evento (ou atual se null)
+     * @param DateTimeInterface|null $timestamp Event timestamp (or current time if null)
      */
     public function registerRead(?DateTimeInterface $timestamp = null): void;
 
     /**
-     * Registra uma ocorrência de gravação da entidade, incrementando o contador
-     * e atualizando os timestamps de primeira/última gravação.
+     * Registers an entity write occurrence, incrementing the counter
+     * and updating first/last write timestamps.
      *
-     * @param DateTimeInterface|null $timestamp Data/hora do evento (ou atual se null)
+     * @param DateTimeInterface|null $timestamp Event timestamp (or current time if null)
      */
     public function registerWrite(?DateTimeInterface $timestamp = null): void;
 }

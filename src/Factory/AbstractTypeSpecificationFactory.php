@@ -1,32 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ITypeSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 
 /**
- * AbstractTypeSpecificationFactory class.
+ * AbstractTypeSpecificationFactory - Base abstract factory for typed class specifications
  *
- * Classe abstrata base para fábricas de especificações tipadas.
+ * Provides default alias methods and validation helpers for class/interface type specifications.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractTypeSpecificationFactory implements ITypeSpecificationFactory
 {
     /**
-     * Valida se o tipo fornecido é uma classe ou interface válida.
+     * Validates whether the given type is a valid class or interface.
      *
-     * Método auxiliar para implementações concretas validarem os tipos
-     * antes de criar as especificações.
+     * Helper method for concrete implementations to validate types
+     * prior to creating specifications.
      *
-     * @param string $type Nome completo da classe ou interface
-     * @throws \InvalidArgumentException Se o tipo for vazio ou não existir
+     * @param string $type Fully qualified class or interface name
+     * @throws \InvalidArgumentException If type is empty or does not exist
      */
     protected function validateType(string $type): void
     {

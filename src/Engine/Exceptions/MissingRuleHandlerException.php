@@ -5,36 +5,36 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine\Exceptions;
 
 /**
- * MissingRuleHandlerException - Exceção Lançada na Ausência de Handler para Tipo de Regra
+ * MissingRuleHandlerException - Exception Thrown on Missing Rule Type Handler
  *
- * Ocorre quando o catálogo solicita a compilação de uma regra cujo `tipo_regra` não possui
- * nenhum handler ou fábrica registrada no `RuleSpecificationRegistry`.
+ * Occurs when the catalog requests the compilation of a rule whose `tipo_regra` has
+ * no corresponding handler or factory registered in `RuleSpecificationRegistry`.
  *
- * Funcionalidades:
- * - Identificação explícita do código da regra e do tipo não suportado
- * - Sugestão de resolução no registro de especificações
+ * Features:
+ * - Explicit identification of the unsupported rule type and rule code
+ * - Actionable resolution hint in specification registry
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class MissingRuleHandlerException extends RuleEngineException
 {
     /**
-     * @param string $tipoRegra Chave técnica do tipo de validação
-     * @param string|null $codigo Código estável da regra no catálogo
+     * @param string $tipoRegra Technical validation type key
+     * @param string|null $codigo Stable rule code in catalog
      */
     public function __construct(
         public readonly string $tipoRegra,
         public readonly ?string $codigo = null
     ) {
         $msg = sprintf(
-            'Nenhum handler de especificação registrado para o tipo de regra "%s"%s.',
+            'No specification handler registered for rule type "%s"%s.',
             $tipoRegra,
-            $codigo !== null ? " (código: {$codigo})" : ''
+            $codigo !== null ? " (code: {$codigo})" : ''
         );
         parent::__construct($msg);
     }

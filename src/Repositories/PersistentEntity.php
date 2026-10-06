@@ -10,23 +10,23 @@ use Antevemus\ASpecification\Contracts\Repositories\IPersistentEntity;
 use DateTimeInterface;
 
 /**
- * PersistentEntity - Envelope de entidade e metadados persistentes
+ * PersistentEntity - Persistent Entity and Metadata Wrapper
  *
- * Implementação padrão do envelope (wrapper) de entidade persistente.
- * Associa uma entidade de domínio (IEntity) aos seus metadados de ciclo de vida (IEntityPersistenceMetaData).
+ * Default implementation of persistent entity envelope (wrapper).
+ * Associates a domain entity (IEntity) with its lifecycle persistence metadata (IEntityPersistenceMetaData).
  *
- * Funcionalidades:
- * - Acesso e substituição segura de entidade encapsulada
- * - Manutenção de metadados de ciclo de vida de persistência
- * - Encaminhamento de notificações de leitura e gravação
+ * Features:
+ * - Safe access and mutation of encapsulated entity
+ * - Maintenance of persistence lifecycle metadata
+ * - Forwarding of read and write event notifications
  *
  * @template T of IEntity
  * @implements IPersistentEntity<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class PersistentEntity implements IPersistentEntity
@@ -39,10 +39,10 @@ class PersistentEntity implements IPersistentEntity
     private IEntityPersistenceMetaData $metaData;
 
     /**
-     * Construtor do envelope de entidade persistente.
+     * Constructs persistent entity wrapper.
      *
-     * @param T $entity Entidade encapsulada
-     * @param IEntityPersistenceMetaData|null $metaData Metadados de persistência (ou gerados automaticamente)
+     * @param T $entity Encapsulated entity
+     * @param IEntityPersistenceMetaData|null $metaData Persistence metadata (or automatically initialized)
      */
     public function __construct(IEntity $entity, ?IEntityPersistenceMetaData $metaData = null)
     {

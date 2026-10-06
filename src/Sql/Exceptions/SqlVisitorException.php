@@ -7,19 +7,19 @@ namespace Antevemus\ASpecification\Sql\Exceptions;
 use RuntimeException;
 
 /**
- * SqlVisitorException - Exceção Base para Falhas de Tradução SQL
+ * SqlVisitorException - Base Exception for SQL Translation Failures
  *
- * Lançada durante a travessia e compilação da árvore de especificações para dialetos SQL.
+ * Thrown during traversal and compilation of specification trees into SQL dialect expressions.
  *
- * Funcionalidades:
- * - Exceção base tipada para o subsistema de SQL
- * - Rastreabilidade com mensagem e causa original
+ * Features:
+ * - Typed base exception for SQL subsystem
+ * - Traceability preserving original message and cause
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SqlVisitorException extends RuntimeException

@@ -1,37 +1,41 @@
 <?php
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 
 /**
- * WildcardSpecification class.
+ * WildcardSpecification - Leaf specification for wildcard pattern matching.
  *
- * Implementação de uma especificação folha (Leaf) para validação de padrões Wildcard (curingas).
+ * Uses native PHP `fnmatch` to verify whether the candidate string matches a wildcard pattern (e.g. `*.txt`).
  *
- * Utiliza a função nativa `fnmatch` do PHP para verificar se o candidato em formato de string atende a um padrão de curinga simples (ex: `*.txt`).
+ * Features:
+ * - Simple glob wildcard pattern matching via `fnmatch`
+ * - Safe rejection of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class WildcardSpecification extends AbstractSpecification
 {
     /**
-     * Inicializa a especificação com um padrão.
+     * Initializes the specification with a wildcard pattern.
      *
-     * @param string $pattern O padrão esperado para a validação.
+     * @param string $pattern Wildcard expression pattern
      */
-
-
-    public function __construct(private readonly string $pattern) {}
+    public function __construct(private readonly string $pattern)
+    {
+    }
 
     /**
-     * Retorna o padrão de curinga configurado.
+     * Returns the configured wildcard pattern.
      *
      * @return string
      */
@@ -41,30 +45,27 @@ class WildcardSpecification extends AbstractSpecification
     }
 
     /**
-     * Verifica se o candidato fornecido satisfaz esta regra folha.
+     * Verifies whether the provided candidate satisfies this wildcard rule.
      *
-     * @param mixed $candidate O valor ou objeto a ser validado.
-     * @return bool Retorna true se a regra for atendida, false caso contrário.
+     * @param mixed $candidate Value or object to validate
+     * @return bool True if candidate string matches the wildcard pattern
      */
-
-
-
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        if (!is_string($candidate)) return false;
+        if (!is_string($candidate)) {
+            return false;
+        }
+
         return fnmatch($this->pattern, $candidate);
     }
+
     /**
-     * Retorna o tipo de objeto ou dado que esta especificação valida.
+     * Returns the type of candidate validated by this specification.
      *
-     * @return class-string|string Retorna 'mixed' pois esta especificação folha aceita tipos variados.
+     * @return string
      */
-
-
-    
     public function getType(): string
     {
-        return 'mixed';
+        return 'string';
     }
-
 }

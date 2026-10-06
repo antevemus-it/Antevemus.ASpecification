@@ -45,23 +45,23 @@ use Antevemus\ASpecification\Factory\Traits\TypeSpecificationOperationsTrait;
 use DateTimeInterface;
 
 /**
- * SpecificationFactory - Facade Concreta e Unificada para Criação de Especificações
+ * SpecificationFactory - Concrete and unified facade for specification creation
  *
- * Ponto de entrada central para construção idiomática e fluente de qualquer especificação.
- * Agrega e implementa todas as 8 interfaces de fábrica da biblioteca através de composição
- * de sub-fábricas especializadas e decomposição modular via Traits por família de operações.
+ * Central entry point for fluent and idiomatic specification creation across all domains.
+ * Aggregates and implements all 8 specification factory interfaces through composition
+ * of specialized sub-factories and modular trait decomposition.
  *
- * Funcionalidades:
- * - Acessores segmentados tipados: type(), comparison(), logical(), special(), string(), date(), collection(), wrapper()
- * - Implementação unificada direta de todos os métodos das 8 famílias de fábricas via Traits especializados
- * - Resolução transparente e contravariante/covariante de colisões de métodos idiomáticos
- * - Construtor imutável com fábrica estática create()
+ * Features:
+ * - Typed segment accessors: type(), comparison(), logical(), special(), string(), date(), collection(), wrapper()
+ * - Unified direct implementation of all 8 factory families via specialized traits
+ * - Transparent contravariant/covariant resolution of idiomatic method overloads
+ * - Immutable constructor with static factory create()
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class SpecificationFactory implements
@@ -93,7 +93,7 @@ final class SpecificationFactory implements
     private readonly ISpecificationWrapperFactory $wrapperFactory;
 
     /**
-     * Inicializa a fábrica de especificações instanciando as sub-fábricas especializadas.
+     * Initializes the specification factory by instantiating specialized sub-factories.
      */
     public function __construct()
     {
@@ -594,7 +594,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Cria uma nova instância da fábrica unificada de especificações.
+     * Creates a new instance of the unified specification factory.
      *
      * @return self
      */
@@ -604,11 +604,11 @@ final class SpecificationFactory implements
     }
 
     // ==========================================
-    // 1. Acessores Segmentados Tipados
+    // 1. Typed Segment Accessors
     // ==========================================
 
     /**
-     * Obtém a sub-fábrica especializada em especificações de tipo/classe.
+     * Gets the specialized sub-factory for type/class specifications.
      *
      * @return ITypeSpecificationFactory
      */
@@ -618,7 +618,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações de comparação de valores.
+     * Gets the specialized sub-factory for value comparison specifications.
      *
      * @return IComparisonSpecificationFactory
      */
@@ -628,7 +628,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações lógicas e booleanas.
+     * Gets the specialized sub-factory for boolean/logical specifications.
      *
      * @return ILogicalSpecificationFactory
      */
@@ -638,7 +638,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações especiais (tautologias, contradições, nulos).
+     * Gets the specialized sub-factory for special specifications (tautologies, contradictions, nulls).
      *
      * @return ISpecialSpecificationFactory
      */
@@ -648,7 +648,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações de strings e expressões regulares.
+     * Gets the specialized sub-factory for string and regular expression specifications.
      *
      * @return IStringSpecificationFactory
      */
@@ -658,7 +658,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações de data e hora.
+     * Gets the specialized sub-factory for date and time specifications.
      *
      * @return IDateSpecificationFactory
      */
@@ -668,7 +668,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em especificações de coleções e iteráveis.
+     * Gets the specialized sub-factory for collection and iterable specifications.
      *
      * @return ICollectionSpecificationFactory
      */
@@ -678,7 +678,7 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Obtém a sub-fábrica especializada em envelopamento e adaptação de especificações.
+     * Gets the specialized sub-factory for specification wrapping and adaptation.
      *
      * @return ISpecificationWrapperFactory
      */
@@ -688,7 +688,7 @@ final class SpecificationFactory implements
     }
 
     // ==========================================
-    // 2. Resolução de Colisões de Assinaturas
+    // 2. Signature Overload Resolution
     // ==========================================
 
     private function wrapAsComposite(ISpecification $specification): ICompositeSpecification
@@ -719,9 +719,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Resolve polimorficamente a criação de especificação de tipo ou envelopamento.
+     * Polymorphically resolves type specification creation or specification wrapping.
      *
-     * @param ISpecification|string  Nome da classe/tipo ou especificação a envelopar
+     * @param ISpecification|string $target Class/type name or specification to wrap
      * @return ICompositeSpecification
      */
     public function a(ISpecification|string $target): ICompositeSpecification
@@ -733,9 +733,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Resolve polimorficamente a criação de especificação de tipo ou envelopamento (alias de a).
+     * Polymorphically resolves type specification creation or specification wrapping (alias for a).
      *
-     * @param ISpecification|string  Nome da classe/tipo ou especificação a envelopar
+     * @param ISpecification|string $target Class/type name or specification to wrap
      * @return ICompositeSpecification
      */
     public function an(ISpecification|string $target): ICompositeSpecification
@@ -747,9 +747,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Resolve polimorficamente a verificação de tipo ou envelopamento de especificação.
+     * Polymorphically resolves type verification or specification wrapping.
      *
-     * @param ISpecification|string  Nome da classe/tipo ou especificação
+     * @param ISpecification|string $target Class/type name or specification
      * @return ICompositeSpecification
      */
     public function isA(ISpecification|string $target): ICompositeSpecification
@@ -761,9 +761,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Resolve polimorficamente a verificação de tipo ou envelopamento de especificação (alias de isA).
+     * Polymorphically resolves type verification or specification wrapping (alias for isA).
      *
-     * @param ISpecification|string  Nome da classe/tipo ou especificação
+     * @param ISpecification|string $target Class/type name or specification
      * @return ICompositeSpecification
      */
     public function isAn(ISpecification|string $target): ICompositeSpecification
@@ -775,9 +775,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Cria especificação para todos os elementos de uma coleção ou tipo.
+     * Creates a specification for all elements of a collection or type.
      *
-     * @param ISpecification|string  Tipo das instâncias ou especificação de cada elemento
+     * @param ISpecification|string $target Type of instances or element specification
      * @return ICompositeSpecification
      */
     public function all(ISpecification|string $target): ICompositeSpecification
@@ -789,9 +789,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Cria especificação de igualdade ou envelopa uma especificação existente.
+     * Creates an equality specification or wraps an existing specification.
      *
-     * @param mixed  Valor a comparar ou ISpecification a envelopar
+     * @param mixed $value Value to compare or ISpecification to wrap
      * @return ISpecification
      */
     public function is(mixed $value): ISpecification
@@ -803,9 +803,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Cria especificação de limite temporal anterior ou comparação menor que.
+     * Creates a temporal before boundary or numeric less-than specification.
      *
-     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @param mixed $value DateTimeInterface or numeric/comparable value
      * @return ISpecification
      */
     public function before(mixed $value): ISpecification
@@ -817,9 +817,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Alias para before().
+     * Alias for before().
      *
-     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @param mixed $value DateTimeInterface or numeric/comparable value
      * @return ISpecification
      */
     public function isBefore(mixed $value): ISpecification
@@ -828,9 +828,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Cria especificação de limite temporal posterior ou comparação maior que.
+     * Creates a temporal after boundary or numeric greater-than specification.
      *
-     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @param mixed $value DateTimeInterface or numeric/comparable value
      * @return ISpecification
      */
     public function after(mixed $value): ISpecification
@@ -842,9 +842,9 @@ final class SpecificationFactory implements
     }
 
     /**
-     * Alias para after().
+     * Alias for after().
      *
-     * @param mixed  DateTimeInterface ou valor numérico/comparável
+     * @param mixed $value DateTimeInterface or numeric/comparable value
      * @return ISpecification
      */
     public function isAfter(mixed $value): ISpecification

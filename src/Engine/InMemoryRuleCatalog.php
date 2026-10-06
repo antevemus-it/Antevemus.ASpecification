@@ -9,21 +9,21 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 
 /**
- * InMemoryRuleCatalog - Catálogo de Regras e Documentos Residente em Memória
+ * InMemoryRuleCatalog - In-Memory Rule and Document Catalog
  *
- * Implementação em memória de IRuleCatalog projetada para testes unitários, ambientes
- * de desenvolvimento isolados e compilação rápida de regras dinâmicas.
+ * In-memory implementation of IRuleCatalog designed for unit testing, isolated
+ * development environments, and rapid dynamic rule compilation.
  *
- * Funcionalidades:
- * - Armazenamento fluido de regras e requisitos documentais
- * - Filtragem por escopo, cenário de negócio e status ativo
- * - Ordenação nativa por prioridade decrescente
+ * Features:
+ * - Fluent in-memory storage of business rules and document requirements
+ * - Filtering by operational scope, business scenario, and active status
+ * - Native descending priority sorting
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class InMemoryRuleCatalog implements IRuleCatalog
@@ -35,8 +35,8 @@ class InMemoryRuleCatalog implements IRuleCatalog
     private array $documentRules = [];
 
     /**
-     * @param list<IRuleDefinition> $rules Regras iniciais
-     * @param list<IDocumentRuleDefinition> $documentRules Requisitos documentais iniciais
+     * @param list<IRuleDefinition> $rules Initial rules collection
+     * @param list<IDocumentRuleDefinition> $documentRules Initial document requirements collection
      */
     public function __construct(array $rules = [], array $documentRules = [])
     {
@@ -49,7 +49,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
     }
 
     /**
-     * Adiciona uma regra de negócio ao catálogo.
+     * Adds a business rule to the catalog.
      *
      * @param IRuleDefinition $rule
      * @return self
@@ -61,7 +61,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
     }
 
     /**
-     * Adiciona um requisito documental ao catálogo.
+     * Adds a document requirement to the catalog.
      *
      * @param IDocumentRuleDefinition $documentRule
      * @return self
@@ -83,13 +83,13 @@ class InMemoryRuleCatalog implements IRuleCatalog
             }
 
             $ruleEscopo = $rule->getEscopo();
-            // Regra global (escopo null) ou com mesmo escopo
+            // Global rule (null scope) or matching scope
             if ($ruleEscopo !== null && $ruleEscopo !== '' && $ruleEscopo !== $escopo) {
                 continue;
             }
 
             $ruleCenario = $rule->getCenario();
-            // Regra sem cenário (aplicável a todos do escopo) ou com mesmo cenário
+            // Rule without specific scenario (applies to all in scope) or matching scenario
             if ($ruleCenario !== null && $ruleCenario !== '' && $cenario !== null && $ruleCenario !== $cenario) {
                 continue;
             }
@@ -97,7 +97,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
             $matched[] = $rule;
         }
 
-        // Ordena por prioridade decrescente
+        // Sort by descending priority
         usort($matched, fn(IRuleDefinition $a, IRuleDefinition $b) => $b->getPrioridade() <=> $a->getPrioridade());
 
         return $matched;
@@ -113,7 +113,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
-            // O grupo_codigo pode representar o escopo ou cenario
+            // grupo_codigo may represent either scope or scenario
             $grupo = $docRule->getGrupoCodigo();
             if ($cenario !== null && $grupo === $cenario) {
                 $matched[] = $docRule;
@@ -125,13 +125,13 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
-            // Se for prefixado por escopo (ex: "contrato_locacao_ativacao" para escopo "contrato_locacao")
+            // If prefixed by scope (e.g., "rental_contract_activation" for scope "rental_contract")
             if (str_starts_with($grupo, $escopo)) {
                 $matched[] = $docRule;
             }
         }
 
-        // Ordena pela coluna de ordem
+        // Sort by order column
         usort($matched, fn(IDocumentRuleDefinition $a, IDocumentRuleDefinition $b) => $a->getOrdem() <=> $b->getOrdem());
 
         return $matched;

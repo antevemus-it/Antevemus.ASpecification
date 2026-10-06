@@ -1,5 +1,35 @@
 <?php
 
+declare(strict_types=1);
+
+/**
+ * AbstractCompositeSpecification - Abstract composite specification implementation
+ *
+ * Base abstract class defining the composite specification structure, consisting of:
+ * - Candidate type definition (parameterized as T)
+ * - Encapsulated specification graph (SplObjectStorage preserving uniqueness)
+ * - Logical conjunction/disjunction algebra across child specifications
+ *
+ * Composite specifications can hold both leaf and nested composite specifications,
+ * forming an evaluable specification tree with subsumption and remainder tracking.
+ *
+ * Features:
+ * - O(1) duplicate prevention via SplObjectStorage
+ * - Reflection and getter based property access
+ * - Remainder calculation and disjunction checking
+ * - Fluent composition operators
+ *
+ * @template T
+ * @extends AbstractSpecification<T>
+ * @implements ICompositeSpecification<T>
+ * @version    1.1.0
+ * @package    Antevemus\ASpecification
+ * @subpackage Core
+ * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
+ * @license    MIT
+ */
+
 namespace Antevemus\ASpecification;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
@@ -9,75 +39,46 @@ use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 
-/**
- * AbstractCompositeSpecification class.
- *
- * Classe abstrata base para especificações compostas.
- *
- * Esta classe define a estrutura de dados das especificações compostas, consistindo de:
- * - O tipo desta especificação (parametrizado como T)
- * - Especificações encapsuladas (podem ser LeafSpecification e/ou CompositeSpecification)
- * - A relação lógica entre todas as especificações encapsuladas (conjunção/disjunção)
- *
- * Especificações compostas podem conter tanto especificações folha (leaf) quanto outras
- * especificações compostas, formando uma árvore de especificações que pode ser avaliada
- * recursivamente.
- *
- * @template T
- * @extends AbstractSpecification<T>
- * @implements ICompositeSpecification<T>
- * @version    0.1
- * @package    Antevemus\ASpecification
- * @subpackage Core
- * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
- * @license    MIT
- */
 abstract class AbstractCompositeSpecification extends AbstractSpecification implements ICompositeSpecification
 {
     /**
-     * O tipo desta especificação.
+     * Target type of this composite specification.
      *
-     * @var string Nome completo da classe/interface
+     * @var string FQCN or interface name
      */
     protected string $type;
 
     /**
-     * Conjunto de especificações encapsuladas.
+     * Set of encapsulated specifications.
      *
-     * Usa SplObjectStorage internamente para garantir unicidade (equivalente a HashSet do Java).
-     * Previne duplicatas automaticamente com performance O(1).
+     * Uses SplObjectStorage internally to ensure uniqueness with O(1) lookup.
      *
-     * @var \SplObjectStorage Conjunto de ISpecification (pode conter leaf e composite specs)
+     * @var \SplObjectStorage Set of child specifications
      */
     protected \SplObjectStorage $specifications;
 
     /**
-     * Indica se esta especificação foi finalizada (imutável).
+     * Indicates whether this composite specification has been finalized as immutable.
      *
      * @var bool
      */
     protected bool $finalized = false;
 
     /**
-     * Construtor.
+     * Initializes the composite specification for candidate type T.
      *
-     * @param string $type Nome completo da classe ou interface do tipo T
+     * @param string $type Target candidate type FQCN
      */
     public function __construct(string $type)
     {
         $this->type = $type;
-        $this->specifications = new \SplObjectStorage(); // Inicializa como Set
+        $this->specifications = new \SplObjectStorage();
     }
 
     /**
-     * Finaliza a criação desta especificação composta, tornando-a imutável.
+     * Finalizes construction of this composite specification, marking it immutable.
      *
-     * Deve ser invocado quando a construção desta especificação composta
-     * estiver completa. Após chamar este método, a especificação não pode
-     * mais ser modificada.
-     *
-     * @return static Esta especificação para encadeamento fluente
+     * @return static Current specification for fluent chaining
      */
     protected function finalizeCreation(): static
     {
@@ -100,7 +101,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     {
         if ($this->specifications->count() > 0) {
             throw new \BadMethodCallException(
-                'A cláusula "where" só pode ser invocada uma vez em expressões de especificação'
+                'The "where" clause can only be invoked once in specification expressions'
             );
         }
 
@@ -114,7 +115,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     {
         if ($this->specifications->count() === 0) {
             throw new \BadMethodCallException(
-                'A cláusula "where" deve ser invocada antes de "andWhere"/"orWhere" em expressões parametrizadas'
+                'The "where" clause must be invoked before "andWhere"/"orWhere" in parameterized expressions'
             );
         }
 
@@ -128,7 +129,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     {
         if ($this->specifications->count() === 0) {
             throw new \BadMethodCallException(
-                'A cláusula "where" deve ser invocada antes de "andWhere"/"orWhere" em expressões parametrizadas'
+                'The "where" clause must be invoked before "andWhere"/"orWhere" in parameterized expressions'
             );
         }
 
@@ -142,40 +143,35 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->and(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Verifica compatibilidade de tipos
         if (!$this->canCastAtLeastOneWay($this->getType(), $otherSpecification->getType())) {
             throw new \InvalidArgumentException(
                 sprintf(
-                    'Não é possível criar conjunção de Specification<%s> e Specification<%s>',
+                    'Cannot create conjunction of Specification<%s> and Specification<%s>',
                     $this->getType(),
                     $otherSpecification->getType()
                 )
             );
         }
 
-        // Se são a mesma especificação, retorna esta
         if ($otherSpecification === $this || $this->equals($otherSpecification)) {
             return $this;
         }
 
-        // Verifica se são disjuntas
         if ($this->isDisjointWith($otherSpecification)) {
             throw new \InvalidArgumentException(
-                'Não é possível criar conjunção de duas especificações disjuntas'
+                'Cannot create conjunction of two disjoint specifications'
             );
         }
 
-        // Cria e retorna nova especificação AND
-        // AndSpecification já recebe as specs no construtor (left, right)
         return new AndSpecification($this, $otherSpecification);
     }
 
@@ -186,22 +182,19 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     {
         if (is_string($otherSpecification)) {
             if ($propertySpecification === null) {
-                throw new \InvalidArgumentException('A especificação da propriedade não pode ser nula quando o nome da propriedade é fornecido.');
+                throw new \InvalidArgumentException('Property specification cannot be null when property name is provided.');
             }
             return $this->or(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Se são a mesma especificação, retorna esta
         if ($otherSpecification === $this || $this->equals($otherSpecification)) {
             return $this;
         }
 
-        // Cria e retorna nova especificação OR
-        // OrSpecification já recebe as specs no construtor (left, right)
         return new OrSpecification($this, $otherSpecification);
     }
 
@@ -211,36 +204,29 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     public function remainderUnsatisfiedBy(object $candidate): ?ICompositeSpecification
     {
         if ($candidate === null) {
-            throw new \InvalidArgumentException('Objeto candidato não pode ser null');
+            throw new \InvalidArgumentException('Candidate object cannot be null');
         }
 
-        // Verificar se tem disjunção - não suportado
         if ($this->hasDisjunction()) {
             throw new \InvalidArgumentException(
-                'Satisfação parcial de especificações disjuntivas não é suportada'
+                'Partial satisfaction of disjunctive specifications is not supported'
             );
         }
 
-        // Verificar tipo
         if (!$this->canCastFromTo(get_class($candidate), $this->getType())) {
             return $this;
         }
 
-        // Se já satisfaz completamente, retorna null
         if ($this->isSatisfiedBy($candidate)) {
             return null;
         }
 
-        // Criar especificação de resto (apenas specs não satisfeitas)
         $remainderSpec = new AndSpecification($this, $this);
 
-        // Obter todas as especificações parametrizadas
         $parameterizedSpecs = $this->getAllParameterizedSpecifications();
 
-        // Verificar cada propriedade do candidato contra as specs parametrizadas
         foreach ($parameterizedSpecs as $paramSpec) {
             if ($paramSpec instanceof PropertySpecification) {
-                // Se a spec não é satisfeita, adiciona ao remainder
                 if (!$paramSpec->isSatisfiedBy($candidate)) {
                     $remainderSpec = $remainderSpec->and($paramSpec);
                 }
@@ -259,7 +245,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             return false;
         }
 
-        // Verificar compatibilidade de tipo
         if ($this->type !== null && !$this->canCastFromTo(get_class($candidate), $this->type)) {
             return false;
         }
@@ -273,16 +258,13 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     public function isGeneralizationOf(ISpecification $specification): bool
     {
         if ($specification === null) {
-            throw new \InvalidArgumentException('Especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Se são iguais, é uma generalização
         if ($this->equals($specification)) {
             return true;
         }
 
-        // Lógica específica baseada no tipo de especificação
-        // Implementação simplificada - pode ser sobrescrita pelas subclasses
         return false;
     }
 
@@ -292,7 +274,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     public function isSpecialCaseOf(ISpecification $specification): bool
     {
         if ($specification === null) {
-            throw new \InvalidArgumentException('Especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
         return $this->canCastAtLeastOneWay($this->getType(), $specification->getType())
@@ -312,7 +294,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     public function getLeftSide(): ?ISpecification
     {
-        // Implementação padrão - pode ser sobrescrita
         $specs = iterator_to_array($this->specifications);
         return count($specs) > 0 ? $specs[0] : null;
     }
@@ -322,7 +303,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     public function getRightSide(): ?ISpecification
     {
-        // Implementação padrão - pode ser sobrescrita
         $specs = iterator_to_array($this->specifications);
         return count($specs) > 1 ? $specs[1] : null;
     }
@@ -332,12 +312,11 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     public function getSpecifications(): array
     {
-        // Converte SplObjectStorage para array para API pública
         return iterator_to_array($this->specifications);
     }
 
     /**
-     * Verifica se esta especificação tem conjunção (AND).
+     * Checks if this specification is a conjunction (AND).
      *
      * @return bool
      */
@@ -347,7 +326,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se esta especificação tem disjunção (OR).
+     * Checks if this specification contains a disjunction (OR) in its hierarchy.
      *
      * @return bool
      */
@@ -367,7 +346,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se tem pelo menos uma especificação parametrizada.
+     * Checks if at least one parameterized specification exists in this composite.
      *
      * @return bool
      */
@@ -383,7 +362,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se é uma composição simples (sem parametrização).
+     * Checks if this is a simple composition without property parameterization.
      *
      * @return bool
      */
@@ -393,7 +372,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Obtém todas as especificações (recursivamente).
+     * Retrieves all specifications recursively.
      *
      * @return array<ISpecification>
      */
@@ -413,7 +392,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Obtém todas as especificações parametrizadas.
+     * Retrieves all parameterized specifications in the hierarchy.
      *
      * @return array<PropertySpecification>
      */
@@ -431,7 +410,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Obtém mapa de especificações folha por nome de propriedade.
+     * Retrieves a map of leaf specifications indexed by property name.
      *
      * @return array<string, array<ILeafSpecification>>
      */
@@ -446,7 +425,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
                 $map[$propertyName] = [];
             }
 
-            // Adicionar leaf specs da especificação parametrizada
             foreach ($paramSpec->getSpecifications() as $spec) {
                 if ($spec instanceof ILeafSpecification && !($spec instanceof PropertySpecification)) {
                     $map[$propertyName][] = $spec;
@@ -458,7 +436,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Obtém lista de nomes de propriedades acessíveis.
+     * Retrieves list of accessible property names.
      *
      * @return array<string>
      */
@@ -468,24 +446,23 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se especifica todas as instâncias de seu tipo.
+     * Determines whether this specification specifies all instances of its target type.
      *
      * @return bool
      */
     abstract protected function isSpecifyingAllInstancesOfItsType(): bool;
 
     /**
-     * Encapsula esta especificação em uma nova especificação composta.
+     * Wraps this specification into a new composite specification.
      *
-     * @param AbstractCompositeSpecification $newSpecification Nova especificação
-     * @param ISpecification $specificationToBeWrapped Especificação a encapsular
+     * @param AbstractCompositeSpecification $newSpecification New composite specification container
+     * @param ISpecification $specificationToBeWrapped Specification to wrap
      * @return ICompositeSpecification
      */
     protected function wrapWithNewSpecification(
         AbstractCompositeSpecification $newSpecification,
         ISpecification $specificationToBeWrapped
     ): ICompositeSpecification {
-        // Usa attach() para adicionar ao SplObjectStorage (evita duplicatas automaticamente)
         $newSpecification->specifications->attach($specificationToBeWrapped);
         $newSpecification->specifications->attach($this);
 
@@ -493,10 +470,10 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se dois tipos podem ser convertidos em pelo menos uma direção.
+     * Verifies if two types can be cast in at least one direction.
      *
-     * @param string $type1 Primeiro tipo
-     * @param string $type2 Segundo tipo
+     * @param string $type1 First type
+     * @param string $type2 Second type
      * @return bool
      */
     protected function canCastAtLeastOneWay(string $type1, string $type2): bool
@@ -505,10 +482,10 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica se pode fazer cast de um tipo para outro.
+     * Verifies if a source type can be cast to a destination type.
      *
-     * @param string $fromType Tipo de origem
-     * @param string $toType Tipo de destino
+     * @param string $fromType Source type
+     * @param string $toType Destination type
      * @return bool
      */
     protected function canCastFromTo(string $fromType, string $toType): bool
@@ -529,21 +506,20 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Obtém valor de propriedade de um objeto via reflexão.
+     * Extracts property value from an object via reflection or getters.
      *
-     * Implementa abordagem híbrida (POINT 2 - Option C):
-     * 1. Tenta getters públicos primeiro (getX, isX, hasX)
-     * 2. Tenta propriedades públicas
-     * 3. Usa ReflectionProperty::setAccessible() para private/protected
+     * Hybrid resolution order:
+     * 1. Public getters (getX, isX, hasX)
+     * 2. Public properties
+     * 3. Private/protected reflection properties
      *
-     * @param object $object Objeto
-     * @param string $propertyName Nome da propriedade
-     * @return mixed Valor da propriedade
-     * @throws \RuntimeException Se a propriedade não for encontrada
+     * @param object $object Target instance
+     * @param string $propertyName Property name
+     * @return mixed Extracted value
+     * @throws \RuntimeException If property cannot be found or accessed
      */
     protected function getPropertyValue(object $object, string $propertyName): mixed
     {
-        // PASSO 1: Tentar getters públicos (respeitando encapsulamento)
         $getter = 'get' . ucfirst($propertyName);
         if (method_exists($object, $getter) && is_callable([$object, $getter])) {
             return $object->$getter();
@@ -559,7 +535,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             return $object->$hasMethod();
         }
 
-        // PASSO 2: Tentar propriedade pública
         if (property_exists($object, $propertyName)) {
             $reflection = new \ReflectionProperty($object, $propertyName);
             if ($reflection->isPublic()) {
@@ -567,7 +542,6 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             }
         }
 
-        // PASSO 3: Usar Reflection para acessar private/protected (equivalente ao setAccessible do Java)
         try {
             $reflection = new \ReflectionProperty($object, $propertyName);
             $reflection->setAccessible(true);
@@ -575,7 +549,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
         } catch (\ReflectionException $e) {
             throw new \RuntimeException(
                 sprintf(
-                    'Propriedade "%s" não encontrada em %s. Tentou: getter público, propriedade pública, Reflection.',
+                    'Property "%s" not found on %s. Attempted: public getter, public property, Reflection.',
                     $propertyName,
                     get_class($object)
                 ),
@@ -586,9 +560,9 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifica igualdade com outra especificação.
+     * Verifies structural equality with another composite specification.
      *
-     * @param mixed $other Outro objeto
+     * @param mixed $other Another object
      * @return bool
      */
     public function equals(mixed $other): bool

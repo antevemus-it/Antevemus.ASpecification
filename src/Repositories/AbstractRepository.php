@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -10,33 +12,33 @@ use InvalidArgumentException;
 use RuntimeException;
 
 /**
- * AbstractRepository class.
+ * AbstractRepository - Base Abstract Repository Implementation
  *
- * Classe abstrata base que implementa as conexões de alias e o comportamento de rotina
- * de proteção dos contratos mestre (IRepository).
+ * Base abstract class implementing repository aliases and safeguard
+ * routines for the master repository contract (IRepository).
  *
- * Funcionalidades:
- * - Provê atalhos fluentes (count, iterate, find, findSingle, removeBy) mapeados aos contratos canônicos
- * - Implementa findSingleEntitySpecifiedBy com validação estrita de cardinalidade unitária
- * - Validações estruturais de especificação
- * - Fábrica de partições virtuais via makePartition
+ * Features:
+ * - Provides fluent convenience shortcuts (count, iterate, find, findSingle, removeBy) mapped to canonical contracts
+ * - Implements findSingleEntitySpecifiedBy with strict unitary cardinality verification
+ * - Structural specification validations
+ * - Virtual partition factory via makePartition
  *
  * @template T of IEntity
  * @implements IRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractRepository implements IRepository
 {
     /**
-     * Alias fluente para countAllEntitiesSpecifiedBy().
+     * Fluent alias for countAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return int Quantidade total de entidades que atendem à regra
+     * @param ISpecification $specification Filter specification
+     * @return int Total entities satisfying the rule
      */
     public function countAll(ISpecification $specification): int
     {
@@ -44,10 +46,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias curto para countAllEntitiesSpecifiedBy().
+     * Short alias for countAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return int Quantidade total de entidades que atendem à regra
+     * @param ISpecification $specification Filter specification
+     * @return int Total entities satisfying the rule
      */
     public function count(ISpecification $specification): int
     {
@@ -55,10 +57,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias fluente para iterateAllEntitiesSpecifiedBy().
+     * Fluent alias for iterateAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return iterable<T> Gerador/iterável lazy de entidades
+     * @param ISpecification $specification Filter specification
+     * @return iterable<T> Lazy generator/iterable of entities
      */
     public function iterateAll(ISpecification $specification): iterable
     {
@@ -66,10 +68,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias curto para iterateAllEntitiesSpecifiedBy().
+     * Short alias for iterateAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return iterable<T> Gerador/iterável lazy de entidades
+     * @param ISpecification $specification Filter specification
+     * @return iterable<T> Lazy generator/iterable of entities
      */
     public function iterate(ISpecification $specification): iterable
     {
@@ -77,10 +79,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias fluente para findAllEntitiesSpecifiedBy().
+     * Fluent alias for findAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return array<T> Lista com todas as entidades encontradas
+     * @param ISpecification $specification Filter specification
+     * @return array<T> List of all matching entities
      */
     public function findAll(ISpecification $specification): array
     {
@@ -88,10 +90,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias curto para findAllEntitiesSpecifiedBy().
+     * Short alias for findAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return array<T> Lista com todas as entidades encontradas
+     * @param ISpecification $specification Filter specification
+     * @return array<T> List of all matching entities
      */
     public function find(ISpecification $specification): array
     {
@@ -99,11 +101,11 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias curto para findSingleEntitySpecifiedBy().
+     * Short alias for findSingleEntitySpecifiedBy().
      *
-     * @param ISpecification $specification Especificação de filtragem
-     * @return T|null A entidade única correspondente, ou null se não encontrada
-     * @throws RuntimeException Se mais de uma entidade for encontrada
+     * @param ISpecification $specification Filter specification
+     * @return T|null Matching single entity, or null if not found
+     * @throws RuntimeException If more than one entity matches
      */
     public function findSingle(ISpecification $specification): ?IEntity
     {
@@ -111,11 +113,11 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Busca uma única entidade que atenda à especificação fornecida, validando cardinalidade unitária.
+     * Finds a single entity satisfying the given specification, verifying unitary cardinality.
      *
-     * @param ISpecification $specification Especificação que define o filtro
-     * @return T|null A entidade única encontrada, ou null se nenhuma atender à regra
-     * @throws RuntimeException Se mais de uma entidade satisfizer a especificação
+     * @param ISpecification $specification Filter specification
+     * @return T|null Matching single entity, or null if none match
+     * @throws RuntimeException If more than one entity satisfies the specification
      */
     public function findSingleEntitySpecifiedBy(ISpecification $specification): ?IEntity
     {
@@ -123,22 +125,22 @@ abstract class AbstractRepository implements IRepository
         $count = count($allFound);
 
         if ($count > 1) {
-            throw new RuntimeException("Espera-se uma única entidade como resultado, mas foram encontradas " . $count);
+            throw new RuntimeException("Expected a single entity result, but found " . $count);
         }
 
         if ($count === 0) {
             return null;
         }
 
-        // Retorna o primeiro e único item
+        // Return first and only item
         return reset($allFound);
     }
 
     /**
-     * Alias fluente para removeAllEntitiesSpecifiedBy().
+     * Fluent alias for removeAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação das entidades a serem removidas
-     * @return int Quantidade de entidades removidas
+     * @param ISpecification $specification Specification of entities to remove
+     * @return int Number of removed entities
      */
     public function removeAll(ISpecification $specification): int
     {
@@ -146,10 +148,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Alias curto para removeAllEntitiesSpecifiedBy().
+     * Short alias for removeAllEntitiesSpecifiedBy().
      *
-     * @param ISpecification $specification Especificação das entidades a serem removidas
-     * @return int Quantidade de entidades removidas
+     * @param ISpecification $specification Specification of entities to remove
+     * @return int Number of removed entities
      */
     public function removeBy(ISpecification $specification): int
     {
@@ -157,23 +159,23 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Valida que a especificação fornecida não é nula.
+     * Validates that the provided specification is non-null.
      *
      * @param ISpecification|null $specification
      * @return void
-     * @throws InvalidArgumentException Se a especificação for null
+     * @throws InvalidArgumentException If specification is null
      */
     protected function validateSpecification(?ISpecification $specification): void
     {
         if ($specification === null) {
-            throw new InvalidArgumentException("A specification não pode ser null.");
+            throw new InvalidArgumentException("Specification cannot be null.");
         }
     }
 
     /**
-     * Indica se este repositório possui arquitetura de particionamento nativo.
+     * Indicates whether this repository has native partitioning architecture.
      *
-     * @return bool Retorna false por padrão em repositórios homogêneos
+     * @return bool Returns false by default in homogeneous repositories
      */
     public function isNativelyPartitioned(): bool
     {
@@ -181,9 +183,9 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Indica se este repositório indexa partições recursivamente.
+     * Indicates whether this repository recursively indexes partitions.
      *
-     * @return bool Retorna false por padrão
+     * @return bool Returns false by default
      */
     public function isRecursivelyIndexing(): bool
     {
@@ -191,10 +193,10 @@ abstract class AbstractRepository implements IRepository
     }
 
     /**
-     * Cria uma partição vinculada a este repositório baseada na especificação informada.
+     * Creates a partition linked to this repository based on the provided specification.
      *
-     * @param ISpecification|null $specification Especificação que delimita a partição
-     * @return IPartitionRepository Repositório particionado resultante
+     * @param ISpecification|null $specification Bounding specification for partition
+     * @return IPartitionRepository Resulting partitioned repository
      */
     public function makePartition(?ISpecification $specification = null): IPartitionRepository
     {

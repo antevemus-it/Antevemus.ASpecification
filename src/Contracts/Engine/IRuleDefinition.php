@@ -7,133 +7,133 @@ namespace Antevemus\ASpecification\Contracts\Engine;
 use Antevemus\ASpecification\Engine\RuleAction;
 
 /**
- * IRuleDefinition - Contrato para Definição Abstrata de Regra de Negócio de Catálogo
+ * IRuleDefinition - Contract for Abstract Business Rule Definition from Catalog
  *
- * Encapsula os atributos fundamentais de uma especificação configurável de banco de dados,
- * contendo identificação, parâmetros tipados, fundamentos legais e diretrizes de ação.
+ * Encapsulates the core attributes of a configurable database specification,
+ * including identity, typed parameters, statutory foundations, and violation action guidelines.
  *
- * Funcionalidades:
- * - Acesso tipado a chaves estáveis e tipo técnico de validação
- * - Resolução de parâmetros polimórficos (inteiro, decimal, texto, metadados)
- * - Identificação de severidade e ação operacional de violação (RuleAction)
- * - Fundamentação legal para auditoria e emissão contratual
+ * Features:
+ * - Typed access to stable keys and technical validation type
+ * - Polymorphic parameter resolution (integer, decimal, string, custom metadata)
+ * - Severity and operational violation action identification (RuleAction)
+ * - Statutory/legal basis for compliance auditing and contract emission
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IRuleDefinition
 {
     /**
-     * Retorna o código único e estável da regra.
+     * Returns the unique and stable rule code.
      *
      * @return string
      */
     public function getCodigo(): string;
 
     /**
-     * Retorna o nome amigável da regra.
+     * Returns the friendly rule display name.
      *
      * @return string
      */
     public function getNome(): string;
 
     /**
-     * Retorna a descrição detalhada da finalidade da regra.
+     * Returns the detailed description of the rule purpose.
      *
      * @return string|null
      */
     public function getDescricao(): ?string;
 
     /**
-     * Retorna a chave técnica que identifica o tipo de validação (ex: 'max_ocorrencias_por_contrato').
+     * Returns the technical key identifying the validation type (e.g. 'max_events_per_contract').
      *
      * @return string
      */
     public function getTipoRegra(): string;
 
     /**
-     * Retorna a ação operacional prescrita ao violar a regra.
+     * Returns the operational action prescribed upon violating the rule.
      *
      * @return RuleAction
      */
     public function getAcaoAoViolar(): RuleAction;
 
     /**
-     * Retorna o parâmetro inteiro configurado (ex: dias de aviso prévio, quantidade máxima).
+     * Returns the configured integer parameter (e.g. advance notice days, maximum count).
      *
      * @return int|null
      */
     public function getValorInteiro(): ?int;
 
     /**
-     * Retorna o parâmetro decimal configurado (ex: percentual de multa, valor mínimo em reais).
+     * Returns the configured decimal parameter (e.g. penalty percentage, minimum monetary threshold).
      *
      * @return float|null
      */
     public function getValorDecimal(): ?float;
 
     /**
-     * Retorna o parâmetro textual configurado (ex: expressão, código secundário).
+     * Returns the configured string parameter (e.g. expression, secondary code).
      *
      * @return string|null
      */
     public function getValorTexto(): ?string;
 
     /**
-     * Retorna o artigo de lei ou base normativa correspondente (ex: 'Lei 8.245/91 Art. 43, II').
+     * Returns the corresponding statutory article or regulatory basis (e.g. 'Law 8.245/91 Art. 43, II').
      *
      * @return string|null
      */
     public function getFundamentoLegal(): ?string;
 
     /**
-     * Retorna a mensagem amigável a ser exibida em caso de violação.
+     * Returns the human-readable violation message.
      *
      * @return string|null
      */
     public function getMensagemViolacao(): ?string;
 
     /**
-     * Retorna a expressão ou predicado de guarda condicional para ativação da regra.
+     * Returns the expression or guard predicate for conditional rule activation.
      *
      * @return string|null
      */
     public function getCondicionalExpressao(): ?string;
 
     /**
-     * Retorna a prioridade de execução da regra (maior prioridade avaliada primeiro).
+     * Returns the rule execution priority (higher values evaluated first).
      *
      * @return int
      */
     public function getPrioridade(): int;
 
     /**
-     * Retorna o escopo de aplicação da regra (ex: 'contrato_locacao', 'sinistro', 'endosso').
+     * Returns the rule application scope (e.g. 'rental_contract', 'claim', 'endorsement').
      *
      * @return string|null
      */
     public function getEscopo(): ?string;
 
     /**
-     * Retorna o cenário de negócio aplicável (ex: 'sinistro:ocupado', 'sinistro:desocupado').
+     * Returns the applicable business scenario (e.g. 'claim:occupied', 'claim:vacant').
      *
      * @return string|null
      */
     public function getCenario(): ?string;
 
     /**
-     * Retorna metadados ou parâmetros complementares em formato associativo.
+     * Returns additional parameters or metadata in associative format.
      *
      * @return array<string, mixed>
      */
     public function getParametros(): array;
 
     /**
-     * Verifica se a regra está ativa para avaliação.
+     * Verifies whether the rule is active for evaluation.
      *
      * @return bool
      */

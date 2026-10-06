@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications;
 
 use Antevemus\ASpecification\AbstractSpecification;
@@ -10,37 +12,35 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use ReflectionClass;
 
 /**
- * NotSpecification class.
+ * NotSpecification - Composite specification representing logical negation (NOT).
  *
- * Implementação de uma especificação composta que representa a negação (NOT lógico)
- * de uma especificação.
+ * Satisfied if and only if the inner wrapped specification is NOT satisfied by the candidate.
+ * Null candidates never satisfy a specification, even when negated.
  *
- * Esta especificação é satisfeita se e somente se a especificação interna
- * NÃO for satisfeita pelo candidato.
+ * Features:
+ * - Unary negation composition
+ * - Diagnostic message inversion via Notification Pattern
+ * - Disjoint verification with the inner specification
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class NotSpecification extends AbstractSpecification implements ICompositeSpecification
 {
     use SubsumptionAndEqualityTrait;
-    /**
-     * @param ISpecification<T> $specification Especificação a ser negada
-     */
-    /**
-     * Construtor da especificação parametrizada.
-     *
-     * @param string $fieldName Nome da propriedade
-     * @param ISpecification<mixed> $specification Especificação a ser aplicada
-     */
 
+    /**
+     * Initializes the negation with the target specification to invert.
+     *
+     * @param ISpecification<T> $specification Specification to invert
+     */
     public function __construct(
         private readonly ISpecification $specification
     ) {
@@ -49,16 +49,16 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * Avalia a negação lógica invertendo a aprovação diagnóstica.
+     * Evaluates logical negation, inverting diagnostic satisfaction.
      *
-     * @param mixed $candidate Objeto ou valor a ser validado
-     * @return SpecificationResult Resultado da avaliação negada
+     * @param mixed $candidate Object or value to evaluate
+     * @return SpecificationResult Inverted evaluation result
      */
     public function evaluate(mixed $candidate): SpecificationResult
     {
         if ($candidate === null) {
             return SpecificationResult::failure(
-                message: "Candidato nulo não é permitido.",
+                message: "Null candidate is not permitted.",
                 code: $this->customCode,
                 ruleName: 'NotSpecification'
             );
@@ -70,7 +70,7 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
         }
 
         $innerName = (new ReflectionClass($this->specification))->getShortName();
-        $message = $this->customReason ?? sprintf("A condição negada '%s' foi indevidamente satisfeita.", $innerName);
+        $message = $this->customReason ?? sprintf("The negated condition '%s' was improperly satisfied.", $innerName);
 
         return SpecificationResult::failure(
             message: $message,
@@ -82,27 +82,21 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * @param mixed $candidate Objeto ou valor a ser validado
-     * @return bool True se a especificação interna NÃO for satisfeita
+     * @param mixed $candidate Object or value to evaluate
+     * @return bool True if inner specification is NOT satisfied
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        // Null nunca satisfaz uma especificação, mesmo negada
         if ($candidate === null) {
             return false;
         }
 
-        // Retorna o oposto da especificação interna
         return !$this->specification->isSatisfiedBy($candidate);
     }
 
     /**
      * {@inheritdoc}
      */
-    /**
-     * {@inheritdoc}
-     */
-
     public function getType(): string
     {
         return $this->specification->getType();
@@ -149,7 +143,7 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     }
 
     /**
-     * Obtém o nome legível de uma especificação.
+     * Resolves human-readable representation of a specification.
      *
      * @param ISpecification<T> $spec
      * @return string
@@ -166,7 +160,7 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     }
 
     /**
-     * Retorna a especificação interna que está sendo negada.
+     * Returns the inner wrapped specification being negated.
      *
      * @return ISpecification<T>
      */
@@ -181,10 +175,10 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Uma especificação negada é disjunta com a especificação original
+        // A negated specification is disjoint with its own original specification
         if ($this->specification === $otherSpecification) {
             return true;
         }
@@ -194,33 +188,25 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
 
     /**
      * {@inheritdoc}
-     *
-     * Uma negação NOT geralmente não é uma interseção.
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Uma NOT specification não é uma interseção
         return false;
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Uma negação NOT intersecta com outra especificação se não for
-     * disjunta com ela.
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Uma negação intersecta com outra se não forem disjuntas
-        // Usa a implementação padrão (oposto de isDisjointWith)
         return parent::intersectsWith($otherSpecification);
     }
 }

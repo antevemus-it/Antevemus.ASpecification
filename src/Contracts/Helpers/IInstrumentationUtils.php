@@ -9,56 +9,56 @@ use Antevemus\ASpecification\Contracts\Repositories\IPartitionRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
 
 /**
- * IInstrumentationUtils - Contrato para utilitarios de instrumentacao e diagnostico
+ * IInstrumentationUtils - Contract for Instrumentation and Telemetry Utilities
  *
- * Provê recursos de telemetria, medicao de consumo de recursos e inspecao estrutural
- * de arvores de particionamento DAG e arvores sintaticas de especificacoes.
+ * Provides telemetry capabilities, resource consumption measurement, and structural
+ * inspection for DAG partition trees and specification Abstract Syntax Trees.
  *
- * Funcionalidades:
- * - Diagnostico de consumo e pico de memoria alocada
- * - Inspecao visual e representacao em arvore de repositorios particionados
- * - Contagem e navegacao de nos de particionamento
- * - Dump hierarquico formatado de arvores de especificacoes
+ * Features:
+ * - Allocated and peak memory consumption diagnostic
+ * - Visual tree representation and inspection of partitioned repositories
+ * - Node counting and navigation across partition DAGs
+ * - Formatted hierarchical specification AST dump
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IInstrumentationUtils
 {
     /**
-     * Retorna a memoria alocada formatada em unidades legiveis (B, KB, MB).
+     * Return formatted allocated memory usage in human-readable units (B, KB, MB).
      *
-     * @param bool $realUsage Se true, retorna a memoria real alocada pelo sistema
+     * @param bool $realUsage If true, returns real system-allocated memory
      * @return string
      */
     public static function formatMemoryUsage(bool $realUsage = true): string;
 
     /**
-     * Gera uma representacao textual em arvore da hierarquia de um repositorio particionado.
+     * Generate a textual tree representation of a partitioned repository hierarchy.
      *
-     * @param IRepository $repository Repositorio a inspecionar
-     * @param int $indent Nivel de indentacao inicial
+     * @param IRepository $repository Repository to inspect
+     * @param int $indent Initial indentation level
      * @return string
      */
     public static function inspectRepositoryHierarchy(IRepository $repository, int $indent = 0): string;
 
     /**
-     * Calcula o numero total de nos (particoes filhas e recursivas) no grafo da particao.
+     * Calculate total number of nodes (child and recursive subpartitions) in partition graph.
      *
-     * @param IPartitionRepository $partition Particao raiz ou intermediaria
+     * @param IPartitionRepository $partition Root or intermediary partition
      * @return int
      */
     public static function countPartitionNodes(IPartitionRepository $partition): int;
 
     /**
-     * Gera uma representacao textual em arvore da estrutura de uma especificacao.
+     * Generate a textual tree representation of a specification's structure.
      *
-     * @param ISpecification $specification Especificacao a inspecionar
-     * @param int $indent Nivel de indentacao inicial
+     * @param ISpecification $specification Specification to inspect
+     * @param int $indent Initial indentation level
      * @return string
      */
     public static function dumpSpecificationTree(ISpecification $specification, int $indent = 0): string;

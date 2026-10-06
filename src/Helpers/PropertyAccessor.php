@@ -8,34 +8,33 @@ use ArrayAccess;
 use Closure;
 
 /**
- * PropertyAccessor - Extrator polimórfico e resiliente de propriedades
+ * PropertyAccessor - Polymorphic and Resilient Property Extractor
  *
- * Provê resolução unificada e reflexiva de propriedades, atributos, métodos
- * e navegação aninhada (dot notation), compatível com DTOs, entidades ricas e arrays.
- * Inspirado nas melhores práticas do ALinqPropertyAccess.
+ * Provides unified, reflective resolution of object properties, attributes, getters,
+ * and nested dot notation paths, compatible with DTOs, rich entities, and associative arrays.
  *
- * Funcionalidades:
- * - Acesso a atributos públicos e mágicos
- * - Acesso a métodos getter (getProperty, property) e predicados booleanos (isProperty, hasProperty)
- * - Suporte a arrays e instâncias de ArrayAccess
- * - Navegação aninhada por dot notation (ex: 'user.address.city')
- * - Geração de Closures otimizados para pipelines funcionais e LINQ
+ * Features:
+ * - Direct public and dynamic attribute access
+ * - Getter method (getProperty, property) and boolean predicate (isProperty, hasProperty) resolution
+ * - Array and ArrayAccess interface support
+ * - Nested dot notation path traversal (e.g. 'user.address.city')
+ * - Generates optimized Closures for functional pipelines and LINQ queries
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final class PropertyAccessor
 {
     /**
-     * Obtém o valor de uma propriedade ou caminho aninhado a partir de um objeto ou array.
+     * Retrieve the value of a property or nested dot-notation path from a candidate object or array.
      *
-     * @param mixed $target Objeto ou array candidato
-     * @param string $property Nome da propriedade ou caminho dot notation ('user.address.city')
-     * @return mixed Valor extraído ou null se não resolvido
+     * @param mixed $target Candidate object or array
+     * @param string $property Property name or dot notation path ('user.address.city')
+     * @return mixed Extracted value or null if unresolvable
      */
     public static function getValue(mixed $target, string $property): mixed
     {
@@ -51,7 +50,7 @@ final class PropertyAccessor
     }
 
     /**
-     * Verifica se a propriedade ou caminho dot notation existe no alvo.
+     * Check whether a property or dot notation path exists on the candidate target.
      *
      * @param mixed $target
      * @param string $property
@@ -79,7 +78,7 @@ final class PropertyAccessor
     }
 
     /**
-     * Extrai propriedade única de um objeto ou array.
+     * Extract a single property from an object or array.
      *
      * @param mixed $target
      * @param string $property
@@ -116,7 +115,7 @@ final class PropertyAccessor
                         return $ref->getValue($target);
                     }
                 } catch (\Throwable) {
-                    // ignora
+                    // Ignore
                 }
             }
         }
@@ -125,7 +124,7 @@ final class PropertyAccessor
     }
 
     /**
-     * Verifica se uma propriedade individual existe no objeto ou array.
+     * Check whether an individual property exists on an object or array.
      *
      * @param mixed $target
      * @param string $property
@@ -169,7 +168,7 @@ final class PropertyAccessor
     }
 
     /**
-     * Extrai valor navegando por segmentos separados por ponto.
+     * Extract nested value traversing dot-separated path segments.
      *
      * @param mixed $target
      * @param string $path
@@ -188,7 +187,7 @@ final class PropertyAccessor
     }
 
     /**
-     * Retorna um Closure que extrai a propriedade indicada de qualquer candidato.
+     * Return a Closure extracting the specified property from any candidate.
      *
      * @param string $property
      * @return Closure(mixed): mixed

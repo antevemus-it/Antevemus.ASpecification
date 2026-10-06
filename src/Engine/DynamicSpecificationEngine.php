@@ -11,22 +11,22 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Spec;
 
 /**
- * DynamicSpecificationEngine - Motor de Execução e Compilação Dinâmica de Especificações
+ * DynamicSpecificationEngine - Execution and Dynamic Compilation Engine for Specifications
  *
- * Ponto focal que orquestra a consulta ao catálogo de regras/documentos, a compilação
- * em especificações de alta performance e a avaliação rica através do Notification Pattern.
+ * Focal orchestrator that retrieves rules and documents from the catalog,
+ * compiles high-performance specification trees, and evaluates entities via the Notification Pattern.
  *
- * Funcionalidades:
- * - Compilação unificada de regras de negócio e de documentos obrigatórios
- * - Avaliação rica de entidades de domínio retornando RuleEngineVerdict tipado
- * - Triagem automatizada de falhas operacionais (bloqueios HTTP 403, alertas e logs)
- * - Integração transparente com a álgebra e o SpecificationResult do ASpecification
+ * Features:
+ * - Unified compilation of business rules and mandatory document requirements
+ * - Rich evaluation of domain entities returning a typed RuleEngineVerdict
+ * - Automated triage of operational failures (HTTP 403 blocks, warnings, and audit logs)
+ * - Transparent integration with ASpecification algebra and SpecificationResult
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class DynamicSpecificationEngine implements IDynamicSpecificationEngine
@@ -34,9 +34,9 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     private DocumentGroupSpecificationBuilder $documentBuilder;
 
     /**
-     * @param IRuleCatalog $catalog Provedor/repositório do catálogo de regras
-     * @param IRuleSpecificationRegistry $registry Registro de handlers de regras
-     * @param DocumentGroupSpecificationBuilder|null $documentBuilder Compilador documental opcional
+     * @param IRuleCatalog $catalog Provider/repository for rule catalog
+     * @param IRuleSpecificationRegistry $registry Registry for rule specification handlers
+     * @param DocumentGroupSpecificationBuilder|null $documentBuilder Optional document specification compiler
      */
     public function __construct(
         private readonly IRuleCatalog $catalog,
@@ -67,13 +67,13 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     ): ISpecification {
         $specs = [];
 
-        // 1. Carrega e compila as regras de negócio
+        // 1. Load and compile business rules
         $rules = $this->catalog->findRules($escopo, $cenario, $context);
         foreach ($rules as $rule) {
             $specs[] = $this->registry->buildSpecification($rule);
         }
 
-        // 2. Carrega e compila os requisitos de documentos obrigatórios
+        // 2. Load and compile mandatory document requirements
         $docRules = $this->catalog->findDocumentRules($escopo, $cenario);
         if (!empty($docRules)) {
             $specs[] = $this->documentBuilder->build($docRules, $context);

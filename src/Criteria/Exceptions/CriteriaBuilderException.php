@@ -7,20 +7,20 @@ namespace Antevemus\ASpecification\Criteria\Exceptions;
 use RuntimeException;
 
 /**
- * CriteriaBuilderException - Exceção Base para Erros de Construção de TCriteria
+ * CriteriaBuilderException - Base Exception for TCriteria Construction Errors
  *
- * Lançada quando ocorrem falhas durante o mapeamento ou compilação de especificações
- * para objetos do motor de banco de dados do Adianti Framework.
+ * Thrown when failures occur during the mapping or compilation of specifications
+ * into database criteria objects of the Adianti Framework.
  *
- * Funcionalidades:
- * - Identificação uniforme de falhas do módulo Criteria
- * - Herança de RuntimeException padrão do PHP
+ * Features:
+ * - Unified identification of Criteria module failures
+ * - Inherits from standard PHP RuntimeException
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class CriteriaBuilderException extends RuntimeException

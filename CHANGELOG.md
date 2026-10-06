@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-06
+
+### Added
+- **Declarative PHP 8.4 Attributes Engine**:
+  - `#[AssertSpec]` attribute supporting class-level aggregate specifications, property-level value validation, and parameterless getter execution.
+  - `#[ValidateRule]` attribute for inline declarative rules with operators: `=`, `!=`, `>`, `>=`, `<`, `<=`, `between`, `in`, `regex`, `not_blank`, `email`.
+  - `AttributeValidator`: High-performance reflection scanning engine supporting both non-throwing `validate()` returning `SpecificationResult` and throwing `assert()`.
+  - `AttributeValidationException`: Rich validation exception carrying full diagnostic failures and error codes.
+  - `Spec::validateAttributes(object $target): SpecificationResult` and `Spec::assertAttributes(object $target): void` facade methods.
+  - Test Suite `Module 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])` with 25 assertions.
+- **ALinq Synergy & Generator-Based Streaming Pipeline (O(1) RAM)**:
+  - Integration with `ALinqLazyCollection` from `antevemus/alinq-collection` >= 1.1.0 for processing massive datasets with constant memory overhead.
+  - `ALinqBridge::isLazyAvailable()` for runtime capability detection.
+  - `ALinqBridge::toLazyCollection(iterable|callable|InMemoryRepository $source)` converting generators, callables, and repositories into lazy streaming collections.
+  - `ALinqBridge::filterLazy(iterable|callable|InMemoryRepository $source, ISpecification $specification)` compiling specifications into lazy LINQ filters with on-demand evaluation.
+  - `ALinqBridge::fromRepositoryLazy(InMemoryRepository $repository)` and `ALinqBridge::queryRepositoryLazy(InMemoryRepository $repository, ISpecification $specification)` for deferred repository queries.
+  - `InMemoryRepository::asLazyCollection()` and `InMemoryRepository::findAsLazyCollection(ISpecification $specification)` methods.
+  - `Spec::linqLazy()` and `Spec::filterLazy()` fluent facade methods.
+  - Expanded test suite `Module 14: ALinq Synergy & Coleções Fluentes LINQ` to 91 assertions covering full lazy pipeline.
+- **Documentation & Release Artifacts**:
+  - `VERSION` file tracking current library version `1.1.0`.
+
+### Changed
+- **PSR-12 Strict Type Declarations**:
+  - Enforced `declare(strict_types=1);` across 100% of all PHP source files (`src/` - 164 files) and test suites (`tests/` - 21 files).
+- **English DocBlock Internationalization & PSR-5 / PSR-19 Compliance**:
+  - Full translation of all PHP DocBlocks, summaries, parameter descriptions, and return types from Portuguese to English across all 110+ files in `src/` and `src/Contracts/`.
+  - Standardized mandatory Antevemus corporate header across every class, interface, trait, and enum (`@version 1.1.0`, `@copyright Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.`, `@license MIT`).
+  - Standardized internal exception messages to professional English across specifications, repositories, factories, and concurrent synchronizers.
+
+### Fixed
+- Fixed exception message matching in `Module10_JavaParityAndTelemetryTest` to support multilingual remainder assertions.
+
+---
+
 ## [1.0.0] - 2026-10-04
 
 ### Added
@@ -72,13 +107,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `TypeSpecificationsTrait`
     - `UtilitySpecificationsTrait`
 - **Testing Suite**:
-  - 14 comprehensive test modules (`Module01` through `Module14`) with 579 assertions and 100% pass rate.
+  - 15 comprehensive test modules (`Module01` through `Module15`) with 604 assertions and 100% pass rate.
   - Master test runner (`tests/run_all.php`) executing in ~40ms.
 
 ### Changed
 - Refactored `SpecificationFactory` into 8 modular traits for optimal maintainability and separation of concerns.
 - Refactored `CriteriaSpecificationVisitor` and `ALinqSpecificationVisitor` to leverage native PHP 8.4 pattern matching (`match (true)`).
-- Standardized all 103+ classes with corporate Antevemus PHPDoc blocks, `@package`, `@subpackage`, `@author`, and `@license MIT`.
+- Standardized all 110+ classes with corporate Antevemus PHPDoc blocks, `@package`, `@subpackage`, `@author`, and `@license MIT`.
 - Updated minimum PHP requirement to PHP 8.4+.
 
 ### Fixed
@@ -93,52 +128,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Notes
 
+### v1.1.0 - Declarative Attributes & Full DocBlock Internationalization
+
+**Antevemus ASpecification v1.1.0** introduces native PHP 8.4 Declarative Attributes support and completes 100% English DocBlock internationalization across the entire codebase.
+
+**Highlights:**
+- 🏷️ **PHP 8.4 Declarative Attributes (`#[AssertSpec]`, `#[ValidateRule]`)**:
+  - Annotate DTOs, domain models, Form Requests, and Value Objects directly.
+  - Validate with `Spec::validateAttributes($dto)` (Notification Pattern) or `Spec::assertAttributes($dto)` (throwing).
+- 🌐 **100% English DocBlock Internationalization**:
+  - Full PSR-5 and PSR-19 compliant docblocks across all 110+ source files.
+  - Standardized corporate PHPDoc header and English exception messaging.
+- 🧪 **15 Test Suites & 604 Assertions**: 100% pass rate with zero regressions.
+
+---
+
 ### v1.0.0 - Initial Official Release
 
 This is the initial official release of **Antevemus ASpecification**, a high-performance, enterprise-grade implementation of the Specification Pattern for PHP 8.4+.
-
-**Highlights:**
-- 📐 **Full Specification Pattern**: Composable business rules using pure Boolean algebra (`And`, `Or`, `Not`, `Conjunction`, `Disjunction`).
-- ⚡ **Zero Runtime Dependencies**: Pure PHP 8.4+ implementation requiring no external vendor dependencies for core functionality.
-- 🗄️ **Multi-Target Compilation**:
-  - Compiles to SQL `WHERE` clauses across **12 SGBD Dialects** (MySQL, PostgreSQL, Oracle, SQL Server, SQLite, Firebird, etc.).
-  - Compiles to **Adianti Framework `TCriteria`** expressions.
-  - Compiles to **ALinq / In-Memory Closures** with native pattern matching.
-- 🔗 **Deep ALinq Synergy**: Native interoperability with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection), featuring dot-notation property access (`user.address.city`).
-- 📢 **Notification Pattern**: Non-throwing rule evaluation with structured errors, warnings, metadata, and error codes via `SpecificationResult`.
-- 🧩 **Modular Trait Architecture**: Extensible, clean architecture with 8 specialized factory traits.
-- 🧪 **Exhaustive Testing**: 14 test suites, 579 assertions, 100% pass rate in ~40ms.
 
 **Installation:**
 ```bash
 composer require antevemus/aspecification
 ```
 
-**Quick Example:**
-```php
-use Antevemus\ASpecification\Spec;
-use function Antevemus\ASpecification\DSL\{specify, greaterThanOrEqualTo, equal, greaterThan};
-
-// 1. Compose business rules fluently
-$isEligible = specify('User')
-    ->where('age', greaterThanOrEqualTo(18))
-    ->and('status', equal('ACTIVE'))
-    ->and('credit.score', greaterThan(700));
-
-// 2. Evaluate candidate with Notification Pattern
-$result = $isEligible->evaluate($user);
-if ($result->isSatisfied) {
-    echo "User is eligible!";
-} else {
-    foreach ($result->failures as $failure) {
-        echo "Rule failed: " . $failure->message;
-    }
-}
-```
-
-For complete documentation, see [README.md](README.md) and [README.pt-BR.md](README.pt-BR.md).
-
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.0.0

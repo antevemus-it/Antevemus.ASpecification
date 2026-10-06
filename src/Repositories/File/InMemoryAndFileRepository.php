@@ -21,24 +21,24 @@ use Antevemus\ASpecification\Repositories\PersistentPartitionRepository;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 
 /**
- * InMemoryAndFileRepository - Decorator híbrido que combina cache em memória e persistência em arquivo
+ * InMemoryAndFileRepository - Hybrid decorator combining in-memory caching and persistent file storage
  *
- * Fornece consultas ultra-rápidas na RAM sem latência de I/O em disco, delegando a
- * durabilidade ao repositório de arquivo subjacente de acordo com o PersistenceDefinition.
+ * Provides ultra-fast queries in RAM without disk I/O latency, while delegating durability
+ * to the underlying file repository according to the configured PersistenceDefinition.
  *
- * Funcionalidades:
- * - Resolução instantânea de leituras na memória volátil
- * - Sincronização write-through ou snapshot com o storage físico
- * - Warmup automático de cache no load() e flush seguro no close()
+ * Features:
+ * - Instant read resolution against volatile memory cache
+ * - Write-through or snapshot synchronization with physical file storage
+ * - Automatic cache warmup during load() and safe flush during close()
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class InMemoryAndFileRepository extends AbstractRepository implements
@@ -49,20 +49,20 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     protected readonly string $repositoryId;
 
     /**
-     * @param IVolatileRepository<T> $memoryCache Repositório em memória usado como cache
-     * @param IPersistentRepository<T> $fileBackend Repositório em arquivo físico de retaguarda
-     * @param PersistenceDefinition $persistenceDefinition Modo de persistência
-     * @param string|null $repositoryId Identificador único do repositório
+     * @param IVolatileRepository<T> $memoryCache In-memory repository used as cache
+     * @param IPersistentRepository<T> $fileBackend Underlying physical file repository
+     * @param PersistenceDefinition $persistenceDefinition Persistence mode
+     * @param string|null $repositoryId Unique repository identifier
      */
     protected readonly IVolatileRepository $memoryCache;
     protected readonly IPersistentRepository $fileBackend;
     protected readonly PersistenceDefinition $persistenceDefinition;
 
     /**
-     * @param IPersistentRepository<T>|IVolatileRepository<T> $backendOrCache Repositório em arquivo ou cache em memória
-     * @param IPersistentRepository<T>|IVolatileRepository<T>|null $secondArg Cache opcional ou repositório persistente
-     * @param PersistenceDefinition $persistenceDefinition Modo de persistência
-     * @param string|null $repositoryId Identificador único do repositório
+     * @param IPersistentRepository<T>|IVolatileRepository<T> $backendOrCache File repository or in-memory cache
+     * @param IPersistentRepository<T>|IVolatileRepository<T>|null $secondArg Optional cache or persistent repository
+     * @param PersistenceDefinition $persistenceDefinition Persistence mode
+     * @param string|null $repositoryId Unique repository identifier
      */
     public function __construct(
         IPersistentRepository|IVolatileRepository $backendOrCache,
@@ -84,7 +84,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Retorna o repositório de cache volátil em memória.
+     * Returns the volatile in-memory cache repository.
      *
      * @return IVolatileRepository<T>
      */
@@ -94,7 +94,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Retorna o repositório de arquivo físico de retaguarda.
+     * Returns the underlying physical file repository backend.
      *
      * @return IPersistentRepository<T>
      */
@@ -127,14 +127,12 @@ class InMemoryAndFileRepository extends AbstractRepository implements
         return $this->fileBackend->getType();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-
     protected bool $isWarmedUp = false;
 
     /**
-     * Realiza o warmup do cache em memória a partir do backend persistente.
+     * Performs warmup of the in-memory cache from the persistent backend.
+     *
+     * @return void
      */
     public function warmup(): void
     {
@@ -143,7 +141,9 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Indica se o cache em memória já foi aquecido (warmup).
+     * Indicates whether the in-memory cache has been warmed up.
+     *
+     * @return bool
      */
     public function isWarmedUp(): bool
     {
@@ -175,7 +175,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Carrega as entidades do backend de arquivo e aquece o cache volátil em memória.
+     * Loads entities from the file backend and warms up volatile in-memory cache.
      *
      * @return void
      */
@@ -326,7 +326,10 @@ class InMemoryAndFileRepository extends AbstractRepository implements
      */
 
     /**
-     * Alias de conveniência para findSingleEntitySpecifiedBy.
+     * Convenience alias for findSingleEntitySpecifiedBy.
+     *
+     * @param ISpecification $specification
+     * @return IEntity|null
      */
     public function getEntitySpecifiedBy(ISpecification $specification): ?IEntity
     {
@@ -334,7 +337,9 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Conta todas as entidades presentes no repositório híbrido.
+     * Counts all entities present in the hybrid repository.
+     *
+     * @return int
      */
     public function countAllEntities(): int
     {
@@ -342,10 +347,10 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Cria uma partição virtual persistente vinculada a este repositório híbrido.
+     * Creates a virtual persistent partition bound to this hybrid repository.
      *
-     * @param ISpecification|null $specification Especificação delimitadora da partição
-     * @return IPartitionRepository Partição persistente criada
+     * @param ISpecification|null $specification Specification scoping the partition
+     * @return IPartitionRepository Created persistent partition
      */
     public function makePartition(?ISpecification $specification = null): IPartitionRepository
     {
@@ -353,7 +358,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Valida permissão de escrita.
+     * Validates write permission.
      *
      * @throws RepositoryException
      */

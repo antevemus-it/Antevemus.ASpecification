@@ -7,22 +7,22 @@ namespace Antevemus\ASpecification\Concurrent;
 use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 
 /**
- * AbstractSynchronizer - Classe Base Abstrata para Sincronizadores de Concorrência
+ * AbstractSynchronizer - Abstract Base Class for Concurrency Synchronizers
  *
- * Provê implementação padrão para operações de execução void (runConcurrently e runExclusively)
- * delegando diretamente para suas respectivas operações com retorno (callConcurrently e callExclusively).
- * Subclasses precisam apenas implementar as duas operações primitivas de aquisição e liberação de locks.
+ * Provides default implementation for void execution operations (runConcurrently and runExclusively)
+ * by delegating directly to their value-returning counterparts (callConcurrently and callExclusively).
+ * Subclasses only need to implement the two primitive operations for acquiring and releasing locks.
  *
- * Funcionalidades:
- * - Delegação transparente de runConcurrently para callConcurrently
- * - Delegação transparente de runExclusively para callExclusively
- * - Base extensível para estratégias de sincronização em memória, arquivos ou semáforos
+ * Features:
+ * - Transparent delegation of runConcurrently to callConcurrently
+ * - Transparent delegation of runExclusively to callExclusively
+ * - Extensible base for synchronization strategies across memory, file locks, or counting semaphores
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractSynchronizer implements ISynchronizer

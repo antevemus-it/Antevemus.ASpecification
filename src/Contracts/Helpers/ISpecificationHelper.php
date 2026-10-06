@@ -1,124 +1,75 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Helpers;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * ISpecificationHelper interface.
+ * ISpecificationHelper - Contract for Type-Safety and Identity Operations
  *
- * Interface que define métodos auxiliares para trabalhar com especificações.
+ * Defines auxiliary methods for common specification operations,
+ * including runtime type-safe candidate verification and entity identity specification factory.
  *
- * Esta interface fornece métodos auxiliares para operações comuns com especificações,
- * incluindo verificação type-safe e criação de especificações únicas.
+ * Features:
+ * - Runtime type-safe candidate evaluation
+ * - Dynamic generation of unique entity identity specifications
  *
- * Principais funcionalidades:
- * - Verificação type-safe de especificações em tempo de execução
- * - Criação de especificações únicas para entidades
- *
- * Exemplo de uso:
- *
+ * Example usage:
  * <code>
- * // Verificação type-safe
+ * // Type-safe candidate check
  * $spec = new ActiveUserSpecification();
  * $user = new User();
  * $helper = new SpecificationHelper();
  *
  * if ($helper->typeSafeIsSatisfiedBy($spec, $user)) {
- *     echo "Usuário ativo!";
+ *     echo "Active user!";
  * }
  *
- * // Criação de especificação única para entidade
+ * // Create unique specification for entity
  * $uniqueSpec = $helper->createUniqueSpecificationFor($user);
- * // Resultado: (id = 123)
+ * // Result: (id = 123)
  * </code>
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISpecificationHelper
 {
     /**
-     * Verifica se uma especificação é satisfeita por um candidato de forma type-safe.
+     * Determine whether a specification is satisfied by a candidate in a type-safe manner.
      *
-     * Este método realiza verificação dinâmica de tipos em tempo de execução,
-     * garantindo que o candidato seja do tipo esperado pela especificação antes
-     * de executar a verificação.
+     * Performs dynamic type checking at runtime, guaranteeing that the candidate matches
+     * the expected type before delegating to isSatisfiedBy().
      *
-     * Diferente do método padrão isSatisfiedBy() que pode falhar silenciosamente
-     * ou lançar erros de tipo, este método garante compatibilidade de tipos antes
-     * da verificação.
-     *
-     * Comportamento:
-     * - Verifica se o candidato é do tipo esperado pela especificação (via getType())
-     * - Se os tipos são compatíveis, executa isSatisfiedBy()
-     * - Se os tipos são incompatíveis, retorna false
-     * - Se o candidato é null, retorna false
-     *
-     * Exemplo:
-     * <code>
-     * $userSpec = new ActiveUserSpecification(); // Espera User
-     * $product = new Product();
-     * $user = new User();
-     *
-     * // Retorna false - tipos incompatíveis (Product vs User)
-     * $helper->typeSafeIsSatisfiedBy($userSpec, $product);
-     *
-     * // Executa verificação - tipos compatíveis
-     * $helper->typeSafeIsSatisfiedBy($userSpec, $user);
-     * </code>
+     * Behavior:
+     * - Incompatible candidate types return false instead of throwing a TypeError
+     * - Null candidates return false
      *
      * @template T
-     * @param ISpecification<T> $specification A especificação a verificar
-     * @param object|null $candidate O candidato a testar
-     * @return bool True se o candidato é do tipo correto E satisfaz a especificação; false caso contrário
-     * @throws \InvalidArgumentException Se a especificação for null
+     * @param ISpecification<T> $specification Specification to verify
+     * @param object|null $candidate Candidate object to test
+     * @return bool True if candidate matches expected type AND satisfies specification; false otherwise
+     * @throws \InvalidArgumentException If specification is null
      */
     public function typeSafeIsSatisfiedBy(ISpecification $specification, ?object $candidate): bool;
 
     /**
-     * Cria uma especificação única para identificar uma entidade específica.
+     * Create a specification uniquely identifying a specific domain entity instance.
      *
-     * Este método gera uma especificação que identifica unicamente uma entidade
-     * baseada em suas propriedades de identidade (ID, chave primária, etc.).
-     *
-     * A especificação resultante pode ser usada para:
-     * - Buscar a entidade em repositórios
-     * - Verificar se um objeto representa a mesma entidade
-     * - Criar queries de lookup
-     * - Implementar equals() baseado em identidade
-     *
-     * Para entidades com ID simples:
-     * - Retorna especificação do tipo: (id = <valor>)
-     *
-     * Para entidades com chave composta:
-     * - Retorna especificação composta: (prop1 = valor1 AND prop2 = valor2 AND ...)
-     *
-     * Exemplo:
-     * <code>
-     * $user = new User(id: 123, name: 'João');
-     * $spec = $helper->createUniqueSpecificationFor($user);
-     * // Resultado: (id = 123)
-     *
-     * // Usar para buscar no repositório
-     * $foundUser = $repository->findBySpecification($spec);
-     * assert($foundUser->getId() === $user->getId());
-     *
-     * // Entidade com chave composta
-     * $orderItem = new OrderItem(orderId: 1, productId: 5);
-     * $spec = $helper->createUniqueSpecificationFor($orderItem);
-     * // Resultado: (orderId = 1 AND productId = 5)
-     * </code>
+     * Inspects entity identity properties (IEntity contract, public getters, or reflection)
+     * and compiles an identity-bound specification.
      *
      * @template T
-     * @param T $entity A entidade para criar especificação única
-     * @return ISpecification<T> Especificação que identifica unicamente a entidade
-     * @throws \InvalidArgumentException Se a entidade for null
-     * @throws \RuntimeException Se a entidade não possui propriedades de identidade identificáveis
+     * @param T $entity Target domain entity
+     * @return ISpecification<T> Specification uniquely identifying the entity
+     * @throws \InvalidArgumentException If entity is null
+     * @throws \RuntimeException If entity does not possess identifiable identity properties
      */
     public function createUniqueSpecificationFor(object $entity): ISpecification;
 }

@@ -1,37 +1,41 @@
 <?php
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 
 /**
- * EqualIgnoreCaseStringSpecification class.
+ * EqualIgnoreCaseStringSpecification - Leaf specification for case-insensitive string equality.
  *
- * Implementação de uma especificação folha (Leaf) para igualdade de strings ignorando caixa (Case Insensitive).
+ * Uses native PHP `strcasecmp` to compare strings regardless of uppercase or lowercase characters.
  *
- * Utiliza a função nativa `strcasecmp` do PHP para garantir que as duas strings sejam idênticas independentemente de possuírem letras maiúsculas ou minúsculas.
+ * Features:
+ * - Case-insensitive string comparison (`strcasecmp`)
+ * - Safe handling of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class EqualIgnoreCaseStringSpecification extends AbstractSpecification
 {
     /**
-     * Inicializa a especificação com o valor exato.
+     * Initializes the specification with the target reference string.
      *
-     * @param string $value A string que deve ser utilizada como alvo da validação.
+     * @param string $value Target string for comparison
      */
-
-
-    public function __construct(private readonly string $value) {}
+    public function __construct(private readonly string $value)
+    {
+    }
 
     /**
-     * Retorna o valor alvo de comparação ignorando caixa.
+     * Returns the target comparison string value.
      *
      * @return string
      */
@@ -39,31 +43,29 @@ class EqualIgnoreCaseStringSpecification extends AbstractSpecification
     {
         return $this->value;
     }
+
     /**
-     * Verifica se o candidato fornecido satisfaz esta regra folha.
+     * Verifies whether the provided candidate satisfies this specification.
      *
-     * @param mixed $candidate O valor ou objeto a ser validado.
-     * @return bool Retorna true se a regra for atendida, false caso contrário.
+     * @param mixed $candidate Target value to validate
+     * @return bool True if candidate is a string matching value case-insensitively
      */
-
-
-
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        if (!is_string($candidate)) return false;
+        if (!is_string($candidate)) {
+            return false;
+        }
+
         return strcasecmp($candidate, $this->value) === 0;
     }
+
     /**
-     * Retorna o tipo de objeto ou dado que esta especificação valida.
+     * Returns the type of candidate validated by this specification.
      *
-     * @return class-string|string Retorna 'mixed' pois esta especificação folha aceita tipos variados.
+     * @return string
      */
-
-
-    
     public function getType(): string
     {
-        return 'mixed';
+        return 'string';
     }
-
 }

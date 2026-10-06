@@ -7,43 +7,43 @@ namespace Antevemus\ASpecification\Engine;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 
 /**
- * RuleDefinition - Implementação Canônica e Imutável da Definição de Regra de Negócio
+ * RuleDefinition - Canonical Immutable Implementation of Business Rule Definition
  *
- * Representa os metadados e parâmetros de uma regra configurável carregada do banco de dados,
- * suportando desserialização fluente a partir de arrays associativos (PDO, ORM).
+ * Represents the metadata and parameters of a configurable business rule loaded
+ * from the database, supporting fluent hydration from associative arrays (PDO, ORM).
  *
- * Funcionalidades:
- * - Estrutura imutável tipada (readonly)
- * - Fábrica estática a partir de arrays/registros de banco de dados (fromArray)
- * - Normalização automática de tipos (RuleAction, int, float, string)
- * - Suporte a metadados livres adicionais para parametrização avançada
+ * Features:
+ * - Immutable typed structure (readonly)
+ * - Static factory from relational database records/arrays (fromArray)
+ * - Automatic type normalization (RuleAction, int, float, string)
+ * - Support for open-ended parameters and contextual metadata
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class RuleDefinition implements IRuleDefinition
 {
     /**
-     * @param string $codigo Código único da regra no catálogo
-     * @param string $nome Nome descritivo da regra
-     * @param string $tipoRegra Chave técnica identificadora do tipo de validação
-     * @param RuleAction $acaoAoViolar Ação prescrita ao violar (bloquear, alertar, apenas_log)
-     * @param string|null $descricao Descrição detalhada da finalidade da regra
-     * @param int|null $valorInteiro Parâmetro numérico inteiro configurado
-     * @param float|null $valorDecimal Parâmetro numérico decimal configurado
-     * @param string|null $valorTexto Parâmetro textual configurado
-     * @param string|null $fundamentoLegal Artigo de lei ou embasamento jurídico
-     * @param string|null $mensagemViolacao Mensagem explicativa em caso de reprovação
-     * @param string|null $condicionalExpressao Expressão condicional de ativação
-     * @param int $prioridade Ordem de prioridade na avaliação
-     * @param string|null $escopo Escopo operacional (ex: 'contrato_locacao', 'sinistro')
-     * @param string|null $cenario Cenário específico de negócio
-     * @param array<string, mixed> $parametros Metadados e parâmetros adicionais
-     * @param bool $active Indicador de regra ativa
+     * @param string $codigo Unique rule identifier in the catalog
+     * @param string $nome Descriptive rule name
+     * @param string $tipoRegra Technical key identifying the validation type
+     * @param RuleAction $acaoAoViolar Prescribed violation action (block, warn, log)
+     * @param string|null $descricao Detailed description of the rule purpose
+     * @param int|null $valorInteiro Configured integer numeric parameter
+     * @param float|null $valorDecimal Configured decimal numeric parameter
+     * @param string|null $valorTexto Configured string parameter
+     * @param string|null $fundamentoLegal Statutory article or regulatory foundation
+     * @param string|null $mensagemViolacao Human-readable explanatory failure message
+     * @param string|null $condicionalExpressao Conditional activation expression
+     * @param int $prioridade Evaluation priority order
+     * @param string|null $escopo Operational scope (e.g. 'rental_contract', 'claim')
+     * @param string|null $cenario Specific business scenario
+     * @param array<string, mixed> $parametros Additional parameters and metadata
+     * @param bool $active Active rule indicator
      */
     public function __construct(
         public string $codigo,
@@ -66,9 +66,9 @@ final readonly class RuleDefinition implements IRuleDefinition
     }
 
     /**
-     * Instancia uma definição de regra a partir de um registro associativo de banco de dados.
+     * Instantiates a rule definition from an associative database record.
      *
-     * @param array<string, mixed> $row Registro relacional (ex: tabela rental_guarantee.regra_negocio)
+     * @param array<string, mixed> $row Relational record (e.g. rule catalog table row)
      * @return self
      */
     public static function fromArray(array $row): self

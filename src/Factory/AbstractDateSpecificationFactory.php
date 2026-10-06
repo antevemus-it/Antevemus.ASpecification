@@ -1,29 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\IDateSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractDateSpecificationFactory class.
+ * AbstractDateSpecificationFactory - Base abstract factory for date specifications
  *
- * Classe abstrata base para fábricas de especificações de data.
+ * Provides default alias implementations and helper routines for parsing
+ * date strings across multiple common PHP formats.
  *
- * Fornece implementações padrão para métodos alias e helpers para
- * parsing de strings de data em múltiplos formatos comuns do PHP.
- *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractDateSpecificationFactory implements IDateSpecificationFactory
 {
     /**
-     * Formatos de data comuns para tentar fazer parse.
+     * Common date formats attempted during string parsing.
      *
      * @var array<string>
      */
@@ -42,15 +42,14 @@ abstract class AbstractDateSpecificationFactory implements IDateSpecificationFac
     ];
 
     /**
-     * Converte string de data para DateTime.
+     * Converts date string into a DateTimeImmutable object.
      *
-     * Método auxiliar que tenta fazer parse usando o formato especificado
-     * ou tentando múltiplos formatos comuns.
+     * Helper method attempting parsing using specified format or common fallback formats.
      *
-     * @param string $dateString String de data
-     * @param string|null $format Formato específico ou null para tentar formatos comuns
-     * @return \DateTimeImmutable Data parseada
-     * @throws \InvalidArgumentException Se não conseguir fazer parse da data
+     * @param string $dateString Date string representation
+     * @param string|null $format Specific format or null to try common formats
+     * @return \DateTimeImmutable Parsed date object
+     * @throws \InvalidArgumentException If date string cannot be parsed
      */
     protected function parseDateString(string $dateString, ?string $format = null): \DateTimeImmutable
     {
@@ -58,7 +57,7 @@ abstract class AbstractDateSpecificationFactory implements IDateSpecificationFac
             throw new \InvalidArgumentException('Date string cannot be empty');
         }
 
-        // Se formato específico foi fornecido, usar apenas ele
+        // If specific format is provided, use only that
         if ($format !== null) {
             $date = \DateTimeImmutable::createFromFormat($format, $dateString);
             if ($date === false) {
@@ -69,7 +68,7 @@ abstract class AbstractDateSpecificationFactory implements IDateSpecificationFac
             return $date;
         }
 
-        // Tentar formatos comuns
+        // Try common formats
         foreach ($this->commonDateFormats as $tryFormat) {
             $date = \DateTimeImmutable::createFromFormat($tryFormat, $dateString);
             if ($date !== false) {
@@ -77,7 +76,7 @@ abstract class AbstractDateSpecificationFactory implements IDateSpecificationFac
             }
         }
 
-        // Última tentativa: construtor padrão do DateTime (aceita muitos formatos)
+        // Final attempt: standard constructor
         try {
             return new \DateTimeImmutable($dateString);
         } catch (\Exception $e) {
@@ -90,10 +89,10 @@ abstract class AbstractDateSpecificationFactory implements IDateSpecificationFac
     }
 
     /**
-     * Valida um objeto DateTime.
+     * Validates a DateTime object.
      *
-     * @param \DateTimeInterface $date Data a validar
-     * @throws \InvalidArgumentException Se a data for null
+     * @param \DateTimeInterface $date Date to validate
+     * @throws \InvalidArgumentException If date is null
      */
     protected function validateDate(\DateTimeInterface $date): void
     {

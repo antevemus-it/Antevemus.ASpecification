@@ -7,37 +7,37 @@ namespace Antevemus\ASpecification\Repositories\File;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 
 /**
- * FileLockTrait - Trait para manipulação segura e não-bloqueante de locks de arquivo
+ * FileLockTrait - Safe and non-blocking file locking trait
  *
- * Encapsula chamadas ao flock() do PHP provendo suporte a bloqueios compartilhados
- * (LOCK_SH para leitura) e exclusivos (LOCK_EX para escrita), com retry loop
- * e timeout configurável para prevenir travamento perpétuo.
+ * Encapsulates PHP flock() calls, providing support for shared locks
+ * (LOCK_SH for reading) and exclusive locks (LOCK_EX for writing), with a retry
+ * loop and configurable timeout to prevent perpetual deadlocks.
  *
- * Funcionalidades:
- * - Execução atômica sob lock exclusivo (withExclusiveLock)
- * - Execução segura sob lock compartilhado (withSharedLock)
- * - Tentativas com backoff em microssegundos e timeout
+ * Features:
+ * - Atomic execution under exclusive lock (withExclusiveLock)
+ * - Safe execution under shared lock (withSharedLock)
+ * - Microsecond backoff retries with configurable timeout
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait FileLockTrait
 {
     /**
-     * Timeout padrão em milissegundos para obtenção de lock.
+     * Default timeout in milliseconds for lock acquisition.
      */
     protected int $lockTimeoutMs = 3000;
 
     /**
-     * Executa um callback protegido por bloqueio exclusivo (LOCK_EX).
+     * Executes a callback protected by an exclusive lock (LOCK_EX).
      *
      * @template R
-     * @param string $lockFilePath Caminho do arquivo ou recurso de lock
-     * @param callable(): R $callback Função a ser executada com o lock
+     * @param string $lockFilePath Path to the file or lock resource
+     * @param callable(): R $callback Function to execute under lock
      * @return R
      * @throws RepositoryException
      */
@@ -47,11 +47,11 @@ trait FileLockTrait
     }
 
     /**
-     * Executa um callback protegido por bloqueio compartilhado (LOCK_SH).
+     * Executes a callback protected by a shared lock (LOCK_SH).
      *
      * @template R
-     * @param string $lockFilePath Caminho do arquivo ou recurso de lock
-     * @param callable(): R $callback Função a ser executada com o lock
+     * @param string $lockFilePath Path to the file or lock resource
+     * @param callable(): R $callback Function to execute under lock
      * @return R
      * @throws RepositoryException
      */
@@ -61,11 +61,11 @@ trait FileLockTrait
     }
 
     /**
-     * Executa a rotina com flock respeitando tentativas e timeout.
+     * Executes a routine with flock respecting retries and timeout.
      *
      * @template R
      * @param string $lockFilePath
-     * @param int $lockType LOCK_EX ou LOCK_SH
+     * @param int $lockType LOCK_EX or LOCK_SH
      * @param callable(): R $callback
      * @return R
      * @throws RepositoryException

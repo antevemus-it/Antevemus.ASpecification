@@ -5,29 +5,29 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Sql;
 
 /**
- * IFieldMapper - Mapeador de Propriedades de Entidades para Colunas do Banco de Dados
+ * IFieldMapper - Entity Property to Database Column Mapper
  *
- * Resolve a impedância objeto-relacional mapeando nomes de propriedades do modelo de domínio
- * (ex: camelCase 'dataNascimento') para nomes reais de colunas físicas (ex: snake_case 'c.dt_nascimento').
+ * Resolves object-relational impedance by mapping domain model property names
+ * (e.g. camelCase 'birthDate') to physical database column expressions (e.g. snake_case 'c.dt_birth').
  *
- * Funcionalidades:
- * - Mapeamento estático e dinâmico de atributos de domínio para colunas SQL
- * - Resolução de prefixos e aliases de tabela
+ * Features:
+ * - Static and dynamic mapping of domain attributes to SQL columns
+ * - Table prefix and alias resolution
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IFieldMapper
 {
     /**
-     * Traduz o nome da propriedade da especificação para a expressão de coluna SQL correspondente.
+     * Translate a specification property name to its corresponding physical SQL column expression.
      *
-     * @param string $propertyName Nome da propriedade inspecionada
-     * @return string Nome físico da coluna (ex: "status", "c.valor_aluguel")
+     * @param string $propertyName Target inspected property name
+     * @return string Physical column identifier (e.g. "status", "c.rental_value")
      */
     public function mapField(string $propertyName): string;
 }

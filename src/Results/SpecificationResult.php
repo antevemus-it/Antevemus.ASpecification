@@ -8,32 +8,32 @@ use Countable;
 use Stringable;
 
 /**
- * SpecificationResult - Objeto de Resultado Rico e Notificação de Avaliação de Especificação
+ * SpecificationResult - Rich Result Object and Notification Container for Specification Evaluations
  *
- * Implementa o Notification Pattern (Martin Fowler) e o Result Object Pattern para encapsular
- * o veredito completo de avaliação de uma especificação ou de uma árvore de regras combinadas.
- * Fornece acesso ao status de aprovação booleana e à coleção completa de falhas registradas.
+ * Implements Martin Fowler's Notification Pattern and the Result Object Pattern to encapsulate
+ * the comprehensive verdict of specification or composite rule evaluations.
+ * Provides access to the boolean satisfaction status alongside the full collection of recorded failures.
  *
- * Funcionalidades:
- * - Indicador de aprovação lógica (isSatisfied)
- * - Agregação imutável de falhas (failures) do tipo SpecificationFailure
- * - Fábricas estáticas expressivas (satisfied, failure, combine)
- * - Extração direta de motivos amigáveis (getReasons) e códigos regulatórios (getCodes)
- * - Consulta rápida por código de erro (hasError) ou por propriedade afetada (getFailuresForProperty)
- * - Implementação de Countable e Stringable para integração idiomática
+ * Features:
+ * - Boolean satisfaction indicator (isSatisfied)
+ * - Immutable aggregation of SpecificationFailure instances
+ * - Expressive static factory methods (satisfied, failure, combine)
+ * - Extraction of friendly error messages (getReasons) and regulatory error codes (getCodes)
+ * - Fast query by error code (hasError) or by target candidate property (getFailuresForProperty)
+ * - Idiomatic integration via Countable and Stringable interfaces
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class SpecificationResult implements Countable, Stringable
 {
     /**
-     * @param bool $isSatisfied True se todas as regras foram cumpridas, false se houve violação
-     * @param list<SpecificationFailure> $failures Coleção de falhas registradas
+     * @param bool $isSatisfied True if all specification conditions are satisfied; false if violations occurred
+     * @param list<SpecificationFailure> $failures Collection of recorded rule failures
      */
     public function __construct(
         public bool $isSatisfied,
@@ -42,7 +42,7 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Cria um resultado de aprovação sem falhas.
+     * Create a successful evaluation result containing no failures.
      *
      * @return self
      */
@@ -52,13 +52,13 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Cria um resultado de reprovação com uma falha pontual.
+     * Create an unsatisfied evaluation result containing a single discrete failure.
      *
-     * @param string $message Mensagem descritiva da falha
-     * @param string|null $code Código de negócio/regulatório
-     * @param string|null $ruleName Nome da classe ou identificador da especificação
-     * @param string|null $property Propriedade inspecionada
-     * @param array<string, mixed> $metadata Metadados contextuais adicionais
+     * @param string $message Descriptive failure explanation
+     * @param string|null $code Regulatory or business error identifier code
+     * @param string|null $ruleName Name or identifier of the failing specification
+     * @param string|null $property Target property name evaluated
+     * @param array<string, mixed> $metadata Additional contextual diagnostics metadata
      * @return self
      */
     public static function failure(
@@ -74,10 +74,10 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Combina múltiplos resultados em um único resultado consolidado.
-     * O resultado consolidado só será considerado satisfeito se TODOS os resultados forem satisfeitos.
+     * Combine multiple evaluation results into a single consolidated result.
+     * The combined result is satisfied if and only if ALL individual results are satisfied.
      *
-     * @param self ...$results Resultados a serem combinados
+     * @param self ...$results Results to combine
      * @return self
      */
     public static function combine(self ...$results): self
@@ -98,7 +98,7 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Retorna a lista contendo apenas as mensagens amigáveis de erro.
+     * Return a list containing human-readable error messages for all recorded failures.
      *
      * @return list<string>
      */
@@ -111,7 +111,7 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Retorna a lista contendo todos os códigos de erro associados às falhas.
+     * Return a list containing all distinct non-empty error codes from recorded failures.
      *
      * @return list<string>
      */
@@ -127,9 +127,9 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Verifica se o resultado contém falha, opcionalmente filtrando por código específico.
+     * Determine whether the result contains failures, optionally filtering by specific error code.
      *
-     * @param string|null $code Código do erro a consultar (null para verificar se há qualquer falha)
+     * @param string|null $code Error code to query (null to check for any failure)
      * @return bool
      */
     public function hasError(?string $code = null): bool
@@ -152,9 +152,9 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Retorna apenas as falhas associadas a uma determinada propriedade.
+     * Return failures specifically associated with a candidate property name.
      *
-     * @param string $property Nome da propriedade
+     * @param string $property Property name to filter by
      * @return list<SpecificationFailure>
      */
     public function getFailuresForProperty(string $property): array
@@ -168,7 +168,7 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Retorna o total de falhas contidas no resultado.
+     * Return the total count of failures recorded in this result.
      *
      * @return int
      */
@@ -178,7 +178,7 @@ final readonly class SpecificationResult implements Countable, Stringable
     }
 
     /**
-     * Retorna representação textual amigável do resultado.
+     * Return a formatted string representation of the evaluation result.
      *
      * @return string
      */

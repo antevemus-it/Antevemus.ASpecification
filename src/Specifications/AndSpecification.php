@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications;
 
 use Antevemus\ASpecification\AbstractSpecification;
@@ -9,37 +11,36 @@ use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
- * AndSpecification class.
+ * AndSpecification - Composite specification representing logical conjunction (AND).
  *
- * Implementação de uma especificação composta que representa uma conjunção (AND lógico)
- * de duas especificações.
+ * Satisifed if and only if BOTH operand specifications (left AND right)
+ * are satisfied by the candidate.
  *
- * Esta especificação é satisfeita se e somente se AMBAS as especificações
- * (esquerda E direita) forem satisfeitas pelo candidato.
+ * Features:
+ * - Short-circuit candidate evaluation
+ * - Aggregated failure diagnostics via Notification Pattern
+ * - Complete subsumption and set algebra
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class AndSpecification extends AbstractSpecification implements ICompositeSpecification
 {
     use SubsumptionAndEqualityTrait;
-    /**
-     * @param ISpecification<T> $left Especificação do lado esquerdo
-     * @param ISpecification<T> $right Especificação do lado direito
-     */
-    /**
-     * Construtor da especificação.
-     *
-     * @param mixed $value Valor esperado
-     */
 
+    /**
+     * Initializes the conjunction with left and right specifications.
+     *
+     * @param ISpecification<T> $left Left-hand side specification
+     * @param ISpecification<T> $right Right-hand side specification
+     */
     public function __construct(
         private readonly ISpecification $left,
         private readonly ISpecification $right
@@ -49,10 +50,10 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * Avalia a conjunção de regras agregando diagnósticos de ambas as ramificações.
+     * Evaluates rule conjunction aggregating diagnostics from both branches.
      *
-     * @param mixed $candidate Objeto ou valor a ser validado
-     * @return SpecificationResult Resultado consolidado com eventuais falhas
+     * @param mixed $candidate Object or value to evaluate
+     * @return SpecificationResult Consolidated evaluation result
      */
     public function evaluate(mixed $candidate): SpecificationResult
     {
@@ -63,7 +64,7 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
 
         if (!$combined->isSatisfied && ($this->customReason !== null || $this->customCode !== null)) {
             $topFailure = new SpecificationFailure(
-                message: $this->customReason ?? "Conjunção (AND) violada.",
+                message: $this->customReason ?? "Conjunction (AND) violated.",
                 code: $this->customCode,
                 ruleName: 'AndSpecification'
             );
@@ -76,31 +77,23 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * @param mixed $candidate Objeto ou valor a ser validado
-     * @return bool True se ambas as ramificações forem satisfeitas
+     * @param mixed $candidate Object or value to validate
+     * @return bool True if both branches are satisfied
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        // Null nunca satisfaz uma especificação
         if ($candidate === null) {
             return false;
         }
 
-        // Ambas as especificações devem ser satisfeitas (short-circuit evaluation)
         return $this->left->isSatisfiedBy($candidate) && $this->right->isSatisfiedBy($candidate);
     }
 
     /**
      * {@inheritdoc}
      */
-    /**
-     * {@inheritdoc}
-     */
-
     public function getType(): string
     {
-        // Retorna o tipo da especificação esquerda
-        // (assumindo que ambas têm o mesmo tipo ou tipos compatíveis)
         return $this->left->getType();
     }
 
@@ -145,7 +138,7 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     }
 
     /**
-     * Obtém o nome legível de uma especificação.
+     * Resolves human-readable representation of a specification.
      *
      * @param ISpecification<T> $spec
      * @return string
@@ -164,20 +157,18 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * Uma conjunção AND é uma generalização de outra especificação se
-     * qualquer um dos seus lados é uma generalização da outra especificação.
+     * Conjunction (A AND B) is a generalization of X if both A and B generalize X.
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
         if ($this->checkBaseGeneralization($otherSpecification)) {
             return true;
         }
 
-        // Para (A AND B) ser generalização (superconjunto) de X, AMBOS A e B devem generalizar X
         return $this->left->isGeneralizationOf($otherSpecification)
             && $this->right->isGeneralizationOf($otherSpecification);
     }
@@ -188,28 +179,22 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Se qualquer lado é disjunto com a outra especificação, então a conjunção é disjunta
         return $this->left->isDisjointWith($otherSpecification)
             || $this->right->isDisjointWith($otherSpecification);
     }
 
     /**
      * {@inheritdoc}
-     *
-     * Uma conjunção AND pode ser uma interseção se representa a combinação
-     * de especificações que formam uma interseção.
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Uma AND specification é literalmente uma interseção de suas partes
-        // Verifica se a outra especificação também é uma interseção equivalente
         if ($otherSpecification instanceof AndSpecification) {
             return ($this->left === $otherSpecification->getLeftSide() && $this->right === $otherSpecification->getRightSide())
                 || ($this->left === $otherSpecification->getRightSide() && $this->right === $otherSpecification->getLeftSide());
@@ -220,17 +205,13 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
 
     /**
      * {@inheritdoc}
-     *
-     * Uma conjunção AND intersecta com outra especificação se ambos os lados
-     * podem potencialmente intersectar com ela.
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('Specification cannot be null');
         }
 
-        // Para uma conjunção intersectar, ambos os lados devem intersectar
         return $this->left->intersectsWith($otherSpecification)
             && $this->right->intersectsWith($otherSpecification);
     }

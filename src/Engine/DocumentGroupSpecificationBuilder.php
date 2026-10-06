@@ -13,22 +13,22 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Spec;
 
 /**
- * DocumentGroupSpecificationBuilder - Compilador Booleano de Requisitos Documentais
+ * DocumentGroupSpecificationBuilder - Boolean Compiler for Document Requirements
  *
- * Transforma uma coleção de requisitos de documentos (IDocumentRuleDefinition) em uma árvore
- * unificada de especificações (ISpecification), combinando regras ALL (And), ANY (Or) e ONE_OF_SET (Xor).
+ * Transforms a collection of document requirements (IDocumentRuleDefinition) into a unified
+ * specification tree (ISpecification), combining ALL (And), ANY (Or), and ONE_OF_SET (Xor) rules.
  *
- * Funcionalidades:
- * - Avaliador de presença documental plugável (IDocumentPresenceEvaluator)
- * - Mecanismo padrão inteligente para introspecção de documentos em entidades ou arrays
- * - Resolução elegante de alternativas com sets (ex: CPF ou RG ou CNH)
- * - Avaliação de predicados condicionais de guarda (ex: tipo_locacao <> temporada)
+ * Features:
+ * - Pluggable document presence evaluator (IDocumentPresenceEvaluator)
+ * - Intelligent default mechanism for inspecting documents in domain entities or arrays
+ * - Elegant resolution of alternative document sets (e.g. Tax ID or Passport or Driver License)
+ * - Evaluation of conditional guard predicates (e.g., rental_type <> seasonal)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class DocumentGroupSpecificationBuilder
@@ -36,7 +36,7 @@ class DocumentGroupSpecificationBuilder
     private IDocumentPresenceEvaluator $evaluator;
 
     /**
-     * @param IDocumentPresenceEvaluator|null $evaluator Avaliador customizado de documentos
+     * @param IDocumentPresenceEvaluator|null $evaluator Custom document presence evaluator
      */
     public function __construct(?IDocumentPresenceEvaluator $evaluator = null)
     {
@@ -44,10 +44,10 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
-     * Compila uma lista de requisitos de documentos em uma especificação composta executável.
+     * Compiles a list of document requirements into an executable composite specification.
      *
-     * @param list<IDocumentRuleDefinition> $rules Lista de requisitos documentais
-     * @param array<string, mixed> $context Metadados adicionais de contexto
+     * @param list<IDocumentRuleDefinition> $rules List of document requirements
+     * @param array<string, mixed> $context Additional contextual metadata
      * @return ISpecification
      */
     public function build(array $rules, array $context = []): ISpecification
@@ -78,7 +78,7 @@ class DocumentGroupSpecificationBuilder
             };
         }
 
-        // Processa sets alternativos ANY (qualquer um do set satisfaz -> OR)
+        // Process alternative ANY sets (any document in set satisfies -> OR)
         foreach ($anySets as $setKey => $specsInSet) {
             if (count($specsInSet) === 1) {
                 $allSpecs[] = $specsInSet[0];
@@ -87,7 +87,7 @@ class DocumentGroupSpecificationBuilder
             }
         }
 
-        // Processa sets exclusivos ONE_OF_SET (exatamente um documento deve estar presente)
+        // Process mutually exclusive ONE_OF_SET sets (exactly one document must be present -> XOR)
         foreach ($oneOfSets as $setKey => $entries) {
             $allSpecs[] = $this->createOneOfSetSpecification($setKey, $entries, $context);
         }
@@ -100,7 +100,7 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
-     * Cria a especificação folha que avalia a presença de um documento específico.
+     * Creates a leaf specification evaluating presence of a specific document.
      *
      * @param IDocumentRuleDefinition $rule
      * @param array<string, mixed> $context
@@ -153,7 +153,7 @@ class DocumentGroupSpecificationBuilder
                     return SpecificationResult::satisfied();
                 }
 
-                $msg = sprintf('Documento obrigatório ausente: %s.', $this->docType);
+                $msg = sprintf('Required document missing: %s.', $this->docType);
                 $code = 'DOC_' . strtoupper($this->docType);
 
                 return SpecificationResult::failure(
@@ -176,7 +176,7 @@ class DocumentGroupSpecificationBuilder
                     return true;
                 }
 
-                // Avaliador de expressão simples: chave<>valor ou chave=valor
+                // Simple expression evaluator: key<>value or key=value
                 $expr = trim($this->condicao);
                 if (preg_match('/^([a-zA-Z0-9_\-]+)\s*(<>|!=|=)\s*([a-zA-Z0-9_\-]+)$/', $expr, $matches)) {
                     $prop = $matches[1];
@@ -205,7 +205,7 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
-     * Cria uma especificação de exclusividade estrita (exatamente um documento deve estar presente).
+     * Creates a strict exclusivity specification (exactly one document must be present).
      *
      * @param string $setKey
      * @param list<array{rule: IDocumentRuleDefinition, spec: ISpecification}> $entries
@@ -254,7 +254,7 @@ class DocumentGroupSpecificationBuilder
                 }
 
                 $msg = sprintf(
-                    'O conjunto de documentos "%s" exige a presença de exatamente um documento (presentes: %d).',
+                    'Document set "%s" requires exactly one document present (present: %d).',
                     $this->setKey,
                     $satisfiedCount
                 );
@@ -276,7 +276,7 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
-     * Fornece um avaliador padrão inteligente para verificação de documentos.
+     * Provides a default intelligent evaluator for document presence checking.
      *
      * @return IDocumentPresenceEvaluator
      */

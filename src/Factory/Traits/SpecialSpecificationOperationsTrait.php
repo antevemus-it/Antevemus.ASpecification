@@ -7,29 +7,30 @@ namespace Antevemus\ASpecification\Factory\Traits;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * SpecialSpecificationOperationsTrait - Trait agregador de especificações especiais e valores sentinela (ISpecialSpecificationFactory).
+ * SpecialSpecificationOperationsTrait - Trait aggregating special specifications and sentinel values (ISpecialSpecificationFactory).
  *
- * Funcionalidades:
- * - Tautologia e contradição (alwaysTrue, alwaysFalse)
- * - Verificação de nulidade (isNull, isNotNull)
- * - Predicados booleanos (isTrue, isFalse)
+ * Provides delegation methods forwarding to the underlying special specification factory.
  *
- * @version    0.1
+ * Features:
+ * - Tautology and contradiction (alwaysTrue, alwaysFalse)
+ * - Nullity checks (isNull, isNotNull)
+ * - Boolean predicates (isTrue, isFalse)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait SpecialSpecificationOperationsTrait
 {
     /**
-     * Cria especificação que sempre retorna verdadeiro.
+     * Creates a specification that always returns true (Tautology).
      *
-     * Útil para casos de teste, especificações padrão ou composições
-     * onde você precisa de um caso base sempre verdadeiro.
+     * Useful for test cases, fallback/default specifications, or base composition anchors.
      *
-     * @return ISpecification Especificação que sempre é satisfeita
+     * @return ISpecification Specification that is unconditionally satisfied
      */
     public function alwaysTrue(): ISpecification
     {
@@ -37,12 +38,11 @@ trait SpecialSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que sempre retorna falso.
+     * Creates a specification that always returns false (Contradiction).
      *
-     * Útil para casos de teste, especificações de negação total ou
-     * situações onde nenhum candidato deve ser aceito.
+     * Useful for test cases, total negation guards, or reject-all scenarios.
      *
-     * @return ISpecification Especificação que nunca é satisfeita
+     * @return ISpecification Specification that is never satisfied
      */
     public function alwaysFalse(): ISpecification
     {
@@ -50,9 +50,9 @@ trait SpecialSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se o valor é null.
+     * Creates a specification verifying whether the candidate value is null.
      *
-     * @return ISpecification Especificação que verifica null
+     * @return ISpecification Null-check specification
      */
     public function isNull(): ISpecification
     {
@@ -60,9 +60,9 @@ trait SpecialSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se o valor não é null.
+     * Creates a specification verifying whether the candidate value is not null.
      *
-     * @return ISpecification Especificação que verifica não-null
+     * @return ISpecification Non-null check specification
      */
     public function isNotNull(): ISpecification
     {
@@ -70,12 +70,9 @@ trait SpecialSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se o valor é verdadeiro (true).
+     * Creates a specification verifying whether the candidate evaluates to boolean true.
      *
-     * Útil para verificar valores booleanos ou valores que podem ser
-     * convertidos para booleano.
-     *
-     * @return ISpecification Especificação que verifica true
+     * @return ISpecification Boolean true specification
      */
     public function isTrue(): ISpecification
     {
@@ -83,16 +80,12 @@ trait SpecialSpecificationOperationsTrait
     }
 
     /**
-     * Cria especificação que verifica se o valor é falso (false).
+     * Creates a specification verifying whether the candidate evaluates to boolean false.
      *
-     * Útil para verificar valores booleanos ou valores que podem ser
-     * convertidos para booleano.
-     *
-     * @return ISpecification Especificação que verifica false
+     * @return ISpecification Boolean false specification
      */
     public function isFalse(): ISpecification
     {
         return $this->specialFactory->isFalse();
     }
-
 }

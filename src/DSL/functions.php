@@ -2,6 +2,28 @@
 
 declare(strict_types=1);
 
+/**
+ * functions.php - Global DSL functions for Antevemus.ASpecification
+ *
+ * Provides pure helper functions in namespace Antevemus\ASpecification\DSL
+ * for natural, spoken-like specification and business rule authoring
+ * via the "use function" language construct.
+ *
+ * Features:
+ * - Fluent candidate root specification initiation (specify)
+ * - Logical predicate composition (allOf, anyOf, not)
+ * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in)
+ * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
+ * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
+ *
+ * @version    1.1.0
+ * @package    Antevemus\ASpecification
+ * @subpackage DSL
+ * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
+ * @license    MIT
+ */
+
 namespace Antevemus\ASpecification\DSL;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
@@ -11,34 +33,12 @@ use Antevemus\ASpecification\Spec;
 use DateTimeInterface;
 
 /**
- * functions.php - Funções globais da DSL do Antevemus.ASpecification
+ * Initiates fluent composite specification construction for a target class or candidate type.
  *
- * Fornece funções puras e estáticas no namespace Antevemus\ASpecification\DSL
- * para escrita de especificações e regras de negócio em linguagem natural
- * quase-falada através do construto "use function".
+ * Enables natural chaining of `where()`, `and()`, `or()`, and `not()` clauses.
  *
- * Funcionalidades:
- * - Início de especificação parametrizada (specify)
- * - Composição lógica de predicados (allOf, anyOf, not)
- * - Avaliação de identidade e comparação (is, equalTo, equal, notEqual, greaterThan, lessThan, in)
- * - Avaliação temporal e de datas (before, isBefore, after, isAfter, at, between)
- * - Avaliação de predicados especiais e cadeias de texto (matches, contains, startsWith, endsWith)
- *
- * @version    0.1
- * @package    Antevemus\ASpecification
- * @subpackage DSL
- * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
- * @license    MIT
- */
-
-/**
- * Inicia a construção fluente de uma especificação composta tipada para uma classe ou tipo alvo.
- *
- * Permite encadear cláusulas `where()`, `and()`, `or()` e `not()` com legibilidade natural.
- *
- * @param class-string|string $type Nome da classe, interface ou tipo primitivo alvo da especificação.
- * @return ICompositeSpecification Especificação composta fluente inicializada.
+ * @param class-string|string $type Target class, interface, or primitive type name
+ * @return ICompositeSpecification Initialized fluent composite specification
  */
 function specify(string $type): ICompositeSpecification
 {
@@ -46,21 +46,21 @@ function specify(string $type): ICompositeSpecification
 }
 
 /**
- * Cria uma especificação vinculada a uma propriedade de objeto ou chave de array.
+ * Creates a specification bound to an object property or array key.
  *
- * Suporta acesso a propriedades públicas, getters (getProp, prop),
- * métodos booleanos (isProp, hasProp), ArrayAccess e dot-notation ('user.address.city').
+ * Supports public properties, getters (getProp, prop), boolean methods (isProp, hasProp),
+ * ArrayAccess, and dot-notation paths ('user.address.city').
  *
- * Exemplo de uso:
+ * Usage example:
  * <code>
  * $isEligible = prop('age', greaterThanOrEqualTo(18))
  *     ->and(prop('status', equal('ACTIVE')))
- *     ->and(prop('address.city', equal('São Paulo')));
+ *     ->and(prop('address.city', equal('New York')));
  * </code>
  *
- * @param string $propertyName Nome da propriedade ou caminho pontilhado.
- * @param ISpecification $specification Regra a ser aplicada sobre o valor da propriedade.
- * @param ISpecification|null $baseSpecification Especificação do tipo base (default: AlwaysTrue).
+ * @param string $propertyName Property name or dot-separated path
+ * @param ISpecification $specification Rule to evaluate against the property value
+ * @param ISpecification|null $baseSpecification Base type specification (default: AlwaysTrue)
  * @return PropertySpecification
  */
 function prop(
@@ -72,11 +72,11 @@ function prop(
 }
 
 /**
- * Alias de prop().
+ * Syntactic alias for prop().
  *
- * @param string $propertyName Nome da propriedade ou caminho pontilhado.
- * @param ISpecification $specification Regra a ser aplicada sobre o valor da propriedade.
- * @param ISpecification|null $baseSpecification Especificação do tipo base (default: AlwaysTrue).
+ * @param string $propertyName Property name or dot-separated path
+ * @param ISpecification $specification Rule to evaluate against the property value
+ * @param ISpecification|null $baseSpecification Base type specification (default: AlwaysTrue)
  * @return PropertySpecification
  */
 function property(
@@ -88,12 +88,12 @@ function property(
 }
 
 /**
- * Cria uma especificação de conjunção lógica (AND) que exige que TODAS as especificações fornecidas sejam satisfeitas.
+ * Creates a conjunction (AND) specification requiring ALL provided specifications to be satisfied.
  *
- * Se nenhuma especificação for repassada, retorna AlwaysTrueSpecification.
+ * Returns AlwaysTrueSpecification if no arguments are provided.
  *
- * @param ISpecification ...$specifications Lista variável de especificações a serem combinadas por AND.
- * @return ISpecification Especificação composta contendo a conjunção de todas as regras.
+ * @param ISpecification ...$specifications Variable list of specifications to combine with AND
+ * @return ISpecification Composite conjunction specification
  */
 function allOf(ISpecification ...$specifications): ISpecification
 {
@@ -101,12 +101,12 @@ function allOf(ISpecification ...$specifications): ISpecification
 }
 
 /**
- * Cria uma especificação de disjunção lógica (OR) que exige que PELO MENOS UMA das especificações fornecidas seja satisfeita.
+ * Creates a disjunction (OR) specification requiring AT LEAST ONE specification to be satisfied.
  *
- * Se nenhuma especificação for repassada, retorna AlwaysFalseSpecification.
+ * Returns AlwaysFalseSpecification if no arguments are provided.
  *
- * @param ISpecification ...$specifications Lista variável de especificações a serem combinadas por OR.
- * @return ISpecification Especificação composta contendo a disjunção de todas as regras.
+ * @param ISpecification ...$specifications Variable list of specifications to combine with OR
+ * @return ISpecification Composite disjunction specification
  */
 function anyOf(ISpecification ...$specifications): ISpecification
 {
@@ -114,10 +114,10 @@ function anyOf(ISpecification ...$specifications): ISpecification
 }
 
 /**
- * Cria uma especificação de negação lógica (NOT) que inverte o resultado da especificação fornecida.
+ * Creates a logical negation (NOT) specification that inverts the outcome of the given specification.
  *
- * @param ISpecification $specification A especificação cuja condição deve ser negada.
- * @return ISpecification Especificação negada.
+ * @param ISpecification $specification Specification whose condition is to be inverted
+ * @return ISpecification Inverted specification
  */
 function not(ISpecification $specification): ISpecification
 {
@@ -125,10 +125,10 @@ function not(ISpecification $specification): ISpecification
 }
 
 /**
- * Cria uma especificação de igualdade estrita ou identidade para o valor repassado.
+ * Creates an identity/strict equality specification for the given value.
  *
- * @param mixed $value Valor esperado para validação de igualdade.
- * @return ISpecification Especificação folha de igualdade.
+ * @param mixed $value Expected value
+ * @return ISpecification Leaf equality specification
  */
 function is(mixed $value): ISpecification
 {
@@ -136,10 +136,10 @@ function is(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação folha de igualdade estrita (`===`).
+ * Creates a strict equality (`===`) leaf specification.
  *
- * @param mixed $value Valor esperado.
- * @return ISpecification Especificação de igualdade.
+ * @param mixed $value Expected value
+ * @return ISpecification Leaf equality specification
  */
 function equalTo(mixed $value): ISpecification
 {
@@ -147,10 +147,10 @@ function equalTo(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação folha de igualdade estrita (`===`). Alias sintático para `equalTo()`.
+ * Syntactic alias for equalTo().
  *
- * @param mixed $value Valor esperado.
- * @return ISpecification Especificação de igualdade.
+ * @param mixed $value Expected value
+ * @return ISpecification Leaf equality specification
  */
 function equal(mixed $value): ISpecification
 {
@@ -158,10 +158,10 @@ function equal(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação folha de desigualdade estrita (`!==`).
+ * Creates a strict inequality (`!==`) leaf specification.
  *
- * @param mixed $value Valor que o candidato NÃO deve possuir.
- * @return ISpecification Especificação de desigualdade.
+ * @param mixed $value Value candidate must NOT possess
+ * @return ISpecification Leaf inequality specification
  */
 function notEqual(mixed $value): ISpecification
 {
@@ -169,10 +169,10 @@ function notEqual(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação de comparação maior que (`>`).
+ * Creates a greater-than (`>`) comparison specification.
  *
- * @param mixed $value Limite inferior exclusivo.
- * @return ISpecification Especificação de comparação maior que.
+ * @param mixed $value Exclusive lower bound
+ * @return ISpecification Greater-than comparison specification
  */
 function greaterThan(mixed $value): ISpecification
 {
@@ -180,10 +180,10 @@ function greaterThan(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação de comparação maior ou igual a (`>=`).
+ * Creates a greater-than-or-equal-to (`>=`) comparison specification.
  *
- * @param mixed $value Limite inferior inclusivo.
- * @return ISpecification Especificação de comparação maior ou igual.
+ * @param mixed $value Inclusive lower bound
+ * @return ISpecification Greater-than-or-equal comparison specification
  */
 function greaterThanOrEqualTo(mixed $value): ISpecification
 {
@@ -191,10 +191,10 @@ function greaterThanOrEqualTo(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação de comparação menor que (`<`).
+ * Creates a less-than (`<`) comparison specification.
  *
- * @param mixed $value Limite superior exclusivo.
- * @return ISpecification Especificação de comparação menor que.
+ * @param mixed $value Exclusive upper bound
+ * @return ISpecification Less-than comparison specification
  */
 function lessThan(mixed $value): ISpecification
 {
@@ -202,10 +202,10 @@ function lessThan(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação de comparação menor ou igual a (`<=`).
+ * Creates a less-than-or-equal-to (`<=`) comparison specification.
  *
- * @param mixed $value Limite superior inclusivo.
- * @return ISpecification Especificação de comparação menor ou igual.
+ * @param mixed $value Inclusive upper bound
+ * @return ISpecification Less-than-or-equal comparison specification
  */
 function lessThanOrEqualTo(mixed $value): ISpecification
 {
@@ -213,10 +213,10 @@ function lessThanOrEqualTo(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação de pertinência a um conjunto de valores (equivalente ao operador IN / disjunção de igualdades).
+ * Creates a set membership specification (equivalent to IN / disjunction of equalities).
  *
- * @param mixed ...$values Valores aceitos pelo conjunto.
- * @return ISpecification Especificação disjuntiva de pertencimento.
+ * @param mixed ...$values Set of accepted values
+ * @return ISpecification Disjunctive set membership specification
  */
 function in(mixed ...$values): ISpecification
 {
@@ -224,10 +224,10 @@ function in(mixed ...$values): ISpecification
 }
 
 /**
- * Cria uma especificação temporal ou de ordenação anterior a um dado valor.
+ * Creates a temporal/ordering specification checking if a value precedes the given threshold.
  *
- * @param mixed $value Valor ou data de referência limite superior.
- * @return ISpecification Especificação de anterioridade.
+ * @param mixed $value Reference upper bound or date
+ * @return ISpecification Precedence specification
  */
 function before(mixed $value): ISpecification
 {
@@ -235,10 +235,10 @@ function before(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação temporal anterior a um valor ou data. Alias sintático para `before()`.
+ * Syntactic alias for before().
  *
- * @param mixed $value Valor ou data de referência limite superior.
- * @return ISpecification Especificação de anterioridade.
+ * @param mixed $value Reference upper bound or date
+ * @return ISpecification Precedence specification
  */
 function isBefore(mixed $value): ISpecification
 {
@@ -246,10 +246,10 @@ function isBefore(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação temporal ou de ordenação posterior a um dado valor.
+ * Creates a temporal/ordering specification checking if a value succeeds the given threshold.
  *
- * @param mixed $value Valor ou data de referência limite inferior.
- * @return ISpecification Especificação de posterioridade.
+ * @param mixed $value Reference lower bound or date
+ * @return ISpecification Succession specification
  */
 function after(mixed $value): ISpecification
 {
@@ -257,10 +257,10 @@ function after(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação temporal posterior a um valor ou data. Alias sintático para `after()`.
+ * Syntactic alias for after().
  *
- * @param mixed $value Valor ou data de referência limite inferior.
- * @return ISpecification Especificação de posterioridade.
+ * @param mixed $value Reference lower bound or date
+ * @return ISpecification Succession specification
  */
 function isAfter(mixed $value): ISpecification
 {
@@ -268,10 +268,10 @@ function isAfter(mixed $value): ISpecification
 }
 
 /**
- * Cria uma especificação temporal que exige exatidão cronológica com a data e hora fornecidas.
+ * Creates a temporal specification requiring chronological exactness with the given instant.
  *
- * @param DateTimeInterface $date Data e hora exatas de comparação.
- * @return ISpecification Especificação temporal de igualdade de instante.
+ * @param DateTimeInterface $date Exact reference timestamp
+ * @return ISpecification Temporal equality specification
  */
 function at(DateTimeInterface $date): ISpecification
 {
@@ -279,10 +279,10 @@ function at(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal que exige exatidão cronológica com a data fornecida. Alias para `at()`.
+ * Syntactic alias for at().
  *
- * @param DateTimeInterface $date Data e hora de comparação.
- * @return ISpecification Especificação temporal de igualdade cronológica.
+ * @param DateTimeInterface $date Exact reference timestamp
+ * @return ISpecification Temporal equality specification
  */
 function atTheSameTimeAs(DateTimeInterface $date): ISpecification
 {
@@ -290,10 +290,10 @@ function atTheSameTimeAs(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal anterior ou coincidente com a data limite informada (menor ou igual a).
+ * Creates a temporal specification evaluating whether an instant is before or at the given threshold (<=).
  *
- * @param DateTimeInterface $date Data limite superior inclusiva.
- * @return ISpecification Especificação temporal menor ou igual.
+ * @param DateTimeInterface $date Inclusive upper bound timestamp
+ * @return ISpecification Temporal less-than-or-equal specification
  */
 function beforeOrAt(DateTimeInterface $date): ISpecification
 {
@@ -301,10 +301,10 @@ function beforeOrAt(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal anterior ou coincidente com a data fornecida. Alias para `beforeOrAt()`.
+ * Syntactic alias for beforeOrAt().
  *
- * @param DateTimeInterface $date Data limite superior inclusiva.
- * @return ISpecification Especificação temporal menor ou igual.
+ * @param DateTimeInterface $date Inclusive upper bound timestamp
+ * @return ISpecification Temporal less-than-or-equal specification
  */
 function beforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 {
@@ -312,10 +312,10 @@ function beforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal anterior ou coincidente com a data fornecida. Alias sintático fluente.
+ * Syntactic fluent alias for beforeOrAt().
  *
- * @param DateTimeInterface $date Data limite superior inclusiva.
- * @return ISpecification Especificação temporal menor ou igual.
+ * @param DateTimeInterface $date Inclusive upper bound timestamp
+ * @return ISpecification Temporal less-than-or-equal specification
  */
 function isBeforeOrAt(DateTimeInterface $date): ISpecification
 {
@@ -323,10 +323,10 @@ function isBeforeOrAt(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal anterior ou coincidente com a data fornecida. Alias sintático fluente longo.
+ * Syntactic fluent long alias for beforeOrAt().
  *
- * @param DateTimeInterface $date Data limite superior inclusiva.
- * @return ISpecification Especificação temporal menor ou igual.
+ * @param DateTimeInterface $date Inclusive upper bound timestamp
+ * @return ISpecification Temporal less-than-or-equal specification
  */
 function isBeforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 {
@@ -334,10 +334,10 @@ function isBeforeOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal posterior ou coincidente com a data limite informada (maior ou igual a).
+ * Creates a temporal specification evaluating whether an instant is after or at the given threshold (>=).
  *
- * @param DateTimeInterface $date Data limite inferior inclusiva.
- * @return ISpecification Especificação temporal maior ou igual.
+ * @param DateTimeInterface $date Inclusive lower bound timestamp
+ * @return ISpecification Temporal greater-than-or-equal specification
  */
 function afterOrAt(DateTimeInterface $date): ISpecification
 {
@@ -345,10 +345,10 @@ function afterOrAt(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal posterior ou coincidente com a data fornecida. Alias para `afterOrAt()`.
+ * Syntactic alias for afterOrAt().
  *
- * @param DateTimeInterface $date Data limite inferior inclusiva.
- * @return ISpecification Especificação temporal maior ou igual.
+ * @param DateTimeInterface $date Inclusive lower bound timestamp
+ * @return ISpecification Temporal greater-than-or-equal specification
  */
 function afterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 {
@@ -356,10 +356,10 @@ function afterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal posterior ou coincidente com a data fornecida. Alias sintático fluente.
+ * Syntactic fluent alias for afterOrAt().
  *
- * @param DateTimeInterface $date Data limite inferior inclusiva.
- * @return ISpecification Especificação temporal maior ou igual.
+ * @param DateTimeInterface $date Inclusive lower bound timestamp
+ * @return ISpecification Temporal greater-than-or-equal specification
  */
 function isAfterOrAt(DateTimeInterface $date): ISpecification
 {
@@ -367,10 +367,10 @@ function isAfterOrAt(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal posterior ou coincidente com a data fornecida. Alias sintático fluente longo.
+ * Syntactic fluent long alias for afterOrAt().
  *
- * @param DateTimeInterface $date Data limite inferior inclusiva.
- * @return ISpecification Especificação temporal maior ou igual.
+ * @param DateTimeInterface $date Inclusive lower bound timestamp
+ * @return ISpecification Temporal greater-than-or-equal specification
  */
 function isAfterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 {
@@ -378,11 +378,11 @@ function isAfterOrAtTheSameTimeAs(DateTimeInterface $date): ISpecification
 }
 
 /**
- * Cria uma especificação temporal de intervalo que valida se uma data está contida entre o início e o fim (inclusivo).
+ * Creates a temporal interval specification checking if a date falls between start and end (inclusive).
  *
- * @param DateTimeInterface $start Data inicial do intervalo.
- * @param DateTimeInterface $end Data final do intervalo.
- * @return ISpecification Especificação de pertencimento ao intervalo fechado.
+ * @param DateTimeInterface $start Interval start timestamp
+ * @param DateTimeInterface $end Interval end timestamp
+ * @return ISpecification Closed interval membership specification
  */
 function between(DateTimeInterface $start, DateTimeInterface $end): ISpecification
 {
@@ -390,9 +390,9 @@ function between(DateTimeInterface $start, DateTimeInterface $end): ISpecificati
 }
 
 /**
- * Retorna uma especificação tautológica universal que é sempre satisfeita por qualquer candidato.
+ * Returns a universal tautological specification satisfied by any candidate.
  *
- * @return ISpecification Instância da AlwaysTrueSpecification.
+ * @return ISpecification Instance of AlwaysTrueSpecification
  */
 function alwaysTrue(): ISpecification
 {
@@ -400,9 +400,9 @@ function alwaysTrue(): ISpecification
 }
 
 /**
- * Retorna uma especificação contraditória universal que nunca é satisfeita por nenhum candidato.
+ * Returns a universal contradictory specification never satisfied by any candidate.
  *
- * @return ISpecification Instância da AlwaysFalseSpecification.
+ * @return ISpecification Instance of AlwaysFalseSpecification
  */
 function alwaysFalse(): ISpecification
 {
@@ -410,9 +410,9 @@ function alwaysFalse(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se o candidato ou propriedade é estritamente nulo (`=== null`).
+ * Creates a specification verifying that candidate or property is strictly null (`=== null`).
  *
- * @return ISpecification Especificação de nulidade.
+ * @return ISpecification Nullity specification
  */
 function isNull(): ISpecification
 {
@@ -420,9 +420,9 @@ function isNull(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se o candidato ou propriedade é não-nulo (`!== null`).
+ * Creates a specification verifying that candidate or property is non-null (`!== null`).
  *
- * @return ISpecification Especificação de não-nulidade.
+ * @return ISpecification Non-nullity specification
  */
 function isNotNull(): ISpecification
 {
@@ -430,9 +430,9 @@ function isNotNull(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se o candidato ou propriedade avalia como booleano estritamente verdadeiro (`=== true`).
+ * Creates a specification verifying that candidate or property is strictly true (`=== true`).
  *
- * @return ISpecification Especificação de verdade booleana.
+ * @return ISpecification Boolean truth specification
  */
 function isTrue(): ISpecification
 {
@@ -440,9 +440,9 @@ function isTrue(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se o candidato ou propriedade avalia como booleano estritamente falso (`=== false`).
+ * Creates a specification verifying that candidate or property is strictly false (`=== false`).
  *
- * @return ISpecification Especificação de falsidade booleana.
+ * @return ISpecification Boolean falsehood specification
  */
 function isFalse(): ISpecification
 {
@@ -450,9 +450,9 @@ function isFalse(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se uma string é vazia ou composta apenas por caracteres de espaço em branco.
+ * Creates a specification verifying that a string is empty or contains only whitespace.
  *
- * @return ISpecification Especificação de string em branco.
+ * @return ISpecification Blank string specification
  */
 function isBlank(): ISpecification
 {
@@ -460,10 +460,10 @@ function isBlank(): ISpecification
 }
 
 /**
- * Cria uma especificação que valida uma string contra uma expressão regular PCRE (`preg_match`).
+ * Creates a specification validating a string against a PCRE regular expression (`preg_match`).
  *
- * @param string $pattern Padrão de expressão regular (ex.: '/^[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}$/').
- * @return ISpecification Especificação de correspondência por regex.
+ * @param string $pattern PCRE regex pattern (e.g., '/^[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}$/')
+ * @return ISpecification Regex matching specification
  */
 function matches(string $pattern): ISpecification
 {
@@ -471,11 +471,11 @@ function matches(string $pattern): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se uma string contém a substring informada.
+ * Creates a specification checking if a string contains the given substring.
  *
- * @param string $substring Texto a ser localizado.
- * @param bool $caseSensitive Define se a busca diferencia maiúsculas de minúsculas (padrão: true).
- * @return ISpecification Especificação de contenção de substring.
+ * @param string $substring Search substring
+ * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @return ISpecification Substring containment specification
  */
 function contains(string $substring, bool $caseSensitive = true): ISpecification
 {
@@ -483,11 +483,11 @@ function contains(string $substring, bool $caseSensitive = true): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se uma string inicia com o prefixo informado.
+ * Creates a specification checking if a string starts with the given prefix.
  *
- * @param string $prefix Prefixo esperado.
- * @param bool $caseSensitive Define se a verificação diferencia maiúsculas de minúsculas (padrão: true).
- * @return ISpecification Especificação de início de string.
+ * @param string $prefix Expected prefix
+ * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @return ISpecification String prefix specification
  */
 function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
 {
@@ -495,11 +495,11 @@ function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se uma string termina com o sufixo informado.
+ * Creates a specification checking if a string ends with the given suffix.
  *
- * @param string $suffix Sufixo esperado.
- * @param bool $caseSensitive Define se a verificação diferencia maiúsculas de minúsculas (padrão: true).
- * @return ISpecification Especificação de término de string.
+ * @param string $suffix Expected suffix
+ * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @return ISpecification String suffix specification
  */
 function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
 {
@@ -507,9 +507,9 @@ function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
 }
 
 /**
- * Cria uma especificação que valida se uma coleção, array ou string está vazia (contagem/comprimento igual a 0).
+ * Creates a specification checking if a collection, array, or string is empty (count or length is 0).
  *
- * @return ISpecification Especificação de vacuidade.
+ * @return ISpecification Emptiness specification
  */
 function isEmpty(): ISpecification
 {
@@ -517,10 +517,10 @@ function isEmpty(): ISpecification
 }
 
 /**
- * Cria uma especificação de tamanho que valida o número de elementos de uma coleção ou array contra uma especificação de tamanho.
+ * Creates a collection size specification checking count against a size rule.
  *
- * @param ISpecification $sizeSpecification Especificação aplicada sobre a contagem inteira de elementos (ex: equalTo(5)).
- * @return ISpecification Especificação de cardinalidade/tamanho de coleção.
+ * @param ISpecification $sizeSpecification Specification evaluated on integer count (e.g. equalTo(5))
+ * @return ISpecification Collection size specification
  */
 function hasSize(ISpecification $sizeSpecification): ISpecification
 {
@@ -528,10 +528,10 @@ function hasSize(ISpecification $sizeSpecification): ISpecification
 }
 
 /**
- * Cria uma especificação de comprimento que valida o número de caracteres de uma string contra uma especificação de comprimento.
+ * Creates a string length specification checking character count against a length rule.
  *
- * @param ISpecification $lengthSpecification Especificação aplicada sobre a quantidade de caracteres (ex: greaterThan(10)).
- * @return ISpecification Especificação de comprimento de string.
+ * @param ISpecification $lengthSpecification Specification evaluated on string length (e.g. greaterThan(10))
+ * @return ISpecification String length specification
  */
 function hasLength(ISpecification $lengthSpecification): ISpecification
 {

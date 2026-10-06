@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 /**
- * DocumentRequirementMode - Modo de Obrigatoriedade de Documento em Grupo Operacional
+ * DocumentRequirementMode - Requirement Mode for Documents in Operational Group
  *
- * Define a semântica de validação documental para conjuntos de requisitos em operações de domínio.
- * Suporta exigência universal (all), disjunção alternativa (any) ou exclusividade estrita (one_of_set).
+ * Defines document validation semantics for requirement sets in domain operations.
+ * Supports universal requirement (all), alternative disjunction (any), or strict exclusivity (one_of_set).
  *
- * Funcionalidades:
- * - Enumeração tipada para regras de documentos (ALL, ANY, ONE_OF_SET)
- * - Resolução segura a partir de strings com valor padrão configurável
- * - Suporte à álgebra de especificações booleanas (And, Or, Xor)
+ * Features:
+ * - Typed enumeration for document rules (ALL, ANY, ONE_OF_SET)
+ * - Safe resolution from strings with configurable default fallback
+ * - Support for Boolean specification algebra (And, Or, Xor)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 enum DocumentRequirementMode: string
@@ -29,10 +29,10 @@ enum DocumentRequirementMode: string
     case ONE_OF_SET = 'one_of_set';
 
     /**
-     * Cria ou resolve o modo a partir de uma string recebida, usando fallback padrão se inválido.
+     * Resolves the mode from an input string, returning a default fallback if invalid.
      *
-     * @param string|null $mode Texto da regra (ex: 'all', 'any', 'one_of_set')
-     * @param self $default Modo padrão caso o valor seja nulo ou desconhecido
+     * @param string|null $mode Rule text mode (e.g. 'all', 'any', 'one_of_set')
+     * @param self $default Default mode if value is null or unrecognized
      * @return self
      */
     public static function fromOrDefault(?string $mode, self $default = self::ALL): self

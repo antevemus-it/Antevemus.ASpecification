@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Entities;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -7,17 +9,23 @@ use DateTimeImmutable;
 use LogicException;
 
 /**
- * AbstractEntity class.
+ * AbstractEntity - Base Abstract Class for Domain Entity Objects
  *
- * Classe abstrata base para todos os objetos de entidade, garantindo que as lógicas
- * de comparação sejam consistentes e inalteráveis, ou seja, nunca influenciadas
- * pelo estado mutável dos dados (apenas pela identidade).
+ * Provides identity-based equality logic and creation timestamp tracking.
+ * Ensures comparison semantics are consistent and immutable, governed strictly
+ * by identity rather than mutable attributes.
  *
- * @version    0.1
+ * Features:
+ * - Immutable creation timestamp recording (timeOfCreation)
+ * - Optimistic locking version tracking support (version)
+ * - Identity-based equivalence evaluation (equals)
+ * - Domain object classification indicators (isEntity, isValueObject)
+ *
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Entities
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractEntity implements IEntity
@@ -25,12 +33,12 @@ abstract class AbstractEntity implements IEntity
     protected readonly DateTimeImmutable $timeOfCreation;
 
     /**
-     * Versão de controle para possível uso em locking otimista em RDBMS.
+     * Version control counter for optimistic locking support in RDBMS.
      */
     protected ?int $version = null;
 
     /**
-     * Inicializa a entidade definindo o timestamp imutável de criação.
+     * Initialize entity setting immutable creation timestamp.
      */
     public function __construct()
     {
@@ -38,7 +46,7 @@ abstract class AbstractEntity implements IEntity
     }
 
     /**
-     * Obtém a versão de lock otimista da entidade.
+     * Get optimistic locking version of the entity.
      *
      * @return int|null
      */
@@ -48,7 +56,7 @@ abstract class AbstractEntity implements IEntity
     }
 
     /**
-     * Define a versão de lock otimista.
+     * Set optimistic locking version.
      *
      * @param int|null $version
      */
@@ -68,7 +76,7 @@ abstract class AbstractEntity implements IEntity
     /**
      * {@inheritdoc}
      *
-     * @return bool Sempre true para entidades de domínio
+     * @return bool Always true for domain entities
      */
     public final function isEntity(): bool
     {
@@ -78,7 +86,7 @@ abstract class AbstractEntity implements IEntity
     /**
      * {@inheritdoc}
      *
-     * @return bool Sempre false para entidades de domínio
+     * @return bool Always false for domain entities
      */
     public final function isValueObject(): bool
     {
@@ -98,10 +106,10 @@ abstract class AbstractEntity implements IEntity
         $otherId = $other->getEntityId();
 
         if ($thisId === null || $otherId === null) {
-            throw new LogicException("A entidade não possui um ID válido para ser comparada.");
+            throw new LogicException("The entity does not have a valid ID to compare.");
         }
 
-        // Caso as identidades sejam Value Objects com suas próprias regras
+        // When identities are Value Objects providing their own equals() method
         if (is_object($thisId) && method_exists($thisId, 'equals')) {
             return $thisId->equals($otherId);
         }

@@ -8,21 +8,21 @@ use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 
 /**
- * AbstractSqlDialect - Implementação Base e Comportamento Padrão ANSI SQL
+ * AbstractSqlDialect - Base Implementation and Default ANSI SQL Behavior
  *
- * Fornece implementações canônicas para regras compartilhadas entre dialetos relacionais.
+ * Provides canonical implementations for rules shared across relational dialects.
  *
- * Funcionalidades:
- * - Escape padrão com aspas duplas ("identificador")
- * - Escape composto para identificadores qualificados (tabela.coluna)
- * - Tautologias universais (1 = 1 e 1 = 0)
- * - Tratamento padrão de busca LIKE com LOWER()
+ * Features:
+ * - Default double-quote escaping ("identifier")
+ * - Composite escaping for qualified identifiers (table.column)
+ * - Universal tautologies (1 = 1 and 1 = 0)
+ * - Default LIKE search handling with LOWER()
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractSqlDialect implements ISqlDialect
@@ -32,12 +32,12 @@ abstract class AbstractSqlDialect implements ISqlDialect
     {
         $id = trim($identifier);
 
-        // Se já contiver delimitadores ou for uma expressão funcional, mantém
+        // If identifier contains functional parentheses or delimiters, preserve it
         if (str_contains($id, '(') || str_contains($id, ')')) {
             return $id;
         }
 
-        // Se contiver qualificador (tabela.coluna), escapa cada segmento separadamente
+        // If identifier is qualified (table.column), escape each segment separately
         if (str_contains($id, '.')) {
             $parts = explode('.', $id);
             return implode('.', array_map(fn($part) => $this->escapeSegment(trim($part)), $parts));
@@ -47,7 +47,7 @@ abstract class AbstractSqlDialect implements ISqlDialect
     }
 
     /**
-     * Escapa um segmento único de identificador.
+     * Escape a single identifier segment.
      *
      * @param string $segment
      * @return string

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -8,37 +10,38 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 use InvalidArgumentException;
 
 /**
- * InMemoryRepository class.
+ * InMemoryRepository - In-Memory Volatile Repository Implementation
  *
- * Repositório Volátil baseado em memória (array associativo interno).
- * As buscas operam com custo O(N) e não há concorrência protegida por ser in-memory process.
- * Ideal para armazenamento temporário, cache transacional local ou baterias pesadas de Unit Tests.
+ * Volatile repository based on in-memory storage (internal associative map).
+ * Queries operate with O(N) linear scan cost; process-local concurrency.
+ * Ideal for temporary storage, local transactional caching, or intensive unit test suites.
  *
- * Funcionalidades:
- * - Armazenamento volátil rápido em memória indexado por hash/ID
- * - Filtros síncronos via Specification com iteração lazy (yield) e contagem O(N)
- * - Inserções e remoções idempotentes
- * - Suporte a limpeza atômica rápida via clear()
+ * Features:
+ * - High-speed volatile memory storage indexed by hash/ID
+ * - Synchronous Specification filtering with lazy iteration (yield) and O(N) counting
+ * - Idempotent insertions and removals
+ * - Fast O(1) atomic repository clearance via clear()
+ * - ALinq fluent collection integration
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class InMemoryRepository extends AbstractRepository implements IVolatileRepository
 {
-    /** @var array<string, T> Storage principal map hash->object */
+    /** @var array<string, T> Primary internal storage map key->entity */
     protected array $db = [];
 
     /**
-     * Construtor do repositório em memória.
+     * Constructs an in-memory repository.
      *
-     * @param array<T> $initialEntities Conjunto inicial de entidades para pré-popular o repositório
+     * @param array<T> $initialEntities Initial entity collection to pre-populate repository
      */
     public function __construct(array $initialEntities = [])
     {
@@ -48,10 +51,10 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Conta quantas entidades no repositório satisfazem a especificação.
+     * Counts how many entities in the repository satisfy the specification.
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return int Quantidade de entidades correspondentes
+     * @param ISpecification $specification Filter specification
+     * @return int Count of matching entities
      */
     public function countAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
@@ -66,10 +69,10 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Itera sob demanda (lazy) sobre todas as entidades que satisfazem a especificação.
+     * Yields on-demand (lazy) all entities satisfying the specification.
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return iterable<T> Gerador lazy das entidades correspondentes
+     * @param ISpecification $specification Filter specification
+     * @return iterable<T> Lazy generator of matching entities
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
@@ -82,10 +85,10 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Localiza e retorna em array todas as entidades que satisfazem a especificação.
+     * Finds and returns an array of all entities satisfying the specification.
      *
-     * @param ISpecification $specification Regra de filtragem
-     * @return array<T> Lista de entidades encontradas
+     * @param ISpecification $specification Filter specification
+     * @return array<T> List of matching entities
      */
     public function findAllEntitiesSpecifiedBy(ISpecification $specification): array
     {
@@ -100,15 +103,15 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Insere ou substitui uma entidade no armazenamento em memória.
+     * Inserts or replaces an entity in memory storage.
      *
-     * @param IEntity $entity Entidade a ser armazenada
+     * @param IEntity $entity Entity to store
      * @return void
      */
     public function put(IEntity $entity): void
     {
         if ($entity !== null) {
-            // Utiliza o ID da entidade (se convertível em string/int) ou o hash do objeto
+            // Uses entity ID (if scalar/string) or spl_object_hash as storage key
             $id = $entity->getEntityId();
             $key = (is_scalar($id)) ? (string) $id : spl_object_hash($entity);
             $this->db[$key] = $entity;
@@ -116,53 +119,52 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Insere uma coleção de entidades no repositório.
+     * Inserts a collection of entities into the repository.
      *
-     * @param array<IEntity> $collectionOfEntities Coleção de entidades
+     * @param array<IEntity> $collectionOfEntities Collection of entities
      * @return void
-     * @throws InvalidArgumentException Se algum item não implementar IEntity
+     * @throws InvalidArgumentException If any item does not implement IEntity
      */
     public function putAll(array $collectionOfEntities): void
     {
         foreach ($collectionOfEntities as $entity) {
             if (!$entity instanceof IEntity) {
-                throw new InvalidArgumentException("Todos os itens devem implementar IEntity.");
+                throw new InvalidArgumentException("All items must implement IEntity.");
             }
             $this->put($entity);
         }
     }
 
     /**
-     * Atualiza o estado da entidade no repositório em memória.
+     * Updates an entity state in memory repository.
      *
-     * @param IEntity $entity Entidade atualizada
+     * @param IEntity $entity Updated entity
      * @return void
      */
     public function update(IEntity $entity): void
     {
-        // Em repositórios de memória RAM (pointer references), updates da aplicação já afetam a entidade.
-        // Contudo, fazemos o replace da instância caso venha um clone ou override pela interface.
+        // In process-local RAM references, application mutations already affect the entity.
+        // We replace the instance map entry in case of clones or overrides.
         $this->put($entity);
     }
 
     /**
-     * Atualiza a entidade considerando uma especificação delta condicional.
+     * Updates an entity considering an optional delta specification.
      *
-     * @param IEntity $entity Entidade a ser atualizada
-     * @param ISpecification|null $deltaSpecification Especificação condicional opcional
+     * @param IEntity $entity Updated entity
+     * @param ISpecification|null $deltaSpecification Optional conditional delta specification
      * @return void
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
     {
-        // Semelhante ao update básico num ambiente em memória
         $this->put($entity);
     }
 
     /**
-     * Remove todas as entidades que satisfazem a especificação informada.
+     * Removes all entities satisfying the given specification.
      *
-     * @param ISpecification $specification Regra para seleção de remoção
-     * @return int Quantidade total de entidades removidas
+     * @param ISpecification $specification Removal rule
+     * @return int Total number of removed entities
      */
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
@@ -178,10 +180,10 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Remove uma entidade específica do armazenamento.
+     * Removes a specific entity from storage.
      *
-     * @param IEntity $entity Entidade a ser removida
-     * @return bool True se a entidade foi encontrada e removida, false caso contrário
+     * @param IEntity $entity Entity to remove
+     * @return bool True if found and removed, false otherwise
      */
     public function remove(IEntity $entity): bool
     {
@@ -197,7 +199,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
             return true;
         }
         
-        // Fallback pro-ativo em caso de falha no hash relacional
+        // Proactive fallback comparing entity equality
         foreach ($this->db as $k => $e) {
             if ($e->equals($entity)) {
                 unset($this->db[$k]);
@@ -209,7 +211,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Limpa o repositório inteiro rapidamente (custo O(1)).
+     * Clears entire repository memory in O(1) time.
      *
      * @return void
      */
@@ -219,7 +221,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Retorna todas as entidades armazenadas como um array puro.
+     * Returns all stored entities as a pure array.
      *
      * @return array<T>
      */
@@ -229,9 +231,9 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Retorna todas as entidades armazenadas como uma ALinqCollection fluente.
+     * Returns all stored entities as a fluent ALinqCollection.
      *
-     * @return object Retorna instância de \Antevemus\ALinq\ALinqCollection
+     * @return object Instance of \Antevemus\ALinq\ALinqCollection
      */
     public function asLinqCollection(): object
     {
@@ -239,13 +241,34 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Localiza todas as entidades que satisfazem a especificação retornando uma ALinqCollection.
+     * Queries all entities satisfying specification and returns as an ALinqCollection.
      *
      * @param ISpecification $specification
-     * @return object Retorna instância de \Antevemus\ALinq\ALinqCollection
+     * @return object Instance of \Antevemus\ALinq\ALinqCollection
      */
     public function findAsLinqCollection(ISpecification $specification): object
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::queryRepository($this, $specification);
+    }
+
+    /**
+     * Returns all stored entities as a generator-based ALinqLazyCollection stream.
+     *
+     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
+     */
+    public function asLazyCollection(): object
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::toLazyCollection($this);
+    }
+
+    /**
+     * Queries all entities satisfying specification and returns as an ALinqLazyCollection stream.
+     *
+     * @param ISpecification $specification
+     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
+     */
+    public function findAsLazyCollection(ISpecification $specification): object
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($this, $specification);
     }
 }

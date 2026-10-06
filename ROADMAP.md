@@ -4,54 +4,58 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 
 ---
 
-## 🎯 Short-Term Milestones (v1.1.x)
+## ✅ Completed Milestones
 
-### 1. English PHP DocBlock Internationalization 🌐
+### 1. English PHP DocBlock Internationalization 🌐 (Shipped in v1.1.0)
 - **Description:** Complete translation and standardization of all class and method DocBlocks across the codebase (`src/` and `src/Contracts/`) into idiomatic technical English.
-- **Goal:** Ensure full alignment with international PHP-FIG standards (PSR-5 / PSR-19) and seamless developer onboarding for global contributors and static analysis tools (PHPStan, Psalm).
-- **Target Release:** v1.1.0
+- **Goal:** Full alignment with international PHP-FIG standards (PSR-5 / PSR-19) and seamless developer onboarding for global contributors and static analysis tools.
 
-### 2. Native PHP 8.4 Declarative Attributes (`#[AssertSpec]`, `#[ValidateRule]`) 🏷️
-- **Description:** Implement declarative attributes to annotate class properties, DTOs, and entity fields directly with specifications.
-- **Goal:** Enable zero-boilerplate validation pipelines in REST controllers, form requests, and event handlers using native PHP 8.4 reflection.
-- **Example Usage:**
-  ```php
-  class CreateCustomerRequest {
-      #[AssertSpec(CustomerMustBeAdultSpec::class, code: 'CLI_001')]
-      public int $age;
-  }
-  ```
-- **Target Release:** v1.2.0
+### 2. Native PHP 8.4 Declarative Attributes (`#[AssertSpec]`, `#[ValidateRule]`) 🏷️ (Shipped in v1.1.0)
+- **Description:** Declarative attributes to annotate class properties, DTOs, and entity fields directly with specifications.
+- **Goal:** Zero-boilerplate validation pipelines in REST controllers, form requests, and event handlers using native PHP 8.4 reflection.
+
+### 3. ALinq Lazy Streaming Pipeline & O(1) RAM Evaluation 🌊 (Shipped in v1.1.0)
+- **Description:** Deep integration with `Antevemus.AlinqCollection` (`ALinqLazyCollection`) enabling deferred streaming evaluation of domain specifications over infinite generators and massive datasets.
+- **Goal:** Constant \(O(1)\) RAM footprint when filtering large volumes of entities, logs, or external data streams without preloading collections into memory.
 
 ---
 
-## 🚀 Medium-Term Milestones (v1.3.x - v1.5.x)
+## 🎯 Short-Term Milestones (v1.2.x - v1.3.x)
 
-### 3. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
+### 4. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Add native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets.
 - **Goal:** Enable multi-node high-throughput deployments with distributed cache invalidation across microservices and cluster nodes.
-- **Target Release:** v1.3.0
+- **Target Release:** v1.2.0
 
-### 4. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
+### 5. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Provide bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
 - **Goal:** Unify frontend querying capabilities with domain-layer business validation and database query projection.
-- **Target Release:** v1.4.0
+- **Target Release:** v1.3.0
 
-### 5. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
+---
+
+## 🚀 Medium-Term Milestones (v1.4.x - v1.5.x)
+
+### 6. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** Build dedicated GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`.
 - **Goal:** Expand our query-level SQL translation capabilities (currently supporting 12 SQL dialects and Adianti TCriteria) to the two most popular ORM ecosystems in the PHP world.
-- **Target Release:** v1.5.0
+- **Target Release:** v1.4.0
 
 ---
 
 ## 🔮 Long-Term Vision (v2.0+)
 
-### 6. Reactive Domain Event Sourcing Triggers 📡
+### 7. Reactive Domain Event Sourcing Triggers 📡
 - **Description:** Reactive domain event emitter that triggers Domain Events whenever an entity transitions into or out of satisfying critical domain specifications.
 - **Goal:** Seamless integration with Event Sourcing, Outbox Pattern, and CQRS architectures.
 
-### 7. AI-Assisted Specification Synthesizer 🤖
+### 8. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees and Venn set subsumption models from domain stories or plain text business requirements.
+
+### 9. PHP Fibers & Non-Blocking Async Specification Runner ⚡
+- **Description:** Provide an optional asynchronous specification evaluation runner powered by native PHP 8.1+ Fibers and Revolt Event Loop for executing I/O-bound composite specification branches (remote REST APIs, gRPC fraud checks, external microservices) concurrently in parallel, reducing total latency by up to 60%.
+- **Goal:** Parity with modern asynchronous evaluation while keeping the core library 100% zero-dependency and synchronous for traditional PHP-FPM environments.
+- **Target Release:** v2.0.0 (or `antevemus/aspecification-async`)
 
 ---
 

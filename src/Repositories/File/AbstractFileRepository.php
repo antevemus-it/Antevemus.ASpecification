@@ -22,25 +22,25 @@ use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
 use Antevemus\ASpecification\Repositories\EntityPersistenceMetaData;
 
 /**
- * AbstractFileRepository - Classe abstrata base para repositórios persistentes em arquivo
+ * AbstractFileRepository - Base abstract class for persistent file-based entity repositories
  *
- * Centraliza o gerenciamento de arquivos em disco, serialização agnóstica via
- * IEntitySerializer, locks cooperativos (flock) e a aplicação estrita das
- * regras de ciclo de vida e permissões de PersistenceDefinition (RN-01).
+ * Centralizes disk file management, format-agnostic serialization via
+ * IEntitySerializer, cooperative file locks (flock), and strict enforcement
+ * of lifecycle rules and PersistenceDefinition access permissions (RN-01).
  *
- * Funcionalidades:
- * - Validação estrita de modos ReadOnly, WriteOnly, ReadWrite e Snapshot
- * - Gravação atômica com arquivo temporário e substituição instantânea (rename)
- * - Integração nativa com promoção fluente de particionamento (Módulo 4)
+ * Features:
+ * - Strict validation of ReadOnly, WriteOnly, ReadWrite, and Snapshot modes
+ * - Atomic writes via temporary files and atomic rename operations
+ * - Native integration with fluent partitioning promotion (Module 4)
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractFileRepository extends AbstractRepository implements
@@ -56,11 +56,11 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     protected readonly string $repositoryId;
 
     /**
-     * @param string $storagePath Caminho do arquivo ou diretório de armazenamento
-     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Classe da entidade ou serializador plugável
-     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Modo de persistência ou serializador
-     * @param IEntitySerializer|null $serializer Serializador plugável (padrão: JsonEntitySerializer)
-     * @param string|null $repositoryId Identificador único do repositório
+     * @param string $storagePath Storage file or directory path
+     * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Entity class or pluggable serializer
+     * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Persistence mode or serializer
+     * @param IEntitySerializer|null $serializer Pluggable serializer (default: JsonEntitySerializer)
+     * @param string|null $repositoryId Unique repository identifier
      */
     public function __construct(
         protected readonly string $storagePath,
@@ -107,7 +107,9 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Retorna o serializador configurado.
+     * Returns the configured entity serializer.
+     *
+     * @return IEntitySerializer
      */
     public function getSerializer(): IEntitySerializer
     {
@@ -115,7 +117,9 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Retorna o caminho configurado de armazenamento.
+     * Returns the configured storage path.
+     *
+     * @return string
      */
     public function getStoragePath(): string
     {
@@ -131,11 +135,10 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * {@inheritdoc}
-     */
-
-    /**
-     * Alias de conveniência para findSingleEntitySpecifiedBy.
+     * Convenience alias for findSingleEntitySpecifiedBy.
+     *
+     * @param ISpecification $specification
+     * @return IEntity|null
      */
     public function getEntitySpecifiedBy(ISpecification $specification): ?IEntity
     {
@@ -143,7 +146,9 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Conta todas as entidades presentes no repositório.
+     * Counts all entities present in the repository.
+     *
+     * @return int
      */
     public function countAllEntities(): int
     {
@@ -151,10 +156,10 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Cria uma partição virtual persistente vinculada a este repositório em arquivo.
+     * Creates a virtual persistent partition bound to this file-based repository.
      *
-     * @param ISpecification|null $specification Especificação delimitadora da partição
-     * @return IPartitionRepository Partição persistente criada
+     * @param ISpecification|null $specification Specification scoping the partition
+     * @return IPartitionRepository Created persistent partition
      */
     public function makePartition(?ISpecification $specification = null): IPartitionRepository
     {
@@ -173,9 +178,9 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Valida se operações de escrita são permitidas na definição de persistência atual.
+     * Validates whether write operations are permitted in the current persistence mode.
      *
-     * @throws RepositoryException Se o repositório estiver em modo ReadOnly
+     * @throws RepositoryException If the repository is in ReadOnly mode
      */
     protected function assertWritable(): void
     {
@@ -185,20 +190,14 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Verifica se operações de leitura são permitidas na definição de persistência atual.
+     * Checks whether read operations are permitted in the current persistence mode.
+     *
+     * @return bool
      */
     protected function isReadable(): bool
     {
         return $this->persistenceDefinition !== PersistenceDefinition::WriteOnly;
     }
-
-    /**
-     * Grava conteúdo de forma atômica no arquivo destino via tempfile e rename.
-     *
-     * @param string $targetFile Caminho absoluto do arquivo final
-     * @param string $content Conteúdo a ser gravado
-     * @throws RepositoryException
-     */
 
     /**
      * @var array<string, IEntityPersistenceMetaData>
@@ -231,7 +230,10 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Registra metadados de gravação para uma entidade.
+     * Records write metadata for an entity.
+     *
+     * @param IEntity $entity
+     * @return void
      */
     protected function recordWriteMetadata(IEntity $entity): void
     {
@@ -244,7 +246,10 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
-     * Registra metadados de leitura para uma entidade.
+     * Records read metadata for an entity.
+     *
+     * @param IEntity $entity
+     * @return void
      */
     protected function recordReadMetadata(IEntity $entity): void
     {
@@ -255,6 +260,14 @@ abstract class AbstractFileRepository extends AbstractRepository implements
         $this->metadataMap[$id]->registerRead();
     }
 
+    /**
+     * Atomically writes content to the target file via temp file and rename.
+     *
+     * @param string $targetFile Absolute path of destination file
+     * @param string $content Content to write
+     * @return void
+     * @throws RepositoryException
+     */
     protected function writeAtomic(string $targetFile, string $content): void
     {
         $dir = dirname($targetFile);

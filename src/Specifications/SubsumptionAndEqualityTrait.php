@@ -10,32 +10,33 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 
 /**
- * SubsumptionAndEqualityTrait - Trait para igualdade estrutural e axiomas de subsunção (RF-10)
+ * SubsumptionAndEqualityTrait - Trait providing structural equality and subsumption axioms (RF-10).
  *
- * Fornece implementação estrutural de igualdade (`equals`) via reflexão de propriedades
- * e axiomas algébricos fundamentais de subsunção (`isGeneralizationOf`) e disjunção
- * (`isDisjointWith`) para especificações no domínio `src/Specifications/`.
+ * Implements deep structural equality (`equals`) via reflection and fundamental algebraic axioms
+ * for specification subsumption (`isGeneralizationOf`) and disjointness (`isDisjointWith`).
  *
- * Funcionalidades:
- * - Igualdade estrutural profunda (`equals`) para especificações compostas e folhas
- * - Axioma de reflexividade ($A \supseteq A$) e universalidade ($AlwaysTrue \supseteq A$)
- * - Subsunção de conjunções ($S \supseteq (A \land B)$ se $S \supseteq A$ ou $S \supseteq B$)
- * - Subsunção de disjunções ($S \supseteq (A \lor B)$ se $S \supseteq A$ e $S \supseteq B$)
+ * Features:
+ * - Deep structural equality (`equals`) across composite trees and leaf specifications
+ * - Reflexivity ($A \supseteq A$) and universality ($AlwaysTrue \supseteq A$) axioms
+ * - Conjunction subsumption ($S \supseteq (A \land B)$ if $S \supseteq A$ or $S \supseteq B$)
+ * - Disjunction subsumption ($S \supseteq (A \lor B)$ if $S \supseteq A$ and $S \supseteq B$)
+ * - Fluent property composition (`andWhere`, `orWhere`)
+ * - Partial remainder resolution (`remainderUnsatisfiedBy`)
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 trait SubsumptionAndEqualityTrait
 {
     /**
-     * Verifica igualdade estrutural entre esta especificação e outro objeto.
+     * Verifies structural equality between this specification and another object.
      *
-     * @param mixed $other Objeto a ser comparado
-     * @return bool
+     * @param mixed $other Object to compare against
+     * @return bool True if objects are structurally equivalent
      */
     public function equals(mixed $other): bool
     {
@@ -72,24 +73,24 @@ trait SubsumptionAndEqualityTrait
     }
 
     /**
-     * Avalia os axiomas base de subsunção ($this \supseteq $otherSpecification).
+     * Evaluates core subsumption axioms ($this \supseteq $otherSpecification).
      *
      * @param ISpecification<mixed> $otherSpecification
      * @return bool
      */
     protected function checkBaseGeneralization(ISpecification $otherSpecification): bool
     {
-        // Axioma 1: Reflexividade e Igualdade Estrutural ($A \supseteq A$)
+        // Axiom 1: Reflexivity and Structural Equality ($A \supseteq A$)
         if ($this === $otherSpecification || $this->equals($otherSpecification)) {
             return true;
         }
 
-        // Axioma 2: Qualquer especificação generaliza AlwaysFalseSpecification (conjunto vazio)
+        // Axiom 2: Any specification generalizes AlwaysFalseSpecification (empty set)
         if ($otherSpecification instanceof AlwaysFalseSpecification) {
             return true;
         }
 
-        // Axioma 3: AlwaysTrueSpecification / AllEntitiesSpecification com supertipo compatível
+        // Axiom 3: AlwaysTrueSpecification / AllEntitiesSpecification with compatible supertype
         if ($this instanceof AlwaysTrueSpecification || $this instanceof AllEntitiesSpecification) {
             $myType = $this->getType();
             $otherType = $otherSpecification->getType();
@@ -105,7 +106,7 @@ trait SubsumptionAndEqualityTrait
             }
         }
 
-        // Axioma 4: Uma especificação $S$ generaliza uma conjunção $(A \land B)$ se $S \supseteq A$ ou $S \supseteq B$
+        // Axiom 4: A specification $S$ generalizes conjunction $(A \land B)$ if $S \supseteq A$ or $S \supseteq B$
         if ($otherSpecification instanceof AndSpecification && !($this instanceof AndSpecification)) {
             $left = $otherSpecification->getLeftSide();
             $right = $otherSpecification->getRightSide();
@@ -117,7 +118,7 @@ trait SubsumptionAndEqualityTrait
             }
         }
 
-        // Axioma 5: Uma especificação $S$ generaliza uma disjunção $(A \lor B)$ se $S \supseteq A$ E $S \supseteq B$
+        // Axiom 5: A specification $S$ generalizes disjunction $(A \lor B)$ if $S \supseteq A$ AND $S \supseteq B$
         if ($otherSpecification instanceof OrSpecification) {
             $left = $otherSpecification->getLeftSide();
             $right = $otherSpecification->getRightSide();
@@ -130,7 +131,7 @@ trait SubsumptionAndEqualityTrait
     }
 
     /**
-     * Avalia os axiomas base de disjunção ($this \cap $otherSpecification = \emptyset$).
+     * Evaluates core disjointness axioms ($this \cap $otherSpecification = \emptyset$).
      *
      * @param ISpecification<mixed> $otherSpecification
      * @return bool
@@ -160,10 +161,10 @@ trait SubsumptionAndEqualityTrait
     }
 
     /**
-     * Combina uma nova restrição de propriedade via conjunção lógica (AND).
+     * Chains a new property restriction via logical conjunction (AND).
      *
-     * @param string $accessibleObjectName Nome da propriedade acessível
-     * @param ISpecification<mixed> $accessibleObjectSpecification Especificação da propriedade
+     * @param string $accessibleObjectName Accessible property name
+     * @param ISpecification<mixed> $accessibleObjectSpecification Property specification
      * @return \Antevemus\ASpecification\Contracts\ICompositeSpecification<mixed>
      */
     public function andWhere(
@@ -177,10 +178,10 @@ trait SubsumptionAndEqualityTrait
     }
 
     /**
-     * Combina uma nova restrição de propriedade via disjunção lógica (OR).
+     * Chains a new property restriction via logical disjunction (OR).
      *
-     * @param string $accessibleObjectName Nome da propriedade acessível
-     * @param ISpecification<mixed> $accessibleObjectSpecification Especificação da propriedade
+     * @param string $accessibleObjectName Accessible property name
+     * @param ISpecification<mixed> $accessibleObjectSpecification Property specification
      * @return \Antevemus\ASpecification\Contracts\ICompositeSpecification<mixed>
      */
     public function orWhere(
@@ -194,9 +195,9 @@ trait SubsumptionAndEqualityTrait
     }
 
     /**
-     * Retorna a sub-especificação não satisfeita pelo candidato fornecido, ou null se satisfeita.
+     * Returns the sub-specification unsatisfied by the given candidate, or null if fully satisfied.
      *
-     * @param object $candidate Objeto avaliado
+     * @param object $candidate Evaluated candidate object
      * @return \Antevemus\ASpecification\Contracts\ICompositeSpecification<mixed>|null
      */
     public function remainderUnsatisfiedBy(

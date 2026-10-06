@@ -8,33 +8,33 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Closure;
 
 /**
- * SpecificationPredicate - Adaptador de Especificação para Closure e Callbacks nativos do PHP
+ * SpecificationPredicate - Specification adapter for native PHP Closures and callbacks.
  *
- * Envelopa uma instância de ISpecification convertendo-a em uma Closure ou objeto invocável
- * compatível com funções de ordem superior nativas do PHP, como array_filter(), array_map(),
- * usort() e coleções iteráveis.
+ * Wraps an ISpecification instance, converting it into a Closure or invokable object
+ * compatible with native PHP higher-order functions such as array_filter(), array_map(),
+ * usort(), and iterable collections.
  *
- * Funcionalidades:
- * - Conversão estática direta via SpecificationPredicate::from($spec) retornando Closure(mixed): bool
- * - Conversão estática com inversão lógica via SpecificationPredicate::negate($spec)
- * - Suporte a invocação direta (__invoke) como objeto callable imutável
- * - Filtragem direta de arrays e iteráveis preservando ou reindexando chaves
+ * Features:
+ * - Direct static conversion via SpecificationPredicate::from($spec) returning Closure(mixed): bool
+ * - Static negated conversion via SpecificationPredicate::negate($spec)
+ * - Direct invocable (__invoke) support as an immutable callable object
+ * - Clean integration with PHP iterable filtering pipelines
  *
  * @template T
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 final readonly class SpecificationPredicate
 {
     /**
-     * Inicializa um predicado invocável envelopando a especificação alvo.
+     * Initializes an invokable predicate wrapping the target specification.
      *
-     * @param ISpecification<T> $specification Especificação a ser adaptada
-     * @param bool $negated Se true, inverte o resultado booleano de isSatisfiedBy()
+     * @param ISpecification<T> $specification Specification to adapt
+     * @param bool $negated If true, inverts boolean result of isSatisfiedBy()
      */
     public function __construct(
         private ISpecification $specification,
@@ -43,13 +43,13 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Cria uma Closure nativa do PHP que delega a avaliação para ISpecification::isSatisfiedBy().
+     * Creates a native PHP Closure that delegates evaluation to ISpecification::isSatisfiedBy().
      *
-     * Ideal para uso direto em array_filter($items, SpecificationPredicate::from($spec)).
+     * Ideal for direct usage in array_filter($items, SpecificationPredicate::from($spec)).
      *
      * @template TCandidate
-     * @param ISpecification<TCandidate> $specification Especificação base
-     * @return Closure(mixed): bool Closure de avaliação do candidato
+     * @param ISpecification<TCandidate> $specification Base specification
+     * @return Closure(mixed): bool Evaluation closure
      */
     public static function from(ISpecification $specification): Closure
     {
@@ -57,13 +57,13 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Cria uma Closure nativa do PHP que inverte o resultado de ISpecification::isSatisfiedBy().
+     * Creates a native PHP Closure that inverts the result of ISpecification::isSatisfiedBy().
      *
-     * Ideal para rejeitar elementos que satisfazem a especificação em array_filter().
+     * Ideal for rejecting elements that satisfy the specification in array_filter().
      *
      * @template TCandidate
-     * @param ISpecification<TCandidate> $specification Especificação base a ser negada
-     * @return Closure(mixed): bool Closure com resultado booleano invertido
+     * @param ISpecification<TCandidate> $specification Base specification to negate
+     * @return Closure(mixed): bool Negated evaluation closure
      */
     public static function negate(ISpecification $specification): Closure
     {
@@ -71,10 +71,10 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Permite que a própria instância de SpecificationPredicate seja usada como callable.
+     * Allows the SpecificationPredicate instance to be directly invoked as a callable.
      *
-     * @param mixed $candidate Objeto ou valor candidato a ser avaliado
-     * @return bool True se o candidato satisfizer o predicado (considerando a flag $negated)
+     * @param mixed $candidate Candidate object or value to evaluate
+     * @return bool True if candidate satisfies the predicate (respecting the $negated flag)
      */
     public function __invoke(mixed $candidate): bool
     {
@@ -84,7 +84,7 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Converte esta instância em uma Closure explícita.
+     * Converts this instance into an explicit Closure.
      *
      * @return Closure(mixed): bool
      */
@@ -96,7 +96,7 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Retorna uma nova instância com a polaridade lógica invertida.
+     * Returns a new instance with inverted logical polarity.
      *
      * @return self
      */
@@ -106,7 +106,7 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Retorna a especificação subjacente envelopada por este predicado.
+     * Returns the underlying specification wrapped by this predicate.
      *
      * @return ISpecification<T>
      */
@@ -116,7 +116,7 @@ final readonly class SpecificationPredicate
     }
 
     /**
-     * Indica se este predicado está operando em modo negado.
+     * Indicates whether this predicate is operating in negated mode.
      *
      * @return bool
      */

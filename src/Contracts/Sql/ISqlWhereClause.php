@@ -7,42 +7,42 @@ namespace Antevemus\ASpecification\Contracts\Sql;
 use Stringable;
 
 /**
- * ISqlWhereClause - Contrato para Cláusula WHERE Parametrizada Agnóstica de Framework
+ * ISqlWhereClause - Contract for Framework-Agnostic Parameterized WHERE Clauses
  *
- * Encapsula o fragmento SQL seguro e os parâmetros associados (bindings) gerados
- * pela visitação da árvore de especificações.
+ * Encapsulates safe SQL expressions and parameter bindings generated
+ * by visiting specification trees.
  *
- * Funcionalidades:
- * - Acesso ao SQL textual da cláusula WHERE
- * - Acesso aos parâmetros nomeados associados (:p1 => valor)
- * - Verificação de cláusula vazia
- * - Implementação de Stringable para interpolação limpa
+ * Features:
+ * - Direct textual SQL expression retrieval
+ * - Access to associated named parameter map (:p1 => value)
+ * - Empty clause verification
+ * - Stringable implementation for clean string interpolation
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISqlWhereClause extends Stringable
 {
     /**
-     * Retorna a expressão SQL da cláusula WHERE (sem a palavra-chave WHERE).
+     * Return SQL expression for the WHERE clause (without the WHERE keyword).
      *
      * @return string
      */
     public function toSql(): string;
 
     /**
-     * Retorna o mapa associativo de parâmetros nomeados e seus valores (:param => valor).
+     * Return associative map of named parameter bindings (:param => value).
      *
      * @return array<string, mixed>
      */
     public function getParameters(): array;
 
     /**
-     * Informa se a cláusula gerada é vazia (sem restrições).
+     * Indicate whether the generated clause is empty (unconstrained).
      *
      * @return bool
      */

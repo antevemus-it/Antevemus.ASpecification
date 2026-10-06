@@ -11,20 +11,20 @@ use Antevemus\ASpecification\Repositories\EntityPersistenceMetaData;
 use Antevemus\ASpecification\Repositories\PersistentEntity;
 
 /**
- * PhpNativeEntitySerializer - Serializador de entidades via serialize/unserialize nativo
+ * PhpNativeEntitySerializer - Entity Serializer via Native serialize/unserialize
  *
- * Provê máxima velocidade e suporte integral a tipos do PHP, com proteção
- * rigorosa contra injeção de objetos arbitrários via allowed_classes.
+ * Provides maximum throughput and full support for PHP types, with strict
+ * protection against arbitrary object injection via allowed_classes.
  *
- * Funcionalidades:
- * - Serialização nativa de alta velocidade
- * - Desserialização restrita às classes permitidas
+ * Features:
+ * - High-speed native serialization
+ * - Safe deserialization restricted to allowed classes whitelist
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class PhpNativeEntitySerializer implements IEntitySerializer
@@ -33,8 +33,8 @@ class PhpNativeEntitySerializer implements IEntitySerializer
     private readonly array $additionalAllowedClasses;
 
     /**
-     * @param array<class-string>|class-string $allowedClassesOrEntityClass Classes permitidas ou classe principal
-     * @param array<class-string> $extraClasses Classes adicionais permitidas
+     * @param array<class-string>|class-string $allowedClassesOrEntityClass Allowed classes whitelist or primary entity class
+     * @param array<class-string> $extraClasses Additional allowed classes
      */
     public function __construct(
         array|string $allowedClassesOrEntityClass = [],
@@ -72,7 +72,7 @@ class PhpNativeEntitySerializer implements IEntitySerializer
 
         $obj = @unserialize($data, ["allowed_classes" => $allowed]);
         if (!($obj instanceof IEntity)) {
-            throw new RepositoryException("Falha ao desserializar entidade usando PHP nativo ou objeto não implementa IEntity.");
+            throw new RepositoryException("Failed to deserialize entity using native PHP or object does not implement IEntity.");
         }
 
         return $obj;

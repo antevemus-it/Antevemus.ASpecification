@@ -1,37 +1,40 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Factory;
 
 /**
- * ISpecificationFactory interface.
+ * ISpecificationFactory - Base interface for specification factories
  *
- * Interface base para todas as fábricas de especificações.
+ * Defines the common contract that all specification factories must follow.
+ * Specific factories (Type, Comparison, Logical, Special, String, Collection, Date)
+ * extend this interface to provide domain-specific creation methods.
  *
- * Define o contrato comum que todas as fábricas de especificações devem seguir.
- * Factories específicas (Type, Comparison, Logical, Special, String) devem estender
- * esta interface e adicionar seus métodos específicos.
+ * Serves as a marker and unified base for the specification factory subsystem,
+ * enabling polymorphism and factory composition.
  *
- * Esta interface serve como marcador e base comum para o sistema de factories de
- * especificações, permitindo polimorfismo e composição de diferentes tipos de factories.
- *
- * Hierarquia de interfaces:
+ * Interface hierarchy:
  * <code>
  * ISpecificationFactory (base)
  *   ├── ITypeSpecificationFactory
  *   ├── IComparisonSpecificationFactory
  *   ├── ILogicalSpecificationFactory
  *   ├── ISpecialSpecificationFactory
- *   └── IStringSpecificationFactory
+ *   ├── IStringSpecificationFactory
+ *   ├── ICollectionSpecificationFactory
+ *   ├── IDateSpecificationFactory
+ *   └── ISpecificationWrapperFactory
  * </code>
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ISpecificationFactory
 {
-    // Marker interface - factories específicas adicionam seus métodos
+    // Marker interface - specific factories define specialized methods
 }

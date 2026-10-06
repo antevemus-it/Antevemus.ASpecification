@@ -1,208 +1,209 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts\Factory;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 
 /**
- * ITypeSpecificationFactory interface.
+ * ITypeSpecificationFactory - Factory contract for class type specifications
  *
- * Contrato para fábricas que criam especificações baseadas em tipos de classes.
+ * Contract for factories creating type-checking specifications based on class or interface names.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface ITypeSpecificationFactory extends ISpecificationFactory
 {
     /**
-     * Cria uma especificação composta para um tipo específico.
+     * Creates a composite specification for a specific class or interface type.
      *
-     * Este é o método principal da factory. Todos os outros métodos são aliases
-     * fluentes que delegam para este método.
+     * This is the primary factory method. All other methods are fluent aliases delegating to this method.
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
-     * @return ICompositeSpecification<T> Especificação que verifica se objeto é do tipo especificado
-     * @throws \InvalidArgumentException Se o tipo for vazio ou não existir
+     * @param class-string<T> $type Fully qualified class or interface name
+     * @return ICompositeSpecification<T> Specification verifying object is an instance of the specified type
+     * @throws \InvalidArgumentException If type is empty or does not exist
      */
     public function createSpecificationFor(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático em inglês: "the User"
+     * Idiomatic English usage: "the User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function the(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático em inglês: "a Product"
+     * Idiomatic English usage: "a Product"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function a(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático em inglês: "an Order"
+     * Idiomatic English usage: "an Order"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function an(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático em inglês: "all User"
+     * Idiomatic English usage: "all User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function all(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instanceOf User"
+     * Idiomatic English usage: "instanceOf User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instanceOf(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specify User"
+     * Idiomatic English usage: "specify User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specify(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "isA User"
+     * Idiomatic English usage: "isA User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function isA(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "isAn Entity"
+     * Idiomatic English usage: "isAn Entity"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function isAn(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instancesOf User"
+     * Idiomatic English usage: "instancesOf User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instancesOf(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instanceOfType User"
+     * Idiomatic English usage: "instanceOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instanceOfType(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "instancesOfType User"
+     * Idiomatic English usage: "instancesOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function instancesOfType(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "anInstanceOfType User"
+     * Idiomatic English usage: "anInstanceOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function anInstanceOfType(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "allOfType User"
+     * Idiomatic English usage: "allOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function allOfType(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "allInstancesOfType User"
+     * Idiomatic English usage: "allInstancesOfType User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function allInstancesOfType(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specifyA User"
+     * Idiomatic English usage: "specifyA User"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specifyA(string $type): ICompositeSpecification;
 
     /**
-     * Alias fluente para createSpecificationFor().
+     * Fluent alias for createSpecificationFor().
      *
-     * Uso idiomático: "specifyAn Entity"
+     * Idiomatic English usage: "specifyAn Entity"
      *
      * @template T
-     * @param class-string<T> $type Nome completo da classe ou interface
+     * @param class-string<T> $type Fully qualified class or interface name
      * @return ICompositeSpecification<T>
      */
     public function specifyAn(string $type): ICompositeSpecification;

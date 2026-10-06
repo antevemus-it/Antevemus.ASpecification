@@ -1,42 +1,42 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts;
 
 /**
- * ILeafSpecification interface.
+ * ILeafSpecification - Marker interface for atomic leaf specifications.
  *
  * Part of the Evans/Fowler Specifications pattern.
  *
- * Interface que marca uma especificação como uma "folha" (leaf) na árvore de
- * especificações compostas. Especificações folha são especificações atômicas,
- * não compostas, que representam regras de negócio individuais e indivisíveis.
+ * Marks a specification as an atomic "leaf" in the specification composite tree.
+ * Leaf specifications represent individual, indivisible business rules.
  *
- * Em contraste com ICompositeSpecification (que combina múltiplas especificações),
- * uma ILeafSpecification é uma especificação simples que não pode ser decomposta
- * em especificações menores.
+ * In contrast to ICompositeSpecification (which combines multiple specifications),
+ * an ILeafSpecification cannot be decomposed into smaller sub-specifications.
  *
- * Exemplos de especificações folha:
+ * Examples of leaf specifications:
  * - AgeGreaterThanSpecification
  * - EmailVerifiedSpecification
  * - PriceInRangeSpecification
  * - StatusEqualsSpecification
  *
- * Esta interface é um marcador (marker interface) que não adiciona métodos
- * adicionais, servindo apenas para distinguir especificações folha de
- * especificações compostas na hierarquia de tipos.
+ * Features:
+ * - Distinguishes atomic rules from composite trees
+ * - Acts as an AST terminal node marker for visitor engines
  *
  * @template T
  * @extends ISpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  * @see        https://www.martinfowler.com/apsupp/spec.pdf The Specifications Pattern
  */
 interface ILeafSpecification extends ISpecification
 {
-    // Marker interface - sem métodos adicionais
-    // As especificações folha implementam apenas os métodos de ISpecification
+    // Marker interface - no additional methods.
+    // Leaf specifications implement the base methods of ISpecification.
 }

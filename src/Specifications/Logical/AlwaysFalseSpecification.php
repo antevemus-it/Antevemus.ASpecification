@@ -9,22 +9,22 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
- * AlwaysFalseSpecification - Especificação folha contraditória (nunca satisfeita)
+ * AlwaysFalseSpecification - Contradictory leaf specification (never satisfied).
  *
- * Representa o conjunto vazio de satisfação, sendo caso especial de qualquer
- * especificação e disjunta de todas as especificações.
+ * Represents the empty set of candidate satisfaction. Acts as a special case
+ * of all specifications and is universally disjoint with all specifications.
  *
- * Funcionalidades:
- * - Avaliação constante `false` para qualquer candidato
- * - Disjunção universal em relação a qualquer especificação (RF-10)
+ * Features:
+ * - Constant `false` evaluation for any candidate
+ * - Universal disjointness in relation to all specifications (RF-10)
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class AlwaysFalseSpecification extends AbstractSpecification
@@ -32,7 +32,7 @@ class AlwaysFalseSpecification extends AbstractSpecification
     use SubsumptionAndEqualityTrait;
 
     /**
-     * @param class-string<T>|string $type Tipo do candidato
+     * @param class-string<T>|string $type Candidate type designation
      */
     public function __construct(
         private readonly string $type = "mixed"

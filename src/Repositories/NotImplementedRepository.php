@@ -9,22 +9,22 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use BadMethodCallException;
 
 /**
- * NotImplementedRepository - Repositório dublê com operações não implementadas
+ * NotImplementedRepository - Test Double Repository with Unimplemented Operations
  *
- * Implementação de repositório dublê (IFakeRepository) que sinaliza explicitamente
- * que qualquer operação ainda não foi implementada para o repositório em questão.
+ * Test double repository implementation (IFakeRepository) explicitly signaling
+ * that operations are not yet implemented for the repository under test.
  *
- * Funcionalidades:
- * - Extensão direta de UnsupportedRepository
- * - Lançamento determinístico de BadMethodCallException indicando pendência de implementação
+ * Features:
+ * - Direct extension of UnsupportedRepository
+ * - Deterministic BadMethodCallException throwing indicating pending implementation
  *
  * @template T of IEntity
  * @extends UnsupportedRepository<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class NotImplementedRepository extends UnsupportedRepository
@@ -32,90 +32,90 @@ class NotImplementedRepository extends UnsupportedRepository
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function countAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function findAllEntitiesSpecifiedBy(ISpecification $specification): array
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function put(IEntity $entity): void
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function putAll(array $collectionOfEntities): void
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function update(IEntity $entity): void
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 
     /**
      * {@inheritdoc}
      *
-     * @throws BadMethodCallException Sempre lançado informando que a operação não foi implementada
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function remove(IEntity $entity): bool
     {
-        throw new BadMethodCallException('Operação não implementada pelo repositório.');
+        throw new BadMethodCallException('Operation not implemented by repository.');
     }
 }

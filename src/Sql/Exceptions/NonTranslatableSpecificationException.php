@@ -7,27 +7,27 @@ namespace Antevemus\ASpecification\Sql\Exceptions;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * NonTranslatableSpecificationException - Exceção para Especificação Não-Traduzível em SQL
+ * NonTranslatableSpecificationException - Exception for Specifications Incompatible with SQL
  *
- * Ocorre quando a árvore de especificações contém nós puramente em memória (como Closures
- * arbitrárias ou regras de I/O) que não podem ser convertidos para cláusulas SQL nativas.
+ * Occurs when the specification tree contains purely in-memory nodes (such as arbitrary
+ * Closures or I/O rules) that cannot be translated into native SQL query clauses.
  *
- * Funcionalidades:
- * - Identificação exata da classe de especificação não suportada
- * - Detalhamento da causa da impossibilidade de tradução
+ * Features:
+ * - Exact identification of unsupported specification class
+ * - Detailed explanation of translation incompatibility
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class NonTranslatableSpecificationException extends SqlVisitorException
 {
     /**
-     * @param ISpecification $specification Instância da especificação problemática
-     * @param string $reason Motivo descritivo da impossibilidade de tradução
+     * @param ISpecification $specification Incompatible specification instance
+     * @param string $reason Descriptive reason for translation incompatibility
      */
     public function __construct(
         public readonly ISpecification $specification,
@@ -35,7 +35,7 @@ class NonTranslatableSpecificationException extends SqlVisitorException
     ) {
         $className = get_class($specification);
         $msg = sprintf(
-            'A especificação do tipo "%s" não pode ser traduzida para consulta SQL%s.',
+            'Specification of type "%s" cannot be translated into an SQL query%s.',
             $className,
             $reason !== '' ? ": {$reason}" : ''
         );

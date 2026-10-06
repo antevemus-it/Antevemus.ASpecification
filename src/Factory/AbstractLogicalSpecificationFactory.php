@@ -1,32 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ILogicalSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
 
 /**
- * AbstractLogicalSpecificationFactory class.
+ * AbstractLogicalSpecificationFactory - Base abstract factory for logical specifications
  *
- * Classe abstrata base para fábricas de especificações lógicas.
+ * Provides default alias implementations and validation helpers for logical specifications.
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 abstract class AbstractLogicalSpecificationFactory implements ILogicalSpecificationFactory
 {
     /**
-     * Valida uma lista de especificações.
+     * Validates a list of specifications.
      *
-     * Método auxiliar para implementações concretas validarem as especificações
-     * antes de criar composições lógicas.
+     * Helper method for concrete implementations to validate specifications
+     * prior to creating logical compositions.
      *
-     * @param array $specifications Lista de especificações a validar
-     * @throws \InvalidArgumentException Se a lista estiver vazia ou contiver elementos não-especificações
+     * @param array $specifications List of specifications to validate
+     * @throws \InvalidArgumentException If the list is empty or contains non-specification elements
      */
     protected function validateSpecifications(array $specifications): void
     {

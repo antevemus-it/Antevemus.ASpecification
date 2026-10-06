@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\Logical;
 
 use Antevemus\ASpecification\AbstractSpecification;
@@ -7,28 +9,33 @@ use DateTimeInterface;
 use InvalidArgumentException;
 
 /**
- * DefaultValueSpecification class.
+ * DefaultValueSpecification - Leaf specification validating that the candidate matches the default value of its type.
  *
- * Implementação folha que valida se o candidato equivale ao 'default' do seu tipo
- * (null, false, 0, string vazia/em branco).
+ * Checks if the candidate corresponds to type-default values:
+ * null, false, 0, or empty/blank string.
+ *
+ * Features:
+ * - Empty string and whitespace detection
+ * - Zero and boolean false matching
+ * - Explicit guard rejecting DateTimeInterface default evaluation
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class DefaultValueSpecification extends AbstractSpecification
 {
     /**
-     * Verifica se o candidato é considerado um valor default (vazio).
+     * Checks if the candidate is considered a default/empty value.
      *
-     * @param mixed $candidate O valor ou objeto a ser validado.
-     * @return bool
-     * @throws InvalidArgumentException
+     * @param mixed $candidate Value or object to validate
+     * @return bool True if candidate equals default value of its type
+     * @throws InvalidArgumentException If candidate is a DateTimeInterface
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {

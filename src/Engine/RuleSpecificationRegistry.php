@@ -12,22 +12,22 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\Exceptions\MissingRuleHandlerException;
 
 /**
- * RuleSpecificationRegistry - Registro Central e Configurador de Handlers de Regras de Negócio
+ * RuleSpecificationRegistry - Central Registry and Configurator for Business Rule Handlers
  *
- * Gerencia o catálogo de estratégias de compilação de especificações, mapeando cada `tipo_regra`
- * para sua respectiva fábrica especializada (classes dedicadas ou Closures concisas).
+ * Manages the catalog of specification compilation strategies, mapping each `tipo_regra`
+ * to its respective specialized factory (dedicated handler classes or concise Closures).
  *
- * Funcionalidades:
- * - Registro fluido de instâncias de IRuleSpecificationHandler
- * - Registro direto de manipuladores baseados em Closures
- * - Resolução rápida de handlers por chave técnica (tipo_regra)
- * - Lançamento de MissingRuleHandlerException caso um tipo solicitado não possua handler registrado
+ * Features:
+ * - Fluent registration of IRuleSpecificationHandler instances
+ * - Direct registration of Closure-based specification factories
+ * - Fast handler resolution by technical rule key (tipo_regra)
+ * - Automatic MissingRuleHandlerException when an unhandled rule type is requested
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class RuleSpecificationRegistry implements IRuleSpecificationRegistry
@@ -39,9 +39,9 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     private array $closures = [];
 
     /**
-     * Instancia um novo registro de handlers de especificações.
+     * Instantiates a new specification handlers registry.
      *
-     * @param list<IRuleSpecificationHandler> $initialHandlers Handlers iniciais opcionais
+     * @param list<IRuleSpecificationHandler> $initialHandlers Optional initial handlers
      */
     public function __construct(array $initialHandlers = [])
     {
@@ -53,7 +53,6 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     /** {@inheritdoc} */
     public function register(IRuleSpecificationHandler $handler): self
     {
-        // Usa um registro temporário para descobrir os tipos suportados ou armazena na lista
         $this->handlers[] = $handler;
         return $this;
     }
@@ -93,13 +92,13 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     {
         $tipo = $rule->getTipoRegra();
 
-        // 1. Prioridade para handlers registrados via Closure
+        // 1. Priority for Closure-registered handlers
         if (isset($this->closures[$tipo])) {
             $closure = $this->closures[$tipo];
             return $closure($rule);
         }
 
-        // 2. Busca em handlers de classe
+        // 2. Search class-based handlers
         $handler = $this->getHandler($tipo);
         if ($handler !== null) {
             return $handler->build($rule);

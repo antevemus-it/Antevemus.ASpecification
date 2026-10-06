@@ -7,70 +7,70 @@ namespace Antevemus\ASpecification\Contracts\Engine;
 use Antevemus\ASpecification\Engine\DocumentRequirementMode;
 
 /**
- * IDocumentRuleDefinition - Contrato para Requisito Documental em Grupo Operacional
+ * IDocumentRuleDefinition - Contract for Document Requirement in Operational Group
  *
- * Define os parâmetros de obrigatoriedade de um tipo documental em uma operação de domínio,
- * estabelecendo a regra booleana aplicável (all, any, one_of_set) e sets alternativos.
+ * Defines the requirement parameters of a document type in a domain operation,
+ * establishing the applicable Boolean rule (all, any, one_of_set) and alternative sets.
  *
- * Funcionalidades:
- * - Vinculação com o código do tipo de documento
- * - Resolução de semântica booleana (all, any, one_of_set)
- * - Agrupamento por set de alternativas (ex.: 'identidade')
- * - Expressão condicional para ativação do requisito
+ * Features:
+ * - Linkage to technical document type code
+ * - Resolution of Boolean requirement semantics (all, any, one_of_set)
+ * - Grouping by alternative sets (e.g., 'identity')
+ * - Conditional expression for requirement activation
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 interface IDocumentRuleDefinition
 {
     /**
-     * Retorna o código do grupo de obrigatoriedade ao qual este documento pertence.
+     * Returns the code of the requirement group to which this document belongs.
      *
      * @return string
      */
     public function getGrupoCodigo(): string;
 
     /**
-     * Retorna o código técnico do tipo de documento exigido (ex: 'cnpj_imobiliaria', 'cnh_locatario').
+     * Returns the technical code of the required document type (e.g. 'cnpj_imobiliaria', 'cnh_locatario').
      *
      * @return string
      */
     public function getCodigoTipoDocumento(): string;
 
     /**
-     * Retorna o modo de obrigatoriedade documental (ALL, ANY, ONE_OF_SET).
+     * Returns the document requirement mode (ALL, ANY, ONE_OF_SET).
      *
      * @return DocumentRequirementMode
      */
     public function getRegraObrigatoriedade(): DocumentRequirementMode;
 
     /**
-     * Retorna o identificador do conjunto de alternativas para regras ANY ou ONE_OF_SET.
+     * Returns the alternative set identifier for ANY or ONE_OF_SET rules.
      *
      * @return string|null
      */
     public function getCodigoSetAlternativas(): ?string;
 
     /**
-     * Retorna a expressão condicional que determina se o documento deve ser exigido.
+     * Returns the conditional expression determining whether the document is required.
      *
      * @return string|null
      */
     public function getCondicionalExpressao(): ?string;
 
     /**
-     * Retorna a ordem de exibição/avaliação do documento no grupo.
+     * Returns the display/evaluation order of the document within the group.
      *
      * @return int
      */
     public function getOrdem(): int;
 
     /**
-     * Verifica se o requisito documental está ativo.
+     * Verifies whether the document requirement is currently active.
      *
      * @return bool
      */

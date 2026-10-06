@@ -32,24 +32,24 @@ use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Sql\FieldMapper;
 
 /**
- * CriteriaSpecificationVisitor - Tradutor da AST de Especificações para TCriteria do Adianti
+ * CriteriaSpecificationVisitor - Specification AST Translator to Adianti Framework TCriteria
  *
- * Percorre recursivamente árvores de especificações de domínio através do padrão GoF Visitor,
- * compilando uma hierarquia equivalente de objetos TCriteria, TFilter e TExpression.
+ * Recursively traverses domain specification trees through the GoF Visitor pattern,
+ * compiling an equivalent hierarchy of TCriteria, TFilter, and TExpression objects.
  *
- * Funcionalidades:
- * - Compilação de folhas em TFilter com operadores relacionais (=, <>, >, <, LIKE, IS, IS NOT)
- * - Mapeamento objeto-relacional de propriedades para colunas via IFieldMapper
- * - Suporte a inversão lógica algébrica de De Morgan para negações (NotSpecification)
- * - Preservação de precedência booleana via sub-instâncias aninhadas de TCriteria
- * - Tratamento de case-insensitivity em filtros de texto
+ * Features:
+ * - Compiles leaf specifications into TFilter instances (=, <>, >, <, LIKE, IS, IS NOT)
+ * - Object-relational mapping of property names to database columns via IFieldMapper
+ * - Supports De Morgan algebraic logic inversion for negations (NotSpecification)
+ * - Preserves boolean operator precedence via nested TCriteria sub-instances
+ * - Case-insensitive filter translation for textual specifications
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class CriteriaSpecificationVisitor implements ISpecificationVisitor
@@ -59,13 +59,13 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
     /**
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
-     * @throws CriteriaBuilderException Se a classe TCriteria do Adianti não estiver disponível
+     * @throws CriteriaBuilderException If the Adianti TCriteria class is not loaded
      */
     public function __construct(IFieldMapper|array|callable|null $fieldMapper = null)
     {
         if (!class_exists(TCriteria::class)) {
             throw new CriteriaBuilderException(
-                "A classe \\Adianti\\Database\\TCriteria não está carregada no ambiente de execução."
+                "The class \\Adianti\\Database\\TCriteria is not loaded in the runtime environment."
             );
         }
 
@@ -73,7 +73,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Ponto de entrada público para converter uma especificação em um TCriteria completo.
+     * Public entrypoint to compile a specification tree into a complete TCriteria instance.
      *
      * @param ISpecification $specification
      * @return TCriteria
@@ -92,7 +92,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Visita qualquer especificação despachando para o método adequado.
+     * Visit any specification node by dispatching to appropriate handler method.
      *
      * @param ISpecification $specification
      * @return TExpression
@@ -124,12 +124,12 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof NotSpecification =>
                 $this->visitNot($specification->getSpecification()),
 
-            default => throw new NonTranslatableCriteriaException($specification, "Especificação composta desconhecida."),
+            default => throw new NonTranslatableCriteriaException($specification, "Unknown composite specification node."),
         };
     }
 
     /**
-     * Define o contexto da propriedade e visita a especificação interna.
+     * Set target property context and visit the wrapped inner specification.
      *
      * @param PropertySpecification $specification
      * @return TExpression
@@ -147,7 +147,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Constrói uma nova instância de TCriteria combinando ramo esquerdo e direito com operador lógico.
+     * Construct a new TCriteria instance combining left and right branches with a logical operator.
      *
      * @param ISpecification $left
      * @param ISpecification $right
@@ -167,7 +167,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     public function visitLeaf(ISpecification $specification): TExpression
     {
-        // Tautologia e Contradição universais (não exigem coluna)
+        // Universal Tautology and Contradiction (column-independent)
         if ($specification instanceof AlwaysTrueSpecification) {
             return new TFilter('1', '=', 1);
         }
@@ -180,7 +180,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         if ($col === null) {
             throw new NonTranslatableCriteriaException(
                 $specification,
-                "A especificação folha deve estar associada a um campo/propriedade através de PropertySpecification."
+                "Leaf specifications must be bound to a property/column via PropertySpecification."
             );
         }
 
@@ -220,7 +220,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz igualdade para TFilter tratando nulo como IS.
+     * Translate equality to TFilter, treating null as SQL IS.
      *
      * @param string $col
      * @param mixed $val
@@ -235,7 +235,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz desigualdade para TFilter tratando nulo como IS NOT.
+     * Translate inequality to TFilter, treating null as SQL IS NOT.
      *
      * @param string $col
      * @param mixed $val
@@ -250,7 +250,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz padrões wildcard substituindo * por % e ? por _.
+     * Translate wildcard patterns by replacing * with % and ? with _.
      *
      * @param string $col
      * @param string $rawPattern
@@ -268,7 +268,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz padrões wildcard negados substituindo * por % e ? por _.
+     * Translate negated wildcard patterns by replacing * with % and ? with _.
      *
      * @param string $col
      * @param string $rawPattern
@@ -286,7 +286,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz igualdade case-insensitive via LIKE com filtro case-insensitive.
+     * Translate case-insensitive equality via LIKE with case-insensitive flag enabled.
      *
      * @param string $col
      * @param mixed $value
@@ -300,7 +300,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz desigualdade case-insensitive via NOT LIKE com filtro case-insensitive.
+     * Translate case-insensitive inequality via NOT LIKE with case-insensitive flag enabled.
      *
      * @param string $col
      * @param mixed $value
@@ -314,7 +314,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Traduz uma negação aplicando regras de De Morgan e inversão relacional.
+     * Translate logical negation applying De Morgan laws and relational operator inversion.
      *
      * @param ISpecification $inner
      * @return TExpression
@@ -345,7 +345,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Define o contexto da propriedade e visita a especificação negada interna.
+     * Set target property context and visit the negated inner specification.
      *
      * @param PropertySpecification $specification
      * @return TExpression
@@ -363,7 +363,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Constrói uma nova instância de TCriteria combinando ramo esquerdo e direito negados com operador lógico.
+     * Construct a new TCriteria instance combining negated left and right branches with a logical operator.
      *
      * @param ISpecification $left
      * @param ISpecification $right
@@ -379,7 +379,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Inverte logicamente uma especificação folha associada à propriedade atual.
+     * Logically invert a leaf specification bound to current property.
      *
      * @param ISpecification $inner
      * @return TFilter
@@ -390,7 +390,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         if ($col === null) {
             throw new NonTranslatableCriteriaException(
                 $inner,
-                "A especificação negada deve estar associada a uma propriedade."
+                "Negated leaf specification must be bound to a property."
             );
         }
 
@@ -422,12 +422,12 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $inner instanceof RegexSpecification =>
                 new TFilter($col, 'NOT REGEXP', $this->cleanRegexPattern($inner->getPattern())),
 
-            default => throw new NonTranslatableCriteriaException($inner, "Impossível inverter logicamente a regra informada."),
+            default => throw new NonTranslatableCriteriaException($inner, "Unable to logically invert specified rule."),
         };
     }
 
     /**
-     * Remove delimitadores de regex PHP (ex: '/pattern/i' => 'pattern') para uso em SQL/TCriteria.
+     * Strip PHP regex delimiters (e.g. '/pattern/i' => 'pattern') for SQL/TCriteria usage.
      *
      * @param string $pattern
      * @return string

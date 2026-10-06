@@ -10,23 +10,23 @@ use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
- * LessThanSpecification - Especificação folha para comparação `<`
+ * LessThanSpecification - Leaf specification for strictly less than comparison (`<`).
  *
- * Valida se o candidato é estritamente menor que o limite configurado,
- * provendo subsunção intervalar ($x < 100 \supseteq x < 50$) e disjunção.
+ * Validates whether the candidate is strictly less than the configured threshold,
+ * providing interval subsumption ($x < 100 \supseteq x < 50$) and disjointness.
  *
- * Funcionalidades:
- * - Comparação estrita `<`
- * - Subsunção de intervalos menores e igualdades inferiores (RF-10)
+ * Features:
+ * - Strict magnitude comparison (`<`)
+ * - Subsumption of narrower intervals and inferior equalities (RF-10)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements IValueBoundSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class LessThanSpecification extends AbstractSpecification implements IValueBoundSpecification
@@ -34,7 +34,7 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
     use SubsumptionAndEqualityTrait;
 
     /**
-     * @param int|float|string $value Limite superior estrito
+     * @param int|float|string $value Strict upper bound threshold
      */
     public function __construct(
         private readonly int|float|string $value
@@ -42,7 +42,7 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
     }
 
     /**
-     * Retorna o limite superior configurado.
+     * Returns the configured upper bound threshold.
      */
     public function getValue(): int|float|string
     {

@@ -1,37 +1,41 @@
 <?php
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 
 /**
- * RegexSpecification class.
+ * RegexSpecification - Leaf specification for regular expression pattern validation.
  *
- * Implementação de uma especificação folha (Leaf) para validação de expressões regulares.
+ * Uses native PHP `preg_match` to verify whether the candidate string matches the PCRE pattern.
  *
- * Utiliza a função nativa `preg_match` do PHP para verificar se o candidato em formato de string atende ao padrão da expressão regular esperada.
+ * Features:
+ * - PCRE pattern matching via `preg_match`
+ * - Safe rejection of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class RegexSpecification extends AbstractSpecification
 {
     /**
-     * Inicializa a especificação com um padrão.
+     * Initializes the specification with a regex pattern.
      *
-     * @param string $pattern O padrão esperado para a validação.
+     * @param string $pattern PCRE regular expression pattern
      */
-
-
-    public function __construct(private readonly string $pattern) {}
+    public function __construct(private readonly string $pattern)
+    {
+    }
 
     /**
-     * Retorna a expressão regular configurada.
+     * Returns the configured regular expression pattern.
      *
      * @return string
      */
@@ -41,30 +45,27 @@ class RegexSpecification extends AbstractSpecification
     }
 
     /**
-     * Verifica se o candidato fornecido satisfaz esta regra folha.
+     * Verifies whether the provided candidate satisfies the regex pattern.
      *
-     * @param mixed $candidate O valor ou objeto a ser validado.
-     * @return bool Retorna true se a regra for atendida, false caso contrário.
+     * @param mixed $candidate Value or object to validate
+     * @return bool True if candidate matches the regular expression pattern
      */
-
-
-
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        if (!is_string($candidate)) return false;
+        if (!is_string($candidate)) {
+            return false;
+        }
+
         return preg_match($this->pattern, $candidate) === 1;
     }
+
     /**
-     * Retorna o tipo de objeto ou dado que esta especificação valida.
+     * Returns the type of candidate validated by this specification.
      *
-     * @return class-string|string Retorna 'mixed' pois esta especificação folha aceita tipos variados.
+     * @return string
      */
-
-
-    
     public function getType(): string
     {
-        return 'mixed';
+        return 'string';
     }
-
 }

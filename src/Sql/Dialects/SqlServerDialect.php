@@ -5,22 +5,22 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 /**
- * SqlServerDialect - Dialeto Especializado para Microsoft SQL Server (sqlsrv, mssql, dblib)
+ * SqlServerDialect - Specialized Dialect for Microsoft SQL Server (sqlsrv, mssql, dblib)
  *
- * Provê suporte a colchetes delimitadores ([coluna]), booleanos numéricos tipo BIT (1/0)
- * e formatação de busca textual com LOWER().
+ * Provides support for bracket delimiters ([column]), BIT boolean representation (1/0),
+ * and case-insensitive textual filtering with LOWER().
  *
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
 class SqlServerDialect extends AbstractSqlDialect
 {
     /**
-     * @param string $family Identificador específico ('sqlsrv', 'mssql' ou 'dblib')
+     * @param string $family Specific driver family ('sqlsrv', 'mssql', or 'dblib')
      */
     public function __construct(
         private readonly string $family = 'sqlsrv'

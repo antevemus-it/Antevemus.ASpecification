@@ -1,133 +1,122 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Antevemus\ASpecification\Contracts;
 
 /**
- * ICompositeSpecification interface.
+ * ICompositeSpecification - Contract for composite specifications formed by logical operators.
  *
  * Part of the Evans/Fowler Specifications pattern.
  *
- * Interface que representa uma especificação composta, formada pela combinação
- * de múltiplas especificações usando operadores lógicos (AND, OR, NOT, WHERE).
+ * Represents a composite specification created by combining multiple specifications
+ * using logical operators (AND, OR, NOT, WHERE).
  *
- * Esta interface estende ISpecification e é o tipo de retorno dos métodos de
- * composição (and, or, not, where), permitindo o encadeamento fluente de operações.
+ * Extends ISpecification and serves as the return type for composition methods,
+ * enabling fluent method chaining and Abstract Syntax Tree (AST) inspection.
  *
- * Uma ICompositeSpecification mantém referências às especificações que a compõem
- * e implementa a lógica de avaliação combinada.
+ * Features:
+ * - Fluent property-targeted composition (andWhere, orWhere)
+ * - Binary tree operand inspection (getLeftSide, getRightSide)
+ * - Flattened child specification retrieval (getSpecifications)
+ * - Partial satisfaction decomposition (remainderUnsatisfiedBy)
  *
  * @template T
  * @extends ISpecification<T>
- * @version    0.1
+ * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
- * @copyright  Copyright (c) 2025 Antevemus Soluções Inovadoras em TI Ltda.
+ * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  * @see        https://www.martinfowler.com/apsupp/spec.pdf The Specifications Pattern
  */
 interface ICompositeSpecification extends ISpecification
 {
     /**
-     * Cria uma conjunção de duas especificações com propriedade parametrizada.
+     * Creates a logical conjunction (AND) with a parameterized property specification.
      *
-     * Combina esta especificação composta com uma especificação parametrizada
-     * baseada no nome de uma propriedade acessível e a especificação correspondente.
+     * Combines this composite specification with a property specification targeting the named accessible property/getter.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $userSpec->where('age', $ageSpec)
      *                  ->andWhere('address', new CitySpecification('São Paulo'));
      * </code>
      *
      * @template F
-     * @param string $accessibleObjectName Nome da propriedade/método acessível
-     * @param ISpecification<F> $accessibleObjectSpecification Especificação para a propriedade
-     * @return ICompositeSpecification<T> Nova especificação: esta AND a especificação parametrizada
-     * @throws \InvalidArgumentException Se qualquer parâmetro for null
-     * @throws \InvalidArgumentException Se o nome da propriedade for inválido
-     * @throws \InvalidArgumentException Se os tipos não forem compatíveis
+     * @param string $accessibleObjectName Accessible property or method name
+     * @param ISpecification<F> $accessibleObjectSpecification Specification for the target property value
+     * @return ICompositeSpecification<T> New composite specification: this AND parameterized spec
+     * @throws \InvalidArgumentException If parameter is empty or types are incompatible
      */
     public function andWhere(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification;
 
     /**
-     * Cria uma disjunção de duas especificações com propriedade parametrizada.
+     * Creates a logical disjunction (OR) with a parameterized property specification.
      *
-     * Combina esta especificação composta com uma especificação parametrizada
-     * baseada no nome de uma propriedade acessível e a especificação correspondente.
+     * Combines this composite specification with a property specification targeting the named accessible property/getter.
      *
-     * Exemplo:
+     * Example:
      * <code>
      * $spec = $userSpec->where('role', $roleSpec)
      *                  ->orWhere('permissions', new PermissionSpecification('admin'));
      * </code>
      *
      * @template F
-     * @param string $accessibleObjectName Nome da propriedade/método acessível
-     * @param ISpecification<F> $accessibleObjectSpecification Especificação para a propriedade
-     * @return ICompositeSpecification<T> Nova especificação: esta OR a especificação parametrizada
-     * @throws \InvalidArgumentException Se qualquer parâmetro for null
-     * @throws \InvalidArgumentException Se o nome da propriedade for inválido
-     * @throws \InvalidArgumentException Se os tipos não forem compatíveis
+     * @param string $accessibleObjectName Accessible property or method name
+     * @param ISpecification<F> $accessibleObjectSpecification Specification for the target property value
+     * @return ICompositeSpecification<T> New composite specification: this OR parameterized spec
+     * @throws \InvalidArgumentException If parameter is empty or types are incompatible
      */
     public function orWhere(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification;
 
     /**
-     * Retorna a especificação do lado esquerdo da composição.
+     * Returns the left-hand side specification of the binary composite.
      *
-     * Em uma operação binária (AND, OR), este método retorna a primeira
-     * especificação (operando esquerdo) da composição.
+     * In binary operations (AND, OR), returns the first operand specification.
      *
-     * @return ISpecification<T>|null A especificação do lado esquerdo, ou null se não aplicável
+     * @return ISpecification<T>|null Left-hand side specification, or null if unary/not applicable
      */
     public function getLeftSide(): ?ISpecification;
 
     /**
-     * Retorna a especificação do lado direito da composição.
+     * Returns the right-hand side specification of the binary composite.
      *
-     * Em uma operação binária (AND, OR), este método retorna a segunda
-     * especificação (operando direito) da composição.
+     * In binary operations (AND, OR), returns the second operand specification.
      *
-     * @return ISpecification<T>|null A especificação do lado direito, ou null se não aplicável
+     * @return ISpecification<T>|null Right-hand side specification, or null if unary/not applicable
      */
     public function getRightSide(): ?ISpecification;
 
     /**
-     * Retorna todas as especificações que compõem esta especificação composta.
+     * Returns all leaf and sub-specifications comprising this composite tree.
      *
-     * Este método retorna um array contendo todas as especificações individuais
-     * que fazem parte desta composição, útil para análise e debugging.
+     * Useful for diagnostics, AST traversal, and debugging.
      *
-     * @return array<ISpecification<T>> Array de especificações que compõem esta especificação
+     * @return array<ISpecification<T>> Array of specifications participating in this composite
      */
     public function getSpecifications(): array;
 
     /**
-     * Especificação parcialmente satisfeita (Partially satisfied specification).
+     * Partially satisfied specification (Remainder decomposition).
      *
-     * Retorna uma especificação composta contendo todos os componentes desta
-     * especificação que NÃO foram satisfeitos pelo candidato dado.
+     * Returns a composite specification containing all sub-components of this specification
+     * that were NOT satisfied by the given candidate.
      *
-     * Se a especificação é completamente satisfeita pelo candidato, retorna null.
+     * If the candidate satisfies all requirements, returns null.
      *
-     * Este método é útil para:
-     * - Validação progressiva
-     * - Identificar quais partes de uma especificação complexa falharam
-     * - Fornecer feedback detalhado ao usuário
-     *
-     * Exemplo:
+     * Example:
      * <code>
      * $userSpec = $ageSpec->and($emailSpec)->and($termsSpec);
      * $remainder = $userSpec->remainderUnsatisfiedBy($user);
-     *
      * if ($remainder !== null) {
-     *     echo "Requisitos não satisfeitos: " . $remainder;
-     *     // Pode mostrar: "EmailVerifiedSpec AND TermsAcceptedSpec"
+     *     // Feedback on unsatisfied parts
      * }
      * </code>
      *
-     * @param T $candidate O objeto candidato
-     * @return ICompositeSpecification<T>|null Especificação com componentes não satisfeitos, ou null se totalmente satisfeita
+     * @param T $candidate Target candidate object
+     * @return ICompositeSpecification<T>|null Specification with unsatisfied components, or null if fully satisfied
      */
     public function remainderUnsatisfiedBy(object $candidate): ?ICompositeSpecification;
 }
