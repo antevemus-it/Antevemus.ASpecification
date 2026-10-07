@@ -17,8 +17,9 @@ use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
  * - Fluent boolean composition (and, or) between generated clauses
  * - Null/empty clause detection
  * - Direct textual representation via Stringable
+ * - README aliases getSql() / getBindings() delegating to toSql() / getParameters()
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -57,6 +58,18 @@ final readonly class SqlWhereClause implements ISqlWhereClause
     public function getParameters(): array
     {
         return $this->parameters;
+    }
+
+    /** {@inheritdoc} */
+    public function getSql(): string
+    {
+        return $this->toSql();
+    }
+
+    /** {@inheritdoc} */
+    public function getBindings(): array
+    {
+        return $this->getParameters();
     }
 
     /** {@inheritdoc} */

@@ -64,6 +64,28 @@ interface ILogicalSpecificationFactory extends ISpecificationFactory
     public function neitherOf(ISpecification ...$specifications): ISpecification;
 
     /**
+     * Creates a joint denial (logical NOR): satisfied only when NONE of the specifications is satisfied.
+     *
+     * Equivalent to: NOT (spec1 OR spec2 OR ...). With no argument returns a tautology (nothing to deny),
+     * with one argument returns its negation, with two or more builds a `JointDenialSpecification`
+     * whose right side is the disjunction of the remaining specifications.
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification NOR specification
+     */
+    public function nor(ISpecification ...$specifications): ISpecification;
+
+    /**
+     * Alias for nor().
+     *
+     * Fluent usage: "noneOf spec1, spec2"
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification NOR specification
+     */
+    public function noneOf(ISpecification ...$specifications): ISpecification;
+
+    /**
      * Alias for allOf().
      *
      * Fluent usage: "shouldBeAllOf spec1, spec2"

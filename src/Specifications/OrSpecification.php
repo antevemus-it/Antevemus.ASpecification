@@ -7,7 +7,6 @@ namespace Antevemus\ASpecification\Specifications;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
@@ -77,12 +76,14 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
         $combined = SpecificationResult::combine($leftResult, $rightResult);
 
         if ($this->customReason !== null || $this->customCode !== null) {
-            $topFailure = new SpecificationFailure(
+            // Annotated disjunction reports exactly ONE failure: its own, carrying message and code.
+            // The alternatives' failures are kept as diagnostic causes, never exposed as siblings.
+            return SpecificationResult::failure(
                 message: $this->customReason ?? "None of the alternatives in the disjunction (OR) were satisfied.",
                 code: $this->customCode,
-                ruleName: 'OrSpecification'
+                ruleName: 'OrSpecification',
+                metadata: ['causes' => $combined->failures]
             );
-            return $combined->withLeadingFailures([$topFailure]);
         }
 
         return $combined;

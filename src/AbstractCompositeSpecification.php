@@ -221,19 +221,29 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             return null;
         }
 
-        $remainderSpec = new AndSpecification($this, $this);
+        // Only the attached clauses the candidate does not satisfy, never the whole
+        // specification again (BUG-20261007-7CUU). Nested disjunctions were excluded above.
+        $remainderSpec = null;
 
-        $parameterizedSpecs = $this->getAllParameterizedSpecifications();
+        foreach ($this->specifications as $spec) {
+            $clause = $spec instanceof ICompositeSpecification
+                ? $spec->remainderUnsatisfiedBy($candidate)
+                : ($spec->isSatisfiedBy($candidate) ? null : $spec);
 
-        foreach ($parameterizedSpecs as $paramSpec) {
-            if ($paramSpec instanceof PropertySpecification) {
-                if (!$paramSpec->isSatisfiedBy($candidate)) {
-                    $remainderSpec = $remainderSpec->and($paramSpec);
-                }
+            if ($clause === null) {
+                continue;
             }
+
+            $remainderSpec = $remainderSpec === null ? $clause : new AndSpecification($remainderSpec, $clause);
         }
 
-        return $remainderSpec;
+        if ($remainderSpec === null) {
+            return $this;
+        }
+
+        return $remainderSpec instanceof ICompositeSpecification
+            ? $remainderSpec
+            : new AndSpecification($this, $remainderSpec);
     }
 
     /**
@@ -587,11 +597,20 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             iterator_to_array($this->specifications)
         );
 
-        return sprintf(
-            '%s(%s)',
-            $this instanceof AndSpecification ? 'AND' :
-                ($this instanceof OrSpecification ? 'OR' : get_class($this)),
-            implode(', ', $specNames)
-        );
+        // The type specification created by Spec::specify(T) is an anonymous class: print it as
+        // Spec<T> instead of the anonymous class name with its file path (BUG-20261007-7CUU).
+        $reflection = new \ReflectionClass($this);
+        if ($reflection->isAnonymous()) {
+            $typeParts = explode('\\', $this->type);
+            $name = sprintf('Spec<%s>', end($typeParts));
+        } else {
+            $name = $reflection->getShortName();
+        }
+
+        if ($specNames === []) {
+            return $name;
+        }
+
+        return sprintf('%s(%s)', $name, implode(', ', $specNames));
     }
 }

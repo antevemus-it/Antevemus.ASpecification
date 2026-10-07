@@ -30,6 +30,87 @@ class Module8_SpecificationResultTest extends TestCase
         $this->testNotSpecificationDiagnostics();
         $this->testPropertySpecificationDiagnostics();
         $this->testRealWorldBusinessRulesScenario();
+        $this->testAnnotatedPropertyAbsorbsInnerFailures();
+    }
+
+    /**
+     * because()/withCode() sobre Spec::property() reporta UMA falha (a anotada); as falhas das folhas
+     * internas viram metadata['causes'], nunca irmãs sem código. Reprodução do exemplo 2 do README
+     * (auditoria 2026-10-07, achado B1) e regressão do estado de erro.
+     */
+    private function testAnnotatedPropertyAbsorbsInnerFailures(): void
+    {
+        $base = new AlwaysTrueSpecification();
+        // greaterThanOrEqualTo(18) = Or(GreaterThan(18), Equal(18)): duas folhas internas
+        $gte18 = (new GreaterThanSpecification(18))->or(new EqualSpecification(18));
+
+        $adultSpec = (new PropertySpecification($base, 'age', $gte18))
+            ->because('Customer must be of legal age.')
+            ->withCode('CLI_001');
+        $activeSpec = (new PropertySpecification($base, 'status', new EqualSpecification('ACTIVE')))
+            ->because('Only active accounts can receive a credit line.')
+            ->withCode('CLI_002');
+
+        $customer = (object) ['age' => 16, 'status' => 'SUSPENDED'];
+
+        // 1. Reprodução: README exemplo 2 promete exatamente 2 falhas, ambas com código
+        $result = $adultSpec->and($activeSpec)->evaluate($customer);
+        $this->assertFalse($result->isSatisfied);
+        $this->assertCount(2, $result, 'README ex. 2: 2 falhas, não 5');
+        $this->assertEquals(['CLI_001', 'CLI_002'], $result->getCodes());
+        $this->assertEquals(
+            ['Customer must be of legal age.', 'Only active accounts can receive a credit line.'],
+            $result->getReasons()
+        );
+        $this->assertEquals('age', $result->failures[0]->property);
+        $this->assertEquals('status', $result->failures[1]->property);
+        foreach ($result->failures as $failure) {
+            $this->assertTrue($failure->code !== null && $failure->code !== '', 'Nenhuma falha sem código vaza');
+        }
+
+        // 2. As causas internas ficam preservadas em metadata['causes'] (diagnóstico), não como irmãs
+        $causes = $result->failures[0]->metadata['causes'] ?? null;
+        $this->assertTrue(is_array($causes), 'metadata[causes] presente');
+        $this->assertCount(2, $causes, 'Or(GreaterThan, Equal) contribui duas causas');
+        $this->assertInstanceOf(SpecificationFailure::class, $causes[0]);
+        $this->assertEquals('GreaterThanSpecification', $causes[0]->ruleName);
+        $this->assertEquals('EqualSpecification', $causes[1]->ruleName);
+        $this->assertEquals('age', $causes[0]->property, 'causa anotada com a propriedade');
+        $this->assertCount(1, $result->failures[1]->metadata['causes']);
+
+        // 3. Só withCode(), sem because(): mensagem padrão da propriedade, ainda uma falha só
+        $onlyCode = (new PropertySpecification($base, 'status', new EqualSpecification('ACTIVE')))->withCode('ST_01');
+        $resCode = $onlyCode->evaluate($customer);
+        $this->assertCount(1, $resCode);
+        $this->assertEquals('ST_01', $resCode->failures[0]->code);
+        $this->assertTrue(str_contains($resCode->failures[0]->message, "'status'"));
+
+        // 4. Propriedade nula: a razão anotada prevalece sobre a mensagem padrão, uma falha só
+        $resNull = $activeSpec->evaluate((object) ['age' => 30, 'status' => null]);
+        $this->assertFalse($resNull->isSatisfied);
+        $this->assertFalse($resNull->isError);
+        $this->assertCount(1, $resNull);
+        $this->assertEquals('CLI_002', $resNull->failures[0]->code);
+        $this->assertEquals('Only active accounts can receive a credit line.', $resNull->failures[0]->message);
+
+        // 5. Regressão: sem anotação, as falhas internas continuam expostas e anotadas com a propriedade
+        $plain = new PropertySpecification($base, 'age', $gte18);
+        $resPlain = $plain->evaluate($customer);
+        $this->assertCount(2, $resPlain);
+        $this->assertEquals('age', $resPlain->failures[0]->property);
+        $this->assertTrue($resPlain->failures[0]->code === null);
+
+        // 6. Regressão: erro de avaliação nunca é absorvido pela anotação
+        $missing = (new PropertySpecification($base, 'missing', new EqualSpecification(1)))
+            ->because('motivo')->withCode('MISS');
+        $resErr = $missing->evaluate($customer);
+        $this->assertTrue($resErr->isError, 'because()/withCode() não absorvem erro');
+        $this->assertFalse($resErr->isSatisfied);
+        $this->assertInstanceOf(\Throwable::class, $resErr->exception);
+        $this->assertEquals('MISS', $resErr->failures[0]->code);
+
+        // 7. Regressão: satisfeito continua sem falhas
+        $this->assertTrue($adultSpec->and($activeSpec)->evaluate((object) ['age' => 30, 'status' => 'ACTIVE'])->isSatisfied);
     }
 
     private function testSpecificationFailureObject(): void
@@ -160,8 +241,23 @@ class Module8_SpecificationResultTest extends TestCase
         $andCustom = $and->because("Intervalo [10, 50] violado.")->withCode("INTERVALO_INVALIDO");
         $resCustom = $andCustom->evaluate(60);
         $this->assertFalse($resCustom->isSatisfied);
-        $this->assertTrue(in_array("Intervalo [10, 50] violado.", $resCustom->getReasons(), true));
-        $this->assertTrue(in_array("Deve ser menor que 50.", $resCustom->getReasons(), true));
+        // RN-09 (adendo CPH2 v002): o AND anotado reporta UMA falha; a da ramificação vira causa em metadata.
+        $this->assertEquals(["Intervalo [10, 50] violado."], $resCustom->getReasons());
+        $this->assertEquals(["INTERVALO_INVALIDO"], $resCustom->getCodes());
+        $causes = $resCustom->failures[0]->metadata['causes'];
+        $this->assertEquals(["Deve ser menor que 50."], array_map(fn($f) => $f->message, $causes));
+        $this->assertEquals(["ERR_LT_50"], array_map(fn($f) => $f->code, $causes));
+
+        // OR anotado: mesma regra
+        $orCustom = $specA->or($specB)->because("Fora de ambos os limites.")->withCode("OR_CUSTOM");
+        $resOr = $orCustom->evaluate(60);
+        $this->assertTrue($resOr->isSatisfied);
+        $none = ((new EqualSpecification('A'))->or(new EqualSpecification('B')))->because("Nem A nem B.")->withCode("AB");
+        $resNone = $none->evaluate('C');
+        $this->assertFalse($resNone->isSatisfied);
+        $this->assertEquals(["Nem A nem B."], $resNone->getReasons());
+        $this->assertEquals(["AB"], $resNone->getCodes());
+        $this->assertEquals(2, count($resNone->failures[0]->metadata['causes']));
     }
 
     private function testOrSpecificationDiagnostics(): void

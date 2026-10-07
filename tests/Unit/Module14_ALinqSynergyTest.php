@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Tests\Unit;
 
 use Antevemus\ALinq\ALinqCollection;
 use Antevemus\ALinq\ALinqLazyCollection;
+use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Linq\ALinqBridge;
@@ -17,6 +18,7 @@ use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
@@ -66,6 +68,10 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testALinqBridgeLazyStreamingPipeline();
         $this->testInMemoryRepositoryLazyCollection();
         $this->testSpecFacadeLazyMethods();
+        $this->testALinqVisitorIsAsStrictAsTheCoreOnComparisons();
+        $this->testALinqVisitorHandsScalarPropertyValuesToCustomLeaves();
+        $this->testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties();
+        $this->testALinqVisitorParityTableWithCoreEvaluation();
     }
 
     /**
@@ -551,5 +557,171 @@ class Module14_ALinqSynergyTest extends TestCase
         $filteredRepoLazy = Spec::filterLazy($repo, new PropertySpecification(Spec::alwaysTrue(), 'val', new GreaterThanSpecification(50)));
         $this->assertInstanceOf(ALinqLazyCollection::class, $filteredRepoLazy);
         $this->assertEquals(1, $filteredRepoLazy->count());
+    }
+
+    /**
+     * 15. Reprodução (a): o predicado compilado deve ser tão estrito quanto as folhas de comparação.
+     *
+     * Desde a 1.2.0 (RN-04) `equalTo(5)->isSatisfiedBy('5')` lança IncompatibleTypeException; o visitor
+     * reimplementava o operador com `==`/`!=`/`>`/`<` e respondia `true` em silêncio.
+     */
+    private function testALinqVisitorIsAsStrictAsTheCoreOnComparisons(): void
+    {
+        $visitor = new ALinqSpecificationVisitor();
+
+        $this->assertThrows(
+            IncompatibleTypeException::class,
+            fn() => $visitor->visit(new EqualSpecification(5))('5'),
+            'visitor: equalTo(5) must reject the string "5" exactly like EqualSpecification::isSatisfiedBy()'
+        );
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $visitor->visit(new NotEqualSpecification(5))('5'));
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $visitor->visit(new GreaterThanSpecification(10))('15'));
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $visitor->visit(new LessThanSpecification(10))('5'));
+
+        // Through a property: the README promise (section 10.2) is a predicate with the spec's semantics
+        $viaProperty = ALinqSpecificationVisitor::createPredicate(Spec::property('n', Spec::equalTo(5)));
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $viaProperty((object)['n' => '5']));
+        $this->assertTrue($viaProperty((object)['n' => 5]));
+        $this->assertFalse($viaProperty((object)['n' => 6]));
+
+        // Opt-in loose equality keeps its coercion in both paths
+        $loose = ALinqSpecificationVisitor::createPredicate(Spec::property('n', Spec::looselyEqualTo(5)));
+        $this->assertTrue($loose((object)['n' => '5']));
+        $this->assertTrue(Spec::property('n', Spec::looselyEqualTo(5))->isSatisfiedBy((object)['n' => '5']));
+    }
+
+    /**
+     * 16. Reprodução (b): folha custom sobre valor escalar recebe o valor, não `null`.
+     */
+    private function testALinqVisitorHandsScalarPropertyValuesToCustomLeaves(): void
+    {
+        $isEven = new class extends AbstractSpecification {
+            public function getType(): string
+            {
+                return 'int';
+            }
+
+            public function isSatisfiedBy(mixed $candidate): bool
+            {
+                return is_int($candidate) && $candidate % 2 === 0;
+            }
+        };
+
+        $this->assertTrue((new ALinqSpecificationVisitor())->visit($isEven)(4));
+        $this->assertFalse((new ALinqSpecificationVisitor())->visit($isEven)(3));
+
+        $predicate = ALinqSpecificationVisitor::createPredicate(Spec::property('n', $isEven));
+        $this->assertTrue($predicate((object)['n' => 4]), 'custom leaf over scalar property must see the scalar (core says true)');
+        $this->assertFalse($predicate((object)['n' => 3]));
+        $this->assertEquals(
+            Spec::property('n', $isEven)->isSatisfiedBy((object)['n' => 4]),
+            $predicate((object)['n' => 4])
+        );
+    }
+
+    /**
+     * 17. Reprodução (c): propriedade nula e propriedade ausente seguem PropertySpecification.
+     *
+     * No núcleo, valor nulo nunca satisfaz (`isSatisfiedBy` false, `evaluate` falha) e propriedade
+     * ausente é erro de avaliação (InvalidArgumentException), nunca `false` que um NOT inverteria.
+     */
+    private function testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties(): void
+    {
+        $isNullOnProperty = Spec::property('n', Spec::isNull());
+        $predicate = ALinqSpecificationVisitor::createPredicate($isNullOnProperty);
+
+        $this->assertFalse($isNullOnProperty->isSatisfiedBy((object)['n' => null]));
+        $this->assertFalse($isNullOnProperty->evaluate((object)['n' => null])->isSatisfied);
+        $this->assertFalse($predicate((object)['n' => null]), 'visitor: null property value must not satisfy, like the core');
+
+        $this->assertThrows(
+            \InvalidArgumentException::class,
+            fn() => $predicate((object)['other' => 1]),
+            'visitor: missing property is an evaluation error, like PropertySpecification::isSatisfiedBy()'
+        );
+        $this->assertTrue($isNullOnProperty->evaluate((object)['other' => 1])->isError);
+
+        // NOT over a missing property must never approve the candidate (same rule as the core)
+        $notPredicate = ALinqSpecificationVisitor::createPredicate(Spec::not(Spec::property('status', Spec::equalTo('BLOCKED'))));
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $notPredicate((object)['other' => 1]));
+        $this->assertTrue($notPredicate((object)['status' => 'ACTIVE']));
+        $this->assertFalse($notPredicate((object)['status' => 'BLOCKED']));
+
+        // Candidates that are neither object nor array: core says not satisfied, visitor too
+        $this->assertFalse($predicate(null));
+        $this->assertFalse($predicate('scalar'));
+    }
+
+    /**
+     * 18. Regressão: tabela de paridade predicate × evaluate() para folhas, composições e propriedades,
+     * incluindo exceções (o predicado lança o que o núcleo lança) e os exemplos 10.1/10.2 do README.
+     */
+    private function testALinqVisitorParityTableWithCoreEvaluation(): void
+    {
+        $yesterday = new \DateTimeImmutable('-1 day');
+        $cases = [
+            // [rótulo, spec, candidato]
+            ['equalTo int ok', Spec::property('n', Spec::equalTo(5)), (object)['n' => 5]],
+            ['equalTo int ne', Spec::property('n', Spec::equalTo(5)), (object)['n' => 7]],
+            ['equalTo str vs int', Spec::property('n', Spec::equalTo(5)), (object)['n' => '5']],
+            ['notEqual str vs int', Spec::property('n', Spec::notEqual(5)), (object)['n' => '5']],
+            ['greaterThan ok', Spec::property('n', Spec::greaterThan(1)), (object)['n' => 5]],
+            ['greaterThan str vs int', Spec::property('n', Spec::greaterThan(1)), (object)['n' => '5']],
+            ['atLeast ok', Spec::property('n', Spec::greaterThanOrEqualTo(1)), (object)['n' => 5]],
+            ['lessThan float', Spec::property('n', Spec::lessThan(2.5)), (object)['n' => 2]],
+            ['before date', Spec::property('d', Spec::before(new \DateTimeImmutable())), (object)['d' => $yesterday]],
+            ['before vs string', Spec::property('d', Spec::before(new \DateTimeImmutable())), (object)['d' => '2000-01-01']],
+            ['in ok', Spec::property('n', Spec::in(0, 2, 4)), (object)['n' => 2]],
+            ['in miss', Spec::property('n', Spec::in(0, 2, 4)), (object)['n' => 3]],
+            ['isNull on null', Spec::property('n', Spec::isNull()), (object)['n' => null]],
+            ['isNotNull on null', Spec::property('n', Spec::isNotNull()), (object)['n' => null]],
+            ['isNotNull on value', Spec::property('n', Spec::isNotNull()), (object)['n' => 0]],
+            ['isTrue bool', Spec::property('b', Spec::isTrue()), (object)['b' => true]],
+            ['isTrue int', Spec::property('b', Spec::isTrue()), (object)['b' => 1]],
+            ['loose equal', Spec::property('n', Spec::looselyEqualTo(5)), (object)['n' => '5']],
+            ['ignoreCase', Spec::property('s', new EqualIgnoreCaseStringSpecification('admin')), (object)['s' => 'ADMIN']],
+            ['regex', Spec::property('s', new RegexSpecification('/^A/')), (object)['s' => 'Abc']],
+            ['wildcard class', Spec::property('s', new WildcardSpecification('PR-[0-9]*')), (object)['s' => 'PR-1']],
+            ['wildcard class miss', Spec::property('s', new WildcardSpecification('PR-[0-9]*')), (object)['s' => 'PR-x']],
+            ['wildcard non-string', Spec::property('s', new WildcardSpecification('PR-*')), (object)['s' => 12]],
+            ['and/or mix', Spec::property('a', Spec::equalTo(1))->and(Spec::property('b', Spec::equalTo(2))->or(Spec::property('c', Spec::equalTo(3)))), (object)['a' => 1, 'b' => 0, 'c' => 3]],
+            ['not', Spec::not(Spec::property('a', Spec::equalTo(1))), (object)['a' => 2]],
+            ['not on type mismatch', Spec::not(Spec::property('a', Spec::equalTo(1))), (object)['a' => '2']],
+            ['nested dot', Spec::property('address.city', Spec::equalTo('New York')), (object)['address' => (object)['city' => 'New York']]],
+            ['array candidate', Spec::property('severity', Spec::equalTo('high')), ['severity' => 'high']],
+            ['array candidate miss', Spec::property('severity', Spec::equalTo('high')), ['severity' => 'low']],
+            ['missing property', Spec::property('x', Spec::equalTo(1)), (object)['y' => 1]],
+        ];
+
+        foreach ($cases as [$label, $spec, $candidate]) {
+            $result = $spec->evaluate($candidate);
+            $coreThrew = $result->isError && $result->exception !== null ? get_class($result->exception) : null;
+
+            $predicate = ALinqSpecificationVisitor::createPredicate($spec);
+            try {
+                $visitorValue = $predicate($candidate);
+                $visitorThrew = null;
+            } catch (\Throwable $e) {
+                $visitorValue = null;
+                $visitorThrew = get_class($e);
+            }
+
+            $this->assertEquals($coreThrew, $visitorThrew, "parity [{$label}]: exception class (core={$coreThrew}, visitor={$visitorThrew})");
+            if ($coreThrew === null) {
+                $this->assertEquals($result->isSatisfied, $visitorValue, "parity [{$label}]: verdict");
+            }
+        }
+
+        // README 10.1 / 10.2: the compiled predicate approves exactly the VIP in New York
+        $vipInNY = Spec::property('address.city', Spec::equalTo('New York'))
+            ->and(Spec::property('profile.score', Spec::greaterThan(90)));
+        $predicate = ALinqSpecificationVisitor::createPredicate($vipInNY);
+        $people = [
+            (object)['address' => (object)['city' => 'New York'], 'profile' => ['score' => 95]],
+            (object)['address' => (object)['city' => 'New York'], 'profile' => ['score' => 50]],
+            (object)['address' => (object)['city' => 'Boston'], 'profile' => ['score' => 99]],
+        ];
+        $this->assertCount(1, array_filter($people, $predicate));
+        $this->assertCount(1, ALinqCollection::from($people)->where($predicate)->toArray());
     }
 }

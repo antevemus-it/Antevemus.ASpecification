@@ -164,6 +164,12 @@ trait SubsumptionAndEqualityTrait
     /**
      * Returns the sub-specification unsatisfied by the given candidate, or null if fully satisfied.
      *
+     * The remainder contains ONLY the clauses the candidate does not satisfy (BUG-20261007-7CUU):
+     * a conjunction is decomposed side by side and the satisfied sides are dropped; a property
+     * clause, a nested disjunction or any other composite is an atomic clause and is returned
+     * whole when unsatisfied. A bare leaf is anchored to the root type specification so the
+     * result is always a composite. Top-level disjunctions keep throwing (OrSpecification).
+     *
      * @param object $candidate Evaluated candidate object
      * @return \Antevemus\ASpecification\Contracts\ICompositeSpecification<mixed>|null
      */
@@ -173,9 +179,58 @@ trait SubsumptionAndEqualityTrait
         if ($this->isSatisfiedBy($candidate)) {
             return null;
         }
+
+        if ($this instanceof AndSpecification) {
+            $left = $this->remainderOfClause($this->getLeftSide(), $candidate);
+            $right = $this->remainderOfClause($this->getRightSide(), $candidate);
+
+            $remainder = match (true) {
+                $left === null => $right,
+                $right === null => $left,
+                default => new AndSpecification($left, $right),
+            };
+
+            if ($remainder === null) {
+                // Both sides satisfied in isolation but the conjunction is not (null candidate):
+                // nothing finer to report than the conjunction itself.
+                return $this;
+            }
+
+            return $remainder instanceof \Antevemus\ASpecification\Contracts\ICompositeSpecification
+                ? $remainder
+                : new AndSpecification($this->resolveRootTypeSpecification(), $remainder);
+        }
+
         if ($this instanceof \Antevemus\ASpecification\Contracts\ICompositeSpecification) {
             return $this;
         }
-        return new AndSpecification($this, $this);
+
+        return new AndSpecification($this->resolveRootTypeSpecification(), $this);
+    }
+
+    /**
+     * Remainder of one clause of a conjunction: null when the clause is satisfied, the clause
+     * (or its own remainder, for a nested conjunction) otherwise. A nested disjunction is never
+     * decomposed: it is the pending clause as a whole.
+     *
+     * @param ISpecification<mixed>|null $clause
+     * @param object $candidate
+     * @return ISpecification<mixed>|null
+     */
+    private function remainderOfClause(?ISpecification $clause, object $candidate): ?ISpecification
+    {
+        if ($clause === null) {
+            return null;
+        }
+
+        if ($clause instanceof OrSpecification) {
+            return $clause->isSatisfiedBy($candidate) ? null : $clause;
+        }
+
+        if ($clause instanceof \Antevemus\ASpecification\Contracts\ICompositeSpecification) {
+            return $clause->remainderUnsatisfiedBy($candidate);
+        }
+
+        return $clause->isSatisfiedBy($candidate) ? null : $clause;
     }
 }

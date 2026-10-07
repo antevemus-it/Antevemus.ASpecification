@@ -56,6 +56,29 @@ interface ISpecification
     public function where(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification;
 
     /**
+     * Appends an inline business rule (closure) to this specification with logical AND.
+     *
+     * The closure receives the whole candidate and returns a boolean. The resulting leaf
+     * (`PredicateSpecification`) carries the optional failure code and message for the
+     * Notification Pattern, so a rule handler can declare an ad hoc rule in one line:
+     *
+     * <code>
+     * Spec::specify(Contract::class)
+     *     ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+     * </code>
+     *
+     * An exception thrown inside the closure propagates from `isSatisfiedBy()` and becomes an
+     * error result under `evaluate()`. The closure is opaque to the SQL and TCriteria visitors
+     * (they throw their "non translatable" exception); the ALinq visitor compiles it natively.
+     *
+     * @param \Closure(mixed): bool $predicate Inline rule over the whole candidate
+     * @param string|null $code Failure code applied through `withCode()` when provided
+     * @param string|null $message Failure message applied through `because()` when provided
+     * @return ICompositeSpecification<T> Conjunction of this specification with the predicate leaf
+     */
+    public function must(\Closure $predicate, ?string $code = null, ?string $message = null): ICompositeSpecification;
+
+    /**
      * Creates a logical conjunction (AND) with another specification or a property specification.
      *
      * Combines this specification with another using boolean AND logic.
@@ -129,11 +152,14 @@ interface ISpecification
      *
      * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Target dialect ('pgsql', 'mysql', 'sqlsrv', 'oracle', 'sqlite', 'firebird', 'ansi')
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Property-to-column mapper
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
      * @return \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause Parameterized SQL clause
+     * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
     public function toSql(
         \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect = 'ansi',
-        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 
     /**
@@ -141,11 +167,14 @@ interface ISpecification
      *
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Property-to-column mapper
      * @param array<string, mixed> $properties Criteria configuration ('order', 'limit', 'offset', 'direction', 'group')
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
      * @return mixed \Adianti\Database\TCriteria instance
+     * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
     public function toCriteria(
         \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
-        array $properties = []
+        array $properties = [],
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): mixed;
 
     /**

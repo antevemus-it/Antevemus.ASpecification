@@ -14,6 +14,7 @@ use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
 use Antevemus\ASpecification\Contracts\Repositories\ITextualFormatRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
+use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
 use Antevemus\ASpecification\Repositories\AbstractRepository;
 use Antevemus\ASpecification\Repositories\PartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
@@ -81,6 +82,57 @@ class InMemoryAndFileRepository extends AbstractRepository implements
         }
         $this->persistenceDefinition = $persistenceDefinition;
         $this->repositoryId = $repositoryId ?? ("hybrid_" . $this->fileBackend->getRepositoryId());
+    }
+
+    /**
+     * Named factory for the common L1 (RAM) + L2 (single file) tiering.
+     *
+     * Builds the hybrid repository from a storage path and a serializer, so that the
+     * README example reads as written:
+     * <code>
+     * $repo = InMemoryAndFileRepository::create(
+     *     storagePath: '/var/data/customers.json',
+     *     serializer: new JsonEntitySerializer(Customer::class)
+     * );
+     * $repo->put($newCustomer); // stored in RAM and synchronized to disk atomically
+     * </code>
+     *
+     * The L2 tier is a SingleFileRepository over $storagePath; the L1 tier is $cache or a fresh
+     * InMemoryRepository. The parent directory of $storagePath does not need to exist: the
+     * factory creates it (the file lock lives next to the document and needs the directory before
+     * the first write). When the file already exists, the cache is warmed up from it before the
+     * repository is returned, so queries and a second instance over the same file see the
+     * persisted entities without an explicit warmup() call.
+     *
+     * @param string $storagePath Single file path (e.g. storage/customers.json)
+     * @param IEntitySerializer $serializer Serializer for the L2 file (JsonEntitySerializer with the entity class, or PhpNativeEntitySerializer)
+     * @param IVolatileRepository<T>|null $cache Optional L1 repository (default: new InMemoryRepository)
+     * @param string|null $repositoryId Optional repository identifier (default: "hybrid_" + file name)
+     * @param PersistenceDefinition $persistenceDefinition Persistence mode of both tiers (default: ReadWrite, write-through)
+     * @return self<T>
+     * @throws RepositoryException If the parent directory cannot be created
+     */
+    public static function create(
+        string $storagePath,
+        IEntitySerializer $serializer,
+        ?IVolatileRepository $cache = null,
+        ?string $repositoryId = null,
+        PersistenceDefinition $persistenceDefinition = PersistenceDefinition::ReadWrite
+    ): self {
+        $directory = dirname($storagePath);
+        if (!is_dir($directory) && !@mkdir($directory, 0777, true) && !is_dir($directory)) {
+            throw new RepositoryException(sprintf('Unable to create the storage directory "%s".', $directory));
+        }
+
+        $repository = new self(
+            $cache ?? new InMemoryRepository(),
+            new SingleFileRepository($storagePath, $serializer, $persistenceDefinition),
+            $persistenceDefinition,
+            $repositoryId
+        );
+        $repository->warmup();
+
+        return $repository;
     }
 
     /**

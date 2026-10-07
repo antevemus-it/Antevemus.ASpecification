@@ -14,6 +14,7 @@ use Antevemus\ASpecification\Repositories\Serialization\PhpNativeEntitySerialize
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 use Antevemus\ASpecification\Repositories\PersistentPartitionRepository;
+use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
 use Antevemus\ASpecification\Tests\Support\ChildWriterEntity;
 use RecursiveIteratorIterator;
@@ -43,6 +44,7 @@ class Module5_FileRepositoriesTest extends TestCase
             $this->testBinRoundTripStillWorks($tmp);
             $this->testTwoInstancesOnSameFileDoNotOverwriteEachOther($tmp);
             $this->testConcurrentProcessesDoNotLoseUpdates($tmp);
+            $this->testReadmeExample5HybridFactory($tmp);
 
             $u1 = new TestFileEntity("U1");
             $u2 = new TestFileEntity("U2");
@@ -81,6 +83,65 @@ class Module5_FileRepositoriesTest extends TestCase
             }
             @rmdir($tmp);
         }
+    }
+
+    /**
+     * Forward 014 / R13 (RN-09): o exemplo 5 do README roda como escrito com a fábrica nomeada
+     * InMemoryAndFileRepository::create(storagePath:, serializer:). O bloco abaixo é a transcrição
+     * do README (EN, "5. Decoupled Persistence & Hybrid L1/L2 Cache Tiering"), com o caminho temporário.
+     */
+    private function testReadmeExample5HybridFactory(string $tmp): void
+    {
+        $storagePath = $tmp . '/readme_ex5/customers.json'; // o diretório pai ainda não existe
+        $newCustomer = new TestFileEntity('Alice');
+
+        // High-speed RAM read performance (L1) with durable disk persistence (L2)
+        $repo = InMemoryAndFileRepository::create(
+            storagePath: $storagePath,
+            serializer: new JsonEntitySerializer(TestFileEntity::class)
+        );
+
+        $repo->put($newCustomer); // Stored in RAM and synchronized to disk atomically
+
+        // Sincronizado em disco
+        $this->assertTrue(file_exists($storagePath));
+        $this->assertTrue(filesize($storagePath) > 0);
+
+        // Lido da RAM (L1), sem passo extra de warmup
+        $this->assertTrue($repo->isWarmedUp());
+        $this->assertEquals(1, $repo->countAllEntities());
+        $found = $repo->findAll(new AllEntitiesSpecification(TestFileEntity::class));
+        $this->assertEquals(1, count($found));
+        $this->assertEquals('Alice', $found[0]->title);
+
+        // Camadas esperadas e identificador padrão
+        $this->assertTrue($repo->getMemoryCache() instanceof InMemoryRepository);
+        $this->assertTrue($repo->getFileBackend() instanceof SingleFileRepository);
+        $this->assertEquals(PersistenceDefinition::ReadWrite, $repo->getPersistenceDefinition());
+        $this->assertEquals('hybrid_customers.json', $repo->getRepositoryId());
+
+        // Durabilidade: uma segunda instância sobre o mesmo arquivo lê a entidade de volta
+        $again = InMemoryAndFileRepository::create(
+            storagePath: $storagePath,
+            serializer: new JsonEntitySerializer(TestFileEntity::class),
+            repositoryId: 'customers_l1l2'
+        );
+        $this->assertEquals(1, $again->countAllEntities());
+        $this->assertEquals('customers_l1l2', $again->getRepositoryId());
+        $this->assertEquals(
+            (string) $newCustomer->getEntityId(),
+            (string) $again->findAll(new AllEntitiesSpecification(TestFileEntity::class))[0]->getEntityId()
+        );
+
+        // Cache L1 fornecido pelo chamador é respeitado
+        $cache = new InMemoryRepository();
+        $withCache = InMemoryAndFileRepository::create($storagePath, new JsonEntitySerializer(TestFileEntity::class), $cache);
+        $this->assertTrue($withCache->getMemoryCache() === $cache);
+        $this->assertEquals(1, $cache->count(new AllEntitiesSpecification(TestFileEntity::class)));
+
+        $repo->close();
+        $again->close();
+        $withCache->close();
     }
 
     /**

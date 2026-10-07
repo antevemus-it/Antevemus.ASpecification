@@ -80,6 +80,31 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
+     * Creates a joint denial (logical NOR): satisfied only when NONE of the specifications is satisfied.
+     *
+     * Equivalent to: NOT (spec1 OR spec2 OR ...). No argument → tautology; one → its negation;
+     * two or more → `JointDenialSpecification`.
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification NOR specification
+     */
+    public function nor(ISpecification ...$specifications): ISpecification
+    {
+        return $this->logicalFactory->nor(...$specifications);
+    }
+
+    /**
+     * Alias for nor().
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification NOR specification
+     */
+    public function noneOf(ISpecification ...$specifications): ISpecification
+    {
+        return $this->logicalFactory->noneOf(...$specifications);
+    }
+
+    /**
      * Alias for allOf().
      *
      * Fluent usage: "shouldBeAllOf spec1, spec2"

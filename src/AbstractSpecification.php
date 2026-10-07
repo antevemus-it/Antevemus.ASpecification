@@ -33,6 +33,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use ReflectionClass;
 
@@ -135,8 +136,10 @@ abstract class AbstractSpecification implements ISpecification
      */
     public function toSql(
         \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect = 'ansi',
-        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause {
+        $fieldMap = Spec::resolveFieldMap($fieldMap, $fieldMapper);
         return (new \Antevemus\ASpecification\Sql\SqlQueryVisitor($dialect, $fieldMap))->translate($this);
     }
 
@@ -145,8 +148,10 @@ abstract class AbstractSpecification implements ISpecification
      */
     public function toCriteria(
         \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
-        array $properties = []
+        array $properties = [],
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): mixed {
+        $fieldMap = Spec::resolveFieldMap($fieldMap, $fieldMapper);
         return \Antevemus\ASpecification\Criteria\TCriteriaBuilder::fromSpecification($this, $fieldMap, $properties);
     }
 
@@ -172,6 +177,24 @@ abstract class AbstractSpecification implements ISpecification
         }
 
         return new PropertySpecification($this, $accessibleObjectName, $accessibleObjectSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function must(\Closure $predicate, ?string $code = null, ?string $message = null): ICompositeSpecification
+    {
+        // The leaf declares the same candidate type as this specification, so that typed composites
+        // (Spec::specify(T)) accept the conjunction.
+        $leaf = new PredicateSpecification($predicate, $this->getType());
+        if ($code !== null) {
+            $leaf = $leaf->withCode($code);
+        }
+        if ($message !== null) {
+            $leaf = $leaf->because($message);
+        }
+
+        return $this->and($leaf);
     }
 
     /**

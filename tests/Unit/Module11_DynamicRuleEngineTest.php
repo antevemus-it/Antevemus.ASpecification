@@ -24,10 +24,23 @@ use Antevemus\ASpecification\Engine\RuleDefinition;
 use Antevemus\ASpecification\Engine\RuleEngineVerdict;
 use Antevemus\ASpecification\Engine\RuleSpecificationRegistry;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
+use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Tests\TestCase;
 use InvalidArgumentException;
+use RuntimeException;
 use stdClass;
+
+/**
+ * Fixture: the Contract of README example 7.
+ */
+final class Module11Contract
+{
+    public function __construct(private int $occurrences) {}
+    public function getOccurrencesCount(): int { return $this->occurrences; }
+}
 
 /**
  * Module11_DynamicRuleEngineTest - Suíte de Testes para o Motor Dinâmico de Regras e Documentos
@@ -73,6 +86,133 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $this->testAnySetFailureIsAggregated();
         $this->testUnparseableConditionalExpressionIsRejected();
         $this->testCompiledRuleSpecificationIsTranslatableByVisitors();
+
+        // Forward 014 (README Promises I): R1 must() — o exemplo 7 do README roda como escrito.
+        $this->testReadmeExample7RunsAsWritten();
+        $this->testMustInlinePredicateContract();
+    }
+
+    /**
+     * Forward 014 RN-02 / RN-10: transcrição fiel do exemplo 7 do README (EN, v1.2.0 linhas 233-268).
+     * Antes do must(): "Call to undefined method AbstractCompositeSpecification@anonymous::must()".
+     */
+    private function testReadmeExample7RunsAsWritten(): void
+    {
+        $myCatalogRepository = new InMemoryRuleCatalog();
+        $myCatalogRepository->addRule(new RuleDefinition(
+            codigo: 'max_occ',
+            nome: 'Max occurrences per contract',
+            tipoRegra: 'max_occurrences_per_contract',
+            acaoAoViolar: RuleAction::BLOCK,
+            valorInteiro: 2,
+            fundamentoLegal: 'Art. X',
+            mensagemViolacao: 'Too many occurrences',
+            escopo: 'rental_contract',
+            cenario: 'activation'
+        ));
+        $myCatalogRepository->addRule(new RuleDefinition(
+            codigo: 'warn_occ',
+            nome: 'Watch occurrences',
+            tipoRegra: 'max_occurrences_per_contract',
+            acaoAoViolar: RuleAction::WARN,
+            valorInteiro: 1,
+            mensagemViolacao: 'Watch occurrences',
+            escopo: 'rental_contract'
+        ));
+        $contract = new Module11Contract(3);
+
+        // 1. Configure the Registry with pluggable rule handlers
+        $registry = Spec::ruleRegistry();
+        $registry->registerClosure('max_occurrences_per_contract', function ($rule) {
+            return Spec::specify(Module11Contract::class)
+                ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+        });
+
+        // 2. Instantiate the Engine connected to the relational catalog repository
+        $engine = Spec::engine($myCatalogRepository, $registry);
+
+        // 3. Validate target entity for a specific scope and scenario
+        $verdict = $engine->validate(
+            target: $contract,
+            escopo: 'rental_contract',
+            cenario: 'activation'
+        );
+
+        $this->assertTrue($verdict->hasBlockingErrors(), 'README ex. 7: contrato com 3 ocorrências deve bloquear');
+        $blocking = $verdict->getBlockingFailures();
+        $this->assertCount(1, $blocking);
+        $this->assertEquals('max_occ', $blocking[0]->code);
+        $this->assertEquals('Too many occurrences', $blocking[0]->message);
+        $this->assertEquals(['Art. X'], $verdict->getLegalBases());
+        $this->assertTrue($verdict->hasWarnings());
+        $this->assertEquals('warn_occ', $verdict->getWarningFailures()[0]->code);
+
+        $ok = $engine->validate(target: new Module11Contract(1), escopo: 'rental_contract', cenario: 'activation');
+        $this->assertFalse($ok->hasBlockingErrors());
+        $this->assertFalse($ok->hasWarnings());
+    }
+
+    /**
+     * Forward 014 RN-02: contrato de ISpecification::must().
+     */
+    private function testMustInlinePredicateContract(): void
+    {
+        // sem código nem mensagem: folha PredicateSpecification sem anotação
+        $plain = Spec::specify(stdClass::class)->must(fn($o) => $o->n > 1);
+        $this->assertTrue($plain->isSatisfiedBy((object) ['n' => 5]));
+        $this->assertFalse($plain->isSatisfiedBy((object) ['n' => 0]));
+        $res = $plain->evaluate((object) ['n' => 0]);
+        $this->assertFalse($res->isSatisfied);
+        $this->assertCount(1, $res->failures);
+        $this->assertTrue($res->failures[0]->code === null, 'sem withCode() a falha não tem código');
+        $this->assertTrue(str_contains($res->getReasons()[0], 'PredicateSpecification'));
+        $this->assertInstanceOf(PredicateSpecification::class, $plain->getRightSide());
+        $this->assertEquals(stdClass::class, $plain->getRightSide()->getType(), 'a folha herda o tipo declarado do composto');
+
+        // com código e mensagem
+        $annotated = Spec::specify(stdClass::class)->must(fn($o) => $o->n > 1, 'N_GT_1', 'n must exceed 1');
+        $res = $annotated->evaluate((object) ['n' => 0]);
+        $this->assertEquals(['N_GT_1'], $res->getCodes());
+        $this->assertEquals(['n must exceed 1'], $res->getReasons());
+
+        // exceção no predicado: propaga em isSatisfiedBy, vira erro em evaluate, NOT não aprova
+        $throwing = Spec::specify(stdClass::class)->must(fn($o) => throw new RuntimeException('boom'), 'X');
+        $this->assertThrows(RuntimeException::class, fn() => $throwing->isSatisfiedBy((object) []));
+        $err = $throwing->evaluate((object) []);
+        $this->assertTrue($err->isError);
+        $this->assertFalse($err->isSatisfied);
+        $this->assertFalse(Spec::not($throwing)->evaluate((object) [])->isSatisfied, 'NOT nunca aprova um erro');
+
+        // encadeia depois de where()/and() e em qualquer spec
+        $chained = Spec::specify(stdClass::class)
+            ->where('n', Spec::greaterThan(0))
+            ->must(fn($o) => $o->n % 2 === 0, 'EVEN', 'n must be even');
+        $this->assertTrue($chained->isSatisfiedBy((object) ['n' => 4]));
+        $this->assertFalse($chained->isSatisfiedBy((object) ['n' => 3]));
+        $this->assertEquals(['EVEN'], $chained->evaluate((object) ['n' => 3])->getCodes());
+        $leafChain = Spec::property('n', Spec::greaterThan(0))->must(fn($o) => $o->n < 10, 'LT10');
+        $this->assertTrue($leafChain->isSatisfiedBy((object) ['n' => 5]));
+        $this->assertEquals(['LT10'], $leafChain->evaluate((object) ['n' => 50])->getCodes());
+
+        // equals(): closure por identidade
+        $fn = fn($o) => true;
+        $this->assertTrue((new PredicateSpecification($fn))->equals(new PredicateSpecification($fn)));
+        $this->assertFalse((new PredicateSpecification($fn))->equals(new PredicateSpecification(fn($o) => true)));
+
+        // ALinq compila; SQL e TCriteria recusam com a mensagem da folha
+        $predicate = ALinqSpecificationVisitor::createPredicate($chained);
+        $this->assertTrue($predicate((object) ['n' => 4]));
+        $this->assertFalse($predicate((object) ['n' => 3]));
+        $sqlEx = $this->assertThrows(NonTranslatableSpecificationException::class, fn() => Spec::toSql($leafChain, 'pgsql'));
+        $this->assertTrue(str_contains($sqlEx->getMessage(), 'must()'), $sqlEx->getMessage());
+        if (!class_exists(\Adianti\Database\TCriteria::class)) {
+            foreach (glob(__DIR__ . '/../Stubs/Adianti/*.php') as $stub) {
+                require_once $stub;
+            }
+        }
+        $critEx = $this->assertThrows(NonTranslatableCriteriaException::class, fn() => Spec::toCriteria($leafChain));
+        $this->assertTrue(str_contains($critEx->getMessage(), 'must()'), $critEx->getMessage());
+        $this->assertThrows(NonTranslatableCriteriaException::class, fn() => Spec::toCriteria(Spec::not($leafChain)));
     }
 
     /**

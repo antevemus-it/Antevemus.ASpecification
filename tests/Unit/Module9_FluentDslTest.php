@@ -41,6 +41,7 @@ class Module9_FluentDslTest extends TestCase
         $this->testDslGlobalFunctionsViaUseFunction();
         $this->testChainedAndNotAndOrNotWithProperty();
         $this->testEdgeCasesAndValidationExceptions();
+        $this->testInWithSingleArrayIsSetMembership();
     }
 
     private function testStaticFacadeBasicMethods(): void
@@ -264,5 +265,62 @@ class Module9_FluentDslTest extends TestCase
         $res = $specInexistente->evaluate($candidato);
         $this->assertFalse($res->isSatisfied);
         $this->assertTrue(str_contains($res->failures[0]->message, "propriedadeInexistente"));
+    }
+
+    /**
+     * in() com um único argumento array trata o array como o conjunto de valores
+     * (idioma PHP: in([0, 2, 4]) ≡ in(0, 2, 4)). Antes, o array virava equalTo([0,2,4]).
+     */
+    private function testInWithSingleArrayIsSetMembership(): void
+    {
+        // --- Reprodução: um único array é o conjunto, via facade, DSL, fábrica e alias ---
+        $viaFacade = Spec::in([0, 2, 4]);
+        $this->assertTrue($viaFacade->isSatisfiedBy(0), 'Spec::in([0,2,4]) deve aceitar 0');
+        $this->assertTrue($viaFacade->isSatisfiedBy(2), 'Spec::in([0,2,4]) deve aceitar 2');
+        $this->assertTrue($viaFacade->isSatisfiedBy(4), 'Spec::in([0,2,4]) deve aceitar 4');
+        $this->assertFalse($viaFacade->isSatisfiedBy(1), 'Spec::in([0,2,4]) deve recusar 1');
+
+        $this->assertTrue(in(['x', 'y'])->isSatisfiedBy('y'), "DSL in(['x','y']) deve aceitar 'y'");
+        $this->assertFalse(in(['x', 'y'])->isSatisfiedBy('z'), "DSL in(['x','y']) deve recusar 'z'");
+
+        $factory = new SpecificationFactory();
+        $this->assertTrue($factory->in(['a', 'b'])->isSatisfiedBy('a'), "factory->in(['a','b']) deve aceitar 'a'");
+        $this->assertTrue($factory->isOneOfValues(['a', 'b'])->isSatisfiedBy('b'), "isOneOfValues(['a','b']) deve aceitar 'b'");
+
+        // Sob evaluate(): veredito, nunca erro de tipo (array × escalar)
+        $res = Spec::in([0, 2, 4])->evaluate(2);
+        $this->assertTrue($res->isSatisfied, 'in([0,2,4])->evaluate(2) deve satisfazer');
+        $this->assertFalse($res->isError, 'in([0,2,4])->evaluate(2) não pode ser erro');
+        $resFail = Spec::in([0, 2, 4])->evaluate(1);
+        $this->assertFalse($resFail->isSatisfied);
+        $this->assertFalse($resFail->isError, 'in([0,2,4])->evaluate(1) é falha, não erro');
+
+        // Array associativo: só os valores contam
+        $this->assertTrue(Spec::in(['first' => 10, 'second' => 20])->isSatisfiedBy(20));
+        $this->assertFalse(Spec::in(['first' => 10, 'second' => 20])->isSatisfiedBy(30));
+
+        // --- Regressão: forma variádica, vazio, array vazio, lista de arrays, escalar único ---
+        $this->assertTrue(Spec::in(1, 2, 3)->isSatisfiedBy(3));
+        $this->assertFalse(Spec::in(1, 2, 3)->isSatisfiedBy(4));
+        $this->assertFalse(Spec::in()->isSatisfiedBy(1), 'in() vazio é alwaysFalse');
+        $this->assertFalse(Spec::in([])->isSatisfiedBy(1), 'in([]) é alwaysFalse');
+        $this->assertFalse(Spec::in([])->isSatisfiedBy(null), 'in([]) é alwaysFalse até para null');
+
+        // Um único array de arrays é a lista de valores-array: cada elemento é comparado por ===
+        $this->assertTrue(Spec::in([[1, 2], [3]])->isSatisfiedBy([3]));
+        $this->assertTrue(Spec::in([[1, 2], [3]])->isSatisfiedBy([1, 2]));
+        $this->assertFalse(Spec::in([[1, 2], [3]])->isSatisfiedBy([2, 1]));
+
+        // Dois ou mais argumentos array continuam sendo valores-array (forma variádica intacta);
+        // escalar contra valor-array é tipo incompatível (RN-04 do adendo Q4VE), nunca false silencioso
+        $this->assertTrue(Spec::in([1, 2], [3])->isSatisfiedBy([1, 2]));
+        $this->assertThrows(
+            \Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException::class,
+            fn() => Spec::in([1, 2], [3])->isSatisfiedBy(1)
+        );
+
+        // Um único valor escalar continua igualdade simples
+        $this->assertTrue(Spec::in(7)->isSatisfiedBy(7));
+        $this->assertFalse(Spec::in(7)->isSatisfiedBy(8));
     }
 }

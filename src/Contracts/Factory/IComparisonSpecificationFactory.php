@@ -148,26 +148,33 @@ interface IComparisonSpecificationFactory extends ISpecificationFactory
      * Accepts raw values and creates equality specifications under the hood.
      * Equivalent to: equalTo(value1) OR equalTo(value2) OR equalTo(value3) OR ...
      *
+     * The values may be passed variadically or as a single array (PHP idiom):
+     * `in('active', 'pending')` and `in(['active', 'pending'])` are equivalent; only
+     * the array values are used (keys are ignored). An empty set (`in()` or `in([])`)
+     * yields a specification that never matches. To match against array values, pass
+     * a list of arrays (`in([[1, 2], [3]])`) or several array arguments.
+     *
      * Example:
      * <code>
      * $spec = $factory->in('active', 'pending', 'approved');
      * $spec->isSatisfiedBy('active');   // true
      * $spec->isSatisfiedBy('pending');  // true
      * $spec->isSatisfiedBy('rejected'); // false
+     * $factory->in(['active', 'pending'])->isSatisfiedBy('pending'); // true (same set)
      * </code>
      *
-     * @param mixed ...$values Set of allowed values
-     * @return ISpecification Set membership specification
-     * @throws \InvalidArgumentException If no values are provided
+     * @param mixed ...$values Set of allowed values, or a single array holding them
+     * @return ISpecification Set membership specification (never matches when the set is empty)
      */
     public function in(mixed ...$values): ISpecification;
 
     /**
      * Alias for in().
      *
-     * Fluent usage: "isOneOf 'active', 'pending', 'approved'"
+     * Fluent usage: "isOneOf 'active', 'pending', 'approved'". Accepts the same
+     * variadic or single-array forms as in().
      *
-     * @param mixed ...$values Set of allowed values
+     * @param mixed ...$values Set of allowed values, or a single array holding them
      * @return ISpecification
      */
     public function isOneOfValues(mixed ...$values): ISpecification;

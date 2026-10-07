@@ -25,6 +25,8 @@ use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
@@ -130,6 +132,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof NotSpecification =>
                 $this->visitNot($specification->getSpecification()),
 
+            // NOR = NOT (left OR right) = NOT left AND NOT right (De Morgan)
+            $specification instanceof JointDenialSpecification =>
+                $this->buildBinaryNotCriteria($specification->getLeftSide(), $specification->getRightSide(), TExpression::AND_OPERATOR),
+
             default => throw new NonTranslatableCriteriaException($specification, "Unknown composite specification node."),
         };
     }
@@ -180,6 +186,13 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
         if ($specification instanceof AlwaysFalseSpecification) {
             return new TFilter('1', '=', 0);
+        }
+
+        if ($specification instanceof PredicateSpecification) {
+            throw new NonTranslatableCriteriaException(
+                $specification,
+                "An inline PHP closure (must()) is opaque and cannot be converted to TCriteria; express the rule with property specifications."
+            );
         }
 
         $col = $this->currentProperty;
@@ -348,6 +361,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $inner instanceof OrSpecification =>
                 $this->buildBinaryNotCriteria($inner->getLeftSide(), $inner->getRightSide(), TExpression::AND_OPERATOR),
 
+            // NOT (NOR(a, b)) = a OR b
+            $inner instanceof JointDenialSpecification =>
+                $this->buildBinaryCriteria($inner->getLeftSide(), $inner->getRightSide(), TExpression::OR_OPERATOR),
+
             $inner instanceof PropertySpecification =>
                 $this->visitNotPropertySpecification($inner),
 
@@ -405,6 +422,13 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         if ($inner instanceof RuleBoundSpecification) {
             return $this->visitNotLeaf($inner->getInnerSpecification());
+        }
+
+        if ($inner instanceof PredicateSpecification) {
+            throw new NonTranslatableCriteriaException(
+                $inner,
+                "An inline PHP closure (must()) is opaque and cannot be converted to TCriteria; express the rule with property specifications."
+            );
         }
 
         $col = $this->currentProperty;

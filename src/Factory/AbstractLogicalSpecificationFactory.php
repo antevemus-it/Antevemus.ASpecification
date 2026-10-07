@@ -6,6 +6,8 @@ namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\ILogicalSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
+use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 
 /**
  * AbstractLogicalSpecificationFactory - Base abstract factory for logical specifications
@@ -64,6 +66,36 @@ abstract class AbstractLogicalSpecificationFactory implements ILogicalSpecificat
     public function neitherOf(ISpecification ...$specifications): ISpecification
     {
         return $this->not($this->anyOf(...$specifications));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * nor()            → AlwaysTrue (nothing to deny)
+     * nor(a)           → NOT a
+     * nor(a, b, c...)  → JointDenial(a, anyOf(b, c, ...)) = NOT (a OR b OR c ...)
+     */
+    public function nor(ISpecification ...$specifications): ISpecification
+    {
+        $count = count($specifications);
+        if ($count === 0) {
+            return new AlwaysTrueSpecification();
+        }
+        if ($count === 1) {
+            return $this->not($specifications[0]);
+        }
+
+        $first = array_shift($specifications);
+
+        return new JointDenialSpecification($first, $this->anyOf(...$specifications));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function noneOf(ISpecification ...$specifications): ISpecification
+    {
+        return $this->nor(...$specifications);
     }
 
     /**

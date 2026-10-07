@@ -51,6 +51,98 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->testMagicAdiantiPrefixesAreRejected();
         $this->testCaseInsensitiveSurvivesCriteriaPropagation();
         $this->testRealAdiantiHonorsCaseInsensitive();
+        $this->testReadmePtBrExample9Section3RunsAsWritten();
+        $this->testFieldMapperAliasOnCriteriaBridges();
+    }
+
+    /**
+     * Forward 014 (README Promises I), R12: transcrição fiel da seção 3 do exemplo 9 do README pt-BR
+     * (`withFieldMapping()`, `offset()`, `toCriteria()`), mais a seção 4 (`$spec->toCriteria()`).
+     * Antes: "Call to undefined method TCriteriaBuilder::withFieldMapping()".
+     */
+    private function testReadmePtBrExample9Section3RunsAsWritten(): void
+    {
+        // 1. Especificação de domínio com conjunção, disjunção e negação
+        $spec = Spec::property('ativo', Spec::equalTo(true))
+            ->and(
+                Spec::property('salario', Spec::greaterThan(5000))
+                    ->or(Spec::property('cidade', Spec::wildcard('São*')))
+            )
+            ->and(Spec::property('status', Spec::not(Spec::equalTo('CANCELADO'))));
+
+        // 3. Compilação fluente com paginação e ordenação encadeadas
+        $criteriaFluent = Spec::criteriaBuilder($spec)
+            ->withFieldMapping(['salario' => 'vl_salario'])
+            ->orderBy('vl_salario', 'desc')
+            ->limit(20)
+            ->offset(40)
+            ->groupBy('departamento_id')
+            ->toCriteria();
+
+        $this->assertInstanceOf(TCriteria::class, $criteriaFluent);
+        $this->assertEquals("((ativo = TRUE AND (vl_salario > 5000 OR cidade LIKE 'São%')) AND status <> 'CANCELADO')", $criteriaFluent->dump());
+        $this->assertEquals('vl_salario', $criteriaFluent->getProperty('order'));
+        $this->assertEquals('desc', $criteriaFluent->getProperty('direction'));
+        $this->assertEquals(20, $criteriaFluent->getProperty('limit'));
+        $this->assertEquals(40, $criteriaFluent->getProperty('offset'));
+        $this->assertEquals('departamento_id', $criteriaFluent->getProperty('group'));
+
+        // 4. Invocação direta a partir de qualquer instância de ISpecification
+        $criteriaFromInstance = $spec->toCriteria();
+        $this->assertInstanceOf(TCriteria::class, $criteriaFromInstance);
+        $this->assertEquals("((ativo = TRUE AND (salario > 5000 OR cidade LIKE 'São%')) AND status <> 'CANCELADO')", $criteriaFromInstance->dump());
+
+        // withFieldMapping() substitui o mapeamento do construtor e vale no build()
+        $replaced = Spec::criteriaBuilder($spec, ['salario' => 'x_errado'])
+            ->withFieldMapping(['salario' => 'vl_salario', 'status' => 'tp_status'])
+            ->toCriteria();
+        $this->assertEquals("((ativo = TRUE AND (vl_salario > 5000 OR cidade LIKE 'São%')) AND tp_status <> 'CANCELADO')", $replaced->dump());
+        $cleared = Spec::criteriaBuilder($spec, ['salario' => 'x_errado'])->withFieldMapping(null)->build();
+        $this->assertEquals("((ativo = TRUE AND (salario > 5000 OR cidade LIKE 'São%')) AND status <> 'CANCELADO')", $cleared->dump());
+
+        // offset() antes e depois de limit(): nenhum apaga o outro; limit(l, o) continua valendo
+        $a = Spec::criteriaBuilder($spec)->offset(40)->limit(20)->build();
+        $this->assertEquals(20, $a->getProperty('limit'));
+        $this->assertEquals(40, $a->getProperty('offset'));
+        $b = Spec::criteriaBuilder($spec)->limit(20)->offset(40)->build();
+        $this->assertEquals(20, $b->getProperty('limit'));
+        $this->assertEquals(40, $b->getProperty('offset'));
+        $c = Spec::criteriaBuilder($spec)->limit(20, 5)->offset(40)->build();
+        $this->assertEquals(40, $c->getProperty('offset'));
+        $d = Spec::criteriaBuilder($spec)->offset(40)->limit(20, 5)->build();
+        $this->assertEquals(5, $d->getProperty('offset'));
+
+        // toCriteria() é build()
+        $viaBuild = Spec::criteriaBuilder($spec)->limit(3)->build();
+        $viaAlias = Spec::criteriaBuilder($spec)->limit(3)->toCriteria();
+        $this->assertEquals($viaBuild->dump(), $viaAlias->dump());
+        $this->assertEquals($viaBuild->getProperty('limit'), $viaAlias->getProperty('limit'));
+    }
+
+    /**
+     * Forward 014, R3 (RN-04) nas pontes TCriteria: `fieldMapper:` em Spec::toCriteria(),
+     * Spec::criteriaBuilder() e no método de instância toCriteria().
+     */
+    private function testFieldMapperAliasOnCriteriaBridges(): void
+    {
+        $spec = Spec::property('ativo', Spec::equalTo(true));
+        $map = ['ativo' => 'fl_ativo'];
+
+        $this->assertEquals("(fl_ativo = TRUE)", Spec::toCriteria($spec, fieldMapper: $map)->dump());
+        $this->assertEquals("(fl_ativo = TRUE)", Spec::toCriteria($spec, fieldMap: $map, fieldMapper: $map)->dump());
+        $this->assertEquals("(fl_ativo = TRUE)", Spec::criteriaBuilder($spec, fieldMapper: $map)->toCriteria()->dump());
+        $this->assertEquals("(fl_ativo = TRUE)", $spec->toCriteria(fieldMapper: $map)->dump());
+        $this->assertEquals(7, Spec::toCriteria($spec, properties: ['limit' => 7], fieldMapper: $map)->getProperty('limit'));
+
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map) {
+            Spec::toCriteria($spec, fieldMap: $map, fieldMapper: ['ativo' => 'outra']);
+        });
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map) {
+            Spec::criteriaBuilder($spec, $map, ['ativo' => 'outra']);
+        });
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map) {
+            $spec->toCriteria($map, [], ['ativo' => 'outra']);
+        });
     }
 
     /**

@@ -102,7 +102,7 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
 
         if ($propertyValue === null) {
             return SpecificationResult::failure(
-                message: sprintf("Property '%s' is null on candidate object.", $this->propertyName),
+                message: $this->customReason ?? sprintf("Property '%s' is null on candidate object.", $this->propertyName),
                 code: $this->customCode,
                 ruleName: 'PropertySpecification',
                 property: $this->propertyName
@@ -119,20 +119,25 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             $propResult->failures
         );
 
-        if (!$propResult->isError && ($this->customReason !== null || $this->customCode !== null)) {
-            array_unshift(
-                $annotatedFailures,
-                new SpecificationFailure(
-                    message: $this->customReason ?? sprintf("Violation on property '%s'.", $this->propertyName),
-                    code: $this->customCode,
-                    ruleName: 'PropertySpecification',
-                    property: $this->propertyName
-                )
+        // Error state of the inner evaluation (e.g. incompatible candidate type) is preserved and never
+        // absorbed by because()/withCode(): an error is not a rule failure.
+        if ($propResult->isError) {
+            return new SpecificationResult(false, $annotatedFailures, true, $propResult->exception);
+        }
+
+        if ($this->customReason !== null || $this->customCode !== null) {
+            // Annotated property reports exactly ONE failure: its own, carrying message, code and property.
+            // The inner leaf failures are kept as diagnostic causes, never exposed as code-less siblings.
+            return SpecificationResult::failure(
+                message: $this->customReason ?? sprintf("Violation on property '%s'.", $this->propertyName),
+                code: $this->customCode,
+                ruleName: 'PropertySpecification',
+                property: $this->propertyName,
+                metadata: ['causes' => $annotatedFailures]
             );
         }
 
-        // Error state of the inner evaluation (e.g. incompatible candidate type) is preserved.
-        return new SpecificationResult(false, $annotatedFailures, $propResult->isError, $propResult->exception);
+        return new SpecificationResult(false, $annotatedFailures);
     }
 
     /**

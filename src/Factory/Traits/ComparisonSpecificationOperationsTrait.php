@@ -104,9 +104,10 @@ trait ComparisonSpecificationOperationsTrait
     /**
      * Creates set membership specification (OR of equalities).
      *
-     * @param mixed ...$values Set of allowed values
+     * Values may be passed variadically or as a single array; an empty set never matches.
+     *
+     * @param mixed ...$values Set of allowed values, or a single array holding them
      * @return ISpecification Set membership specification
-     * @throws \InvalidArgumentException If no values are provided
      */
     public function in(mixed ...$values): ISpecification
     {

@@ -11,7 +11,7 @@ declare(strict_types=1);
  *
  * Features:
  * - Fluent candidate root specification initiation (specify)
- * - Logical predicate composition (allOf, anyOf, not)
+ * - Logical predicate composition (allOf, anyOf, not, nor, noneOf)
  * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in)
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
@@ -125,6 +125,30 @@ function not(ISpecification $specification): ISpecification
 }
 
 /**
+ * Creates a joint denial (logical NOR) specification satisfied only when NONE of the given specifications is met.
+ *
+ * Equivalent to NOT (a OR b OR ...). Returns AlwaysTrueSpecification if no arguments are provided.
+ *
+ * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+ * @return ISpecification NOR specification
+ */
+function nor(ISpecification ...$specifications): ISpecification
+{
+    return Spec::nor(...$specifications);
+}
+
+/**
+ * Alias for nor().
+ *
+ * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+ * @return ISpecification NOR specification
+ */
+function noneOf(ISpecification ...$specifications): ISpecification
+{
+    return Spec::noneOf(...$specifications);
+}
+
+/**
  * Creates an identity/strict equality specification for the given value.
  *
  * @param mixed $value Expected value
@@ -226,7 +250,10 @@ function lessThanOrEqualTo(mixed $value): ISpecification
 /**
  * Creates a set membership specification (equivalent to IN / disjunction of equalities).
  *
- * @param mixed ...$values Set of accepted values
+ * The values may be passed variadically or as a single array: `in(0, 2, 4)` and
+ * `in([0, 2, 4])` are equivalent. An empty set never matches.
+ *
+ * @param mixed ...$values Set of accepted values, or a single array holding them
  * @return ISpecification Disjunctive set membership specification
  */
 function in(mixed ...$values): ISpecification

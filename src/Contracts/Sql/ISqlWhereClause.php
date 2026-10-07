@@ -15,10 +15,11 @@ use Stringable;
  * Features:
  * - Direct textual SQL expression retrieval
  * - Access to associated named parameter map (:p1 => value)
+ * - README aliases getSql() / getBindings() for the two accessors above
  * - Empty clause verification
  * - Stringable implementation for clean string interpolation
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -40,6 +41,25 @@ interface ISqlWhereClause extends Stringable
      * @return array<string, mixed>
      */
     public function getParameters(): array;
+
+    /**
+     * Alias of toSql(): the name used by the README and by PDO-oriented callers.
+     *
+     * toSql() remains the canonical accessor; this method never diverges from it.
+     *
+     * @return string
+     */
+    public function getSql(): string;
+
+    /**
+     * Alias of getParameters(): the name used by the README and by PDO-oriented callers.
+     *
+     * Returns the same associative map, with the same ':param' keys.
+     * getParameters() remains the canonical accessor; this method never diverges from it.
+     *
+     * @return array<string, mixed>
+     */
+    public function getBindings(): array;
 
     /**
      * Indicate whether the generated clause is empty (unconstrained).

@@ -21,6 +21,8 @@ use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
@@ -134,6 +136,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof NotSpecification =>
                 $this->visitNotSpecification($specification),
 
+            $specification instanceof JointDenialSpecification =>
+                $this->visitJointDenialSpecification($specification),
+
             $specification instanceof AlwaysTrueSpecification =>
                 new SqlWhereClause($this->dialect->getTrueCondition()),
 
@@ -180,6 +185,21 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
+     * Translate a joint denial (NOR) as NOT (left OR right).
+     *
+     * @param JointDenialSpecification $specification
+     * @return SqlWhereClause
+     */
+    private function visitJointDenialSpecification(JointDenialSpecification $specification): SqlWhereClause
+    {
+        $inner = $this->visit($specification->getLeftSide())->or($this->visit($specification->getRightSide()));
+        if ($inner->isEmpty()) {
+            return SqlWhereClause::empty();
+        }
+        return new SqlWhereClause("NOT ({$inner->sql})", $inner->parameters);
+    }
+
+    /**
      * Process generic composite specifications by aggregating children via AND.
      *
      * @param ICompositeSpecification $specification
@@ -205,6 +225,13 @@ class SqlQueryVisitor implements ISpecificationVisitor
     {
         if ($specification instanceof RuleBoundSpecification) {
             return $this->visit($specification->getInnerSpecification());
+        }
+
+        if ($specification instanceof PredicateSpecification) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                'An inline PHP closure (must()) is opaque and cannot be translated to SQL; express the rule with property specifications.'
+            );
         }
 
         $col = $this->currentColumn;

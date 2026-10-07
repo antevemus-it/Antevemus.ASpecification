@@ -11,10 +11,6 @@ use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
-use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
-use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
-use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
-use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
@@ -24,8 +20,6 @@ use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
-use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
-use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Closure;
 
 /**
@@ -41,7 +35,13 @@ use Closure;
  * - Evaluation of relational and pattern leaves (=, !=, <, <=, >, >=, regex, wildcard, case-insensitive)
  * - Direct execution compatible with ALinqCollection::where() and ALinqQueryBuilder
  *
- * @version    1.1.0
+ * Parity contract: for the same candidate, the compiled predicate returns exactly what the
+ * specification's own isSatisfiedBy()/evaluate() would decide, and throws the same typed
+ * exceptions (IncompatibleTypeException on type mismatch, InvalidArgumentException on a
+ * missing property). Leaves are only short-circuited when their semantics are provably
+ * identical to the core; every other leaf delegates to its own isSatisfiedBy().
+ *
+ * @version    1.2.1
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -138,18 +138,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         }
 
         return match (true) {
-            $specification instanceof EqualSpecification =>
-                fn(mixed $candidate): bool => $candidate == $specification->getValue(),
-
-            $specification instanceof NotEqualSpecification =>
-                fn(mixed $candidate): bool => $candidate != $specification->getValue(),
-
-            $specification instanceof GreaterThanSpecification =>
-                fn(mixed $candidate): bool => $candidate > $specification->getValue(),
-
-            $specification instanceof LessThanSpecification =>
-                fn(mixed $candidate): bool => $candidate < $specification->getValue(),
-
+            // Shortcuts kept only where the semantics are identical to the leaf's isSatisfiedBy().
             $specification instanceof NotNullSpecification =>
                 fn(mixed $candidate): bool => $candidate !== null,
 
@@ -157,13 +146,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
                 fn(mixed $candidate): bool => is_string($candidate) && strcasecmp($candidate, $specification->getValue()) === 0,
 
             $specification instanceof RegexSpecification =>
-                fn(mixed $candidate): bool => is_string($candidate) && (bool)preg_match($specification->getPattern(), $candidate),
-
-            $specification instanceof WildcardSpecification =>
-                $this->compileWildcard($specification->getPattern(), false),
-
-            $specification instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification =>
-                $this->compileWildcard($specification->getPattern(), true),
+                fn(mixed $candidate): bool => is_string($candidate) && preg_match($specification->getPattern(), $candidate) === 1,
 
             $specification instanceof CollectionSpecification =>
                 $this->compileCollectionSpecification($specification),
@@ -174,8 +157,11 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof AlwaysFalseSpecification =>
                 fn(mixed $candidate): bool => false,
 
+            // Comparison leaves (Equal, NotEqual, GreaterThan, LessThan, LooseEqual), wildcard leaves
+            // (fnmatch semantics) and custom leaves: the leaf itself is the only source of truth.
+            // Strictness, IncompatibleTypeException and scalar candidates are inherited from it.
             default =>
-                fn(mixed $candidate): bool => $specification->isSatisfiedBy(is_object($candidate) ? $candidate : null),
+                fn(mixed $candidate): bool => $specification->isSatisfiedBy($candidate),
         };
     }
 
@@ -185,18 +171,36 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     private function compilePropertySpecification(PropertySpecification $specification): Closure
     {
         $propertyName = $specification->getPropertyName();
+        $basePredicate = $this->visit($specification->getLeftSide());
         $innerPredicate = $this->visit($specification->getPropertySpecification());
 
-        return function(mixed $candidate) use ($propertyName, $innerPredicate): bool {
-            if ($candidate === null) {
+        // Mirrors PropertySpecification::evaluate(): non-inspectable candidate and null property
+        // value never satisfy; a missing property is an evaluation error, never a false that a
+        // NOT could turn into approval.
+        return function(mixed $candidate) use ($propertyName, $basePredicate, $innerPredicate): bool {
+            if ($candidate === null || (!is_object($candidate) && !is_array($candidate))) {
+                return false;
+            }
+
+            if (!$basePredicate($candidate)) {
                 return false;
             }
 
             if (!PropertyAccessor::hasProperty($candidate, $propertyName)) {
-                return false;
+                throw new \InvalidArgumentException(
+                    sprintf(
+                        'Property "%s" not found or not accessible on candidate of type "%s"',
+                        $propertyName,
+                        is_object($candidate) ? get_class($candidate) : gettype($candidate)
+                    )
+                );
             }
 
             $value = PropertyAccessor::getValue($candidate, $propertyName);
+            if ($value === null) {
+                return false;
+            }
+
             return $innerPredicate($value);
         };
     }
@@ -242,19 +246,6 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         $right = $this->visit($specification->getRightSide());
 
         return fn(mixed $candidate): bool => !$left($candidate) && !$right($candidate);
-    }
-
-    /**
-     * Compile wildcard pattern matching.
-     */
-    private function compileWildcard(string $pattern, bool $caseInsensitive): Closure
-    {
-        $regex = '/^' . str_replace(['\*', '\?'], ['.*', '.'], preg_quote($pattern, '/')) . '$/';
-        if ($caseInsensitive) {
-            $regex .= 'i';
-        }
-
-        return fn(mixed $candidate): bool => is_string($candidate) && (bool)preg_match($regex, $candidate);
     }
 
     /**

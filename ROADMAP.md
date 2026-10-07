@@ -22,41 +22,55 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 - **Description:** Evaluation errors became a first-class `error` state (never inverted by `NOT`), comparisons refuse incompatible types (`looselyEqualTo()` as the opt-in), the Dynamic Rule Engine binds every compiled rule to its catalog definition, the document matrix got exact scope/scenario matching with mandatory alternative sets, `equals()` entered the specification contract, and file repositories gained cross-process locking.
 - **Goal:** No silently wrong verdicts: every ambiguity found by the 2026-10 technical review now either evaluates correctly or fails loudly at compilation.
 
+### 5. README Promises I: Every Documented Example Runs 📘 (Shipped in v1.3.0)
+- **Description:** The 2026-10 line-by-line README audit executed every code block against the library and found APIs the README promises that do not exist yet. This milestone implements the additive ones so that all eleven README examples run as written: `specify(T)->must(closure, code, message)` (inline rule with code and message, README example 7), `ISqlWhereClause::getSql()`/`getBindings()` beside `toSql()`/`getParameters()` (example 8), `Spec::toSql(fieldMapper: ...)` accepted beside `fieldMap:` (example 8), the `not_blank` operator and the `value:` parameter of `#[ValidateRule]` (example 11), `Spec::nor()`/`noneOf()` and the DSL `nor()` exposing `JointDenialSpecification` (Core Features), `TCriteriaBuilder::withFieldMapping()`, `offset()` and `toCriteria()` (pt-BR example 9), and a named factory `InMemoryAndFileRepository::create(storagePath:, serializer:)` (example 5).
+- **Goal:** No README promise without code behind it. Each item ships with the README example itself as its test.
+
 ---
 
-## 🎯 Short-Term Milestones (v1.2.x - v1.3.x)
+## 🎯 Short-Term Milestones (v1.4.x)
 
-### 5. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
+### 6. README Promises II: Inter-Process, Unicode, Lazy Sources & Relational Catalog 🧵
+- **Description:** The remaining README promises that change observable behaviour: `SemaphoreSynchronizer` backed by SysV IPC (`sem_get`) when `ext-sysvsem` is available (in-process fallback documented), Unicode-aware case-insensitive string specifications via `mb_*` (`ext-mbstring`), a truly lazy repository source for `findAsLazyCollection()` (iterator, no `getAll()` materialisation), a typed bridge contract for ALinq collections with `antevemus/alinq-collection` declared in `suggest`, a PDO-backed `IRuleCatalog` mirroring the relational rule and document tables, and `IN (...)` translation of `in()` value sets by the SQL and TCriteria visitors (today emitted as a chain of `OR` equalities).
+- **Goal:** The Requirements and Core Features sections describe what the code does.
+- **Target Release:** v1.4.0
+
+### 7. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Add native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets.
 - **Goal:** Enable multi-node high-throughput deployments with distributed cache invalidation across microservices and cluster nodes.
-- **Target Release:** v1.3.0
+- **Target Release:** v1.4.0
 
-### 6. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
+### 8. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Provide bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
 - **Goal:** Unify frontend querying capabilities with domain-layer business validation and database query projection.
-- **Target Release:** v1.3.0
+- **Target Release:** v1.4.0
 
 ---
 
-## 🚀 Medium-Term Milestones (v1.4.x - v1.5.x)
+## 🚀 Medium-Term Milestones (v1.5.x)
 
-### 7. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
+### 9. Parameterized Reflection Specifications & Tautology/Contradiction Detection 🔬
+- **Description:** `Specifications/Reflection/` (`FieldParameterizedSpecification`, `MethodParameterizedSpecification`) and structural detection of tautologies and contradictions (`A ∧ ¬A`, `A ∨ ¬A`, disjoint leaves through `isDisjointWith`, absorbing `alwaysTrue()`/`alwaysFalse()`), both promised by the README. Each gets its own forward specification before code.
+- **Goal:** Close the last two README promises of the 2026-10 audit.
+- **Target Release:** v1.5.0
+
+### 10. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** Build dedicated GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`.
-- **Goal:** Expand our query-level SQL translation capabilities (currently supporting 12 SQL dialects and Adianti TCriteria) to the two most popular ORM ecosystems in the PHP world.
-- **Target Release:** v1.4.0
+- **Goal:** Expand our query-level SQL translation capabilities (currently supporting 12 database drivers over 7 SQL dialects, and Adianti TCriteria) to the two most popular ORM ecosystems in the PHP world.
+- **Target Release:** v1.5.0
 
 ---
 
 ## 🔮 Long-Term Vision (v2.0+)
 
-### 8. Reactive Domain Event Sourcing Triggers 📡
+### 11. Reactive Domain Event Sourcing Triggers 📡
 - **Description:** Reactive domain event emitter that triggers Domain Events whenever an entity transitions into or out of satisfying critical domain specifications.
 - **Goal:** Seamless integration with Event Sourcing, Outbox Pattern, and CQRS architectures.
 
-### 9. AI-Assisted Specification Synthesizer 🤖
+### 12. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees and Venn set subsumption models from domain stories or plain text business requirements.
 
-### 10. PHP Fibers & Non-Blocking Async Specification Runner ⚡
+### 13. PHP Fibers & Non-Blocking Async Specification Runner ⚡
 - **Description:** Provide an optional asynchronous specification evaluation runner powered by native PHP 8.1+ Fibers and Revolt Event Loop for executing I/O-bound composite specification branches (remote REST APIs, gRPC fraud checks, external microservices) concurrently in parallel, reducing total latency by up to 60%.
 - **Goal:** Parity with modern asynchronous evaluation while keeping the core library 100% zero-dependency and synchronous for traditional PHP-FPM environments.
 - **Target Release:** v2.0.0 (or `antevemus/aspecification-async`)

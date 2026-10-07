@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Attributes;
 
 use Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException;
+use Antevemus\ASpecification\Attributes\Exceptions\UnknownRuleOperatorException;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
@@ -22,7 +23,9 @@ use ReflectionProperty;
  * - Full PHP 8.4 Reflection inspection across public, protected, and private members
  * - Automatic instantiation and caching of parameterless ISpecification instances
  * - Evaluation of class-level aggregate specifications and field-level property specifications
- * - Inline operator evaluation (relational, range, regex, email, nullability)
+ * - Inline operator evaluation (relational, range, regex, email, nullability) over the closed
+ *   catalog ValidateRule::OPERATORS; an unknown operator raises UnknownRuleOperatorException
+ *   (configuration error) instead of being reported as a violation of the candidate
  * - Result aggregation into rich, notification-pattern SpecificationResult instances
  *
  * @version    1.1.0
@@ -44,6 +47,8 @@ final class AttributeValidator
      *
      * @param object $target The target object (DTO, Entity, Form Request, Value Object)
      * @return SpecificationResult The evaluation verdict containing all failure diagnostics
+     * @throws UnknownRuleOperatorException When a #[ValidateRule] names an operator outside
+     *         ValidateRule::OPERATORS (raised while instantiating the attribute; never a failure)
      */
     public static function validate(object $target): SpecificationResult
     {
@@ -161,7 +166,8 @@ final class AttributeValidator
      * Validate an object and throw AttributeValidationException on any violation.
      *
      * @param object $target
-     * @throws AttributeValidationException
+     * @throws AttributeValidationException On any violation of the candidate
+     * @throws UnknownRuleOperatorException On a #[ValidateRule] with an operator outside the catalog
      */
     public static function assert(object $target): void
     {
@@ -213,10 +219,12 @@ final class AttributeValidator
      * @param string $operator Validation operator
      * @param mixed $expected Expected value, threshold, or pattern
      * @return bool
+     * @throws UnknownRuleOperatorException When the operator is not in ValidateRule::OPERATORS
+     *         (defense in depth: ValidateRule already refuses it at construction)
      */
     private static function evaluateRule(mixed $value, string $operator, mixed $expected): bool
     {
-        $normalizedOp = strtolower(trim($operator));
+        $normalizedOp = ValidateRule::normalizeOperator($operator);
 
         return match ($normalizedOp) {
             '=', '==' => $value == $expected,
@@ -235,8 +243,15 @@ final class AttributeValidator
             'null' => $value === null,
             'notempty', 'not_empty' => !empty($value),
             'empty' => empty($value),
+            // not_blank: a string must have visible content; an array must have elements; any other
+            // value counts as present unless it is null or false (0 and 0.0 are present, unlike 'not_empty').
+            'not_blank', 'notblank' => match (true) {
+                is_string($value) => trim($value) !== '',
+                is_array($value) => $value !== [],
+                default => $value !== null && $value !== false,
+            },
             'email' => is_string($value) && filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
-            default => false,
+            default => throw new UnknownRuleOperatorException($operator, ValidateRule::OPERATORS),
         };
     }
 }

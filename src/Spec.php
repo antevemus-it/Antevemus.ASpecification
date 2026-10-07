@@ -140,6 +140,31 @@ final class Spec
         return self::getFactory()->not($specification);
     }
 
+    /**
+     * Creates a joint denial (logical NOR): satisfied only when NONE of the given specifications is met.
+     *
+     * Equivalent to NOT (a OR b OR ...). No argument → tautology; one → its negation;
+     * two or more → `JointDenialSpecification`.
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification
+     */
+    public static function nor(ISpecification ...$specifications): ISpecification
+    {
+        return self::getFactory()->nor(...$specifications);
+    }
+
+    /**
+     * Alias for nor().
+     *
+     * @param ISpecification ...$specifications Specifications that must all be unsatisfied
+     * @return ISpecification
+     */
+    public static function noneOf(ISpecification ...$specifications): ISpecification
+    {
+        return self::getFactory()->noneOf(...$specifications);
+    }
+
     // ==========================================
     // 3. Value Comparison and Identity
     // ==========================================
@@ -250,7 +275,12 @@ final class Spec
     /**
      * Specifies that candidate value must belong to the given set.
      *
-     * @param mixed ...$values Accepted values
+     * Accepts the values as variadic arguments or as a single array (PHP idiom):
+     * `Spec::in(0, 2, 4)` and `Spec::in([0, 2, 4])` are equivalent. An empty set
+     * (`in()` or `in([])`) never matches. To match against array values, pass a
+     * list of arrays (`in([[1, 2], [3]])`) or several array arguments.
+     *
+     * @param mixed ...$values Accepted values, or a single array holding them
      * @return ISpecification
      */
     public static function in(mixed ...$values): ISpecification
@@ -702,14 +732,45 @@ final class Spec
      * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to translate
      * @param \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect Target dialect (pgsql, mysql, sqlsrv, oracle, firebird, etc.)
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Optional property-to-column mapping
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
      * @return \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause
+     * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
     public static function toSql(
         \Antevemus\ASpecification\Contracts\ISpecification $specification,
         \Antevemus\ASpecification\Contracts\Sql\ISqlDialect|\Antevemus\ASpecification\Sql\SqlDialect|string $dialect = 'ansi',
-        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): \Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause {
+        $fieldMap = self::resolveFieldMap($fieldMap, $fieldMapper);
         return (new \Antevemus\ASpecification\Sql\SqlQueryVisitor($dialect, $fieldMap))->translate($specification);
+    }
+
+    /**
+     * Resolves the property-to-column mapping from its two accepted parameter names.
+     *
+     * `fieldMap` is the canonical name; `fieldMapper` is the alias used by the README.
+     * Either one may be given. When both are given they must be identical (same mapper
+     * instance, same closure, or arrays with the same pairs), otherwise the call is ambiguous.
+     *
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper
+     * @return \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null
+     * @throws \InvalidArgumentException When both are given and differ
+     */
+    public static function resolveFieldMap(
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper
+    ): \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null {
+        if ($fieldMap === null) {
+            return $fieldMapper;
+        }
+        if ($fieldMapper !== null && $fieldMapper !== $fieldMap) {
+            throw new \InvalidArgumentException(
+                'Ambiguous field mapping: "fieldMap" and its alias "fieldMapper" were both given with different values; pass only one of them.'
+            );
+        }
+        return $fieldMap;
     }
 
     /**
@@ -736,13 +797,17 @@ final class Spec
      * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to translate
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Optional property-to-column mapping
      * @param array<string, mixed> $properties Criteria options ('order', 'limit', 'offset', 'direction', 'group')
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
      * @return mixed TCriteria instance
+     * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
     public static function toCriteria(
         \Antevemus\ASpecification\Contracts\ISpecification $specification,
         \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
-        array $properties = []
+        array $properties = [],
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): mixed {
+        $fieldMap = self::resolveFieldMap($fieldMap, $fieldMapper);
         return \Antevemus\ASpecification\Criteria\TCriteriaBuilder::fromSpecification($specification, $fieldMap, $properties);
     }
 
@@ -751,12 +816,16 @@ final class Spec
      *
      * @param \Antevemus\ASpecification\Contracts\ISpecification $specification Specification to compile
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Field mapper
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
      * @return \Antevemus\ASpecification\Criteria\TCriteriaBuilder
+     * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
     public static function criteriaBuilder(
         \Antevemus\ASpecification\Contracts\ISpecification $specification,
-        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
     ): \Antevemus\ASpecification\Criteria\TCriteriaBuilder {
+        $fieldMap = self::resolveFieldMap($fieldMap, $fieldMapper);
         return new \Antevemus\ASpecification\Criteria\TCriteriaBuilder($specification, $fieldMap);
     }
 

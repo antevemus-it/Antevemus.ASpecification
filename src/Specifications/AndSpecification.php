@@ -7,7 +7,6 @@ namespace Antevemus\ASpecification\Specifications;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
@@ -62,13 +61,16 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
 
         $combined = SpecificationResult::combine($leftResult, $rightResult);
 
-        if (!$combined->isSatisfied && ($this->customReason !== null || $this->customCode !== null)) {
-            $topFailure = new SpecificationFailure(
+        if (!$combined->isSatisfied && !$combined->isError && ($this->customReason !== null || $this->customCode !== null)) {
+            // Annotated conjunction reports exactly ONE failure: its own, carrying message and code.
+            // The branch failures are kept as diagnostic causes, never exposed as siblings.
+            // An error result is never absorbed by the annotation.
+            return SpecificationResult::failure(
                 message: $this->customReason ?? "Conjunction (AND) violated.",
                 code: $this->customCode,
-                ruleName: 'AndSpecification'
+                ruleName: 'AndSpecification',
+                metadata: ['causes' => $combined->failures]
             );
-            return $combined->withLeadingFailures([$topFailure]);
         }
 
         return $combined;

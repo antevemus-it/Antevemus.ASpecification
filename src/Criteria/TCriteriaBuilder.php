@@ -20,9 +20,10 @@ use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
  * - Fluent pagination configuration (limit, offset)
  * - Fluent sorting specification (orderBy, direction)
  * - Fluent grouping configuration (groupBy)
- * - Support for object-relational property name mapping
+ * - Support for object-relational property name mapping (constructor or withFieldMapping())
+ * - README aliases: withFieldMapping(), offset(), toCriteria()
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,7 +32,8 @@ use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
  */
 class TCriteriaBuilder
 {
-    private readonly CriteriaSpecificationVisitor $visitor;
+    /** @var IFieldMapper|array<string, string>|callable(string): string|null */
+    private mixed $fieldMapper;
     private array $properties = [];
 
     /**
@@ -42,7 +44,7 @@ class TCriteriaBuilder
         private readonly ISpecification $specification,
         IFieldMapper|array|callable|null $fieldMapper = null
     ) {
-        $this->visitor = new CriteriaSpecificationVisitor($fieldMapper);
+        $this->fieldMapper = $fieldMapper;
     }
 
     /**
@@ -95,6 +97,21 @@ class TCriteriaBuilder
     }
 
     /**
+     * Define (or replace) the property-to-column mapping applied when the criteria is built.
+     *
+     * Fluent alternative to the constructor argument, as used by the README:
+     * `Spec::criteriaBuilder($spec)->withFieldMapping(['salario' => 'vl_salario'])`.
+     *
+     * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper Mapper, dictionary, callable, or null to clear
+     * @return static
+     */
+    public function withFieldMapping(IFieldMapper|array|callable|null $fieldMapper): static
+    {
+        $this->fieldMapper = $fieldMapper;
+        return $this;
+    }
+
+    /**
      * Define the query sorting column and direction.
      *
      * @param string $column Column name to sort by
@@ -111,13 +128,32 @@ class TCriteriaBuilder
     /**
      * Set query pagination boundaries.
      *
+     * The offset is only touched when given, so `->offset(40)->limit(20)` and
+     * `->limit(20)->offset(40)` both yield limit 20 / offset 40.
+     *
      * @param int $limit Maximum number of records
-     * @param int $offset Starting zero-based offset
+     * @param int|null $offset Starting zero-based offset (null keeps any offset already set)
      * @return self
      */
-    public function limit(int $limit, int $offset = 0): self
+    public function limit(int $limit, ?int $offset = null): self
     {
         $this->properties['limit'] = $limit;
+        if ($offset !== null) {
+            $this->properties['offset'] = $offset;
+        }
+        return $this;
+    }
+
+    /**
+     * Set the starting zero-based offset, keeping any limit already defined.
+     *
+     * Fluent alias used by the README: `->limit(20)->offset(40)`.
+     *
+     * @param int $offset Starting zero-based offset
+     * @return static
+     */
+    public function offset(int $offset): static
+    {
         $this->properties['offset'] = $offset;
         return $this;
     }
@@ -141,7 +177,8 @@ class TCriteriaBuilder
      */
     public function build(): TCriteria
     {
-        $criteria = $this->visitor->buildCriteria($this->specification);
+        $visitor = new CriteriaSpecificationVisitor($this->fieldMapper);
+        $criteria = $visitor->buildCriteria($this->specification);
 
         foreach ($this->properties as $property => $value) {
             if ($value !== null && $value !== '') {
@@ -150,5 +187,15 @@ class TCriteriaBuilder
         }
 
         return $criteria;
+    }
+
+    /**
+     * Alias of build(), the name used by the README.
+     *
+     * @return TCriteria
+     */
+    public function toCriteria(): TCriteria
+    {
+        return $this->build();
     }
 }

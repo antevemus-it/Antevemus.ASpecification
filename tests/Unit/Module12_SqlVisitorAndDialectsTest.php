@@ -57,6 +57,94 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testNonTranslatableException();
         $this->testSqlWhereClauseComposition();
         $this->testIdentifierInjectionIsRejected();
+        $this->testReadmeExample8RunsAsWritten();
+        $this->testFieldMapperAliasResolution();
+    }
+
+    /**
+     * Forward 014 (README Promises I), R2 + R3: transcrição fiel do exemplo 8 do README
+     * (Spec::toSql(fieldMapper:), getSql(), getBindings()), com as saídas que o README imprime.
+     * Antes: "Unknown named parameter $fieldMapper"; corrigido isso, getSql()/getBindings() inexistentes.
+     */
+    private function testReadmeExample8RunsAsWritten(): void
+    {
+        // 1. Build pure domain specification
+        $spec = Spec::property('active', Spec::equalTo(true))
+            ->and(
+                Spec::property('salary', Spec::greaterThan(5000))
+                    ->or(Spec::property('city', Spec::wildcard('New*')))
+            );
+
+        // 2. Compile to PostgreSQL with domain-to-column mapping
+        $whereClause = Spec::toSql(
+            specification: $spec,
+            dialect: SqlDialect::POSTGRESQL,
+            fieldMapper: [
+                'active' => 'is_active',
+                'salary' => 'val_salary',
+                'city'   => 'txt_city'
+            ]
+        );
+
+        $this->assertInstanceOf(ISqlWhereClause::class, $whereClause);
+        $this->assertEquals('("is_active" = TRUE AND ("val_salary" > :p1 OR "txt_city" LIKE :p2))', $whereClause->getSql());
+        $this->assertEquals([':p1' => 5000, ':p2' => 'New%'], $whereClause->getBindings());
+
+        // Os aliases nunca divergem dos acessores canônicos
+        $this->assertEquals($whereClause->toSql(), $whereClause->getSql());
+        $this->assertEquals($whereClause->getParameters(), $whereClause->getBindings());
+
+        // 3. First-class support for 12 database drivers across 7 SQL dialects
+        $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
+        $this->assertEquals('([active] = 1 AND ([salary] > :p1 OR [city] LIKE :p2))', $whereSqlServer->getSql());
+
+        $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
+        $this->assertEquals('(`active` = 1 AND (`salary` > :p1 OR BINARY `city` LIKE :p2))', $whereMySql->getSql());
+        $this->assertEquals([':p1' => 5000, ':p2' => 'New%'], $whereMySql->getBindings());
+
+        // Cláusula vazia também responde aos aliases
+        $empty = SqlWhereClause::empty();
+        $this->assertEquals('', $empty->getSql());
+        $this->assertEquals([], $empty->getBindings());
+    }
+
+    /**
+     * Forward 014, R3 (RN-04): `fieldMapper:` é alias de `fieldMap:` na facade e nos métodos de
+     * instância; os dois juntos e iguais passam, os dois juntos e diferentes lançam.
+     */
+    private function testFieldMapperAliasResolution(): void
+    {
+        $spec = Spec::property('status', Spec::equalTo('ACTIVE'));
+        $map  = ['status' => 'st_status'];
+        $other = ['status' => 'tp_status'];
+
+        // Facade: só fieldMap, só fieldMapper, os dois iguais
+        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $map)->getSql());
+        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMapper: $map)->getSql());
+        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $map, fieldMapper: $map)->getSql());
+
+        // Instância: mesma regra
+        $this->assertEquals('`st_status` = :p1', $spec->toSql('mysql', fieldMapper: $map)->getSql());
+        $this->assertEquals('`st_status` = :p1', $spec->toSql('mysql', $map, $map)->getSql());
+
+        // Mapper objeto: identidade
+        $mapper = new FieldMapper($map, 'c');
+        $this->assertEquals('"c"."st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $mapper, fieldMapper: $mapper)->getSql());
+
+        // Os dois diferentes: ambíguo
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map, $other) {
+            Spec::toSql($spec, 'pgsql', fieldMap: $map, fieldMapper: $other);
+        });
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map, $other) {
+            $spec->toSql('pgsql', $map, $other);
+        });
+        $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map) {
+            Spec::toSql($spec, 'pgsql', fieldMap: $map, fieldMapper: new FieldMapper($map));
+        });
+
+        // Resolver exposto: null + alias devolve o alias
+        $this->assertEquals($map, Spec::resolveFieldMap(null, $map));
+        $this->assertTrue(Spec::resolveFieldMap(null, null) === null);
     }
 
     /**

@@ -28,7 +28,6 @@ use Antevemus\ASpecification\Specifications\Comparison\TypeCompatibility;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
-use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\String\DateStringSpecification;
@@ -154,6 +153,11 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function in(mixed ...$values): ISpecification
             {
+                // A single array argument IS the set (PHP idiom): in([0, 2, 4]) ≡ in(0, 2, 4).
+                // Without this, the array became equalTo([0, 2, 4]) and never matched a scalar.
+                if (count($values) === 1 && is_array(reset($values))) {
+                    $values = array_values(reset($values));
+                }
                 if (empty($values)) {
                     return new AlwaysFalseSpecification();
                 }

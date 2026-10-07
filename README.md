@@ -5,15 +5,15 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.2.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.2.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.3.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(846%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1223%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.4+**  
-> Full-fidelity modern port and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (12 dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, and high-concurrency IPC primitives.
+> Full-fidelity modern port and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (12 drivers, 7 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, and high-concurrency IPC primitives.
 
 ---
 
@@ -36,8 +36,8 @@
 
 - 🎯 **Fluent Chaining & Natural Domain DSL**: Compose highly readable domain rules as natural prose sentences (`Spec::specify(Customer::class)->where('gender', is('FEMALE'))->and('membershipDate', isBefore($oneYearAgo))`).
 - 🛡️ **Zero-Exception Notification Pattern**: Evaluate rules without throwing control-flow exceptions via `evaluate()`, producing a `SpecificationResult` containing aggregated `SpecificationFailure` instances, custom business error codes (`withCode()`), human-readable rationales (`because()`), and contextual metadata.
-- ⚡ **Multi-DBMS SQL Query Visitor (Module 12)**: Direct compile-time translation of pure domain ASTs into secure parameterized `WHERE` clauses (`:p1`, `:p2`) across 12 enterprise database engines (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, and ANSI-92).
-- 🔗 **TCriteria Builder & Adianti Database Bridge (Module 13)**: Seamless compilation of domain specifications into native `Adianti\Database\TCriteria` and `TFilter` objects, with automatic De Morgan logic inversion for negations, strict parenthesis precedence, and chained pagination/sorting/grouping.
+- ⚡ **Multi-DBMS SQL Query Visitor (Module 12)**: Direct compile-time translation of pure domain ASTs into secure parameterized `WHERE` clauses (`:p1`, `:p2`) across 12 database drivers mapped onto 7 SQL dialects (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, and ANSI-92).
+- 🔗 **TCriteria Builder & Adianti Database Bridge (Module 13)**: Seamless compilation of domain specifications into native `Adianti\Database\TCriteria` and `TFilter` objects, with automatic De Morgan logic inversion for negations, strict parenthesis precedence, and chained pagination (`limit`, `offset`), sorting (`orderBy`, `direction`) and grouping (`groupBy`).
 - 🧩 **Dynamic Rule Engine & Document Matrix (Module 11)**: Dynamic runtime rule compilation driven by relational database catalogs (`RuleDefinition`), operational severity triage (`BLOCK`, `WARN`, `LOG`), and document requirement Boolean algebra (`ALL`, `ANY`, `ONE_OF_SET`).
 - ✂️ **Partial Satisfaction (`remainderUnsatisfiedBy`)**: Isolate at runtime precisely which sub-clauses failed for a given candidate entity.
 - 📐 **Complete Boolean & Venn Set Algebra**: Rigorous logical composition (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), tautology/contradiction detection, and Venn set subsumption calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`).
@@ -59,7 +59,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 | :--- | :---: | :---: | :---: |
 | **Notification Pattern (Zero Exceptions)** | ❌ Boolean only | ❌ Boolean only or control-flow exceptions | ✅ `evaluate()`, aggregated `SpecificationFailure`, error codes & rationales |
 | **Operational Severity Triage** | ❌ None | ❌ None | ✅ `BLOCK` (fatal), `WARN` (operational alert), `LOG` (audit trail) |
-| **Multi-DBMS SQL Query Visitor** | ❌ None | ❌ Rare / single engine only | ✅ **12 Dialects** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI) |
+| **Multi-DBMS SQL Query Visitor** | ❌ None | ❌ Rare / single engine only | ✅ **12 drivers, 7 dialects** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI) |
 | **Adianti Framework Database Bridge** | ❌ Not applicable | ❌ None | ✅ Native `TCriteria` & `TFilter`, automatic De Morgan inversion, strict precedence |
 | **ALinq Synergy & Functional LINQ** | ❌ None | ❌ None | ✅ Direct AST compiler for short-circuit LINQ predicates & `ALinqBridge` |
 | **Deep Nested Property Resolution** | ⚠️ Strict reflection | ⚠️ Public getters only | ✅ **Dot-notation** (`PropertyAccessor`) for deep objects and associative arrays |
@@ -100,19 +100,24 @@ composer require antevemus/aspecification
 Inspired by Domian Java's syntax, combine business rules fluently and expressively:
 
 ```php
-use Antevemus\ASpecification\Spec;
 use function Antevemus\ASpecification\DSL\specify;
 use function Antevemus\ASpecification\DSL\is;
 use function Antevemus\ASpecification\DSL\not;
 use function Antevemus\ASpecification\DSL\isBefore;
+use function Antevemus\ASpecification\DSL\isAfterOrAt;
+use function Antevemus\ASpecification\DSL\anyOf;
 
-// Specification: Female customers registered over 1 year ago,
+// Specification: Female customers who have been members for over a year,
 // OR male customers older than 10 years of age.
-$spec = Spec::specify(Customer::class)
-    ->where('gender', Spec::equalTo('FEMALE'))
-    ->and('membershipDate', Spec::before($oneYearAgo))
-    ->or('gender', Spec::equalTo('MALE'))
-    ->and('birthDate', Spec::not(Spec::afterOrAt($tenYearsAgo)));
+$loyalFemale = specify(Customer::class)
+    ->where('gender', is('FEMALE'))
+    ->and('membershipDate', isBefore($oneYearAgo));
+
+$seniorMale = specify(Customer::class)
+    ->where('gender', is('MALE'))
+    ->and('birthDate', not(isAfterOrAt($tenYearsAgo)));
+
+$spec = anyOf($loyalFemale, $seniorMale);
 
 // Standard Boolean evaluation
 if ($spec->isSatisfiedBy($customer)) {
@@ -175,7 +180,6 @@ Partition collections into logical branches indexed by specification predicates:
 
 ```php
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
-use Antevemus\ASpecification\Repositories\PartitionRepository;
 
 $rootRepo = new InMemoryRepository();
 
@@ -184,6 +188,7 @@ $vipSpec = Spec::property('vip', Spec::equalTo(true));
 $vipPartition = $rootRepo->makePartition($vipSpec);
 
 // Insert into the partitioned repository
+// ($vipCustomer implements IEntity, e.g. by extending Entities\AbstractUUIDEntity)
 $vipPartition->put($vipCustomer);
 
 // Queries benefit from O(1) early branch pruning of disjoint predicates
@@ -199,7 +204,7 @@ use Antevemus\ASpecification\Repositories\File\InMemoryAndFileRepository;
 use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
 
 // High-speed RAM read performance (L1) with durable disk persistence (L2)
-$repo = new InMemoryAndFileRepository(
+$repo = InMemoryAndFileRepository::create(
     storagePath: '/var/data/customers.json',
     serializer: new JsonEntitySerializer(Customer::class)
 );
@@ -232,10 +237,6 @@ Compile dynamic rules and mandatory document matrices directly from relational d
 
 ```php
 use Antevemus\ASpecification\Spec;
-use Antevemus\ASpecification\Engine\RuleAction;
-use Antevemus\ASpecification\Engine\DocumentRequirementMode;
-use Antevemus\ASpecification\Engine\RuleDefinition;
-use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
 
 // 1. Configure the Registry with pluggable rule handlers
 $registry = Spec::ruleRegistry();
@@ -296,14 +297,18 @@ $whereClause = Spec::toSql(
 );
 
 echo $whereClause->getSql();
-// '("is_active" = :p1 AND ("val_salary" > :p2 OR "txt_city" LIKE :p3))'
+// '("is_active" = TRUE AND ("val_salary" > :p1 OR "txt_city" LIKE :p2))'
+// (booleans are rendered by the dialect; the remaining values are bound)
 
 print_r($whereClause->getBindings());
-// ['p1' => true, 'p2' => 5000, 'p3' => 'New%']
+// [':p1' => 5000, ':p2' => 'New%']
 
-// 3. First-class support for 12 enterprise dialects (SQL Server, Oracle, Firebird, MySQL, SQLite, etc.)
+// 3. First-class support for 12 database drivers across 7 SQL dialects (SQL Server, Oracle, Firebird, MySQL, SQLite, etc.)
 $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
-// '([active] = :p1 AND ([salary] > :p2 OR [city] LIKE :p3))'
+// '([active] = 1 AND ([salary] > :p1 OR [city] LIKE :p2))'
+
+$whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
+// '(`active` = 1 AND (`salary` > :p1 OR BINARY `city` LIKE :p2))'
 ```
 
 ---
@@ -314,7 +319,6 @@ Translate pure domain specifications into native `Adianti\Database\TCriteria` an
 
 ```php
 use Antevemus\ASpecification\Spec;
-use Antevemus\ASpecification\Criteria\TCriteriaBuilder;
 
 // 1. Pure domain specification with conjunction, disjunction, and negation
 $spec = Spec::property('active', Spec::equalTo(true))
@@ -342,7 +346,10 @@ $criteria = Spec::toCriteria(
 );
 
 echo $criteria->dump();
-// '(st_active = TRUE AND (vl_salary > 5000 OR ds_city LIKE 'New%') AND tp_status <> 'CANCELLED')'
+// '((st_active = TRUE AND (vl_salary > 5000 OR ds_city LIKE 'New%')) AND tp_status <> 'CANCELLED')'
+
+// 3. Direct invocation from any ISpecification instance
+$criteriaFromInstance = $spec->toCriteria();
 ```
 
 ---
@@ -516,7 +523,7 @@ src/
 │   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
 │   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET
 ├── Sql/                       # SQL Query Visitor & Multi-DBMS Engine (Module 12)
-│   ├── Dialects/             # Ansi, PostgreSql, MySql, SqlServer, Oracle, Firebird, Sqlite
+│   ├── Dialects/             # Abstract, Ansi, PostgreSql, MySql, SqlServer, Oracle, Firebird, Sqlite
 │   ├── Exceptions/           # SqlVisitorException, NonTranslatableSpecificationException...
 │   ├── SqlDialect.php        # Enum of all drivers: sqlsrv, mssql, oracle, oci, mysql, etc.
 │   ├── SqlQueryVisitor.php   # GoF Visitor compiling pure AST into parameterized SQL
@@ -529,7 +536,7 @@ src/
 ├── Linq/                      # ALinq Synergy & Fluent Collections (Module 14)
 │   ├── ALinqBridge.php       # Bridge between repositories and ALinq collections
 │   └── ALinqSpecificationVisitor.php # AST compiler for short-circuit functional predicates
-├── Factory/                   # Unified SpecificationFactory (140+ methods)
+├── Factory/                   # Unified SpecificationFactory (~140 methods)
 │   └── Traits/               # 8 Modular Traits (Type, Comparison, Logical, Special, String, Date, Collection, Wrapper)
 ├── Results/                   # SpecificationResult, SpecificationFailure
 ├── Helpers/                   # PropertyAccessor (dot-notation), StopWatch, InstrumentationUtils
@@ -547,6 +554,8 @@ The library features comprehensive unit and integration test coverage with zero 
 php tests/run_all.php
 ```
 
+Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine:
+
 ```text
 ====================================================================
  ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
@@ -556,29 +565,29 @@ php tests/run_all.php
 • [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (8 assertions)
 • [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (5 assertions)
 • [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (19 assertions)
-• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (21 assertions)
+• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (36 assertions)
 • [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (38 assertions)
-• [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (35 assertions)
-• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (95 assertions)
-• [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (70 assertions)
-• [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (41 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (141 assertions)
-• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (113 assertions)
-• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (73 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (91 assertions)
-• [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (25 assertions)
+• [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (61 assertions)
+• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (133 assertions)
+• [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (96 assertions)
+• [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (178 assertions)
+• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (134 assertions)
+• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (100 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (170 assertions)
+• [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (109 assertions)
 
 ====================================================================
  FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 846 | DURATION: ~160ms | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 1223 | DURATION: ~160ms | REGRESSIONS: 0
 ====================================================================
 ```
 
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
-- **Java (Domain) Traceability:** 100% conceptual and architectural parity with the upstream framework.
+- **Java (Domian) Traceability:** 100% conceptual and architectural parity with the upstream framework.
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
-- **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection).
-- **Multi-DBMS Compatibility:** 12 drivers certified with proper identifier quoting and bound prepared statements.
+- **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, `PropertyAccessor` dot-notation resolution and the `InMemoryRepository` bridge methods.
+- **Multi-DBMS Compatibility:** 12 drivers (7 SQL dialects) certified with proper identifier quoting and bound prepared statements.
 - **Adianti Database Bridge:** Full translation to `TCriteria`/`TFilter` with De Morgan logic inversion and strict precedence.
 
 ---
@@ -593,11 +602,16 @@ Key highlights & upcoming roadmap:
 1. **English DocBlock Internationalization** (Shipped in v1.1.0)
 2. **PHP 8.4 Declarative Attributes** (`#[AssertSpec]`, `#[ValidateRule]`) (Shipped in v1.1.0)
 3. **ALinq Lazy Streaming Pipeline & O(1) RAM Evaluation** (Shipped in v1.1.0)
-4. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
-5. **GraphQL AST & OpenAPI 3.1 Query Compilers**
-6. **Doctrine ORM & Laravel Eloquent Query Visitors**
-7. **Reactive Domain Event Sourcing Triggers**
-8. **PHP Fibers & Non-Blocking Async Specification Runner**
+4. **Review-Driven Hardening: Error State, Strict Typing, Rule Binding & Document Matrix** (Shipped in v1.2.0)
+5. **README Promises I: Every Documented Example Runs** (Shipped in v1.3.0)
+6. **README Promises II: Inter-Process, Unicode, Lazy Sources & Relational Catalog** (v1.4.0)
+7. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
+8. **GraphQL AST & OpenAPI 3.1 Query Compilers**
+9. **Parameterized Reflection Specifications & Tautology/Contradiction Detection**
+10. **Doctrine ORM & Laravel Eloquent Query Visitors**
+11. **Reactive Domain Event Sourcing Triggers**
+12. **AI-Assisted Specification Synthesizer**
+13. **PHP Fibers & Non-Blocking Async Specification Runner**
 
 ---
 

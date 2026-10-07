@@ -28,6 +28,7 @@ class Module10_JavaParityAndTelemetryTest extends TestCase
         $this->testStopWatchLifecycleAndLaps();
         $this->testInstrumentationUtilsTelemetry();
         $this->testRemainderUnsatisfiedByOnCompositeSpecification();
+        $this->testRemainderContainsOnlyUnsatisfiedClauses();
     }
 
     private function testRelationalOperatorEnum(): void
@@ -159,5 +160,87 @@ class Module10_JavaParityAndTelemetryTest extends TestCase
             $this->assertTrue(str_contains($e->getMessage(), 'disjunctive') || str_contains($e->getMessage(), 'disjuntivas'));
         }
         $this->assertTrue($threw);
+    }
+
+    /**
+     * README example 3 ("Partial Satisfaction"): the remainder must contain ONLY the
+     * clauses the candidate does not satisfy, be evaluable on its own and print
+     * without anonymous class names or file paths.
+     */
+    private function testRemainderContainsOnlyUnsatisfiedClauses(): void
+    {
+        $spec = Spec::specify(Module10OnboardingUser::class)
+            ->where('emailVerified', Spec::isTrue())
+            ->and('termsAccepted', Spec::isTrue())
+            ->and('profileComplete', Spec::isTrue());
+
+        // 1. Reproducao: email verificado, resto pendente -> so termsAccepted e profileComplete
+        $user = new Module10OnboardingUser(true, false, false);
+        $remainder = $spec->remainderUnsatisfiedBy($user);
+        $this->assertTrue($remainder !== null, 'remainder must not be null for a partially satisfied candidate');
+        $this->assertTrue($remainder instanceof ICompositeSpecification);
+
+        $text = (string) $remainder;
+        $this->assertFalse(str_contains($text, 'emailVerified'), "satisfied clause leaked into remainder: {$text}");
+        $this->assertTrue(str_contains($text, 'termsAccepted'), "missing unsatisfied clause termsAccepted: {$text}");
+        $this->assertTrue(str_contains($text, 'profileComplete'), "missing unsatisfied clause profileComplete: {$text}");
+        $this->assertTrue($text !== (string) $spec, 'remainder is the whole specification');
+
+        // 2. Reproducao: legibilidade (sem classe anonima nem caminho de arquivo)
+        $this->assertFalse(str_contains($text, '@anonymous'), "anonymous class name in remainder: {$text}");
+        $this->assertFalse(str_contains($text, DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR), "file path in remainder: {$text}");
+        $this->assertTrue(str_contains($text, 'Spec<Module10OnboardingUser>'), "type spec not printed as Spec<Type>: {$text}");
+        $this->assertEquals(
+            '((Spec<Module10OnboardingUser> WHERE termsAccepted: EqualSpecification) AND (Spec<Module10OnboardingUser> WHERE profileComplete: EqualSpecification))',
+            $text
+        );
+
+        // 3. Regressao: o remainder e avaliavel por si so
+        $this->assertFalse($remainder->isSatisfiedBy($user));
+        $this->assertTrue($remainder->isSatisfiedBy(new Module10OnboardingUser(false, true, true)), 'remainder must ignore the clause already satisfied');
+        $this->assertTrue($remainder->isSatisfiedBy(new Module10OnboardingUser(true, true, true)));
+        $this->assertTrue($remainder->remainderUnsatisfiedBy(new Module10OnboardingUser(true, true, true)) === null);
+
+        // 4. Regressao: uma unica clausula pendente -> a propria PropertySpecification
+        $single = $spec->remainderUnsatisfiedBy(new Module10OnboardingUser(true, true, false));
+        $this->assertTrue($single instanceof PropertySpecification);
+        $this->assertEquals('profileComplete', $single->getPropertyName());
+        $this->assertEquals('(Spec<Module10OnboardingUser> WHERE profileComplete: EqualSpecification)', (string) $single);
+
+        // 5. Regressao: tudo satisfeito -> null; nada pendente no remainder do remainder
+        $this->assertTrue($spec->remainderUnsatisfiedBy(new Module10OnboardingUser(true, true, true)) === null);
+
+        // 6. Regressao: a spec original nao muda (imutabilidade) e continua legivel
+        $this->assertFalse($spec->isSatisfiedBy($user));
+        $this->assertEquals(
+            '(((Spec<Module10OnboardingUser> AND (Spec<Module10OnboardingUser> WHERE emailVerified: EqualSpecification)) AND (Spec<Module10OnboardingUser> WHERE termsAccepted: EqualSpecification)) AND (Spec<Module10OnboardingUser> WHERE profileComplete: EqualSpecification))',
+            (string) $spec
+        );
+
+        // 7. Regressao: disjuncao aninhada e tratada como clausula atomica, nao decomposta
+        $eitherOne = Spec::specify(Module10OnboardingUser::class)
+            ->where('termsAccepted', Spec::isTrue())
+            ->or('profileComplete', Spec::isTrue());
+        $withOr = Spec::specify(Module10OnboardingUser::class)
+            ->where('emailVerified', Spec::isTrue())
+            ->and($eitherOne);
+        $orRemainder = $withOr->remainderUnsatisfiedBy(new Module10OnboardingUser(true, false, false));
+        $this->assertTrue($orRemainder !== null);
+        $this->assertTrue(str_contains((string) $orRemainder, ' OR '), 'nested disjunction must be kept whole as the pending clause');
+        $this->assertFalse(str_contains((string) $orRemainder, 'emailVerified'));
+        $this->assertTrue($withOr->remainderUnsatisfiedBy(new Module10OnboardingUser(true, true, false)) === null);
+    }
+}
+
+/**
+ * Fixture do exemplo 3 do README (onboarding): classe nomeada para que o tipo apareca como Spec<...>.
+ */
+final class Module10OnboardingUser
+{
+    public function __construct(
+        public bool $emailVerified,
+        public bool $termsAccepted,
+        public bool $profileComplete
+    ) {
     }
 }
