@@ -49,6 +49,18 @@ interface IComparisonSpecificationFactory extends ISpecificationFactory
     public function exactly(mixed $value): ISpecification;
 
     /**
+     * Creates an opt-in LOOSE equality specification (`==`), where PHP coercion applies:
+     * `5 == "5"`, `true == 1`, `5 == 5.0`. The default equalTo() is strict and refuses
+     * incompatible candidate types with IncompatibleTypeException.
+     *
+     * Fluent usage: "looselyEqualTo '5'" for values arriving as strings from forms or drivers.
+     *
+     * @param mixed $value Comparison target value
+     * @return ISpecification Loose equality specification
+     */
+    public function looselyEqualTo(mixed $value): ISpecification;
+
+    /**
      * Creates a specification verifying if value is strictly less than (<).
      *
      * @param mixed $value Upper bound value (exclusive)

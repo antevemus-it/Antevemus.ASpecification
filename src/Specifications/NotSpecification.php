@@ -65,6 +65,10 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
         }
 
         $innerResult = $this->specification->evaluate($candidate);
+        if ($innerResult->isError) {
+            // Evaluation error is not a failed condition: negation must not turn it into approval.
+            return $innerResult;
+        }
         if (!$innerResult->isSatisfied) {
             return SpecificationResult::satisfied();
         }

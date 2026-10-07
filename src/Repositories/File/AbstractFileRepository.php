@@ -263,12 +263,18 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     /**
      * Atomically writes content to the target file via temp file and rename.
      *
+     * The exclusive lock is taken on $lockPath when given, otherwise on the target
+     * itself. Repositories that read-modify-write a whole document MUST pass a
+     * separate, stable lock file: after rename() the target is a new inode, so a lock
+     * on the target does not serialize successive writers (BUG-20261007-7RZJ).
+     *
      * @param string $targetFile Absolute path of destination file
      * @param string $content Content to write
+     * @param string|null $lockPath Stable lock file covering the write (default: the target)
      * @return void
      * @throws RepositoryException
      */
-    protected function writeAtomic(string $targetFile, string $content): void
+    protected function writeAtomic(string $targetFile, string $content, ?string $lockPath = null): void
     {
         $dir = dirname($targetFile);
         if (!is_dir($dir)) {
@@ -279,7 +285,7 @@ abstract class AbstractFileRepository extends AbstractRepository implements
 
         $tmpFile = $targetFile . ".tmp." . bin2hex(random_bytes(4));
 
-        $this->withExclusiveLock($targetFile, function () use ($tmpFile, $targetFile, $content): void {
+        $this->withExclusiveLock($lockPath ?? $targetFile, function () use ($tmpFile, $targetFile, $content): void {
             $handle = @fopen($tmpFile, "wb");
             if ($handle === false) {
                 throw new RepositoryException("Falha ao abrir descritor de arquivo temporário: {$tmpFile}");

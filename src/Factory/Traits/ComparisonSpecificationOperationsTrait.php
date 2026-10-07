@@ -36,6 +36,17 @@ trait ComparisonSpecificationOperationsTrait
     }
 
     /**
+     * Creates an opt-in loose equality specification (`==`, PHP coercion applies).
+     *
+     * @param mixed $value Comparison target value
+     * @return ISpecification Loose equality specification
+     */
+    public function looselyEqualTo(mixed $value): ISpecification
+    {
+        return $this->comparisonFactory->looselyEqualTo($value);
+    }
+
+    /**
      * Creates inequality specification (!=).
      *
      * @param mixed $value Comparison target value

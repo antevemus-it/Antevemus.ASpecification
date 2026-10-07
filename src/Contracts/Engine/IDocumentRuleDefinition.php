@@ -14,8 +14,10 @@ use Antevemus\ASpecification\Engine\DocumentRequirementMode;
  *
  * Features:
  * - Linkage to technical document type code
+ * - Operational scope (mandatory) and scenario (optional) the requirement belongs to;
+ *   catalogs match documents exactly on them, never on the group code
  * - Resolution of Boolean requirement semantics (all, any, one_of_set)
- * - Grouping by alternative sets (e.g., 'identity')
+ * - Grouping by alternative sets (e.g., 'identity'), mandatory for any / one_of_set
  * - Conditional expression for requirement activation
  *
  * @version    1.1.0
@@ -29,10 +31,27 @@ interface IDocumentRuleDefinition
 {
     /**
      * Returns the code of the requirement group to which this document belongs.
+     * The group code is an identifier only: it never encodes the scope or the scenario.
      *
      * @return string
      */
     public function getGrupoCodigo(): string;
+
+    /**
+     * Returns the operational scope this document requirement belongs to (e.g. 'contrato_locacao',
+     * 'sinistro'). Never empty: a document requirement always belongs to exactly one scope.
+     *
+     * @return string
+     */
+    public function getEscopo(): string;
+
+    /**
+     * Returns the scenario this document requirement belongs to (e.g. 'sinistro:ocupado').
+     * Null means the requirement applies to the whole scope regardless of scenario.
+     *
+     * @return string|null
+     */
+    public function getCenario(): ?string;
 
     /**
      * Returns the technical code of the required document type (e.g. 'cnpj_imobiliaria', 'cnh_locatario').
@@ -49,7 +68,8 @@ interface IDocumentRuleDefinition
     public function getRegraObrigatoriedade(): DocumentRequirementMode;
 
     /**
-     * Returns the alternative set identifier for ANY or ONE_OF_SET rules.
+     * Returns the alternative set identifier for ANY or ONE_OF_SET rules. Null is only valid
+     * for ALL rules: the compiler refuses ANY / ONE_OF_SET requirements without a set.
      *
      * @return string|null
      */

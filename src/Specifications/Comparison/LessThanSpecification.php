@@ -57,6 +57,7 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
         if ($candidate === null) {
             return false;
         }
+        TypeCompatibility::assertOrderable($candidate, $this->value, 'LessThanSpecification');
         return $candidate < $this->value;
     }
 
@@ -77,10 +78,12 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
             return true;
         }
         if ($otherSpecification instanceof self) {
-            return $otherSpecification->getValue() <= $this->value;
+            $other = $otherSpecification->getValue();
+            return TypeCompatibility::isOrderable($other, $this->value) && $other <= $this->value;
         }
         if ($otherSpecification instanceof EqualSpecification) {
-            return $otherSpecification->getValue() < $this->value;
+            $other = $otherSpecification->getValue();
+            return TypeCompatibility::isOrderable($other, $this->value) && $other < $this->value;
         }
         return false;
     }
@@ -93,11 +96,9 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
         if ($this->checkBaseDisjointness($otherSpecification)) {
             return true;
         }
-        if ($otherSpecification instanceof GreaterThanSpecification) {
-            return $otherSpecification->getValue() >= $this->value;
-        }
-        if ($otherSpecification instanceof EqualSpecification) {
-            return $otherSpecification->getValue() >= $this->value;
+        if ($otherSpecification instanceof GreaterThanSpecification || $otherSpecification instanceof EqualSpecification) {
+            $other = $otherSpecification->getValue();
+            return TypeCompatibility::isOrderable($other, $this->value) && $other >= $this->value;
         }
         return false;
     }

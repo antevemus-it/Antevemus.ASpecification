@@ -56,6 +56,7 @@ class NotEqualSpecification extends AbstractSpecification implements IValueBound
         if ($candidate === null) {
             return false;
         }
+        TypeCompatibility::assertEquatable($candidate, $this->value, 'NotEqualSpecification');
         return $candidate !== $this->value;
     }
 

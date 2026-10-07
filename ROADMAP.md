@@ -18,16 +18,20 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 - **Description:** Deep integration with `Antevemus.AlinqCollection` (`ALinqLazyCollection`) enabling deferred streaming evaluation of domain specifications over infinite generators and massive datasets.
 - **Goal:** Constant \(O(1)\) RAM footprint when filtering large volumes of entities, logs, or external data streams without preloading collections into memory.
 
+### 4. Review-Driven Hardening: Error State, Strict Typing, Rule Binding & Document Matrix 🛡️ (Shipped in v1.2.0)
+- **Description:** Evaluation errors became a first-class `error` state (never inverted by `NOT`), comparisons refuse incompatible types (`looselyEqualTo()` as the opt-in), the Dynamic Rule Engine binds every compiled rule to its catalog definition, the document matrix got exact scope/scenario matching with mandatory alternative sets, `equals()` entered the specification contract, and file repositories gained cross-process locking.
+- **Goal:** No silently wrong verdicts: every ambiguity found by the 2026-10 technical review now either evaluates correctly or fails loudly at compilation.
+
 ---
 
 ## 🎯 Short-Term Milestones (v1.2.x - v1.3.x)
 
-### 4. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
+### 5. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Add native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets.
 - **Goal:** Enable multi-node high-throughput deployments with distributed cache invalidation across microservices and cluster nodes.
-- **Target Release:** v1.2.0
+- **Target Release:** v1.3.0
 
-### 5. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
+### 6. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Provide bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
 - **Goal:** Unify frontend querying capabilities with domain-layer business validation and database query projection.
 - **Target Release:** v1.3.0
@@ -36,7 +40,7 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 
 ## 🚀 Medium-Term Milestones (v1.4.x - v1.5.x)
 
-### 6. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
+### 7. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** Build dedicated GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`.
 - **Goal:** Expand our query-level SQL translation capabilities (currently supporting 12 SQL dialects and Adianti TCriteria) to the two most popular ORM ecosystems in the PHP world.
 - **Target Release:** v1.4.0
@@ -45,14 +49,14 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 
 ## 🔮 Long-Term Vision (v2.0+)
 
-### 7. Reactive Domain Event Sourcing Triggers 📡
+### 8. Reactive Domain Event Sourcing Triggers 📡
 - **Description:** Reactive domain event emitter that triggers Domain Events whenever an entity transitions into or out of satisfying critical domain specifications.
 - **Goal:** Seamless integration with Event Sourcing, Outbox Pattern, and CQRS architectures.
 
-### 8. AI-Assisted Specification Synthesizer 🤖
+### 9. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees and Venn set subsumption models from domain stories or plain text business requirements.
 
-### 9. PHP Fibers & Non-Blocking Async Specification Runner ⚡
+### 10. PHP Fibers & Non-Blocking Async Specification Runner ⚡
 - **Description:** Provide an optional asynchronous specification evaluation runner powered by native PHP 8.1+ Fibers and Revolt Event Loop for executing I/O-bound composite specification branches (remote REST APIs, gRPC fraud checks, external microservices) concurrently in parallel, reducing total latency by up to 60%.
 - **Goal:** Parity with modern asynchronous evaluation while keeping the core library 100% zero-dependency and synchronous for traditional PHP-FPM environments.
 - **Target Release:** v2.0.0 (or `antevemus/aspecification-async`)

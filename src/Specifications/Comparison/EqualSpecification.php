@@ -57,6 +57,7 @@ class EqualSpecification extends AbstractSpecification implements IValueBoundSpe
         if ($candidate === null) {
             return $this->value === null;
         }
+        TypeCompatibility::assertEquatable($candidate, $this->value, 'EqualSpecification');
         return $candidate === $this->value;
     }
 
@@ -90,11 +91,13 @@ class EqualSpecification extends AbstractSpecification implements IValueBoundSpe
         if ($otherSpecification instanceof NotEqualSpecification) {
             return $this->value === $otherSpecification->getValue();
         }
-        if ($otherSpecification instanceof GreaterThanSpecification && is_numeric($this->value)) {
-            return $this->value <= $otherSpecification->getValue();
+        if ($otherSpecification instanceof GreaterThanSpecification) {
+            $other = $otherSpecification->getValue();
+            return TypeCompatibility::isOrderable($this->value, $other) && $this->value <= $other;
         }
-        if ($otherSpecification instanceof LessThanSpecification && is_numeric($this->value)) {
-            return $this->value >= $otherSpecification->getValue();
+        if ($otherSpecification instanceof LessThanSpecification) {
+            $other = $otherSpecification->getValue();
+            return TypeCompatibility::isOrderable($this->value, $other) && $this->value >= $other;
         }
         return false;
     }

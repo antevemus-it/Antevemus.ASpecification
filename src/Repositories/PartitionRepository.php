@@ -593,11 +593,16 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         return $this;
     }
 
+    /**
+     * Two partition specifications are equivalent only when they denote the same
+     * predicate (ISpecification::equals, structural). "Same class" is never enough:
+     * AbstractSpecification::__toString() returns the class name, so the former
+     * fallback (class + string form) treated every leaf of one class as equivalent
+     * and the replacement branch of addPartitionWithRepository orphaned entities
+     * (BUG-20261007-C5YG).
+     */
     protected function specsEquivalent(ISpecification $a, ISpecification $b): bool
     {
-        if (method_exists($a, 'equals')) {
-            return $a->equals($b);
-        }
-        return get_class($a) === get_class($b) && (string)$a === (string)$b;
+        return $a->equals($b);
     }
 }

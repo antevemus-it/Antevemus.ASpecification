@@ -90,11 +90,13 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
         try {
             $propertyValue = $this->getPropertyValue($candidate);
         } catch (Throwable $e) {
-            return SpecificationResult::failure(
-                message: $e->getMessage(),
-                code: $this->customCode,
+            // Missing property, throwing accessor or type error: the rule could not be evaluated.
+            // This is an evaluation error, never a rule failure (NOT must not approve it).
+            return SpecificationResult::error(
+                exception: $e,
                 ruleName: 'PropertySpecification',
-                property: $this->propertyName
+                property: $this->propertyName,
+                code: $this->customCode
             );
         }
 
@@ -117,7 +119,7 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             $propResult->failures
         );
 
-        if ($this->customReason !== null || $this->customCode !== null) {
+        if (!$propResult->isError && ($this->customReason !== null || $this->customCode !== null)) {
             array_unshift(
                 $annotatedFailures,
                 new SpecificationFailure(
@@ -129,7 +131,8 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             );
         }
 
-        return new SpecificationResult(false, $annotatedFailures);
+        // Error state of the inner evaluation (e.g. incompatible candidate type) is preserved.
+        return new SpecificationResult(false, $annotatedFailures, $propResult->isError, $propResult->exception);
     }
 
     /**

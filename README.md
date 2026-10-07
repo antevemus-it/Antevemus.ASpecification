@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.1.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.2)
+[![Latest Version](https://img.shields.io/badge/Release-v1.2.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.2.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(656%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(846%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -552,25 +552,25 @@ php tests/run_all.php
  ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
 ====================================================================
 
-• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (25 assertions)
+• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (71 assertions)
 • [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (8 assertions)
 • [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (5 assertions)
-• [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (4 assertions)
-• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (12 assertions)
+• [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (19 assertions)
+• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (21 assertions)
 • [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (38 assertions)
 • [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (35 assertions)
-• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (61 assertions)
+• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (95 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (70 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (41 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (69 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (141 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (113 assertions)
-• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (59 assertions)
+• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (73 assertions)
 • [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (91 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (25 assertions)
 
 ====================================================================
  FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 656 | DURATION: ~97ms | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 846 | DURATION: ~160ms | REGRESSIONS: 0
 ====================================================================
 ```
 

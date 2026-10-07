@@ -34,11 +34,47 @@ final readonly class SpecificationResult implements Countable, Stringable
     /**
      * @param bool $isSatisfied True if all specification conditions are satisfied; false if violations occurred
      * @param list<SpecificationFailure> $failures Collection of recorded rule failures
+     * @param bool $isError True when the evaluation itself could not be carried out (missing property,
+     *                      throwing accessor, incompatible candidate type). An error is never a rule
+     *                      failure: NOT does not invert it and composites propagate it.
+     * @param \Throwable|null $exception The exception that aborted the evaluation, when isError is true
      */
     public function __construct(
         public bool $isSatisfied,
-        public array $failures = []
+        public array $failures = [],
+        public bool $isError = false,
+        public ?\Throwable $exception = null
     ) {
+    }
+
+    /**
+     * Create an evaluation-error result: the rule could not be evaluated at all.
+     *
+     * The result is unsatisfied, flagged with isError and carries the exception. A single
+     * SpecificationFailure with the exception message is recorded so that consumers that only
+     * read failures keep seeing a reason.
+     *
+     * @param \Throwable $exception Exception raised while evaluating the candidate
+     * @param string $ruleName Name of the specification whose evaluation failed
+     * @param string|null $property Target property name, when the error happened inside a property inspection
+     * @param string|null $code Custom code attached to the specification, if any
+     * @return self
+     */
+    public static function error(
+        \Throwable $exception,
+        string $ruleName,
+        ?string $property = null,
+        ?string $code = null
+    ): self {
+        $failure = new SpecificationFailure(
+            message: $exception->getMessage() !== '' ? $exception->getMessage() : get_class($exception),
+            code: $code,
+            ruleName: $ruleName,
+            property: $property,
+            metadata: ['evaluation_error' => get_class($exception)]
+        );
+
+        return new self(false, [$failure], true, $exception);
     }
 
     /**
@@ -83,18 +119,35 @@ final readonly class SpecificationResult implements Countable, Stringable
     public static function combine(self ...$results): self
     {
         $isSatisfied = true;
+        $isError = false;
+        $exception = null;
         $failures = [];
 
         foreach ($results as $result) {
             if (!$result->isSatisfied) {
                 $isSatisfied = false;
             }
+            if ($result->isError && !$isError) {
+                $isError = true;
+                $exception = $result->exception;
+            }
             foreach ($result->failures as $failure) {
                 $failures[] = $failure;
             }
         }
 
-        return new self($isSatisfied, $failures);
+        return new self($isSatisfied, $failures, $isError, $exception);
+    }
+
+    /**
+     * Return a copy of this result with extra failures prepended, preserving the error state.
+     *
+     * @param list<SpecificationFailure> $failures Failures to prepend
+     * @return self
+     */
+    public function withLeadingFailures(array $failures): self
+    {
+        return new self($this->isSatisfied, array_merge($failures, $this->failures), $this->isError, $this->exception);
     }
 
     /**

@@ -250,6 +250,10 @@ interface ISpecification
      * Unlike isSatisfiedBy() which returns a boolean, evaluate() provides detailed error traceability,
      * reasons, failure codes, and execution metadata.
      *
+     * An exception raised while evaluating (missing property, throwing accessor, incompatible candidate
+     * type) is NOT a rule failure: evaluate() returns a result with isError = true carrying the exception.
+     * Negation never inverts an error result and composites propagate it; isSatisfiedBy() keeps throwing.
+     *
      * @param mixed $candidate Candidate object or value to evaluate
      * @return SpecificationResult Evaluation result containing verdicts and failure notifications
      */
@@ -292,4 +296,18 @@ interface ISpecification
      * @return ICompositeSpecification<T> New composite specification: this OR NOT other
      */
     public function orNot(ISpecification|string $otherSpecification, ?ISpecification $propertySpecification = null): ICompositeSpecification;
+
+    /**
+     * Verifies whether another object denotes the same predicate as this specification.
+     *
+     * Equality is structural: same concrete class AND same parameters. Two
+     * specifications of the same class with different parameters are NOT equal.
+     * Partitioned repositories rely on this method to decide whether a new partition
+     * replaces an existing one (RN-02 (a) of the partitioning architecture), so an
+     * implementation that answers true for different predicates orphans entities.
+     *
+     * @param mixed $other Object to compare against (non-specifications are never equal)
+     * @return bool True when both denote the same predicate
+     */
+    public function equals(mixed $other): bool;
 }

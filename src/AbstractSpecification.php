@@ -98,8 +98,14 @@ abstract class AbstractSpecification implements ISpecification
     {
         try {
             $satisfied = $this->isSatisfiedBy($candidate);
-        } catch (\TypeError) {
-            $satisfied = false;
+        } catch (\Throwable $e) {
+            // An exception while evaluating is NOT a rule failure: the rule could not be evaluated.
+            // It becomes an error result that NOT never inverts and composites propagate.
+            return SpecificationResult::error(
+                exception: $e,
+                ruleName: (new ReflectionClass($this))->getShortName(),
+                code: $this->customCode
+            );
         }
 
         if ($satisfied) {
@@ -319,5 +325,86 @@ abstract class AbstractSpecification implements ISpecification
     public function __toString(): string
     {
         return static::class;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Default structural equality: same concrete class and every declared property
+     * holding an equal value. Nested specifications are compared through their own
+     * equals(), date-time values by instant, arrays element by element, scalars
+     * strictly. Being the same class is never sufficient on its own (two leaves of
+     * the same class with different parameters are different specifications).
+     *
+     * @param mixed $other Object to compare against
+     * @return bool True when both specifications denote the same predicate
+     */
+    public function equals(mixed $other): bool
+    {
+        if ($this === $other) {
+            return true;
+        }
+        if (!is_object($other) || static::class !== $other::class) {
+            return false;
+        }
+
+        $refThis = new \ReflectionObject($this);
+        $refOther = new \ReflectionObject($other);
+
+        foreach ($refThis->getProperties() as $prop) {
+            $name = $prop->getName();
+            if (!$refOther->hasProperty($name)) {
+                return false;
+            }
+            $otherProp = $refOther->getProperty($name);
+            $thisInit = $prop->isInitialized($this);
+            if ($thisInit !== $otherProp->isInitialized($other)) {
+                return false;
+            }
+            if (!$thisInit) {
+                continue;
+            }
+            if (!self::specificationValuesEqual($prop->getValue($this), $otherProp->getValue($other))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Compares two property values for structural specification equality.
+     *
+     * @param mixed $a
+     * @param mixed $b
+     * @return bool
+     */
+    protected static function specificationValuesEqual(mixed $a, mixed $b): bool
+    {
+        if ($a instanceof ISpecification && $b instanceof ISpecification) {
+            return $a->equals($b);
+        }
+        if ($a instanceof \DateTimeInterface && $b instanceof \DateTimeInterface) {
+            return $a == $b;
+        }
+        if (is_array($a) && is_array($b)) {
+            if (count($a) !== count($b)) {
+                return false;
+            }
+            foreach ($a as $key => $value) {
+                if (!array_key_exists($key, $b) || !self::specificationValuesEqual($value, $b[$key])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($a instanceof \Closure || $b instanceof \Closure) {
+            return $a === $b;
+        }
+        if (is_object($a) && is_object($b)) {
+            return $a::class === $b::class && $a == $b;
+        }
+
+        return $a === $b;
     }
 }

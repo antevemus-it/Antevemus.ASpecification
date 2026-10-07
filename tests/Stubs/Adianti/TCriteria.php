@@ -101,9 +101,10 @@ class TCriteria extends TExpression
         $result = '';
         foreach ($this->expressions as $i => $expression) {
             $operator = $this->operators[$i];
-            if ($this->caseInsensitive && method_exists($expression, 'setCaseInsensitive')) {
-                $expression->setCaseInsensitive(true);
-            }
+            // Espelha o TCriteria real (lib/adianti/database/TCriteria.php:178): o flag do
+            // critério é propagado INCONDICIONALMENTE a cada filho, sobrescrevendo o que a
+            // folha tinha. Um stub que só propagava "true" escondia esse comportamento.
+            $expression->setCaseInsensitive($this->caseInsensitive);
             $result .= $operator . $expression->dump($prepared) . ' ';
         }
 

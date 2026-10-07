@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Linq;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
+use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
@@ -57,6 +58,10 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): Closure
     {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $this->visit($specification->getInnerSpecification());
+        }
+
         if ($specification instanceof ICompositeSpecification) {
             return $this->visitComposite($specification);
         }
@@ -128,6 +133,10 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
      */
     public function visitLeaf(ISpecification $specification): Closure
     {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $this->visit($specification->getInnerSpecification());
+        }
+
         return match (true) {
             $specification instanceof EqualSpecification =>
                 fn(mixed $candidate): bool => $candidate == $specification->getValue(),

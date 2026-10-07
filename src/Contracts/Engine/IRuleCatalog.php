@@ -27,8 +27,12 @@ interface IRuleCatalog
     /**
      * Retrieves the collection of active business rules for the given scope and scenario.
      *
+     * Contract for `$cenario`: a rule without scenario applies to the whole scope; a rule bound to a
+     * scenario applies only when that exact scenario is requested. Passing `null` means
+     * "scope-global rules only": it must never return the rules of every scenario at once.
+     *
      * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
-     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied')
+     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied'); null = scope-global rules only
      * @param array<string, mixed> $filters Additional filters (product_code, plan_code, etc.)
      * @return list<IRuleDefinition>
      */
@@ -37,8 +41,13 @@ interface IRuleCatalog
     /**
      * Retrieves the collection of document requirements for the given scope and scenario.
      *
+     * Documents must never leak between scopes: a requirement belongs to exactly one scope
+     * (`getEscopo()`) and to one scenario (`getCenario()`) or to the whole scope. Matching is exact
+     * on those two values; the group code is an identifier and never takes part in matching.
+     * `null` scenario returns scope-global documents only.
+     *
      * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
-     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied')
+     * @param string|null $cenario Specific scenario (e.g. 'claim:occupied'); null = scope-global documents only
      * @return list<IDocumentRuleDefinition>
      */
     public function findDocumentRules(string $escopo, ?string $cenario = null): array;

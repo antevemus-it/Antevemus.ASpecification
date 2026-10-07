@@ -20,6 +20,14 @@ use Countable;
  * - Direct extraction of failure codes, user-facing reasons, and statutory legal bases
  * - Transparent encapsulation of underlying SpecificationResult
  *
+ * Semantics (read before using it as a gate):
+ * - `isSatisfied()` is true only when NO failure of any action was recorded. A verdict with
+ *   warnings or log-only violations is NOT satisfied, even though the operation may proceed.
+ * - `hasBlockingErrors()` is the operational gate: it is the only question that decides whether
+ *   the transition is forbidden. `canProceed()` is its negation.
+ * - An evaluation error (a rule that could not be evaluated: missing property, throwing getter,
+ *   incompatible type) is ALWAYS a blocking failure, regardless of the rule's configured action.
+ *
  * @version    1.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
@@ -79,6 +87,12 @@ final readonly class RuleEngineVerdict implements Countable
         $log = [];
 
         foreach ($result->failures as $failure) {
+            // A failure produced by an evaluation error is never WARN/LOG: the rule was not evaluated.
+            if (isset($failure->metadata['evaluation_error'])) {
+                $blocking[] = $failure;
+                continue;
+            }
+
             $actionRaw = $failure->metadata['acao']
                 ?? $failure->metadata['acao_ao_violar']
                 ?? $failure->metadata['action']
@@ -105,7 +119,11 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Checks whether all rules were successfully satisfied.
+     * Checks whether all rules were successfully satisfied: no failure of ANY action was recorded.
+     *
+     * This is not the "may proceed" question. A verdict carrying only warnings or log-only
+     * violations returns false here while hasBlockingErrors() returns false too. Use
+     * hasBlockingErrors() (or canProceed()) as the operational gate.
      *
      * @return bool
      */
@@ -116,12 +134,35 @@ final readonly class RuleEngineVerdict implements Countable
 
     /**
      * Checks if there are blocking violations preventing the operational transition.
+     * This is the operational gate; evaluation errors always count as blocking.
      *
      * @return bool
      */
     public function hasBlockingErrors(): bool
     {
         return count($this->blockingFailures) > 0;
+    }
+
+    /**
+     * Checks whether the operation may proceed: no blocking violation and no evaluation error.
+     * Warnings and log-only violations do not prevent proceeding.
+     *
+     * @return bool
+     */
+    public function canProceed(): bool
+    {
+        return !$this->hasBlockingErrors() && !$this->hasEvaluationErrors();
+    }
+
+    /**
+     * Checks whether at least one rule could not be evaluated (missing property, throwing
+     * accessor, incompatible candidate type). Such failures are always blocking.
+     *
+     * @return bool
+     */
+    public function hasEvaluationErrors(): bool
+    {
+        return $this->specificationResult->isError;
     }
 
     /**
@@ -185,13 +226,19 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Returns the business or regulatory codes of all recorded failures.
+     * Returns the business or regulatory code of every recorded failure, in the same order and
+     * with the same length as getAllFailures(). A failure without code yields an explicit null,
+     * so index i of this list always refers to failure i (rules compiled by the engine always
+     * carry the catalog rule code).
      *
-     * @return list<string>
+     * @return list<string|null>
      */
     public function getFailureCodes(): array
     {
-        return $this->specificationResult->getCodes();
+        return array_map(
+            static fn(SpecificationFailure $failure): ?string => $failure->code,
+            $this->specificationResult->failures
+        );
     }
 
     /**

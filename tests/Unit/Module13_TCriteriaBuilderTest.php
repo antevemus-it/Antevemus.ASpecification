@@ -49,6 +49,85 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->testTautologyAndContradiction();
         $this->testNonTranslatableExceptions();
         $this->testMagicAdiantiPrefixesAreRejected();
+        $this->testCaseInsensitiveSurvivesCriteriaPropagation();
+        $this->testRealAdiantiHonorsCaseInsensitive();
+    }
+
+    /**
+     * BUG-20261007-M646: o TCriteria real propaga o próprio flag (false por padrão) a cada
+     * filho ao fazer dump(), sobrescrevendo o setCaseInsensitive(true) da folha. O stub agora
+     * espelha isso. Reprodução: folhas ignore-case saíam sem UPPER(). Regressão: irmãos
+     * sensíveis não são contaminados, em qualquer profundidade, e um critério raiz com o flag
+     * explicitamente desligado não reverte a folha.
+     */
+    private function testCaseInsensitiveSurvivesCriteriaPropagation(): void
+    {
+        // Folha isolada, com o critério raiz nascido FALSE (como no Adianti real)
+        $c1 = TCriteriaBuilder::fromSpecification(Spec::property('sigla', Spec::equalIgnoreCase('sp')));
+        $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $c1->dump());
+        $this->assertEquals("(UPPER(sigla) LIKE UPPER(:p))", preg_replace('/:par_\d+/', ':p', $c1->dump(true)));
+
+        // Critério raiz com o flag explicitamente desligado: a folha continua insensível
+        $c1->setCaseInsensitive(false);
+        $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $c1->dump());
+
+        // Irmão sensível no mesmo AND não ganha UPPER()
+        $mixed = Spec::property('nome', Spec::wildcard('Jo*'))
+            ->and(Spec::property('sigla', Spec::equalIgnoreCase('sp')));
+        $c2 = TCriteriaBuilder::fromSpecification($mixed);
+        $this->assertEquals("(nome LIKE 'Jo%' AND UPPER(sigla) LIKE UPPER('sp'))", $c2->dump());
+
+        // Aninhamento: OR > AND > folha insensível; a folha sensível do ramo continua sensível
+        $nested = Spec::property('uf', Spec::equalTo('RJ'))
+            ->or(Spec::property('nome', Spec::wildcard('A*'))
+            ->and(Spec::property('cidade', Spec::wildcardExpressionMatcherIgnoreCase('são*'))));
+        $c3 = TCriteriaBuilder::fromSpecification($nested);
+        $this->assertEquals("(uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(cidade) LIKE UPPER('são%')))", $c3->dump());
+
+        // De Morgan: NOT de folha insensível vira NOT LIKE, ainda insensível
+        $c4 = TCriteriaBuilder::fromSpecification(Spec::not(Spec::property('sigla', Spec::equalIgnoreCase('sp'))));
+        $this->assertEquals("(UPPER(sigla) NOT LIKE UPPER('sp'))", $c4->dump());
+
+        // Um critério raiz insensível continua valendo para folhas sensíveis (comportamento do Adianti, inalterado)
+        $c5 = TCriteriaBuilder::fromSpecification(Spec::property('nome', Spec::wildcard('Jo*')));
+        $c5->setCaseInsensitive(true);
+        $this->assertEquals("(UPPER(nome) LIKE UPPER('Jo%'))", $c5->dump());
+    }
+
+    /**
+     * BUG-20261007-M646: o stub mentiu duas vezes (KJ36 e M646). Quando o Adianti real estiver
+     * disponível ao lado deste repositório, a tradução é verificada com as classes reais num
+     * processo filho (as classes reais e os stubs não podem coexistir no mesmo processo).
+     * Sem o Adianti real, avisa e segue: a suíte continua autossuficiente (RN-07).
+     */
+    private function testRealAdiantiHonorsCaseInsensitive(): void
+    {
+        $adianti = dirname(__DIR__, 3) . '/Antevemus.AflowEngine/lib/adianti/database';
+        if (!is_file($adianti . '/TCriteria.php')) {
+            fwrite(STDOUT, "    [AVISO] Adianti real não encontrado em {$adianti}; verificação com classes reais pulada.\n");
+            return;
+        }
+
+        $probe = dirname(__DIR__) . '/Support/real_adianti_probe.php';
+        $cmd = sprintf(
+            '%s -d xdebug.mode=off %s %s 2>/dev/null',
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg($probe),
+            escapeshellarg($adianti)
+        );
+        $json = (string) shell_exec($cmd);
+        $out = json_decode($json, true);
+        $this->assertTrue(is_array($out), 'Sonda com o Adianti real não devolveu JSON: ' . $json);
+
+        $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $out['equalIgnoreCase']['dump']);
+        $this->assertEquals("(UPPER(cidade) LIKE UPPER('são%'))", $out['wildcardIgnoreCase']['dump']);
+        $this->assertEquals("(UPPER(sigla) NOT LIKE UPPER('sp'))", $out['notEqualIgnoreCase']['dump']);
+        $this->assertEquals("(nome LIKE 'Jo%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['mixedAnd']['dump']);
+        $this->assertEquals("(uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(sigla) LIKE UPPER('sp')))", $out['nestedOr']['dump']);
+
+        // Modo prepared: UPPER() envolve o placeholder, o literal segue como parâmetro
+        $prepared = preg_replace('/:par_\d+/', ':p', $out['mixedAnd']['prepared']);
+        $this->assertEquals("(nome LIKE :p AND UPPER(sigla) LIKE UPPER(:p))", $prepared);
     }
 
     /**

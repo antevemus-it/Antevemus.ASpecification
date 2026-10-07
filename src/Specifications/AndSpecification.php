@@ -68,7 +68,7 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
                 code: $this->customCode,
                 ruleName: 'AndSpecification'
             );
-            return new SpecificationResult(false, array_merge([$topFailure], $combined->failures));
+            return $combined->withLeadingFailures([$topFailure]);
         }
 
         return $combined;

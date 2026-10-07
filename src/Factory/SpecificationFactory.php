@@ -22,7 +22,9 @@ use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LooseEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\TypeCompatibility;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
@@ -117,6 +119,12 @@ final class SpecificationFactory implements
             public function equalTo(mixed $value): ISpecification
             {
                 return new EqualSpecification($value);
+            }
+
+            /** {@inheritdoc} */
+            public function looselyEqualTo(mixed $value): ISpecification
+            {
+                return new LooseEqualSpecification($value);
             }
 
             /** {@inheritdoc} */
@@ -327,7 +335,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate < $this->target;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateBeforeSpecification', $this->target) && $candidate < $this->target;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -343,7 +351,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate > $this->target;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateAfterSpecification', $this->target) && $candidate > $this->target;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -359,7 +367,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate == $this->target;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateAtSpecification', $this->target) && $candidate == $this->target;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -375,7 +383,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate <= $this->target;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateBeforeOrAtSpecification', $this->target) && $candidate <= $this->target;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -391,7 +399,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate >= $this->target;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateAfterOrAtSpecification', $this->target) && $candidate >= $this->target;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -410,7 +418,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate >= $this->start && $candidate <= $this->end;
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateBetweenSpecification', $this->start) && $candidate >= $this->start && $candidate <= $this->end;
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -424,7 +432,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        if (!$candidate instanceof DateTimeInterface) return false;
+                        if (!TypeCompatibility::isDateCandidate($candidate, 'DateIsTodaySpecification')) return false;
                         $now = new \DateTimeImmutable();
                         return $candidate->format('Y-m-d') === $now->format('Y-m-d');
                     }
@@ -440,7 +448,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate < new \DateTimeImmutable();
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateIsPastSpecification', null) && $candidate < new \DateTimeImmutable();
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
@@ -454,7 +462,7 @@ final class SpecificationFactory implements
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
-                        return $candidate instanceof DateTimeInterface && $candidate > new \DateTimeImmutable();
+                        return TypeCompatibility::isDateCandidate($candidate, 'DateIsFutureSpecification', null) && $candidate > new \DateTimeImmutable();
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }

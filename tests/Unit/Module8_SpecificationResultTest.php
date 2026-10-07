@@ -13,11 +13,13 @@ use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\AbstractSpecification;
 
 class Module8_SpecificationResultTest extends TestCase
 {
     public function run(): void
     {
+        $this->testEvaluationErrorIsNotRuleFailure();
         $this->testSpecificationFailureObject();
         $this->testSpecificationResultObject();
         $this->testBasicEvaluateAndDefaultMessage();
@@ -238,5 +240,78 @@ class Module8_SpecificationResultTest extends TestCase
         $this->assertFalse($resReprovado->isSatisfied);
         $this->assertTrue($resReprovado->hasError("INQ_ART_4"));
         $this->assertEquals(["A multa rescisória deve ser proporcional ao período restante (Art. 4º da Lei 8.245/91)."], $resReprovado->getReasons());
+    }
+
+    /**
+     * Erro de avaliação (propriedade inexistente, getter que lança, TypeError) NÃO é falha de regra:
+     * vira SpecificationResult::error(), que NOT não inverte e que AND/OR propagam.
+     * Reprodução da revisão 2026-10-07 §2.1.
+     */
+    private function testEvaluationErrorIsNotRuleFailure(): void
+    {
+        $base = new AlwaysTrueSpecification();
+        $obj = (object)['x' => 1];
+
+        // 1. Reprodução: NOT sobre propriedade inexistente aprovava sob evaluate()
+        $missing = new PropertySpecification($base, 'missing', new EqualSpecification(1));
+        $notMissing = $missing->not();
+        $res = $notMissing->evaluate($obj);
+        $this->assertFalse($res->isSatisfied, 'NOT sobre erro de avaliação não pode aprovar');
+        $this->assertTrue($res->isError, 'Propriedade inexistente é erro de avaliação, não falha de regra');
+        $this->assertInstanceOf(\Throwable::class, $res->exception);
+        $this->assertEquals('missing', $res->failures[0]->property);
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $notMissing->isSatisfiedBy($obj), 'isSatisfiedBy continua lançando');
+
+        // 2. Getter que lança
+        $boom = new class { public function getAmount(): int { throw new \RuntimeException('boom'); } };
+        $amount = new PropertySpecification($base, 'amount', new GreaterThanSpecification(1));
+        $resBoom = $amount->evaluate($boom);
+        $this->assertTrue($resBoom->isError);
+        $this->assertEquals('boom', $resBoom->exception->getMessage());
+        $this->assertEquals('amount', $resBoom->failures[0]->property);
+        $this->assertTrue($amount->not()->evaluate($boom)->isError, 'NOT devolve o erro como está');
+        $this->assertFalse($amount->not()->evaluate($boom)->isSatisfied);
+
+        // 3. TypeError dentro de isSatisfiedBy não é mais engolido como falha
+        $typed = new class extends AbstractSpecification {
+            public function isSatisfiedBy(mixed $candidate): bool { return strlen($candidate) > 3; }
+            public function getType(): string { return 'mixed'; }
+        };
+        $resType = $typed->evaluate(['array']);
+        $this->assertTrue($resType->isError);
+        $this->assertInstanceOf(\TypeError::class, $resType->exception);
+        $this->assertTrue($typed->not()->evaluate(['array'])->isError);
+
+        // 4. Compostos propagam o erro
+        $this->assertTrue($base->and($missing)->evaluate($obj)->isError, 'AND propaga erro');
+        $this->assertTrue($missing->and($base)->evaluate($obj)->isError);
+        $this->assertTrue($missing->or($base)->evaluate($obj)->isError, 'OR com erro à esquerda propaga');
+        $this->assertTrue((new AlwaysFalseSpecification())->or($missing)->evaluate($obj)->isError, 'OR com erro à direita propaga');
+        $this->assertTrue($base->or($missing)->evaluate($obj)->isSatisfied, 'OR curto-circuita à esquerda satisfeita');
+        $withReason = $base->and($missing)->because('conjunção')->withCode('CJ');
+        $this->assertTrue($withReason->evaluate($obj)->isError, 'because()/withCode() preservam o erro');
+
+        // 5. Regressão: falha normal continua sendo invertida por NOT; null é falha, não erro
+        $nullProp = new PropertySpecification($base, 'n', new EqualSpecification(1));
+        $resNull = $nullProp->evaluate((object)['n' => null]);
+        $this->assertFalse($resNull->isSatisfied);
+        $this->assertFalse($resNull->isError, 'Propriedade nula é falha de regra');
+        $this->assertTrue($nullProp->not()->evaluate((object)['n' => null])->isSatisfied, 'NOT inverte falha normal');
+        $this->assertTrue($missing->evaluate((object)['missing' => 1])->isSatisfied);
+
+        // 6. API do resultado
+        $err = SpecificationResult::error(new \RuntimeException('x'), 'Rule', 'p', 'C1');
+        $this->assertTrue($err->isError);
+        $this->assertFalse($err->isSatisfied);
+        $this->assertCount(1, $err);
+        $this->assertEquals(['C1'], $err->getCodes());
+        $this->assertEquals('p', $err->failures[0]->property);
+        $this->assertTrue($err->hasError('C1'));
+        $combined = SpecificationResult::combine(SpecificationResult::satisfied(), $err, SpecificationResult::failure('f'));
+        $this->assertTrue($combined->isError, 'combine() propaga erro');
+        $this->assertFalse($combined->isSatisfied);
+        $this->assertCount(2, $combined);
+        $this->assertFalse(SpecificationResult::satisfied()->isError);
+        $this->assertFalse(SpecificationResult::failure('f')->isError);
     }
 }

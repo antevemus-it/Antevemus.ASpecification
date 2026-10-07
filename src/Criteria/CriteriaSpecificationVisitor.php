@@ -14,6 +14,7 @@ use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
+use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -100,6 +101,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): TExpression
     {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $this->visit($specification->getInnerSpecification());
+        }
+
         if ($specification instanceof ICompositeSpecification) {
             return $this->visitComposite($specification);
         }
@@ -263,11 +268,25 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function translateWildcard(string $col, string $rawPattern, bool $caseInsensitive): TFilter
     {
         $pattern = str_replace(['*', '?'], ['%', '_'], $rawPattern);
-        $filter = new TFilter($col, 'LIKE', $pattern);
-        if ($caseInsensitive) {
-            $filter->setCaseInsensitive(true);
-        }
-        return $filter;
+        return $this->likeFilter($col, 'LIKE', $pattern, $caseInsensitive);
+    }
+
+    /**
+     * Build a LIKE / NOT LIKE filter. Case-insensitive leaves use TCaseInsensitiveFilter,
+     * because the real TCriteria::dump() resets every child's flag to its own (false by
+     * default) and a plain TFilter would silently become case-sensitive (BUG-20261007-M646).
+     *
+     * @param string $col
+     * @param string $operator 'LIKE' or 'NOT LIKE'
+     * @param mixed $value
+     * @param bool $caseInsensitive
+     * @return TFilter
+     */
+    private function likeFilter(string $col, string $operator, mixed $value, bool $caseInsensitive): TFilter
+    {
+        return $caseInsensitive
+            ? new TCaseInsensitiveFilter($col, $operator, $value)
+            : new TFilter($col, $operator, $value);
     }
 
     /**
@@ -281,11 +300,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function translateNotWildcard(string $col, string $rawPattern, bool $caseInsensitive): TFilter
     {
         $pattern = str_replace(['*', '?'], ['%', '_'], $rawPattern);
-        $filter = new TFilter($col, 'NOT LIKE', $pattern);
-        if ($caseInsensitive) {
-            $filter->setCaseInsensitive(true);
-        }
-        return $filter;
+        return $this->likeFilter($col, 'NOT LIKE', $pattern, $caseInsensitive);
     }
 
     /**
@@ -297,9 +312,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateEqualIgnoreCase(string $col, mixed $value): TFilter
     {
-        $filter = new TFilter($col, 'LIKE', $value);
-        $filter->setCaseInsensitive(true);
-        return $filter;
+        return $this->likeFilter($col, 'LIKE', $value, true);
     }
 
     /**
@@ -311,9 +324,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateNotEqualIgnoreCase(string $col, mixed $value): TFilter
     {
-        $filter = new TFilter($col, 'NOT LIKE', $value);
-        $filter->setCaseInsensitive(true);
-        return $filter;
+        return $this->likeFilter($col, 'NOT LIKE', $value, true);
     }
 
     /**
@@ -325,6 +336,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function visitNot(ISpecification $inner): TExpression
     {
         return match (true) {
+            $inner instanceof RuleBoundSpecification =>
+                $this->visitNot($inner->getInnerSpecification()),
+
             $inner instanceof NotSpecification =>
                 $this->visit($inner->getSpecification()),
 
@@ -389,6 +403,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function visitNotLeaf(ISpecification $inner): TFilter
     {
+        if ($inner instanceof RuleBoundSpecification) {
+            return $this->visitNotLeaf($inner->getInnerSpecification());
+        }
+
         $col = $this->currentProperty;
         if ($col === null) {
             throw new NonTranslatableCriteriaException(

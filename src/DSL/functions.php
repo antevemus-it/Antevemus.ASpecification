@@ -147,6 +147,17 @@ function equalTo(mixed $value): ISpecification
 }
 
 /**
+ * Creates an opt-in loose equality (`==`) leaf specification (PHP coercion applies).
+ *
+ * @param mixed $value Expected value
+ * @return ISpecification Loose equality specification
+ */
+function looselyEqualTo(mixed $value): ISpecification
+{
+    return Spec::looselyEqualTo($value);
+}
+
+/**
  * Syntactic alias for equalTo().
  *
  * @param mixed $value Expected value

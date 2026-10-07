@@ -28,6 +28,7 @@ use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
+use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 
 /**
@@ -106,6 +107,10 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): SqlWhereClause
     {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $this->visit($specification->getInnerSpecification());
+        }
+
         if ($specification instanceof ICompositeSpecification) {
             return $this->visitComposite($specification);
         }
@@ -198,6 +203,10 @@ class SqlQueryVisitor implements ISpecificationVisitor
     /** {@inheritdoc} */
     public function visitLeaf(ISpecification $specification): SqlWhereClause
     {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $this->visit($specification->getInnerSpecification());
+        }
+
         $col = $this->currentColumn;
         if ($col === null) {
             throw new NonTranslatableSpecificationException(

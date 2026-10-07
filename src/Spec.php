@@ -178,6 +178,21 @@ final class Spec
     }
 
     /**
+     * Opt-in LOOSE equality (`==`): PHP coercion applies (`5 == "5"`, `true == 1`).
+     *
+     * The default equalTo() is strict (`===`) and refuses incompatible candidate types with
+     * IncompatibleTypeException. Use this when candidates arrive as strings from forms,
+     * CSV or database drivers and the rule tolerates coercion.
+     *
+     * @param mixed $value Expected value
+     * @return ISpecification
+     */
+    public static function looselyEqualTo(mixed $value): ISpecification
+    {
+        return self::getFactory()->looselyEqualTo($value);
+    }
+
+    /**
      * Specifies that candidate value must NOT equal the given value.
      *
      * @param mixed $value Value not allowed

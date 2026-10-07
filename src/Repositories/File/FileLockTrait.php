@@ -33,6 +33,18 @@ trait FileLockTrait
     protected int $lockTimeoutMs = 3000;
 
     /**
+     * Lock paths currently held by this instance (path => nesting depth).
+     *
+     * flock() locks belong to the open file description, so a second fopen()+flock()
+     * on a path this very instance already holds would block against itself. A
+     * nested request for a path already held runs the callback directly, which lets
+     * a read-modify-write section wrap load() and store() under one lock.
+     *
+     * @var array<string, int>
+     */
+    private array $heldLockPaths = [];
+
+    /**
      * Executes a callback protected by an exclusive lock (LOCK_EX).
      *
      * @template R
@@ -72,6 +84,16 @@ trait FileLockTrait
      */
     private function executeWithLock(string $lockFilePath, int $lockType, callable $callback): mixed
     {
+        if (isset($this->heldLockPaths[$lockFilePath])) {
+            // Reentrant: the outer section already holds this path (BUG-20261007-7RZJ).
+            $this->heldLockPaths[$lockFilePath]++;
+            try {
+                return $callback();
+            } finally {
+                $this->heldLockPaths[$lockFilePath]--;
+            }
+        }
+
         $handle = @fopen($lockFilePath, "c+");
         if ($handle === false) {
             throw new RepositoryException("Não foi possível abrir o descritor de lock para o arquivo: {$lockFilePath}");
@@ -93,9 +115,11 @@ trait FileLockTrait
             throw new RepositoryException("Timeout de {$this->lockTimeoutMs}ms excedido ao tentar obter lock para: {$lockFilePath}");
         }
 
+        $this->heldLockPaths[$lockFilePath] = 1;
         try {
             return $callback();
         } finally {
+            unset($this->heldLockPaths[$lockFilePath]);
             flock($handle, LOCK_UN);
             fclose($handle);
         }

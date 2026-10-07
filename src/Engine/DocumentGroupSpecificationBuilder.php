@@ -4,25 +4,30 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
-use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentPresenceEvaluator;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Results\SpecificationFailure;
-use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Engine\Exceptions\InvalidConditionalExpressionException;
+use Antevemus\ASpecification\Engine\Exceptions\MissingAlternativeSetException;
 use Antevemus\ASpecification\Spec;
 
 /**
  * DocumentGroupSpecificationBuilder - Boolean Compiler for Document Requirements
  *
  * Transforms a collection of document requirements (IDocumentRuleDefinition) into a unified
- * specification tree (ISpecification), combining ALL (And), ANY (Or), and ONE_OF_SET (Xor) rules.
+ * specification tree (ISpecification), combining ALL (And), ANY (at least one of a set) and
+ * ONE_OF_SET (exactly one of a set) rules.
  *
  * Features:
  * - Pluggable document presence evaluator (IDocumentPresenceEvaluator)
  * - Intelligent default mechanism for inspecting documents in domain entities or arrays
- * - Elegant resolution of alternative document sets (e.g. Tax ID or Passport or Driver License)
- * - Evaluation of conditional guard predicates (e.g., rental_type <> seasonal)
+ * - Alternative document sets (e.g. Tax ID or Passport or Driver License); an ANY / ONE_OF_SET rule
+ *   without `codigo_set_alternativas` is rejected at compilation (MissingAlternativeSetException),
+ *   mirroring the relational catalog constraint, never grouped by guesswork
+ * - Conditional guard predicates (e.g., rental_type <> seasonal): a document whose guard does not
+ *   hold is NOT APPLICABLE and leaves the set count; an unsupported guard expression is rejected at
+ *   compilation (InvalidConditionalExpressionException), never silently applied
+ * - One aggregated failure per failing set, listing the accepted documents
  *
  * @version    1.1.0
  * @package    Antevemus\ASpecification
@@ -49,6 +54,8 @@ class DocumentGroupSpecificationBuilder
      * @param list<IDocumentRuleDefinition> $rules List of document requirements
      * @param array<string, mixed> $context Additional contextual metadata
      * @return ISpecification
+     * @throws InvalidConditionalExpressionException When a rule carries an unsupported guard expression
+     * @throws MissingAlternativeSetException When an ANY / ONE_OF_SET rule has no alternative set
      */
     public function build(array $rules, array $context = []): ISpecification
     {
@@ -59,37 +66,30 @@ class DocumentGroupSpecificationBuilder
         }
 
         $allSpecs = [];
+        /** @var array<string, list<array{rule: IDocumentRuleDefinition, spec: DocumentLeafSpecification}>> $anySets */
         $anySets = [];
+        /** @var array<string, list<array{rule: IDocumentRuleDefinition, spec: DocumentLeafSpecification}>> $oneOfSets */
         $oneOfSets = [];
 
         foreach ($activeRules as $rule) {
-            $docType = $rule->getCodigoTipoDocumento();
-            $setKey = $rule->getCodigoSetAlternativas() ?? $docType;
-
             $leafSpec = $this->createDocumentLeafSpec($rule, $context);
+            $entry = ['rule' => $rule, 'spec' => $leafSpec];
 
             match ($rule->getRegraObrigatoriedade()) {
                 DocumentRequirementMode::ALL => $allSpecs[] = $leafSpec,
-                DocumentRequirementMode::ANY => $anySets[$setKey][] = $leafSpec,
-                DocumentRequirementMode::ONE_OF_SET => $oneOfSets[$setKey][] = [
-                    'rule' => $rule,
-                    'spec' => $leafSpec,
-                ],
+                DocumentRequirementMode::ANY => $anySets[$this->resolveSetKey($rule)][] = $entry,
+                DocumentRequirementMode::ONE_OF_SET => $oneOfSets[$this->resolveSetKey($rule)][] = $entry,
             };
         }
 
-        // Process alternative ANY sets (any document in set satisfies -> OR)
-        foreach ($anySets as $setKey => $specsInSet) {
-            if (count($specsInSet) === 1) {
-                $allSpecs[] = $specsInSet[0];
-            } else {
-                $allSpecs[] = Spec::anyOf(...$specsInSet);
-            }
+        // Alternative ANY sets: at least one applicable document of the set must be present
+        foreach ($anySets as $setKey => $entries) {
+            $allSpecs[] = $this->createAnySetSpecification((string) $setKey, $entries, $context);
         }
 
-        // Process mutually exclusive ONE_OF_SET sets (exactly one document must be present -> XOR)
+        // Exclusive ONE_OF_SET sets: exactly one applicable document of the set must be present
         foreach ($oneOfSets as $setKey => $entries) {
-            $allSpecs[] = $this->createOneOfSetSpecification($setKey, $entries, $context);
+            $allSpecs[] = $this->createOneOfSetSpecification((string) $setKey, $entries, $context);
         }
 
         if (count($allSpecs) === 1) {
@@ -100,179 +100,73 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
+     * Resolves the set an ANY / ONE_OF_SET rule belongs to: its declared `codigo_set_alternativas`.
+     * A rule in one of those modes without a set is a catalog error and is refused, exactly as the
+     * relational catalog refuses it (`regra_obrigatoriedade = 'all' OR codigo_set_alternativas IS NOT NULL`).
+     *
+     * @param IDocumentRuleDefinition $rule
+     * @return string
+     * @throws MissingAlternativeSetException
+     */
+    protected function resolveSetKey(IDocumentRuleDefinition $rule): string
+    {
+        $declared = $rule->getCodigoSetAlternativas();
+        if ($declared !== null && trim($declared) !== '') {
+            return trim($declared);
+        }
+
+        throw new MissingAlternativeSetException(
+            $rule->getRegraObrigatoriedade()->value,
+            $rule->getCodigoTipoDocumento(),
+            $rule->getGrupoCodigo()
+        );
+    }
+
+    /**
      * Creates a leaf specification evaluating presence of a specific document.
      *
      * @param IDocumentRuleDefinition $rule
      * @param array<string, mixed> $context
-     * @return ISpecification
+     * @return DocumentLeafSpecification
+     * @throws InvalidConditionalExpressionException
      */
-    protected function createDocumentLeafSpec(IDocumentRuleDefinition $rule, array $context): ISpecification
+    protected function createDocumentLeafSpec(IDocumentRuleDefinition $rule, array $context): DocumentLeafSpecification
     {
-        $evaluator = $this->evaluator;
-        $docType = $rule->getCodigoTipoDocumento();
-        $condicao = $rule->getCondicionalExpressao();
-
-        return new class($docType, $rule, $evaluator, $condicao, $context) extends AbstractSpecification {
-            public function __construct(
-                private readonly string $docType,
-                private readonly IDocumentRuleDefinition $rule,
-                private readonly IDocumentPresenceEvaluator $evaluator,
-                private readonly ?string $condicao,
-                private readonly array $context
-            ) {
-            }
-
-            /** {@inheritdoc} */
-            public function getType(): string
-            {
-                return 'mixed';
-            }
-
-            /** {@inheritdoc} */
-            public function isSatisfiedBy(mixed $candidate): bool
-            {
-                if (!$this->isConditionMet($candidate)) {
-                    return true;
-                }
-
-                if (!is_object($candidate) && !is_array($candidate)) {
-                    return false;
-                }
-
-                return $this->evaluator->hasDocument($candidate, $this->docType, $this->context);
-            }
-
-            /** {@inheritdoc} */
-            public function evaluate(mixed $candidate): SpecificationResult
-            {
-                if (!$this->isConditionMet($candidate)) {
-                    return SpecificationResult::satisfied();
-                }
-
-                if ($this->isSatisfiedBy($candidate)) {
-                    return SpecificationResult::satisfied();
-                }
-
-                $msg = sprintf('Required document missing: %s.', $this->docType);
-                $code = 'DOC_' . strtoupper($this->docType);
-
-                return SpecificationResult::failure(
-                    message: $msg,
-                    code: $code,
-                    ruleName: 'DocumentRule:' . $this->rule->getGrupoCodigo(),
-                    property: 'documentos.' . $this->docType,
-                    metadata: [
-                        'acao' => 'bloquear',
-                        'tipo_documento' => $this->docType,
-                        'grupo' => $this->rule->getGrupoCodigo(),
-                        'regra' => $this->rule->getRegraObrigatoriedade()->value,
-                    ]
-                );
-            }
-
-            private function isConditionMet(mixed $candidate): bool
-            {
-                if ($this->condicao === null || trim($this->condicao) === '') {
-                    return true;
-                }
-
-                // Simple expression evaluator: key<>value or key=value
-                $expr = trim($this->condicao);
-                if (preg_match('/^([a-zA-Z0-9_\-]+)\s*(<>|!=|=)\s*([a-zA-Z0-9_\-]+)$/', $expr, $matches)) {
-                    $prop = $matches[1];
-                    $op = $matches[2];
-                    $expected = $matches[3];
-
-                    $actual = null;
-                    if (is_object($candidate)) {
-                        $actual = $candidate->{$prop} ?? (method_exists($candidate, 'get' . ucfirst($prop)) ? $candidate->{'get' . ucfirst($prop)}() : null);
-                    } elseif (is_array($candidate)) {
-                        $actual = $candidate[$prop] ?? null;
-                    }
-
-                    $actualStr = (string) ($actual ?? '');
-                    if ($op === '=' && $actualStr !== $expected) {
-                        return false;
-                    }
-                    if (($op === '<>' || $op === '!=') && $actualStr === $expected) {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-        };
+        return new DocumentLeafSpecification($rule, $this->evaluator, $context);
     }
 
     /**
-     * Creates a strict exclusivity specification (exactly one document must be present).
+     * Creates an alternative-set specification (at least one applicable document present).
      *
      * @param string $setKey
-     * @param list<array{rule: IDocumentRuleDefinition, spec: ISpecification}> $entries
+     * @param list<array{rule: IDocumentRuleDefinition, spec: DocumentLeafSpecification}> $entries
+     * @param array<string, mixed> $context
+     * @return ISpecification
+     */
+    protected function createAnySetSpecification(string $setKey, array $entries, array $context): ISpecification
+    {
+        return new DocumentSetSpecification(
+            $setKey,
+            DocumentRequirementMode::ANY,
+            array_map(static fn(array $e): DocumentLeafSpecification => $e['spec'], array_values($entries))
+        );
+    }
+
+    /**
+     * Creates a strict exclusivity specification (exactly one applicable document present).
+     *
+     * @param string $setKey
+     * @param list<array{rule: IDocumentRuleDefinition, spec: DocumentLeafSpecification}> $entries
      * @param array<string, mixed> $context
      * @return ISpecification
      */
     protected function createOneOfSetSpecification(string $setKey, array $entries, array $context): ISpecification
     {
-        return new class($setKey, $entries) extends AbstractSpecification {
-            public function __construct(
-                private readonly string $setKey,
-                private readonly array $entries
-            ) {
-            }
-
-            /** {@inheritdoc} */
-            public function getType(): string
-            {
-                return 'mixed';
-            }
-
-            /** {@inheritdoc} */
-            public function isSatisfiedBy(mixed $candidate): bool
-            {
-                $satisfiedCount = 0;
-                foreach ($this->entries as $entry) {
-                    if ($entry['spec']->isSatisfiedBy($candidate)) {
-                        $satisfiedCount++;
-                    }
-                }
-                return $satisfiedCount === 1;
-            }
-
-            /** {@inheritdoc} */
-            public function evaluate(mixed $candidate): SpecificationResult
-            {
-                $satisfiedCount = 0;
-                foreach ($this->entries as $entry) {
-                    if ($entry['spec']->isSatisfiedBy($candidate)) {
-                        $satisfiedCount++;
-                    }
-                }
-
-                if ($satisfiedCount === 1) {
-                    return SpecificationResult::satisfied();
-                }
-
-                $msg = sprintf(
-                    'Document set "%s" requires exactly one document present (present: %d).',
-                    $this->setKey,
-                    $satisfiedCount
-                );
-
-                return SpecificationResult::failure(
-                    message: $msg,
-                    code: 'DOC_SET_' . strtoupper($this->setKey),
-                    ruleName: 'DocumentRuleSet:' . $this->setKey,
-                    property: 'documentos_set.' . $this->setKey,
-                    metadata: [
-                        'acao' => 'bloquear',
-                        'set_alternativas' => $this->setKey,
-                        'esperado' => 1,
-                        'recebido' => $satisfiedCount,
-                    ]
-                );
-            }
-        };
+        return new DocumentSetSpecification(
+            $setKey,
+            DocumentRequirementMode::ONE_OF_SET,
+            array_map(static fn(array $e): DocumentLeafSpecification => $e['spec'], array_values($entries))
+        );
     }
 
     /**

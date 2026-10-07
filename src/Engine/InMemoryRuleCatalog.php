@@ -17,6 +17,7 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  * Features:
  * - Fluent in-memory storage of business rules and document requirements
  * - Filtering by operational scope, business scenario, and active status
+ * - Exact scope/scenario matching for documents (no cross-scope leakage); null scenario = scope-global only
  * - Native descending priority sorting
  *
  * @version    1.1.0
@@ -89,8 +90,10 @@ class InMemoryRuleCatalog implements IRuleCatalog
             }
 
             $ruleCenario = $rule->getCenario();
-            // Rule without specific scenario (applies to all in scope) or matching scenario
-            if ($ruleCenario !== null && $ruleCenario !== '' && $cenario !== null && $ruleCenario !== $cenario) {
+            // Rule without scenario applies to the whole scope. A rule bound to a scenario only
+            // applies when that exact scenario is requested: validating without a scenario means
+            // "scope-global rules only", never "every scenario at once".
+            if ($ruleCenario !== null && $ruleCenario !== '' && ($cenario === null || $ruleCenario !== $cenario)) {
                 continue;
             }
 
@@ -113,20 +116,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
-            // grupo_codigo may represent either scope or scenario
-            $grupo = $docRule->getGrupoCodigo();
-            if ($cenario !== null && $grupo === $cenario) {
-                $matched[] = $docRule;
-                continue;
-            }
-
-            if ($grupo === $escopo) {
-                $matched[] = $docRule;
-                continue;
-            }
-
-            // If prefixed by scope (e.g., "rental_contract_activation" for scope "rental_contract")
-            if (str_starts_with($grupo, $escopo)) {
+            if ($this->documentRuleMatches($docRule, $escopo, $cenario)) {
                 $matched[] = $docRule;
             }
         }
@@ -135,5 +125,32 @@ class InMemoryRuleCatalog implements IRuleCatalog
         usort($matched, fn(IDocumentRuleDefinition $a, IDocumentRuleDefinition $b) => $a->getOrdem() <=> $b->getOrdem());
 
         return $matched;
+    }
+
+    /**
+     * Decides whether a document requirement belongs to the requested scope and scenario.
+     *
+     * Matching is exact on the declared scope and scenario: the scope must be equal; a declared
+     * scenario must be equal to the requested one; a null scenario applies to the whole scope.
+     * Validating without a scenario (null) only returns scope-global documents. The group code is
+     * an identifier and never takes part in matching, so nothing can leak between scopes.
+     *
+     * @param IDocumentRuleDefinition $docRule
+     * @param string $escopo
+     * @param string|null $cenario
+     * @return bool
+     */
+    protected function documentRuleMatches(IDocumentRuleDefinition $docRule, string $escopo, ?string $cenario): bool
+    {
+        if ($docRule->getEscopo() !== $escopo) {
+            return false;
+        }
+
+        $docCenario = $docRule->getCenario();
+        if ($docCenario === null || $docCenario === '') {
+            return true;
+        }
+
+        return $cenario !== null && $docCenario === $cenario;
     }
 }

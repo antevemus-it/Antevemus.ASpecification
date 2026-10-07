@@ -12,15 +12,21 @@ use Antevemus\ASpecification\Engine\DocumentGroupSpecificationBuilder;
 use Antevemus\ASpecification\Engine\DocumentRequirementMode;
 use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
 use Antevemus\ASpecification\Engine\DynamicSpecificationEngine;
+use Antevemus\ASpecification\Engine\Exceptions\InvalidConditionalExpressionException;
+use Antevemus\ASpecification\Engine\Exceptions\MissingAlternativeSetException;
 use Antevemus\ASpecification\Engine\Exceptions\MissingRuleHandlerException;
+use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
 use Antevemus\ASpecification\Engine\RuleAction;
+use Antevemus\ASpecification\Engine\RuleBoundSpecification;
+use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 use Antevemus\ASpecification\Engine\RuleDefinition;
 use Antevemus\ASpecification\Engine\RuleEngineVerdict;
 use Antevemus\ASpecification\Engine\RuleSpecificationRegistry;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Tests\TestCase;
+use InvalidArgumentException;
 use stdClass;
 
 /**
@@ -52,6 +58,339 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $this->testInMemoryRuleCatalog();
         $this->testDynamicEngineEndToEndSimulation();
         $this->testSpecFacadeIntegration();
+
+        // Lote 1 (revisão 2026-10-07): o motor carimba a regra, erro de avaliação bloqueia,
+        // catálogo não vaza entre escopos, matriz documental com condicionais e sets.
+        $this->testEngineStampsRuleMetadataOnFailures();
+        $this->testHandlerMetadataTakesPrecedenceOverRule();
+        $this->testEvaluationErrorIsAlwaysBlockingInVerdict();
+        $this->testVerdictFailureCodesKeepAlignmentAndWarnOnlySemantics();
+        $this->testCatalogDoesNotLeakDocumentsBetweenScopes();
+        $this->testCatalogWithoutScenarioAppliesOnlyGlobalRules();
+        $this->testOneOfSetIgnoresNonApplicableConditionalDocuments();
+        $this->testAnyOrOneOfSetWithoutSetKeyIsRejected();
+        $this->testDocumentRuleWithoutScopeIsRejected();
+        $this->testAnySetFailureIsAggregated();
+        $this->testUnparseableConditionalExpressionIsRejected();
+        $this->testCompiledRuleSpecificationIsTranslatableByVisitors();
+    }
+
+    /**
+     * §1.1: o handler devolve a spec crua (sem because/withCode/metadata), como o README ensina.
+     * O motor deve carimbar ação, código, mensagem e fundamento legal da regra.
+     */
+    private function testEngineStampsRuleMetadataOnFailures(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $registry = new RuleSpecificationRegistry();
+
+        $catalog->addRule(new RuleDefinition(
+            codigo: 'comp_residencia_90',
+            nome: 'Comprovante com mais de 90 dias',
+            tipoRegra: 'dias_maximos_comprovante',
+            acaoAoViolar: RuleAction::WARN,
+            valorInteiro: 90,
+            fundamentoLegal: 'Política Interna 7.2',
+            mensagemViolacao: 'Comprovante de residência vencido.',
+            escopo: 'contrato_locacao'
+        ));
+
+        // Handler cru: nenhum encanamento de ação/base legal.
+        $registry->registerClosure('dias_maximos_comprovante', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('diasCompResidencia', Spec::lessThanOrEqualTo($r->getValorInteiro() ?? 90))
+        );
+
+        $engine = new DynamicSpecificationEngine($catalog, $registry);
+        $verdict = $engine->validate((object) ['diasCompResidencia' => 120], 'contrato_locacao');
+
+        $this->assertFalse($verdict->isSatisfied());
+        $this->assertFalse($verdict->hasBlockingErrors(), 'Regra WARN não pode cair como BLOCK');
+        $this->assertTrue($verdict->hasWarnings(), 'Regra WARN deve virar warning no veredito');
+        $this->assertEquals(['Política Interna 7.2'], $verdict->getLegalBases());
+        $this->assertEquals(['comp_residencia_90'], $verdict->getFailureCodes());
+
+        $failure = $verdict->getWarningFailures()[0];
+        $this->assertEquals('Comprovante de residência vencido.', $failure->message);
+        $this->assertEquals('alertar', $failure->metadata['acao']);
+        $this->assertEquals('comp_residencia_90', $failure->metadata['regra']);
+        $this->assertEquals('dias_maximos_comprovante', $failure->metadata['tipo_regra']);
+        $this->assertTrue(isset($failure->metadata['mensagem_original']), 'A mensagem técnica da folha fica preservada no metadata');
+
+        // Regra que passa continua passando (o carimbo só age sobre falhas).
+        $ok = $engine->validate((object) ['diasCompResidencia' => 10], 'contrato_locacao');
+        $this->assertTrue($ok->isSatisfied());
+    }
+
+    /**
+     * §1.1: o que o handler gravou (because/withCode/metadata) tem precedência sobre a regra.
+     */
+    private function testHandlerMetadataTakesPrecedenceOverRule(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $registry = new RuleSpecificationRegistry();
+
+        $catalog->addRule(new RuleDefinition(
+            codigo: 'regra_warn',
+            nome: 'Regra alertar no catálogo',
+            tipoRegra: 'handler_personalizado',
+            acaoAoViolar: RuleAction::WARN,
+            fundamentoLegal: 'Base do catálogo',
+            mensagemViolacao: 'Mensagem do catálogo',
+            escopo: 'x'
+        ));
+
+        $registry->registerClosure('handler_personalizado', function (IRuleDefinition $r): ISpecification {
+            return new class extends AbstractSpecification {
+                public function getType(): string { return 'mixed'; }
+                public function isSatisfiedBy(mixed $c): bool { return false; }
+                public function evaluate(mixed $c): SpecificationResult {
+                    return SpecificationResult::failure(
+                        'Mensagem do handler',
+                        'CODIGO_DO_HANDLER',
+                        metadata: ['acao' => 'bloquear', 'fundamento_legal' => 'Base do handler']
+                    );
+                }
+            };
+        });
+
+        $verdict = (new DynamicSpecificationEngine($catalog, $registry))->validate(new stdClass(), 'x');
+
+        $this->assertTrue($verdict->hasBlockingErrors(), 'acao do handler (bloquear) vence a da regra (alertar)');
+        $this->assertFalse($verdict->hasWarnings());
+        $failure = $verdict->getBlockingFailures()[0];
+        $this->assertEquals('Mensagem do handler', $failure->message);
+        $this->assertEquals('CODIGO_DO_HANDLER', $failure->code);
+        $this->assertEquals(['Base do handler'], $verdict->getLegalBases());
+        // O vínculo com a regra do catálogo continua rastreável.
+        $this->assertEquals('regra_warn', $failure->metadata['regra']);
+    }
+
+    /**
+     * §2.1 + §1.1: erro de avaliação (propriedade inexistente) nunca vira WARN/LOG; é BLOCK.
+     */
+    private function testEvaluationErrorIsAlwaysBlockingInVerdict(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $registry = new RuleSpecificationRegistry();
+
+        $catalog->addRule(new RuleDefinition(
+            codigo: 'regra_log',
+            nome: 'Regra só log',
+            tipoRegra: 'propriedade_inexistente',
+            acaoAoViolar: RuleAction::LOG,
+            escopo: 'x'
+        ));
+        $registry->registerClosure('propriedade_inexistente', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('naoExiste', Spec::greaterThan(1))
+        );
+
+        $verdict = (new DynamicSpecificationEngine($catalog, $registry))->validate(new stdClass(), 'x');
+
+        $this->assertTrue($verdict->hasEvaluationErrors());
+        $this->assertTrue($verdict->hasBlockingErrors(), 'Erro de avaliação é BLOCK mesmo em regra LOG');
+        $this->assertFalse($verdict->hasLogs());
+        $this->assertFalse($verdict->hasWarnings());
+        $this->assertEquals(['regra_log'], $verdict->getFailureCodes());
+    }
+
+    /**
+     * §3.4: getFailureCodes() alinhado com as falhas (null explícito) e isSatisfied() falso com só WARN.
+     */
+    private function testVerdictFailureCodesKeepAlignmentAndWarnOnlySemantics(): void
+    {
+        $result = SpecificationResult::combine(
+            SpecificationResult::failure('a', 'A', metadata: ['acao' => 'alertar']),
+            SpecificationResult::failure('b', null, metadata: ['acao' => 'alertar']),
+            SpecificationResult::failure('c', 'C', metadata: ['acao' => 'apenas_log'])
+        );
+        $verdict = RuleEngineVerdict::fromSpecificationResult($result);
+
+        $this->assertCount(3, $verdict->getAllFailures());
+        $this->assertEquals(['A', null, 'C'], $verdict->getFailureCodes());
+
+        // Só WARN/LOG: não está "satisfeito", mas pode prosseguir.
+        $this->assertFalse($verdict->isSatisfied());
+        $this->assertFalse($verdict->hasBlockingErrors());
+        $this->assertTrue($verdict->canProceed());
+        $this->assertFalse($verdict->hasEvaluationErrors());
+    }
+
+    /**
+     * §1.4 + §3.4: documentos de um escopo/cenário não vazam para outro.
+     */
+    private function testCatalogDoesNotLeakDocumentsBetweenScopes(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+
+        // Dois escopos com cenário de mesmo nome: o escopo é declarado, o grupo é só identificador.
+        $catalog->addDocumentRule(new DocumentRuleDefinition('ativacao', 'doc_contrato', 'contrato', cenario: 'ativacao'));
+        $catalog->addDocumentRule(new DocumentRuleDefinition('ativacao', 'doc_sinistro', 'sinistro', cenario: 'ativacao'));
+        // Documento global do escopo (sem cenário).
+        $catalog->addDocumentRule(new DocumentRuleDefinition('contrato', 'doc_global_contrato', 'contrato'));
+        // Cenários do mesmo escopo e um escopo com nome parecido: nada casa por prefixo nem por grupo.
+        $catalog->addDocumentRule(new DocumentRuleDefinition('sinistro_ocupado', 'termo_ocupado', 'sinistro', cenario: 'sinistro:ocupado'));
+        $catalog->addDocumentRule(new DocumentRuleDefinition('sinistro_desocupado', 'chaves_desocupado', 'sinistro', cenario: 'sinistro:desocupado'));
+        $catalog->addDocumentRule(new DocumentRuleDefinition('contrato', 'doc_outro_escopo', 'contratos_x'));
+        // Grupo com nome de escopo alheio: o grupo nunca decide o escopo.
+        $catalog->addDocumentRule(new DocumentRuleDefinition('contrato', 'doc_grupo_enganoso', 'sinistro'));
+
+        $docs = array_map(fn($d) => $d->getCodigoTipoDocumento(), $catalog->findDocumentRules('contrato', 'ativacao'));
+        sort($docs);
+        $this->assertEquals(['doc_contrato', 'doc_global_contrato'], $docs, 'contrato/ativacao não pode ver doc_sinistro nem contratos_x');
+
+        $docs = array_map(fn($d) => $d->getCodigoTipoDocumento(), $catalog->findDocumentRules('sinistro', 'ativacao'));
+        sort($docs);
+        $this->assertEquals(['doc_grupo_enganoso', 'doc_sinistro'], $docs, 'global do escopo sinistro entra em qualquer cenário de sinistro');
+
+        $docs = array_map(fn($d) => $d->getCodigoTipoDocumento(), $catalog->findDocumentRules('sinistro', 'sinistro:ocupado'));
+        sort($docs);
+        $this->assertEquals(['doc_grupo_enganoso', 'termo_ocupado'], $docs, 'sinistro:ocupado não pode receber os documentos de sinistro:desocupado');
+
+        $docs = array_map(fn($d) => $d->getCodigoTipoDocumento(), $catalog->findDocumentRules('contrato'));
+        $this->assertEquals(['doc_global_contrato'], $docs, 'escopo contrato sem cenário: só o global, nunca contratos_x nem o grupo chamado contrato de outro escopo');
+
+        $docs = array_map(fn($d) => $d->getCodigoTipoDocumento(), $catalog->findDocumentRules('contrato', 'sinistro:ocupado'));
+        $this->assertEquals(['doc_global_contrato'], $docs, 'cenário de outro escopo não traz nada além do global');
+    }
+
+    /**
+     * §1.5: validar sem cenário aplica só as regras globais do escopo, não as de todos os cenários.
+     */
+    private function testCatalogWithoutScenarioAppliesOnlyGlobalRules(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'global_escopo', nome: 'g', tipoRegra: 't', escopo: 'contrato'));
+        $catalog->addRule(new RuleDefinition(codigo: 'so_ativacao', nome: 'a', tipoRegra: 't', escopo: 'contrato', cenario: 'ativacao'));
+        $catalog->addRule(new RuleDefinition(codigo: 'so_cancelamento', nome: 'c', tipoRegra: 't', escopo: 'contrato', cenario: 'cancelamento'));
+
+        $codes = array_map(fn($r) => $r->getCodigo(), $catalog->findRules('contrato'));
+        $this->assertEquals(['global_escopo'], $codes, 'sem cenário = só regras sem cenário');
+
+        $codes = array_map(fn($r) => $r->getCodigo(), $catalog->findRules('contrato', 'ativacao'));
+        sort($codes);
+        $this->assertEquals(['global_escopo', 'so_ativacao'], $codes);
+    }
+
+    /**
+     * §3.4: documento condicionado cuja condição não se aplica é "não aplicável", não "presente".
+     */
+    private function testOneOfSetIgnoresNonApplicableConditionalDocuments(): void
+    {
+        $builder = new DocumentGroupSpecificationBuilder();
+        $spec = $builder->build([
+            new DocumentRuleDefinition('analise', 'holerite', 'contrato', DocumentRequirementMode::ONE_OF_SET, 'renda'),
+            new DocumentRuleDefinition('analise', 'declaracao_ir', 'contrato', DocumentRequirementMode::ONE_OF_SET, 'renda', 'tipo<>pf'),
+        ]);
+
+        // Pessoa física com holerite: só o holerite se aplica, 1 presente -> satisfeito
+        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => ['holerite']]));
+        // Pessoa física sem nada: 0 presentes -> reprovado (antes aprovava, contando a condicional como presente)
+        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => []]));
+        // Pessoa jurídica com os dois: 2 presentes -> reprovado
+        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documentos' => ['holerite', 'declaracao_ir']]));
+        // Pessoa jurídica só com declaração: 1 -> satisfeito
+        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documentos' => ['declaracao_ir']]));
+
+        // Set em que nenhum documento se aplica: nada é exigido
+        $specTodosCondicionais = $builder->build([
+            new DocumentRuleDefinition('analise', 'a', 'contrato', DocumentRequirementMode::ONE_OF_SET, 's', 'tipo=pj'),
+            new DocumentRuleDefinition('analise', 'b', 'contrato', DocumentRequirementMode::ONE_OF_SET, 's', 'tipo=pj'),
+        ]);
+        $this->assertTrue($specTodosCondicionais->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => []]));
+    }
+
+    /**
+     * §3.4 (decisão de 2026-10-07 sobre o 18_regra_negocio.sql): ANY ou ONE_OF_SET sem
+     * codigo_set_alternativas é erro de catálogo (chk_gdot_set) e é recusado na compilação,
+     * nunca agrupado por adivinhação. ALL sem set continua válido.
+     */
+    private function testAnyOrOneOfSetWithoutSetKeyIsRejected(): void
+    {
+        $builder = new DocumentGroupSpecificationBuilder();
+
+        $e = $this->assertThrows(MissingAlternativeSetException::class, fn() => $builder->build([
+            new DocumentRuleDefinition('ativacao', 'rg', 'contrato', DocumentRequirementMode::ANY),
+            new DocumentRuleDefinition('ativacao', 'cnh', 'contrato', DocumentRequirementMode::ANY),
+        ]));
+        $this->assertInstanceOf(RuleEngineException::class, $e);
+        $this->assertEquals('any', $e->mode);
+        $this->assertEquals('rg', $e->documentType);
+        $this->assertEquals('ativacao', $e->groupCode);
+
+        $e = $this->assertThrows(MissingAlternativeSetException::class, fn() => $builder->build([
+            new DocumentRuleDefinition('analise', 'holerite', 'contrato', DocumentRequirementMode::ONE_OF_SET, '  '),
+        ]));
+        $this->assertEquals('one_of_set', $e->mode);
+
+        // ALL sem set é a forma normal
+        $spec = $builder->build([new DocumentRuleDefinition('ativacao', 'rg', 'contrato', DocumentRequirementMode::ALL)]);
+        $this->assertTrue($spec->isSatisfiedBy((object) ['documentos' => ['rg']]));
+    }
+
+    /**
+     * Decisão de 2026-10-07 (18_regra_negocio.sql: escopo NOT NULL): requisito documental sem escopo
+     * não existe; o grupo é só identificador e nunca substitui o escopo.
+     */
+    private function testDocumentRuleWithoutScopeIsRejected(): void
+    {
+        $this->assertThrows(InvalidArgumentException::class, fn() => new DocumentRuleDefinition('ativacao', 'rg', ''));
+        $this->assertThrows(InvalidArgumentException::class, fn() => new DocumentRuleDefinition('ativacao', 'rg', '   '));
+        $this->assertThrows(InvalidArgumentException::class, fn() => DocumentRuleDefinition::fromArray([
+            'grupo_codigo' => 'contrato_locacao_ativacao',
+            'codigo_tipo_documento' => 'rg',
+        ]));
+        $this->assertThrows(InvalidArgumentException::class, fn() => DocumentRuleDefinition::fromArray([
+            'grupo_codigo' => 'contrato_locacao_ativacao',
+            'codigo_tipo_documento' => 'rg',
+            'escopo' => '',
+        ]));
+
+        $def = DocumentRuleDefinition::fromArray([
+            'grupo_codigo' => 'sinistro_ocupado',
+            'codigo_tipo_documento' => 'declaracao_debitos',
+            'escopo' => 'sinistro',
+            'cenario' => 'sinistro:ocupado',
+        ]);
+        $this->assertEquals('sinistro', $def->getEscopo());
+        $this->assertEquals('sinistro:ocupado', $def->getCenario());
+    }
+
+    /**
+     * §3.4: set ANY que falha emite UMA falha agregada listando os documentos aceitos.
+     */
+    private function testAnySetFailureIsAggregated(): void
+    {
+        $builder = new DocumentGroupSpecificationBuilder();
+        $spec = $builder->build([
+            new DocumentRuleDefinition('ativacao', 'rg', 'contrato', DocumentRequirementMode::ANY, 'identidade'),
+            new DocumentRuleDefinition('ativacao', 'cnh', 'contrato', DocumentRequirementMode::ANY, 'identidade'),
+        ]);
+
+        $result = $spec->evaluate((object) ['documentos' => []]);
+        $this->assertFalse($result->isSatisfied);
+        $this->assertCount(1, $result->failures, 'um requisito, uma falha');
+        $failure = $result->failures[0];
+        $this->assertEquals('DOC_SET_IDENTIDADE', $failure->code);
+        $this->assertEquals(['rg', 'cnh'], $failure->metadata['documentos_aceitos']);
+        $this->assertEquals(['DOC_RG', 'DOC_CNH'], $failure->metadata['codigos']);
+        $this->assertEquals('bloquear', $failure->metadata['acao']);
+
+        $verdict = RuleEngineVerdict::fromSpecificationResult($result);
+        $this->assertCount(1, $verdict->getBlockingFailures());
+    }
+
+    /**
+     * §3.4: expressão condicional que o avaliador não entende é recusada na compilação, nunca exigida em silêncio.
+     */
+    private function testUnparseableConditionalExpressionIsRejected(): void
+    {
+        $builder = new DocumentGroupSpecificationBuilder();
+        $rules = [
+            new DocumentRuleDefinition('ativacao', 'doc', 'contrato', DocumentRequirementMode::ALL, null, 'tipo_locacao IN (a, b)'),
+        ];
+
+        $e = $this->assertThrows(InvalidConditionalExpressionException::class, fn() => $builder->build($rules));
+        $this->assertInstanceOf(RuleEngineException::class, $e);
     }
 
     private function testRuleActionEnum(): void
@@ -123,11 +462,14 @@ class Module11_DynamicRuleEngineTest extends TestCase
             'condicional_expressao' => 'tipo_locacao<>residencial_temporada',
             'ordem' => 70,
             'active' => 'Y',
+            'escopo' => 'contrato_locacao',
         ];
 
         $def = DocumentRuleDefinition::fromArray($row);
 
         $this->assertEquals('contrato_locacao_ativacao', $def->getGrupoCodigo());
+        $this->assertEquals('contrato_locacao', $def->getEscopo());
+        $this->assertTrue($def->getCenario() === null);
         $this->assertEquals('cnh_locatario', $def->getCodigoTipoDocumento());
         $this->assertEquals(DocumentRequirementMode::ANY, $def->getRegraObrigatoriedade());
         $this->assertEquals('identidade', $def->getCodigoSetAlternativas());
@@ -206,10 +548,10 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // Monta regras: cnpj_imobiliaria (all), contrato_assinado (all), identidade (any: rg ou cnh)
         $docRules = [
-            new DocumentRuleDefinition('ativacao', 'cnpj_imobiliaria', DocumentRequirementMode::ALL),
-            new DocumentRuleDefinition('ativacao', 'contrato_assinado', DocumentRequirementMode::ALL),
-            new DocumentRuleDefinition('ativacao', 'rg_locatario', DocumentRequirementMode::ANY, 'identidade'),
-            new DocumentRuleDefinition('ativacao', 'cnh_locatario', DocumentRequirementMode::ANY, 'identidade'),
+            new DocumentRuleDefinition('ativacao', 'cnpj_imobiliaria', 'contrato', DocumentRequirementMode::ALL),
+            new DocumentRuleDefinition('ativacao', 'contrato_assinado', 'contrato', DocumentRequirementMode::ALL),
+            new DocumentRuleDefinition('ativacao', 'rg_locatario', 'contrato', DocumentRequirementMode::ANY, 'identidade'),
+            new DocumentRuleDefinition('ativacao', 'cnh_locatario', 'contrato', DocumentRequirementMode::ANY, 'identidade'),
         ];
 
         $spec = $builder->build($docRules);
@@ -244,8 +586,8 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // ONE_OF_SET: exige exatamente 1 tipo de comprovante de renda
         $docRules = [
-            new DocumentRuleDefinition('analise', 'holerite', DocumentRequirementMode::ONE_OF_SET, 'comprovante_renda'),
-            new DocumentRuleDefinition('analise', 'declaracao_ir', DocumentRequirementMode::ONE_OF_SET, 'comprovante_renda'),
+            new DocumentRuleDefinition('analise', 'holerite', 'contrato', DocumentRequirementMode::ONE_OF_SET, 'comprovante_renda'),
+            new DocumentRuleDefinition('analise', 'declaracao_ir', 'contrato', DocumentRequirementMode::ONE_OF_SET, 'comprovante_renda'),
         ];
 
         $spec = $builder->build($docRules);
@@ -272,6 +614,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
             new DocumentRuleDefinition(
                 grupoCodigo: 'ativacao',
                 codigoTipoDocumento: 'declaracao_art43',
+                escopo: 'contrato',
                 regraObrigatoriedade: DocumentRequirementMode::ALL,
                 condicionalExpressao: 'tipo_locacao<>residencial_temporada'
             ),
@@ -316,7 +659,9 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $catalog->addDocumentRule(new DocumentRuleDefinition(
             grupoCodigo: 'sinistro_ocupado',
             codigoTipoDocumento: 'declaracao_debitos',
-            ordem: 1
+            escopo: 'sinistro',
+            ordem: 1,
+            cenario: 'sinistro_ocupado'
         ));
 
         // Busca no escopo contrato_locacao -> apenas a global
@@ -376,7 +721,9 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $catalog->addDocumentRule(new DocumentRuleDefinition(
             grupoCodigo: 'contrato_locacao_ativacao',
             codigoTipoDocumento: 'contrato_locacao_assinado',
-            regraObrigatoriedade: DocumentRequirementMode::ALL
+            escopo: 'contrato_locacao',
+            regraObrigatoriedade: DocumentRequirementMode::ALL,
+            cenario: 'contrato_locacao_ativacao'
         ));
 
         // Registra Handlers no Registry
@@ -481,5 +828,43 @@ class Module11_DynamicRuleEngineTest extends TestCase
         // Validação vazia default avalia como AlwaysTrue
         $verdict = $engine->validate(new stdClass(), 'default');
         $this->assertTrue($verdict->isSatisfied());
+    }
+
+    /**
+     * Lote 1 (consolidação): a spec compilada pelo motor (RuleBoundSpecification) continua
+     * traduzível pelos três visitors (SQL, TCriteria, ALinq), inclusive sob NOT e dentro de AND.
+     */
+    private function testCompiledRuleSpecificationIsTranslatableByVisitors(): void
+    {
+        $rule = new RuleDefinition(
+            codigo: 'valor_minimo',
+            nome: 'Valor mínimo',
+            tipoRegra: 'valor_minimo',
+            acaoAoViolar: RuleAction::WARN,
+            escopo: 'x'
+        );
+        $bound = new RuleBoundSpecification(Spec::property('valor', Spec::greaterThan(10)), $rule);
+        $other = new RuleBoundSpecification(Spec::property('ativo', Spec::equalTo(true)), $rule);
+
+        // SQL
+        $this->assertEquals('"valor" > :p1', Spec::toSql($bound, 'pgsql')->toSql(), 'RuleBound deve traduzir para SQL');
+        $this->assertEquals('NOT ("valor" > :p1)', Spec::toSql(Spec::not($bound), 'pgsql')->toSql(), 'NOT(RuleBound) deve traduzir para SQL');
+        $this->assertEquals('("valor" > :p1 AND "ativo" = TRUE)', Spec::toSql(Spec::allOf($bound, $other), 'pgsql')->toSql(), 'AND de RuleBound deve traduzir para SQL');
+
+        // TCriteria (stubs do Adianti carregados sob demanda, como no Módulo 13)
+        if (!class_exists(\Adianti\Database\TCriteria::class)) {
+            foreach (glob(__DIR__ . '/../Stubs/Adianti/*.php') as $stub) {
+                require_once $stub;
+            }
+        }
+        $dump = Spec::toCriteria($bound)->dump();
+        $this->assertTrue(str_contains($dump, 'valor > 10'), 'RuleBound deve traduzir para TCriteria: ' . $dump);
+        $dumpNot = Spec::toCriteria(Spec::not($bound))->dump();
+        $this->assertTrue(str_contains($dumpNot, 'valor'), 'NOT(RuleBound) deve traduzir para TCriteria: ' . $dumpNot);
+
+        // ALinq
+        $predicate = ALinqSpecificationVisitor::createPredicate(Spec::allOf($bound, $other));
+        $this->assertTrue($predicate((object) ['valor' => 11, 'ativo' => true]), 'predicado ALinq de RuleBound deve aceitar');
+        $this->assertFalse($predicate((object) ['valor' => 5, 'ativo' => true]), 'predicado ALinq de RuleBound deve recusar');
     }
 }

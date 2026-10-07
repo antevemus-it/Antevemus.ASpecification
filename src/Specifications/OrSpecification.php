@@ -61,9 +61,16 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
         if ($leftResult->isSatisfied) {
             return $leftResult;
         }
+        if ($leftResult->isError) {
+            // Mirrors isSatisfiedBy(): an exception on the left branch aborts the whole disjunction.
+            return $leftResult;
+        }
 
         $rightResult = $this->right->evaluate($candidate);
         if ($rightResult->isSatisfied) {
+            return $rightResult;
+        }
+        if ($rightResult->isError) {
             return $rightResult;
         }
 
@@ -75,7 +82,7 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
                 code: $this->customCode,
                 ruleName: 'OrSpecification'
             );
-            return new SpecificationResult(false, array_merge([$topFailure], $combined->failures));
+            return $combined->withLeadingFailures([$topFailure]);
         }
 
         return $combined;

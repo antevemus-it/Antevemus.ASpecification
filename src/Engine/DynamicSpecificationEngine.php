@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IDynamicSpecificationEngine;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
+use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleSpecificationRegistry;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Spec;
@@ -18,6 +19,8 @@ use Antevemus\ASpecification\Spec;
  *
  * Features:
  * - Unified compilation of business rules and mandatory document requirements
+ * - Every compiled rule is bound to its catalog definition (RuleBoundSpecification): action,
+ *   code, message and legal basis reach the verdict without handler boilerplate
  * - Rich evaluation of domain entities returning a typed RuleEngineVerdict
  * - Automated triage of operational failures (HTTP 403 blocks, warnings, and audit logs)
  * - Transparent integration with ASpecification algebra and SpecificationResult
@@ -70,7 +73,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         // 1. Load and compile business rules
         $rules = $this->catalog->findRules($escopo, $cenario, $context);
         foreach ($rules as $rule) {
-            $specs[] = $this->registry->buildSpecification($rule);
+            $specs[] = $this->bindRule($this->registry->buildSpecification($rule), $rule);
         }
 
         // 2. Load and compile mandatory document requirements
@@ -88,6 +91,23 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         }
 
         return Spec::allOf(...$specs);
+    }
+
+    /**
+     * Binds a handler-compiled specification to its catalog rule, so that every failure carries
+     * the rule's action, code, message and legal basis (handler data takes precedence).
+     *
+     * @param ISpecification $specification Specification returned by the rule handler
+     * @param IRuleDefinition $rule Catalog rule
+     * @return ISpecification
+     */
+    protected function bindRule(ISpecification $specification, IRuleDefinition $rule): ISpecification
+    {
+        if ($specification instanceof RuleBoundSpecification) {
+            return $specification;
+        }
+
+        return new RuleBoundSpecification($specification, $rule);
     }
 
     /** {@inheritdoc} */

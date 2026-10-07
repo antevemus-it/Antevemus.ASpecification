@@ -43,6 +43,50 @@ class SingleFileRepository extends AbstractFileRepository
     protected bool $isLoaded = false;
 
     /**
+     * Stable lock file that serializes every read-modify-write section on the
+     * document. It is deliberately NOT the document itself: writeAtomic() replaces
+     * the document by rename(), so a lock taken on the document guards an inode
+     * that the next writer no longer opens (BUG-20261007-7RZJ, lost update).
+     *
+     * @return string
+     */
+    protected function lockFilePath(): string
+    {
+        return $this->storagePath . '.lock';
+    }
+
+    /**
+     * Runs a mutation of the in-memory map as one read-modify-write section.
+     *
+     * In ReadWrite mode the section holds the exclusive lock, re-reads the document
+     * from disk (another process may have changed it since this instance loaded),
+     * applies the mutation and stores the merged map while still holding the lock.
+     * In the other modes (Snapshot, WriteOnly, MemoryOnly, Transient) the document
+     * is written only on store()/close(), so the mutation only touches memory.
+     *
+     * @template R
+     * @param callable(): R $mutation Changes $this->entities; returns true when the
+     *                                 document must be rewritten (or any value)
+     * @return R
+     */
+    private function mutateUnderLock(callable $mutation): mixed
+    {
+        if ($this->persistenceDefinition !== PersistenceDefinition::ReadWrite) {
+            $this->ensureLoaded();
+            return $mutation();
+        }
+
+        return $this->withExclusiveLock($this->lockFilePath(), function () use ($mutation): mixed {
+            $this->load();
+            $result = $mutation();
+            if ($result !== false) {
+                $this->store();
+            }
+            return $result;
+        });
+    }
+
+    /**
      * @param string $storagePath Single file path (e.g. storage/orders.json)
      * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Entity class or serializer
      * @param PersistenceDefinition|IEntitySerializer $persistenceDefinitionOrSerializer Persistence mode or serializer
@@ -80,7 +124,7 @@ class SingleFileRepository extends AbstractFileRepository
             return;
         }
 
-        $this->withSharedLock($this->storagePath, function (): void {
+        $this->withSharedLock($this->lockFilePath(), function (): void {
             $content = file_get_contents($this->storagePath);
             if ($content === false || trim($content) === "") {
                 $this->entities = [];
@@ -156,7 +200,7 @@ class SingleFileRepository extends AbstractFileRepository
                 throw new RepositoryException("Falha ao codificar documento único de entidades: " . json_last_error_msg());
             }
 
-            $this->writeAtomic($this->storagePath, $encoded);
+            $this->writeAtomic($this->storagePath, $encoded, $this->lockFilePath());
         } else {
             $serializedList = [];
             foreach ($this->entities as $entity) {
@@ -173,7 +217,7 @@ class SingleFileRepository extends AbstractFileRepository
                 "entities" => $serializedList,
             ];
 
-            $this->writeAtomic($this->storagePath, serialize($payload));
+            $this->writeAtomic($this->storagePath, serialize($payload), $this->lockFilePath());
         }
     }
 
@@ -183,13 +227,11 @@ class SingleFileRepository extends AbstractFileRepository
     public function put(IEntity $entity): void
     {
         $this->assertWritable();
-        $this->ensureLoaded();
 
-        $this->entities[(string)$entity->getEntityId()] = $entity;
-
-        if ($this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
-            $this->store();
-        }
+        $this->mutateUnderLock(function () use ($entity): bool {
+            $this->entities[(string)$entity->getEntityId()] = $entity;
+            return true;
+        });
     }
 
     /**
@@ -198,17 +240,15 @@ class SingleFileRepository extends AbstractFileRepository
     public function putAll(array $collectionOfEntities): void
     {
         $this->assertWritable();
-        $this->ensureLoaded();
 
-        foreach ($collectionOfEntities as $entity) {
-            if ($entity instanceof IEntity) {
-                $this->entities[(string)$entity->getEntityId()] = $entity;
+        $this->mutateUnderLock(function () use ($collectionOfEntities): bool {
+            foreach ($collectionOfEntities as $entity) {
+                if ($entity instanceof IEntity) {
+                    $this->entities[(string)$entity->getEntityId()] = $entity;
+                }
             }
-        }
-
-        if ($this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
-            $this->store();
-        }
+            return true;
+        });
     }
 
     /**
@@ -233,18 +273,15 @@ class SingleFileRepository extends AbstractFileRepository
     public function remove(IEntity $entity): bool
     {
         $this->assertWritable();
-        $this->ensureLoaded();
 
-        $id = (string)$entity->getEntityId();
-        if (isset($this->entities[$id])) {
-            unset($this->entities[$id]);
-            if ($this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
-                $this->store();
+        return $this->mutateUnderLock(function () use ($entity): bool {
+            $id = (string)$entity->getEntityId();
+            if (!isset($this->entities[$id])) {
+                return false;
             }
+            unset($this->entities[$id]);
             return true;
-        }
-
-        return false;
+        });
     }
 
     /**
@@ -253,21 +290,19 @@ class SingleFileRepository extends AbstractFileRepository
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
         $this->assertWritable();
-        $this->ensureLoaded();
 
-        $count = 0;
-        foreach ($this->entities as $id => $entity) {
-            if ($specification->isSatisfiedBy($entity)) {
-                unset($this->entities[$id]);
-                $count++;
+        $removed = $this->mutateUnderLock(function () use ($specification): int|false {
+            $count = 0;
+            foreach ($this->entities as $id => $entity) {
+                if ($specification->isSatisfiedBy($entity)) {
+                    unset($this->entities[$id]);
+                    $count++;
+                }
             }
-        }
+            return $count > 0 ? $count : false;
+        });
 
-        if ($count > 0 && $this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
-            $this->store();
-        }
-
-        return $count;
+        return $removed === false ? 0 : $removed;
     }
 
     /**
@@ -276,11 +311,11 @@ class SingleFileRepository extends AbstractFileRepository
     public function clear(): void
     {
         $this->assertWritable();
-        $this->entities = [];
 
-        if ($this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
-            $this->store();
-        }
+        $this->mutateUnderLock(function (): bool {
+            $this->entities = [];
+            return true;
+        });
     }
 
     /**

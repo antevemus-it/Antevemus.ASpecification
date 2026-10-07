@@ -32,45 +32,12 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
  */
 trait SubsumptionAndEqualityTrait
 {
-    /**
-     * Verifies structural equality between this specification and another object.
-     *
-     * @param mixed $other Object to compare against
-     * @return bool True if objects are structurally equivalent
+    /*
+     * equals() is no longer defined here: ISpecification declares it and
+     * AbstractSpecification provides the structural default for every
+     * specification (BUG-20261007-C5YG). Keeping a second copy in this trait
+     * diverged from the base (identity comparison of DateTime and arrays).
      */
-    public function equals(mixed $other): bool
-    {
-        if ($this === $other) {
-            return true;
-        }
-        if (!is_object($other) || static::class !== $other::class) {
-            return false;
-        }
-
-        $refThis = new \ReflectionObject($this);
-        $refOther = new \ReflectionObject($other);
-
-        foreach ($refThis->getProperties() as $prop) {
-            if (!$refOther->hasProperty($prop->getName())) {
-                return false;
-            }
-            $valThis = $prop->getValue($this);
-            $valOther = $refOther->getProperty($prop->getName())->getValue($other);
-
-            if ($valThis instanceof ISpecification && $valOther instanceof ISpecification) {
-                $subEqual = method_exists($valThis, "equals")
-                    ? $valThis->equals($valOther)
-                    : ($valThis == $valOther);
-                if (!$subEqual) {
-                    return false;
-                }
-            } elseif ($valThis !== $valOther) {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     /**
      * Evaluates core subsumption axioms ($this \supseteq $otherSpecification).
