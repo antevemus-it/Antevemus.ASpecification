@@ -14,6 +14,7 @@ use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
+use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
@@ -183,6 +184,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 "Leaf specifications must be bound to a property/column via PropertySpecification."
             );
         }
+
+        $this->assertSafeValue($col, $specification);
 
         return match (true) {
             $specification instanceof EqualSpecification =>
@@ -394,6 +397,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             );
         }
 
+        $this->assertSafeValue($col, $inner);
+
         return match (true) {
             $inner instanceof EqualSpecification =>
                 $this->translateNotEqual($col, $inner->getValue()),
@@ -424,6 +429,46 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
             default => throw new NonTranslatableCriteriaException($inner, "Unable to logically invert specified rule."),
         };
+    }
+
+    /**
+     * Refuse values that the Adianti TFilter would emit as raw SQL (BUG-20261007-KJ36).
+     *
+     * TFilter::transform() treats three string shapes as unescaped SQL, even in prepared mode:
+     * a value starting with "(SELECT", a value containing "{session." and a value starting with
+     * "NOESC:". There is no way to escape them without changing the literal, so the visitor
+     * fails closed before the TFilter is built. Arrays (IN lists) are checked element by element.
+     *
+     * @param string $col Mapped column, for the error message
+     * @param ISpecification $leaf Leaf about to be translated
+     * @throws UnsafeCriteriaValueException
+     */
+    private function assertSafeValue(string $col, ISpecification $leaf): void
+    {
+        $value = match (true) {
+            $leaf instanceof WildcardSpecification,
+            $leaf instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification,
+            $leaf instanceof RegexSpecification => $leaf->getPattern(),
+            $leaf instanceof IValueBoundSpecification => $leaf->getValue(),
+            method_exists($leaf, 'getValue') => $leaf->getValue(),
+            default => null,
+        };
+
+        foreach (is_array($value) ? $value : [$value] as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            $probe = ltrim($item);
+            if (strncasecmp($probe, '(SELECT', 7) === 0) {
+                throw new UnsafeCriteriaValueException($col, 'value starts with "(SELECT" (subselect passthrough)');
+            }
+            if (str_contains($probe, '{session.')) {
+                throw new UnsafeCriteriaValueException($col, 'value contains "{session." (session variable passthrough)');
+            }
+            if (strncmp($probe, 'NOESC:', 6) === 0) {
+                throw new UnsafeCriteriaValueException($col, 'value starts with "NOESC:" (no-escape passthrough)');
+            }
+        }
     }
 
     /**

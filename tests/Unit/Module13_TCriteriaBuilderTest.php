@@ -8,6 +8,7 @@ use Adianti\Database\TCriteria;
 use Adianti\Database\TExpression;
 use Adianti\Database\TFilter;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
+use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Criteria\TCriteriaBuilder;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Tests\TestCase;
@@ -47,6 +48,51 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->testSpecFacadeAndInstanceMethods();
         $this->testTautologyAndContradiction();
         $this->testNonTranslatableExceptions();
+        $this->testMagicAdiantiPrefixesAreRejected();
+    }
+
+    /**
+     * BUG-20261007-KJ36: o TFilter real do Adianti trata valores iniciados por "(SELECT",
+     * contendo "{session." ou iniciados por "NOESC:" como SQL cru, mesmo em modo prepared.
+     * Reprodução: o visitor repassava o valor sem neutralizar.
+     * Regressão: valores legítimos parecidos continuam aceitos.
+     */
+    private function testMagicAdiantiPrefixesAreRejected(): void
+    {
+        $unsafe = [
+            "NOESC:'' OR 1=1",
+            "(SELECT 1) OR 1=1",
+            "(select max(id) from t)",
+            "  (Select 1)",
+            "x {session.user_id} y",
+        ];
+
+        foreach ($unsafe as $value) {
+            $this->assertThrows(
+                UnsafeCriteriaValueException::class,
+                fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equal($value))),
+                "Valor com prefixo mágico deveria ser recusado: {$value}"
+            );
+        }
+
+        // Todas as folhas com valor passam pela mesma guarda
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::notEqual('NOESC:1'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::wildcard('NOESC:*'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equalIgnoreCase('(SELECT 1)'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::greaterThan('NOESC:0'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::in('ok', 'NOESC:1'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::not(Spec::equal('NOESC:1')))));
+
+        // Regressão: valores legítimos continuam aceitos e citados
+        $this->assertEquals("(name = 'reselect')", TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equal('reselect')))->dump());
+        $this->assertEquals("(name = 'sessionless')", TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equal('sessionless')))->dump());
+        $this->assertEquals("(name = 'noesc')", TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equal('noesc')))->dump());
+        $this->assertEquals("(name = 'x (select) y')", TCriteriaBuilder::fromSpecification(Spec::property('name', Spec::equal('x (select) y')))->dump());
+
+        // O stub reproduz o comportamento real do TFilter: um valor NOESC construído DIRETAMENTE no TFilter sai cru.
+        // (Prova de que a suíte agora enxerga o risco que o visitor passou a bloquear.)
+        $raw = new TFilter('name', '=', "NOESC:'' OR 1=1");
+        $this->assertEquals("name = '' OR 1=1", $raw->dump());
     }
 
     private function testEqualAndNotEqualFilter(): void

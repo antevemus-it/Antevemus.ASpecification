@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.1.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.1.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.1.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(623%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(656%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 
@@ -575,21 +575,21 @@ php tests/run_all.php
 • [SUITE] Módulo 2: Entidades e Identificadores... ✅ PASS (8 asserções)
 • [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (5 asserções)
 • [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (4 asserções)
-• [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (6 asserções)
+• [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (12 asserções)
 • [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (38 asserções)
 • [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (35 asserções)
 • [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (61 asserções)
 • [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (70 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (41 asserções)
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (69 asserções)
-• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (102 asserções)
-• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (43 asserções)
+• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (113 asserções)
+• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (59 asserções)
 • [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (91 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (25 asserções)
 
 ====================================================================
  RESULTADO FINAL: 15/15 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 623 | TEMPO: ~53ms | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 656 | TEMPO: ~97ms | REGRESSÕES: 0
 ====================================================================
 ```
 

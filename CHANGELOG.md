@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.2] - 2026-10-07
+
+### Security
+- **SQL Query Visitor**: column identifiers are now validated against a strict grammar before reaching the `WHERE` clause. Plain or dot-qualified identifiers are quoted by the dialect; simple function calls over identifiers (`LOWER(name)`, `COALESCE(c.nick, c.name)`) are preserved; anything else throws `Sql\Exceptions\UnsafeIdentifierException`. Previously, any name containing parentheses was emitted raw, which allowed SQL injection through the property name or a `FieldMapper` result. **Breaking for** field mappers that returned arbitrary SQL expressions (`CASE WHEN ...`): build those clauses outside the visitor.
+- **TCriteria Builder**: values that the Adianti `TFilter` emits as raw SQL even in prepared mode (starting with `(SELECT`, containing `{session.`, starting with `NOESC:`) are now refused with `Criteria\Exceptions\UnsafeCriteriaValueException` before the `TFilter` is built, for every leaf including `IN` lists and De Morgan inversions. Values are data, never SQL: a value that the target engine would interpret as SQL is rejected instead of forwarded. The Adianti test stub now mirrors the real `TFilter::transform()` for these shapes.
+- **SingleFileRepository**: the `.bin` envelope is now read with `allowed_classes => false`. Previously it was read with `allowed_classes => true`, so an object placed in the envelope was instantiated (running `__wakeup`/`__destruct`) before the `PhpNativeEntitySerializer` whitelist applied. Entities are still reconstructed through the whitelist; existing `.bin` files remain readable.
+
+### Added
+- Reproduction and regression tests for the three fixes above (`Module5`, `Module12`, `Module13`; suite now 15/15, 656 assertions).
 
 ## [1.1.1] - 2026-10-06
 

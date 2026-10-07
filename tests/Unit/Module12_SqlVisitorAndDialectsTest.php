@@ -19,6 +19,7 @@ use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
+use Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException;
 use Antevemus\ASpecification\Sql\FieldMapper;
 use Antevemus\ASpecification\Sql\SqlDialect;
 use Antevemus\ASpecification\Sql\SqlQueryVisitor;
@@ -55,6 +56,51 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testFluentFacadeAndMethodToSql();
         $this->testNonTranslatableException();
         $this->testSqlWhereClauseComposition();
+        $this->testIdentifierInjectionIsRejected();
+    }
+
+    /**
+     * BUG-20261007-SJVE: identificador de coluna não validado entrava cru no WHERE.
+     * Reprodução: nomes com parênteses/colchetes/crases eram preservados sem quoting.
+     * Regressão: identificadores simples, qualificados e funções simples continuam aceitos.
+     */
+    private function testIdentifierInjectionIsRejected(): void
+    {
+        $unsafe = [
+            ['pgsql',  'id) or 1=1 or (id'],
+            ['sqlsrv', 'id] or 1=1 or (id'],
+            ['mysql',  'id` or 1=1 or (id'],
+            ['ansi',   'id"; drop table t; --('],
+            ['oracle', "LOWER(name) = 'x') or (1=1"],
+        ];
+        foreach ($unsafe as [$dialect, $name]) {
+            $this->assertThrows(
+                UnsafeIdentifierException::class,
+                fn() => Spec::toSql(Spec::property($name, Spec::equalTo(1)), $dialect),
+                "Identificador inseguro deveria ser recusado em {$dialect}"
+            );
+        }
+
+        // Closure do FieldMapper devolvendo expressão perigosa também é recusada
+        $this->assertThrows(
+            UnsafeIdentifierException::class,
+            fn() => Spec::toSql(Spec::property('id', Spec::equalTo(1)), 'mysql', fn(string $p) => $p . '` or 1=1 or `x')
+        );
+
+        // Regressão: identificadores legítimos continuam quoted como antes
+        $this->assertEquals('"c"."status" = :p1', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'pgsql')->toSql());
+        $this->assertEquals('[c].[status] = :p1', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'sqlsrv')->toSql());
+        $this->assertEquals('`total_value` > :p1', Spec::toSql(Spec::property('totalValue', Spec::greaterThan(10)), 'mysql')->toSql());
+
+        // Regressão: expressão de função simples declarada no mapper continua aceita (sem quoting, como antes)
+        $this->assertEquals(
+            'LOWER(name) = :p1',
+            Spec::toSql(Spec::property('name', Spec::equalTo('x')), 'pgsql', ['name' => 'LOWER(name)'])->toSql()
+        );
+        $this->assertEquals(
+            'COALESCE(c.nick, c.name) = :p1',
+            Spec::toSql(Spec::property('name', Spec::equalTo('x')), 'pgsql', ['name' => 'COALESCE(c.nick, c.name)'])->toSql()
+        );
     }
 
     private function testDialectResolutionForAllSgbds(): void

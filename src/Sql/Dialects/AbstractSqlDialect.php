@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 
 /**
@@ -27,20 +28,43 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  */
 abstract class AbstractSqlDialect implements ISqlDialect
 {
-    /** {@inheritdoc} */
+    /** Plain identifier segment: letter or underscore, then letters, digits, underscore or dollar. */
+    private const SEGMENT = '[A-Za-z_][A-Za-z0-9_$]*';
+
+    /** Plain or dot-qualified identifier (table.column, schema.table.column). */
+    private const IDENTIFIER = '/^' . self::SEGMENT . '(?:\.' . self::SEGMENT . ')*$/';
+
+    /**
+     * Simple function call over identifiers only: NAME(ident[, ident]*) or NAME().
+     * No literals, operators, nested calls or quotes: anything richer must be built outside the visitor.
+     */
+    private const FUNCTION_CALL = '/^' . self::SEGMENT . '\(\s*(?:' . self::SEGMENT . '(?:\.' . self::SEGMENT . ')*\s*(?:,\s*' . self::SEGMENT . '(?:\.' . self::SEGMENT . ')*\s*)*)?\)$/';
+
+    /**
+     * {@inheritdoc}
+     *
+     * Every identifier that reaches the WHERE clause is either quoted by the dialect
+     * or rejected (BUG-20261007-SJVE). A simple function call over identifiers is the
+     * only form preserved verbatim, and only when it matches the strict grammar.
+     *
+     * @throws UnsafeIdentifierException When the identifier does not match the accepted grammar
+     */
     public function escapeIdentifier(string $identifier): string
     {
         $id = trim($identifier);
 
-        // If identifier contains functional parentheses or delimiters, preserve it
-        if (str_contains($id, '(') || str_contains($id, ')')) {
+        // Simple function expression declared by the field mapper (e.g. LOWER(name)): preserved as-is
+        if (preg_match(self::FUNCTION_CALL, $id) === 1) {
             return $id;
         }
 
-        // If identifier is qualified (table.column), escape each segment separately
+        if (preg_match(self::IDENTIFIER, $id) !== 1) {
+            throw new UnsafeIdentifierException($identifier);
+        }
+
+        // Qualified identifier (table.column): escape each segment separately
         if (str_contains($id, '.')) {
-            $parts = explode('.', $id);
-            return implode('.', array_map(fn($part) => $this->escapeSegment(trim($part)), $parts));
+            return implode('.', array_map(fn($part) => $this->escapeSegment($part), explode('.', $id)));
         }
 
         return $this->escapeSegment($id);

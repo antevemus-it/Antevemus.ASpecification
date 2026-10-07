@@ -78,6 +78,19 @@ class TFilter extends TExpression
             return '(' . implode(',', $foo) . ')';
         }
 
+        // Espelho fiel do TFilter real (lib/adianti/database/TFilter.php:104-121): estes três
+        // formatos são emitidos como SQL CRU, mesmo em modo prepared. Mantidos aqui para que a
+        // suíte enxergue o risco que o CriteriaSpecificationVisitor bloqueia (BUG-20261007-KJ36).
+        if (substr(strtoupper((string) $value), 0, 7) == '(SELECT') {
+            return str_replace(['#', '--', '/*'], ['', '', ''], (string) $value);
+        }
+        if (strpos((string) $value, '{session.') !== false) {
+            return (string) $value; // o real substitui {session.x} pelo valor da sessão, ainda cru
+        }
+        if (substr((string) $value, 0, 6) == 'NOESC:') {
+            return substr(str_replace(['#', '--', '/*'], ['', '', ''], (string) $value), 6);
+        }
+
         if (is_string($value)) {
             if ($prepared) {
                 $p = ':par_' . (++self::$paramCounter);

@@ -103,7 +103,10 @@ class SingleFileRepository extends AbstractFileRepository
                     }
                 }
             } else {
-                $data = @unserialize($content, ["allowed_classes" => true]);
+                // The envelope only carries arrays, scalars and the serialized entity strings.
+                // Entities are reconstructed below through the serializer whitelist; the envelope
+                // itself must never instantiate a class (BUG-20261007-HIJG).
+                $data = @unserialize($content, ["allowed_classes" => false]);
                 if (is_array($data) && isset($data["entities"]) && is_array($data["entities"])) {
                     foreach ($data["entities"] as $serializedEntity) {
                         if (is_string($serializedEntity)) {
