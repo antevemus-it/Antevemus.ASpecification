@@ -12,7 +12,7 @@ namespace Antevemus\ASpecification\Engine\Exceptions;
  * `prop<>value`, `prop!=value`). Failing loudly here prevents a document from being
  * silently required (or silently waived) because its guard could not be understood.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

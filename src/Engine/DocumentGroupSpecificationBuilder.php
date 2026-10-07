@@ -29,7 +29,7 @@ use Antevemus\ASpecification\Spec;
  *   compilation (InvalidConditionalExpressionException), never silently applied
  * - One aggregated failure per failing set, listing the accepted documents
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

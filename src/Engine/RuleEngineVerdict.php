@@ -28,7 +28,7 @@ use Countable;
  * - An evaluation error (a rule that could not be evaluated: missing property, throwing getter,
  *   incompatible type) is ALWAYS a blocking failure, regardless of the rule's configured action.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

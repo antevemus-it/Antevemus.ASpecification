@@ -14,7 +14,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  *
  * Provides default alias implementations and validation helpers for logical specifications.
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

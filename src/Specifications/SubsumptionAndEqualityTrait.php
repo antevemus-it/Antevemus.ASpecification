@@ -23,7 +23,7 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
  * - Fluent property composition (`andWhere`, `orWhere`)
  * - Partial remainder resolution (`remainderUnsatisfiedBy`)
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -11,7 +11,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  *
  * Contract for factories creating value comparison specifications.
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

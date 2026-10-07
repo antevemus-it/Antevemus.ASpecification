@@ -23,7 +23,7 @@ use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySeriali
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

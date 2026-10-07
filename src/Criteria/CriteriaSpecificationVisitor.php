@@ -49,7 +49,7 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - Case-insensitive filter translation for textual specifications
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

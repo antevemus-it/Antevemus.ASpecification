@@ -16,7 +16,7 @@ declare(strict_types=1);
  *
  * @template T
  * @implements ISpecification<T>
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -19,7 +19,7 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
  *
  * @template T
  * @extends EqualSpecification<T>
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

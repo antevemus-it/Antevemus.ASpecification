@@ -16,7 +16,7 @@ declare(strict_types=1);
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

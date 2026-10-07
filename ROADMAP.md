@@ -75,6 +75,11 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 - **Goal:** Parity with modern asynchronous evaluation while keeping the core library 100% zero-dependency and synchronous for traditional PHP-FPM environments.
 - **Target Release:** v2.0.0 (or `antevemus/aspecification-async`)
 
+### 14. Announced-but-Unshipped Backlog (CHANGELOG errata, 2026-10) 📋
+- **Description:** Capabilities that the `1.0.0`/`1.1.0` CHANGELOG entries announced and the code never shipped, kept here so the promise is not lost: ULID and UUID v7 entity identities; TTL and auto-pruning on volatile repositories; topological sorting and cluster indexing on the partition DAG; a severity field on `SpecificationFailure`; `RelationalOperator` cases for `BETWEEN`, `IN`, `LIKE` and `REGEX`; a document requirement state machine (`RequirementState`); DB2, Informix and DuckDB SQL dialects.
+- **Goal:** Each item is either scheduled into a milestone above or explicitly declined with a note in the CHANGELOG.
+- **Target Release:** unscheduled (triage after v1.4.0).
+
 ---
 
 ## 🤝 Community & Contributions

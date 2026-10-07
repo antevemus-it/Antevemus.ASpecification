@@ -17,7 +17,7 @@ declare(strict_types=1);
  * - Declarative attribute validation runner (validateAttributes, assertAttributes)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

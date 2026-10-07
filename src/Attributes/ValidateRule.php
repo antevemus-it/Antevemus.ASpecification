@@ -24,7 +24,7 @@ use Attribute;
  * - Closed operator catalog (OPERATORS): an unknown operator raises UnknownRuleOperatorException
  *   at construction, so a typo never degrades into a silent business violation
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Attributes
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

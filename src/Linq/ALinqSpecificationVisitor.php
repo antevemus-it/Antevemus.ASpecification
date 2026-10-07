@@ -41,7 +41,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.2.1
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -37,7 +37,7 @@ use Throwable;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPartitionRepository<T>
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

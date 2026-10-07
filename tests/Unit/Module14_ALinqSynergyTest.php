@@ -61,13 +61,19 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testALinqVisitorLeafCompilations();
         $this->testALinqVisitorCompositesAndShortCircuit();
         $this->testALinqVisitorWithComplexDomainObject();
-        $this->testALinqBridgeToCollectionAndFilter();
-        $this->testALinqBridgeFluentChainingAndAggregation();
-        $this->testInMemoryRepositoryAsLinqCollection();
-        $this->testInMemoryRepositoryFindAsLinqCollection();
-        $this->testALinqBridgeLazyStreamingPipeline();
-        $this->testInMemoryRepositoryLazyCollection();
-        $this->testSpecFacadeLazyMethods();
+        if (ALinqBridge::isAvailable()) {
+            $this->testALinqBridgeToCollectionAndFilter();
+            $this->testALinqBridgeFluentChainingAndAggregation();
+            $this->testInMemoryRepositoryAsLinqCollection();
+            $this->testInMemoryRepositoryFindAsLinqCollection();
+            $this->testALinqBridgeLazyStreamingPipeline();
+            $this->testInMemoryRepositoryLazyCollection();
+            $this->testSpecFacadeLazyMethods();
+        } else {
+            // A integração com o ALinq é opcional (composer `suggest`, PHP 8.4). Sem o pacote irmão,
+            // os testes de ponte/coleção são pulados com aviso; PropertyAccessor e o visitor continuam cobertos.
+            fwrite(STDOUT, "    [AVISO] antevemus/alinq-collection não encontrado; testes de ALinqBridge/coleções pulados (integração opcional, PHP 8.4).\n");
+        }
         $this->testALinqVisitorIsAsStrictAsTheCoreOnComparisons();
         $this->testALinqVisitorHandsScalarPropertyValuesToCustomLeaves();
         $this->testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties();
@@ -722,6 +728,8 @@ class Module14_ALinqSynergyTest extends TestCase
             (object)['address' => (object)['city' => 'Boston'], 'profile' => ['score' => 99]],
         ];
         $this->assertCount(1, array_filter($people, $predicate));
-        $this->assertCount(1, ALinqCollection::from($people)->where($predicate)->toArray());
+        if (ALinqBridge::isAvailable()) {
+            $this->assertCount(1, ALinqCollection::from($people)->where($predicate)->toArray());
+        }
     }
 }

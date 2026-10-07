@@ -19,7 +19,7 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Universal tautologies (1 = 1 and 1 = 0)
  * - Default LIKE search handling with LOWER()
  *
- * @version    1.1.0
+ * @version    1.1.2
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

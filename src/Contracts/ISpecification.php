@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * - Failure notification context (because, withCode)
  *
  * @template T
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

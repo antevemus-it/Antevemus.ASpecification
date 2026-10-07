@@ -32,7 +32,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * - Evaluation errors (`isError`) keep their `evaluation_error` marker, so the verdict blocks them
  *   regardless of the rule action.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

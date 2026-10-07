@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PHPUnit bridge configuration for Antevemus.ASpecification.
+
+  The canonical runner is `tests/run_all.php`; this file lets CI pipelines, IDEs and
+  coverage tools execute the same fifteen module suites through `vendor/bin/phpunit`
+  (see tests/PhpUnit/ModuleSuitesTest.php). The bootstrap is the project's own
+  `tests/bootstrap.php`, which also resolves the optional sibling `Antevemus.AlinqCollection`
+  checkout and the Adianti stubs used by the TCriteria suite. Coverage is not configured
+  by default so that the run does not require Xdebug or PCOV.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.0/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         failOnWarning="true"
+         failOnRisky="true">
+
+    <testsuites>
+        <testsuite name="Module Suites">
+            <directory>tests/PhpUnit</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+
+    <php>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="-1"/>
+        <ini name="memory_limit" value="512M"/>
+    </php>
+</phpunit>

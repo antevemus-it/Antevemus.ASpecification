@@ -34,7 +34,7 @@ use Throwable;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

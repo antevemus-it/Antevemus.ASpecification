@@ -15,8 +15,9 @@ algebra introduced by the Domian framework.
     Original Project: Domian (Domain-Driven Design for Java)
     Website: https://domian.sourceforge.net/
     Original Authors:
-      - Eirik Torske (Project Administrator & Lead Developer)
-      - Bjørn Nordlund (Developer & Contributor)
+      - Eirik Torske (Project Administrator, Developer)
+      - Bjørn Nordlund (Contributor)
+    Roles as declared on the project site (https://domian.sourceforge.net/team-list.html).
     Copyright (c) 2009-2012 Eirik Torske and Domian contributors.
 
 In strict compliance with Section 4 of the Apache License, Version 2.0,

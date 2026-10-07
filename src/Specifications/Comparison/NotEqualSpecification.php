@@ -21,7 +21,7 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements IValueBoundSpecification<T>
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

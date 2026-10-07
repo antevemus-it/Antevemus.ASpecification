@@ -35,7 +35,7 @@ use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

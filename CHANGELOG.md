@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.3.1] - 2026-10-07
+
+### Changed
+- **PHP floor lowered to `^8.2`.** The core never used anything beyond PHP 8.2; the `>=8.4` requirement had leaked from the optional ALinq integration, which the library detects at runtime (`class_exists`). `composer.json` now declares `php: ^8.2` and `ext-json`, and lists `antevemus/alinq-collection` (requires PHP 8.4), `ext-mbstring` and `ext-sysvsem` under `suggest` with an honest note on what uses them today. The only 8.3-only construct in `src/` (a typed class constant in `SemaphoreSynchronizer`) was replaced by an untyped constant with a `@var` annotation. The suite passes on PHP 8.2 and 8.4 (certified in a `php:8.2-cli` container: lint clean, 15/15 suites, `vendor/bin/phpunit` green). Module 14 now skips its `ALinqBridge`/collection tests with a notice when `antevemus/alinq-collection` is not installed, keeping `PropertyAccessor` and the ALinq visitor covered.
+- `tests/run_all.php` no longer aborts at the first failing suite: every suite runs, failures are listed at the end, the pass rate and the number of regressions are reported, and the exit code is 1 when any suite failed.
+- The rule-engine data contract is documented as Portuguese by design (it mirrors the relational catalog schema it hydrates from); orchestration and verdict APIs stay English. No renames.
+- Upstream attribution now states the roles published by the Domian project site: Eirik Torske (Project Administrator, Developer) and Bjørn Nordlund (Contributor), in `NOTICE.md`, `THIRD_PARTY_NOTICES.md` and both READMEs.
+
+### Added
+- PHPUnit bridge: `vendor/bin/phpunit` runs the fifteen module suites through `tests/PhpUnit/ModuleSuitesTest.php` and `phpunit.xml.dist` (no coverage by default, no Xdebug required). `tests/run_all.php` remains the canonical runner; the `phpunit/phpunit` dev dependency is no longer decorative.
+- `.gitattributes` with normalized line endings and `export-ignore` for `tests/`, the PHPUnit configuration and the git metadata, so distributed archives carry only `src/` and the package files.
+
+### Documentation
+- CHANGELOG errata: the `1.0.0` and `1.1.0` entries now name the classes, traits and methods that actually shipped (for example `AndSpecification`/`OrSpecification` instead of `ConjunctionSpecification`/`DisjunctionSpecification`, the eight `*SpecificationOperationsTrait` traits, `PartitionRepository`, `InMemoryAndFileRepository`, `DynamicSpecificationEngine`), with an *Erratum* note wherever an announced capability was never shipped (ULID/UUID v7 identities, TTL on volatile repositories, topological sorting of the DAG, failure severity, `RelationalOperator` with `BETWEEN`/`IN`/`LIKE`/`REGEX`, a document state machine, DB2/Informix/DuckDB dialects). Those capabilities are listed in `ROADMAP.md` as a backlog. Version comparison links added to the footer.
+- Class DocBlock `@version` tags now state the package version in which each file was last changed (derived from the repository history; this one-off correction of the tags does not itself count as a change to the files); the policy is recorded in the release contract (`docs/contratos/RELEASING.md`, Fase 1), which also lists `.gitattributes` and `phpunit.xml.dist` among the files promoted to the public branch.
+- README (EN and pt-BR): requirements section rewritten for the PHP 8.2 floor and the optional packages; vocabulary note on the rule engine.
+
 ## [1.3.0] - 2026-10-07
 
 ### Changed
@@ -80,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Declarative PHP 8.4 Attributes Engine**:
   - `#[AssertSpec]` attribute supporting class-level aggregate specifications, property-level value validation, and parameterless getter execution.
-  - `#[ValidateRule]` attribute for inline declarative rules with operators: `=`, `!=`, `>`, `>=`, `<`, `<=`, `between`, `in`, `regex`, `not_blank`, `email`.
+  - `#[ValidateRule]` attribute for inline declarative rules with operators: `=`/`==`, `===`, `!=`/`<>`, `!==`, `>`, `>=`, `<`, `<=`, `between`, `in`, `notin`/`not_in`, `regex`, `notnull`/`not_null`, `null`, `notempty`/`not_empty`, `empty`, `email`. *Erratum (2026-10-07):* this entry originally also listed `not_blank`; that operator did not exist until 1.3.0.
   - `AttributeValidator`: High-performance reflection scanning engine supporting both non-throwing `validate()` returning `SpecificationResult` and throwing `assert()`.
   - `AttributeValidationException`: Rich validation exception carrying full diagnostic failures and error codes.
   - `Spec::validateAttributes(object $target): SpecificationResult` and `Spec::assertAttributes(object $target): void` facade methods.
@@ -115,47 +134,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Core Specification Pattern & Boolean Algebra**:
   - `ISpecification<TCandidate>` contract and `AbstractSpecification<TCandidate>` base class.
-  - Boolean combinators: `AndSpecification`, `OrSpecification`, `NotSpecification`, `ConjunctionSpecification`, `DisjunctionSpecification`.
+  - Boolean combinators: `AndSpecification`, `OrSpecification`, `NotSpecification` and `JointDenialSpecification` (NOR). *Erratum (2026-10-07):* `ConjunctionSpecification` and `DisjunctionSpecification` never existed; the conjunction and disjunction are `AndSpecification` and `OrSpecification`.
   - Composite operators: `and()`, `or()`, `not()`, `andNot()`, `orNot()`.
-  - Identity specifications: `AllSpecification` (tautology / true) and `NoneSpecification` (contradiction / false).
+  - Identity specifications: `AlwaysTrueSpecification` (tautology / true) and `AlwaysFalseSpecification` (contradiction / false). *Erratum (2026-10-07):* originally named `AllSpecification` and `NoneSpecification`, which never existed.
 - **Domain Entities, Identifiers & Value Objects**:
-  - `IEntity<TId>` interface and `AbstractEntity<TId>` base class with identity encapsulation.
-  - Strongly-typed `Identifier` supporting UUID v4, ULID, UUID v7, integer, and string representations.
-  - `IEntitySpecification<TEntity>` for domain-driven rule validation against rich aggregate roots.
+  - `IEntity` and `ITransientEntity` contracts and the `AbstractEntity` base class with identity encapsulation.
+  - Identity base classes `AbstractUUIDEntity` (UUID v4), `AbstractRandomIntegerEntity` and `AbstractRandomLongEntity`. *Erratum (2026-10-07):* originally announced as a strongly-typed `Identifier` class supporting UUID v4, ULID, UUID v7, integer and string; no such class exists and ULID/UUID v7 were never shipped.
+  - `UniqueEntitySpecification` and `AllEntitiesSpecification` for entity-level rules. *Erratum (2026-10-07):* originally announced as `IEntitySpecification<TEntity>`, which never existed.
 - **Repository Architecture**:
-  - `IRepository<TEntity, TId>` and `ISpecificationRepository<TEntity, TId>` contracts.
+  - `IRepository`, `IPartitionRepository`, `IVolatileRepository` and `IPersistentRepository` contracts. *Erratum (2026-10-07):* originally announced as `IRepository<TEntity, TId>` and `ISpecificationRepository<TEntity, TId>`; the latter never existed.
   - `InMemoryRepository`: High-performance in-memory repository with thread-safe synchronizers, candidate filtering, and full specification querying.
-  - `VolatileRepository`: In-memory storage with Time-To-Live (TTL) expiration strategies and auto-pruning.
-  - `DagPartitionedRepository`: Partitioning repository utilizing Directed Acyclic Graph (DAG) topological sorting and cluster indexing.
-  - `FileRepository`: Atomic file-based persistence utilizing JSON serialization and locking mechanisms.
-  - `HybridRepositoryDecorator`: Two-tier storage caching (L1 Memory + L2 Persistent Storage) with write-through and write-back synchronization.
+  - `VolatilePartitionRepository`: in-memory partition storage. *Erratum (2026-10-07):* originally announced as `VolatileRepository` with TTL expiration and auto-pruning; no TTL mechanism was shipped.
+  - `PartitionRepository`: Directed Acyclic Graph (DAG) partitioning with O(1) pruning of disjoint branches. *Erratum (2026-10-07):* originally announced as `DagPartitionedRepository` with topological sorting and cluster indexing; neither the name nor those two mechanisms exist.
+  - `SingleFileRepository` and `FilePerEntityRepository`: file-based persistence with `JsonEntitySerializer`/`PhpNativeEntitySerializer` and `flock` locking. *Erratum (2026-10-07):* originally announced as a single `FileRepository` class, which never existed.
+  - `InMemoryAndFileRepository`: two-tier storage (L1 memory + L2 persistent) with the modes of `PersistenceDefinition` (`ReadWrite`, `Snapshot`, `WriteOnly`, `MemoryOnly`, ...). *Erratum (2026-10-07):* originally announced as `HybridRepositoryDecorator`, which never existed.
 - **Concurrency & Process Synchronization**:
   - `ISynchronizer` contract for thread/process coordination.
-  - `ReadWriteLock`: Reader-Writer lock supporting multiple concurrent readers and exclusive writers.
-  - `FileLockSynchronizer`: Cross-process advisory locking based on native `flock`.
-  - `SemaphoreSynchronizer`: High-concurrency System V IPC semaphores with reentrancy protection and process isolation.
+  - `ISynchronizer::runConcurrently()`/`runExclusively()` (shared readers, exclusive writer) implemented by `AbstractSynchronizer`, with `NullSynchronizer` as the no-op. *Erratum (2026-10-07):* originally announced as a `ReadWriteLock` class, which never existed.
+  - `FileLockSynchronizer`: Cross-process advisory locking based on native `flock` (`LOCK_SH`/`LOCK_EX`).
+  - `SemaphoreSynchronizer`: counting semaphore with reentrancy protection. *Erratum (2026-10-07):* announced here as System V IPC semaphores; the implementation is an in-process permit counter and does not use `ext-sysvsem`. SysV backing is tracked in `ROADMAP.md` milestone 6.
 - **Predicates, Visitors & AST Inspection**:
-  - `IPredicate<TCandidate>`, `CallbackPredicate`, and `ReflectionPropertyPredicate`.
-  - `ISpecificationVisitor` and `AbstractSpecificationVisitor` implementing full Abstract Syntax Tree (AST) traversal.
-  - Native PHP 8.4 pattern matching (`match (true)`) in visitor implementations (`visitLeaf`, `visitComposite`, `visitNot`).
+  - `SpecificationPredicate` (closure from a specification), `SpecificationHelper::toPredicate()`/`filter()` and `PropertyAccessor`. *Erratum (2026-10-07):* originally announced as `IPredicate<TCandidate>`, `CallbackPredicate` and `ReflectionPropertyPredicate`, none of which ever existed.
+  - `ISpecificationVisitor` (`visitComposite`, `visitLeaf`) implemented by `SqlQueryVisitor`, `CriteriaSpecificationVisitor` and `ALinqSpecificationVisitor` for full AST traversal. *Erratum (2026-10-07):* originally announced with an `AbstractSpecificationVisitor` base class and a `visitNot` method; neither exists (negation is handled inside `visitComposite`).
+  - Native pattern matching (`match (true)`) in the visitor implementations.
 - **Notification Pattern & Diagnostic Telemetry**:
   - `SpecificationResult`: Rich evaluation result distinguishing between valid states and rule failures.
-  - `SpecificationFailure`: Encapsulates failure severity (ERROR, WARNING, INFO), machine-readable error codes, messages, and target path.
+  - `SpecificationFailure`: encapsulates message, machine-readable code, rule name, target property and metadata. *Erratum (2026-10-07):* originally announced with a severity field (ERROR, WARNING, INFO); no such field exists (severity appears only as metadata of the attribute engine since 1.1.0).
   - Fluent evaluation via `evaluate(mixed $candidate): SpecificationResult`.
 - **Static Facade & Fluent DSL**:
-  - Static facade `Spec` with 50+ factory methods (`Spec::all()`, `Spec::property()`, `Spec::criteria()`, `Spec::rule()`, `Spec::linq()`, `Spec::defaultValue()`, `Spec::enumCase()`, etc.).
+  - Static facade `Spec` with 50+ factory methods (`Spec::allOf()`, `Spec::property()`, `Spec::toCriteria()`, `Spec::ruleRegistry()`/`Spec::engine()`, `Spec::defaultValue()`, `Spec::enumCase()`, etc.). *Erratum (2026-10-07):* originally listed as `Spec::all()`, `Spec::criteria()`, `Spec::rule()` and `Spec::linq()`; the first three never existed and `Spec::linq()` arrived in 1.1.0.
   - Parameterized chaining supporting fluent pipelines (`$spec->and($other)->or($fallback)`).
-  - Global fluent DSL functions in `src/DSL/functions.php` (42 helper functions including `specify()`, `allOf()`, `anyOf()`, `not()`, `is()`, `equal()`, `greaterThan()`, `between()`, etc.).
+  - Global fluent DSL functions in `src/DSL/functions.php` (44 helper functions including `specify()`, `allOf()`, `anyOf()`, `not()`, `is()`, `equal()`, `greaterThan()`, `between()`, etc.).
 - **Java Parity & Instrumentation**:
   - 100% architectural parity with Java `Domian` specification library.
-  - `RelationalOperator` enum: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `BETWEEN`, `IN`, `LIKE`, `REGEX`.
+  - `RelationalOperator` enum: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`, `MUCH_GREATER_THAN`, `MUCH_LESS_THAN`. *Erratum (2026-10-07):* `BETWEEN`, `IN`, `LIKE` and `REGEX` were listed but are not cases of the enum (those predicates are specifications: date `between()`, `in()`, `WildcardSpecification`, `RegexSpecification`).
   - `StopWatch` and `InstrumentationUtils` for sub-millisecond telemetry and performance metrics.
 - **Dynamic Rule Engine & Document Requirements Algebra**:
-  - `RequirementRuleEngine` for complex business rule workflows.
-  - `DocumentRuleSpecification` and `RequirementState` modeling document states, preconditions, and transition validations.
-- **Multi-SGBD SQL Query Visitor (12 Dialects)**:
+  - `DynamicSpecificationEngine` with `RuleSpecificationRegistry`, `RuleDefinition` and `RuleEngineVerdict` for catalog-driven business rules. *Erratum (2026-10-07):* originally announced as `RequirementRuleEngine`, which never existed.
+  - `DocumentGroupSpecificationBuilder`, `DocumentRuleDefinition` and `DocumentRequirementMode` (`ALL`, `ANY`, `ONE_OF_SET`) for mandatory document matrices. *Erratum (2026-10-07):* originally announced as `DocumentRuleSpecification` and `RequirementState` "modeling document states, preconditions and transition validations"; no document state machine was shipped.
+- **Multi-SGBD SQL Query Visitor (12 drivers, 7 dialects)**:
   - `SqlQueryVisitor` compiling specification trees directly into parameterized SQL `WHERE` clauses and bindings.
-  - 12 SQL dialects supported: MySQL, MariaDB, PostgreSQL, SQLite, Oracle, SQL Server (T-SQL), Firebird, DB2, Informix, Sybase, DuckDB, ANSI SQL.
+  - 12 driver names (`pgsql`, `mysql`, `sqlite`, `oracle`/`oci`, `sqlsrv`/`mssql`/`dblib`, `firebird`/`fbird`/`ibase`, `ansi`) mapped onto 7 dialect classes: ANSI, PostgreSQL, MySQL/MariaDB, SQLite, Oracle, SQL Server (T-SQL), Firebird. *Erratum (2026-10-07):* originally listed DB2, Informix, DuckDB and Sybase as dialects; DB2, Informix and DuckDB were never shipped, and Sybase exists only as the `dblib` driver alias of the SQL Server dialect.
 - **Adianti Framework TCriteria Integration**:
   - `TCriteriaBuilder` and `CriteriaSpecificationVisitor` translating specification ASTs into native Adianti `TCriteria`, `TFilter`, and `TExpression`.
   - Full support for nested sub-criteria, logical combinators (`AND`, `OR`), negation handling, and all comparison operators.
@@ -163,19 +182,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 3 synergy integration points with `Antevemus.AlinqCollection`:
     - `PropertyAccessor`: Universal property resolution supporting public properties, getters (`getProp()`, `prop()`), boolean accessors (`isProp()`, `hasProp()`), `ArrayAccess`, associative arrays, and nested dot notation (`user.address.city`).
     - `ALinqSpecificationVisitor`: Compiles any specification AST into an optimized `Closure(mixed $candidate): bool` using native `match (true)`.
-    - `ALinqBridge`: Bridges `ISpecification` directly with `ALinqCollection` for fluent collection filtering (`ALinqBridge::filter()`, `ALinqBridge::matching()`).
+    - `ALinqBridge`: Bridges `ISpecification` directly with `ALinqCollection` for fluent collection filtering (`ALinqBridge::filter()`, `toCollection()`, `fromRepository()`, `queryRepository()`). *Erratum (2026-10-07):* `ALinqBridge::matching()` was listed but never existed.
     - Direct integration methods in `InMemoryRepository`: `asLinqCollection()` and `findAsLinqCollection($spec)`.
   - Modular trait-based decomposition of `SpecificationFactory` (reduced by 64% from 2,376 to 856 lines across 8 specialized traits in `src/Factory/Traits/`):
-    - `BasicSpecificationsTrait`
-    - `CollectionSpecificationsTrait`
-    - `ComparisonSpecificationsTrait`
-    - `LogicalSpecificationsTrait`
-    - `RangeSpecificationsTrait`
-    - `StringSpecificationsTrait`
-    - `TypeSpecificationsTrait`
-    - `UtilitySpecificationsTrait`
+    - `CollectionSpecificationOperationsTrait`
+    - `ComparisonSpecificationOperationsTrait`
+    - `DateSpecificationOperationsTrait`
+    - `LogicalSpecificationOperationsTrait`
+    - `SpecialSpecificationOperationsTrait`
+    - `SpecificationWrapperOperationsTrait`
+    - `StringSpecificationOperationsTrait`
+    - `TypeSpecificationOperationsTrait`
+
+    *Erratum (2026-10-07):* the eight traits were originally listed as `Basic`, `Collection`, `Comparison`, `Logical`, `Range`, `String`, `Type` and `Utility` `SpecificationsTrait`; those names never existed. The real names are the ones above.
 - **Testing Suite**:
-  - 15 comprehensive test modules (`Module01` through `Module15`) with 604 assertions and 100% pass rate.
+  - 14 test modules (`Module1` through `Module14`) with 579 assertions and 100% pass rate. *Erratum (2026-10-07):* originally stated as 15 modules and 604 assertions; `Module15` arrived in 1.1.0 and the v1.0.0 badge reported 579.
   - Master test runner (`tests/run_all.php`) executing in ~40ms.
 
 ### Changed
@@ -185,14 +206,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated minimum PHP requirement to PHP 8.4+.
 
 ### Fixed
-- Reentrancy and process exclusivity handling in `SemaphoreSynchronizer`.
+- Reentrancy handling in `SemaphoreSynchronizer` (in-process).
 - Proper handling of null candidates in `PropertyAccessor` and `ALinqSpecificationVisitor`.
 - Array key preservation and dot notation resolution in nested data structures.
 
 ### Security
 - Strongly typed parameters and strict typing (`declare(strict_types=1)`) throughout all components.
-- Parameterized SQL generation avoiding SQL injection vulnerabilities across all 12 SGBD dialects.
-- SysV IPC semaphore isolation with safe unlock guarantees in concurrent environments.
+- Parameterized SQL generation avoiding SQL injection vulnerabilities across all 12 drivers (7 dialects).
+- Semaphore release guarantees in concurrent environments. *Erratum (2026-10-07):* originally stated as SysV IPC isolation; see the `SemaphoreSynchronizer` note above.
 
 ## Release Notes
 
@@ -207,7 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🌐 **100% English DocBlock Internationalization**:
   - Full PSR-5 and PSR-19 compliant docblocks across all 110+ source files.
   - Standardized corporate PHPDoc header and English exception messaging.
-- 🧪 **15 Test Suites & 604 Assertions**: 100% pass rate with zero regressions.
+- 🧪 **15 Test Suites & 623 Assertions**: 100% pass rate with zero regressions. *Erratum (2026-10-07):* originally stated as 604; the v1.1.0 badge and runner reported 623.
 
 ---
 
@@ -222,6 +243,11 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.1.2...v1.2.0
+[1.1.2]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.1.1...v1.1.2
+[1.1.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.0.0

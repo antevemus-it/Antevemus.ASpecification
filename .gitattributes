@@ -1,0 +1,17 @@
+# Normalize line endings in the repository and in exported archives.
+* text=auto eol=lf
+
+*.php text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+
+# Exclude development-only files from `git archive` (Packagist dist zips, GitHub source downloads).
+# The public `release` branch already carries only src/, tests/ and the package metadata
+# (docs/contratos/RELEASING.md, Fase 2); this list trims the distributed archive further.
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/tests export-ignore
+/.github export-ignore
+/phpunit.xml.dist export-ignore
+/phpunit.xml export-ignore

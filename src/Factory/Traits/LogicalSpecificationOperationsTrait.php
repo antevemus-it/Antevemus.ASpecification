@@ -15,7 +15,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Boolean algebra (allOf, anyOf, not, neitherOf)
  * - Expressive DSL aliases (shouldBeAllOf, isBoth, shouldBeOneOf, either, etc.)
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

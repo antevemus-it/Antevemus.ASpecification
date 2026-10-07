@@ -371,3 +371,8 @@ GEMINI.md
 # Composer
 /vendor/
 /composer.lock
+
+# PHPUnit bridge (tests/PhpUnit) and coverage output
+/.phpunit.cache/
+/coverage/
+/phpunit.xml

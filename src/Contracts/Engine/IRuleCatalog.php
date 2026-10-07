@@ -15,7 +15,7 @@ namespace Antevemus\ASpecification\Contracts\Engine;
  * - Filtered retrieval of document requirement groups by scope and scenario
  * - Support for custom contextual filters (product code, plan code, validity dates)
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -4,15 +4,15 @@
   <strong>🇺🇸 English</strong> &nbsp;|&nbsp; <a href="README.pt-BR.md">🇧🇷 Português (Brasil)</a>
 </p>
 
-[![PHP Version](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.3.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.3.0)
+[![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
+[![Latest Version](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.3.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1223%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
-> **Enterprise Specification Pattern Framework for PHP 8.4+**  
+> **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
 > Full-fidelity modern port and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (12 drivers, 7 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, and high-concurrency IPC primitives.
 
 ---
@@ -69,17 +69,18 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 | **Venn Set Subsumption & Remainder** | ✅ Complete | ❌ Absent in almost all libs | ✅ `isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`, `remainderUnsatisfiedBy` |
 | **DAG Partitioning $O(1)$** | ✅ Supported | ❌ Extremely rare | ✅ Partitioned repositories with early disjoint branch pruning |
 | **Multi-Process Concurrency & IPC** | ⚠️ Java Threads / Locks | ❌ Unsupported | ✅ Linux SysV IPC semaphores (`SemaphoreSynchronizer`) and atomic file locks |
-| **Modern Architecture** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legacy | ✅ **PHP 8.4+** native (Enums, First-class callables, Readonly, 8 segregated traits) |
+| **Modern Architecture** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legacy | ✅ **PHP 8.2+** native (Enums, First-class callables, Readonly, 8 segregated traits) |
 
 ---
 
 ## 📋 Requirements
 
-- **PHP**: `^8.4` or higher (tested and certified on PHP 8.4+)
+- **PHP**: `^8.2` (tested on PHP 8.2 and 8.4). PHP 8.4 is required only by the optional ALinq integration (`Antevemus.AlinqCollection`, Module 14), which the library detects at runtime.
 - **PHP Extensions**:
-  - `ext-json` (for JSON entity serialization)
-  - `ext-mbstring` (for case-insensitive Unicode string matching)
-  - `ext-sysvsem` *(optional, recommended for inter-process synchronization under Linux)*
+  - `ext-json` (for JSON entity serialization; required)
+  - `ext-mbstring` *(optional today: the Unicode-aware case-insensitive string matching planned for v1.4.0 will use it)*
+  - `ext-sysvsem` *(optional: the SysV IPC semaphores planned for v1.4.0 will use it for inter-process synchronization under Linux)*
+- **Optional package**: `antevemus/alinq-collection` `^1.1` for `ALinqBridge`, `ALinqSpecificationVisitor` and O(1) lazy streaming (requires PHP 8.4).
 
 ---
 
@@ -234,6 +235,8 @@ echo InstrumentationUtils::formatMemoryUsage() . "\n";
 ### 7. Dynamic Rule Engine & Relational Database Catalogs (Module 11)
 
 Compile dynamic rules and mandatory document matrices directly from relational database tables (e.g. PostgreSQL, MySQL):
+
+> **Vocabulary note.** The rule-engine data contract is Portuguese by design (`escopo`, `cenario`, `acao`, `fundamento_legal`, `getValorInteiro()`, `getMensagemViolacao()`, actions `bloquear`/`alertar`/`apenas_log`): it mirrors the relational catalog schema it hydrates from, a Brazilian legal domain. Orchestration and verdict APIs (`validate()`, `hasBlockingErrors()`, `canProceed()`) are English. English aliases for the data contract are not planned.
 
 ```php
 use Antevemus\ASpecification\Spec;
@@ -442,7 +445,7 @@ $activeCustomers = $inMemoryRepo->findAsLazyCollection($specActive)
 
 ### 11. Declarative Attributes Engine (`#[AssertSpec]`, `#[ValidateRule]`) (Module 15)
 
-In PHP 8.4+, annotate Data Transfer Objects (DTOs), Form Requests, Value Objects, and Domain Entities directly with specifications:
+In PHP 8.2+, annotate Data Transfer Objects (DTOs), Form Requests, Value Objects, and Domain Entities directly with specifications:
 
 ```php
 use Antevemus\ASpecification\Attributes\AssertSpec;
@@ -494,7 +497,7 @@ try {
 
 ```
 src/
-├── Attributes/                # PHP 8.4 Declarative Attributes Engine (Module 15)
+├── Attributes/                # PHP 8 Declarative Attributes Engine (Module 15)
 │   ├── AssertSpec.php        # Specification reference attribute
 │   ├── ValidateRule.php      # Inline rule attribute
 │   ├── AttributeValidator.php # High-performance reflection evaluator
@@ -619,14 +622,14 @@ Key highlights & upcoming roadmap:
 
 **Antevemus ASpecification** expresses its deepest respect and gratitude to the pioneer authors who established the theoretical and practical foundations of this pattern:
 
-- **Eirik Torske** (Project Administrator & Lead Architect) and **Bjørn Nordlund** (Developer & Contributor), creators of the **[Domian (Java)](https://domian.sourceforge.net/)** framework, whose pioneering work in Boolean algebra, Venn set calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`), and partitioned repository architectures served as the inspiring foundation for this PHP 8.4+ implementation.
+- **Eirik Torske** (Project Administrator & Developer) and **Bjørn Nordlund** (Contributor), creators of the **[Domian (Java)](https://domian.sourceforge.net/)** framework, whose pioneering work in Boolean algebra, Venn set calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`), and partitioned repository architectures served as the inspiring foundation for this PHP 8.4+ implementation.
 - **Eric Evans** and **Martin Fowler**, for authoring the seminal paper *[Specifications (2002)](http://www.martinfowler.com/apsupp/spec.pdf)* and foundational works on Domain-Driven Design (DDD).
 
 ### Apache License 2.0 Compliance
 The upstream **Domian** framework is distributed under the terms of the **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright &copy; Eirik Torske and Domian contributors). In full compliance with Section 4 of said license:
 - Original authorship and copyright notices are fully preserved.
 - The [NOTICE.md](NOTICE.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) files contain the formal provenance and full third-party license texts.
-- This clean-room, independent modern rewrite for PHP 8.4+ is made available to the global open-source community under the **MIT** license.
+- This clean-room, independent modern rewrite for PHP 8.2+ is made available to the global open-source community under the **MIT** license.
 
 ---
 

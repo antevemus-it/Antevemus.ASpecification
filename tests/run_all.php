@@ -46,7 +46,10 @@ $startTime = microtime(true);
 $totalSuites = count($suites);
 $passedSuites = 0;
 $totalAssertions = 0;
+$failures = [];
 
+// Every suite runs, even after a failure: a regression in one module must not hide the
+// state of the others. The exit code reports the aggregate at the end.
 foreach ($suites as $title => $suite) {
     echo "• [SUITE] {$title}... ";
     try {
@@ -56,16 +59,25 @@ foreach ($suites as $title => $suite) {
         $passedSuites++;
         echo "✅ PASS ({$assertions} asserções)\n";
     } catch (Throwable $e) {
+        $totalAssertions += $suite->getAssertionCount();
+        $failures[$title] = $e;
         echo "❌ FAIL: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine() . "\n";
-        echo "\n[REGRESSÃO DETECTADA] Abortando execução.\n";
-        exit(1);
     }
 }
 
 $elapsed = round((microtime(true) - $startTime) * 1000, 2);
+$regressions = count($failures);
+$passRate = $totalSuites > 0 ? (int) floor($passedSuites * 100 / $totalSuites) : 0;
+
+if ($regressions > 0) {
+    echo "\n[REGRESSÃO DETECTADA] {$regressions} suíte(s) com falha:\n";
+    foreach ($failures as $title => $e) {
+        echo "  - {$title}: " . get_class($e) . ": " . $e->getMessage() . "\n";
+    }
+}
 
 echo "\n====================================================================\n";
-echo " RESULTADO FINAL: {$passedSuites}/{$totalSuites} SUÍTES APROVADAS (100% PASS)\n";
-echo " TOTAL DE ASSERÇÕES: {$totalAssertions} | TEMPO: {$elapsed}ms | REGRESSÕES: 0\n";
+echo " RESULTADO FINAL: {$passedSuites}/{$totalSuites} SUÍTES APROVADAS ({$passRate}% PASS)\n";
+echo " TOTAL DE ASSERÇÕES: {$totalAssertions} | TEMPO: {$elapsed}ms | REGRESSÕES: {$regressions}\n";
 echo "====================================================================\n";
-exit(0);
+exit($regressions > 0 ? 1 : 0);

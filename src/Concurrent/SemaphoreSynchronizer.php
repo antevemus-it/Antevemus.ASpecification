@@ -21,7 +21,7 @@ use RuntimeException;
  * - Transparent reentrancy detection preventing self-deadlocks
  * - State introspection methods (getAvailablePermits, isExclusiveLocked)
  *
- * @version    1.1.0
+ * @version    1.3.1
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -30,7 +30,8 @@ use RuntimeException;
  */
 class SemaphoreSynchronizer extends AbstractSynchronizer
 {
-    public const int MAX_NUMBER_OF_CONCURRENT_PERMITS = 10000;
+    /** @var int Upper bound of permits accepted by the constructor (typed constants need PHP 8.3; the package floor is 8.2). */
+    public const MAX_NUMBER_OF_CONCURRENT_PERMITS = 10000;
 
     private readonly int $maxPermits;
     private int $availablePermits;

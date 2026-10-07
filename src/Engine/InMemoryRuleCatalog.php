@@ -20,7 +20,7 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  * - Exact scope/scenario matching for documents (no cross-scope leakage); null scenario = scope-global only
  * - Native descending priority sorting
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

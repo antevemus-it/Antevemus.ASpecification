@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Spec;
  * - Automated triage of operational failures (HTTP 403 blocks, warnings, and audit logs)
  * - Transparent integration with ASpecification algebra and SpecificationResult
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

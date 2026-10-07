@@ -17,7 +17,7 @@ use InvalidArgumentException;
  * Under evaluate() this exception becomes an evaluation-error result (SpecificationResult::error),
  * never a rule failure. Under isSatisfiedBy() it propagates.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

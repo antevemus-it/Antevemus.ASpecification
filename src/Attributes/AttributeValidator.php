@@ -28,7 +28,7 @@ use ReflectionProperty;
  *   (configuration error) instead of being reported as a violation of the candidate
  * - Result aggregation into rich, notification-pattern SpecificationResult instances
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Attributes
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

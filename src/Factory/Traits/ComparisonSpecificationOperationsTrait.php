@@ -15,7 +15,7 @@ use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
  * - Set membership (in)
  * - Semantic aliases (atMost, atLeast, under, over, exactly, etc.)
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

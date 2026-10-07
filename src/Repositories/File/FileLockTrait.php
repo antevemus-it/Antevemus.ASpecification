@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryExcepti
  * - Safe execution under shared lock (withSharedLock)
  * - Microsecond backoff retries with configurable timeout
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -20,7 +20,7 @@ use Antevemus\ASpecification\Engine\DocumentRequirementMode;
  * - Grouping by alternative sets (e.g., 'identity'), mandatory for any / one_of_set
  * - Conditional expression for requirement activation
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

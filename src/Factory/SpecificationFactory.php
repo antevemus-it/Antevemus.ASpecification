@@ -58,7 +58,7 @@ use DateTimeInterface;
  * - Transparent contravariant/covariant resolution of idiomatic method overloads
  * - Immutable constructor with static factory create()
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

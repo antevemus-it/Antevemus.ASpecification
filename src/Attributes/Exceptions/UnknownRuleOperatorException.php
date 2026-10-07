@@ -17,7 +17,7 @@ use InvalidArgumentException;
  *
  * The accepted operators are listed in ValidateRule::OPERATORS and in this exception's message.
  *
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Attributes\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

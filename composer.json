@@ -1,6 +1,6 @@
 {
     "name": "antevemus/aspecification",
-    "description": "Enterprise Specification Pattern Framework for PHP 8.4+ (DDD, Notification Pattern, SQL Query Visitor, Adianti TCriteria, DAG Repositories)",
+    "description": "Enterprise Specification Pattern Framework for PHP 8.2+ (DDD, Notification Pattern, SQL Query Visitor, Adianti TCriteria, DAG Repositories)",
     "type": "library",
     "license": "MIT",
     "homepage": "https://github.com/antevemus-it/Antevemus.ASpecification",
@@ -31,10 +31,16 @@
         }
     ],
     "require": {
-        "php": ">=8.4"
+        "php": "^8.2",
+        "ext-json": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0"
+    },
+    "suggest": {
+        "antevemus/alinq-collection": "^1.1 — ALinqBridge, ALinqSpecificationVisitor and O(1) lazy streaming (Module 14); requires PHP 8.4",
+        "ext-mbstring": "Unicode-aware case-insensitive string specifications (planned for v1.4.0, ROADMAP milestone 6)",
+        "ext-sysvsem": "SysV IPC semaphores for SemaphoreSynchronizer across processes (planned for v1.4.0, ROADMAP milestone 6)"
     },
     "autoload": {
         "psr-4": {

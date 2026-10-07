@@ -21,7 +21,7 @@ use DateTimeInterface;
  * Subsumption algebra uses the boolean predicates (no exception) because it compares two
  * specifications, not a candidate.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

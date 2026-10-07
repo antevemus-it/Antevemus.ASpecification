@@ -47,7 +47,7 @@ use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationExceptio
  * - Support for relational comparisons, pattern matching (LIKE, ILIKE), and Regular Expressions
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.1.0
+ * @version    1.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

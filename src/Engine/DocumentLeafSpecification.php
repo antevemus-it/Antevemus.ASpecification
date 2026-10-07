@@ -22,7 +22,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Anything else is rejected at construction time (InvalidConditionalExpressionException): a guard
  * that cannot be understood must never silently require or waive a document.
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

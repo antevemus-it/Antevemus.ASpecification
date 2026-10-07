@@ -22,7 +22,7 @@ use Stringable;
  * - Fast query by error code (hasError) or by target candidate property (getFailuresForProperty)
  * - Idiomatic integration via Countable and Stringable interfaces
  *
- * @version    1.1.0
+ * @version    1.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
