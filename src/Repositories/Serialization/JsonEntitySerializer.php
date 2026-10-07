@@ -6,10 +6,7 @@ namespace Antevemus\ASpecification\Repositories\Serialization;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
-use Antevemus\ASpecification\Contracts\Repositories\IPersistentEntity;
 use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
-use Antevemus\ASpecification\Repositories\EntityPersistenceMetaData;
-use Antevemus\ASpecification\Repositories\PersistentEntity;
 
 /**
  * JsonEntitySerializer - Structured JSON Entity Serializer
@@ -21,9 +18,11 @@ use Antevemus\ASpecification\Repositories\PersistentEntity;
  * Features:
  * - Formatted JSON serialization with type retention (__class)
  * - Reflective hydration preserving encapsulation
- * - Seamless support for persistence wrappers (PersistentEntity)
+ * - Entity document without persistence envelope: per-entity persistence metadata lives in the
+ *   repository session (IPersistentRepository::getEntityMetaData), never in the document; a
+ *   "__persistence_metadata" block written by other tools is ignored on read (BUG-20261007-5MWT)
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -85,30 +84,14 @@ class JsonEntitySerializer implements IEntitySerializer
             throw new RepositoryException("Target class {$targetClass} does not implement IEntity.");
         }
 
+        // A document may wrap the entity in "__entity_data" (envelope written by other tools).
+        // Any "__persistence_metadata" next to it is ignored: metadata is never part of the
+        // entity document and deserialize() always returns the plain entity (BUG-20261007-5MWT).
         $rawEntityData = isset($decoded["__entity_data"]) && is_array($decoded["__entity_data"])
             ? $decoded["__entity_data"]
             : $decoded;
 
-        $entity = $this->hydrateObject($targetClass, $rawEntityData);
-
-        // If persistence metadata is saved in envelope
-        if (isset($decoded["__persistence_metadata"]) && is_array($decoded["__persistence_metadata"])) {
-            $metaData = new EntityPersistenceMetaData();
-            $meta = $decoded["__persistence_metadata"];
-            if (isset($meta["access_count"])) {
-                for ($i = 0; $i < (int)$meta["access_count"]; $i++) {
-                    $metaData->incrementAccessCount();
-                }
-            }
-            if (isset($meta["write_count"])) {
-                for ($i = 0; $i < (int)$meta["write_count"]; $i++) {
-                    $metaData->incrementWriteCount();
-                }
-            }
-            return new PersistentEntity($entity, $metaData);
-        }
-
-        return $entity;
+        return $this->hydrateObject($targetClass, $rawEntityData);
     }
 
     /**
@@ -135,22 +118,6 @@ class JsonEntitySerializer implements IEntitySerializer
      */
     private function extractEntityData(IEntity $entity): array
     {
-        if ($entity instanceof IPersistentEntity) {
-            $inner = $entity->getEntity();
-            $meta = $entity->getMetaData();
-            return [
-                "__class" => $inner::class,
-                "__is_persistent_envelope" => true,
-                "__persistence_metadata" => [
-                    "access_count" => $meta->getAccessCount(),
-                    "write_count" => $meta->getWriteCount(),
-                    "last_access_at" => $meta->getLastAccessTime()?->format(\DateTimeInterface::ATOM),
-                    "last_write_at" => $meta->getLastWriteTime()?->format(\DateTimeInterface::ATOM),
-                ],
-                "__entity_data" => $this->extractProperties($inner),
-            ];
-        }
-
         $props = $this->extractProperties($entity);
         $props["__class"] = $entity::class;
         return $props;

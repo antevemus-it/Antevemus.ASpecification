@@ -26,12 +26,14 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
+use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 
 /**
  * SqlQueryVisitor - Specification AST Translator to Parameterized WHERE Clauses
@@ -45,9 +47,11 @@ use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationExceptio
  * - Sequential isolated named parameter generation (:p1, :p2, etc.)
  * - Idiomatic null handling (IS NULL, IS NOT NULL)
  * - Support for relational comparisons, pattern matching (LIKE, ILIKE), and Regular Expressions
+ * - startsWith/endsWith/contains emitted as portable LIKE with wildcard escaping; regex bodies sent
+ *   without PHP delimiters (BUG-20261007-3E3F)
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.3.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -267,8 +271,11 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof EqualIgnoreCaseStringSpecification =>
                 $this->translateEqualIgnoreCase($col, $specification->getValue()),
 
+            $specification instanceof LiteralPatternSpecification =>
+                $this->translateLiteralPattern($col, $specification),
+
             $specification instanceof RegexSpecification =>
-                $this->translateRegex($col, $specification->getPattern()),
+                $this->translateRegex($col, $specification),
 
             $specification instanceof IValueBoundSpecification =>
                 $this->translateComparison($col, '=', $specification->getValue()),
@@ -363,17 +370,59 @@ class SqlQueryVisitor implements ISpecificationVisitor
         return new SqlWhereClause($sql, $param['binding']);
     }
 
+    /** LIKE escape character used when a literal contains a LIKE wildcard (portable across the dialects). */
+    private const LIKE_ESCAPE = '!';
+
+    /**
+     * Translate startsWith/endsWith/contains as a portable LIKE over the literal.
+     *
+     * `%`, `_` and the escape character are escaped and an explicit `ESCAPE '!'` clause is added
+     * only when the literal contains one of them (or a backslash, which MySQL treats as the default
+     * escape). The dialect decides the case-insensitive form (ILIKE, LOWER(), collation).
+     *
+     * @param string $col
+     * @param LiteralPatternSpecification $specification
+     * @return SqlWhereClause
+     */
+    private function translateLiteralPattern(string $col, LiteralPatternSpecification $specification): SqlWhereClause
+    {
+        $literal = $specification->getLiteral();
+        $needsEscape = strpbrk($literal, '%_\\' . self::LIKE_ESCAPE) !== false;
+        $escaped = $needsEscape
+            ? str_replace([self::LIKE_ESCAPE, '%', '_'], [self::LIKE_ESCAPE . self::LIKE_ESCAPE, self::LIKE_ESCAPE . '%', self::LIKE_ESCAPE . '_'], $literal)
+            : $literal;
+
+        $param = $this->createParameter($specification->toWildcardPattern($escaped, '%'));
+        $sql = $this->dialect->formatLike($col, $param['name'], $specification->isCaseSensitive());
+        if ($needsEscape) {
+            $sql .= " ESCAPE '" . self::LIKE_ESCAPE . "'";
+        }
+
+        return new SqlWhereClause($sql, $param['binding']);
+    }
+
     /**
      * Translate regular expressions using active SQL dialect.
      *
+     * The bind receives the pattern body without the PHP delimiters. The `i` modifier maps to the
+     * dialect's case-insensitive operator and `u` is accepted (the engine applies its own charset);
+     * any other modifier has no portable SQL equivalent and is refused.
+     *
      * @param string $col
-     * @param string $pattern
+     * @param RegexSpecification $specification
      * @return SqlWhereClause
+     * @throws UnsupportedSqlOperationException When a modifier other than i/u is present
      */
-    private function translateRegex(string $col, string $pattern): SqlWhereClause
+    private function translateRegex(string $col, RegexSpecification $specification): SqlWhereClause
     {
-        $param = $this->createParameter($pattern);
-        $sql = $this->dialect->formatRegex($col, $param['name'], true);
+        $modifiers = $specification->getModifiers();
+        $unsupported = str_replace(['i', 'u'], '', $modifiers);
+        if ($unsupported !== '') {
+            throw new UnsupportedSqlOperationException("REGEX modifier \"{$unsupported}\"", $this->dialect->getFamily());
+        }
+
+        $param = $this->createParameter($specification->getBody());
+        $sql = $this->dialect->formatRegex($col, $param['name'], !str_contains($modifiers, 'i'));
         return new SqlWhereClause($sql, $param['binding']);
     }
 

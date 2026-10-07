@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.3.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1223%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1482%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -78,8 +78,8 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 - **PHP**: `^8.2` (tested on PHP 8.2 and 8.4). PHP 8.4 is required only by the optional ALinq integration (`Antevemus.AlinqCollection`, Module 14), which the library detects at runtime.
 - **PHP Extensions**:
   - `ext-json` (for JSON entity serialization; required)
-  - `ext-mbstring` *(optional today: the Unicode-aware case-insensitive string matching planned for v1.4.0 will use it)*
-  - `ext-sysvsem` *(optional: the SysV IPC semaphores planned for v1.4.0 will use it for inter-process synchronization under Linux)*
+  - `ext-mbstring` *(optional today: the Unicode-aware case-insensitive string matching planned for v1.5.0 will use it)*
+  - `ext-sysvsem` *(optional: the SysV IPC semaphores planned for v1.5.0 will use it for inter-process synchronization under Linux)*
 - **Optional package**: `antevemus/alinq-collection` `^1.1` for `ALinqBridge`, `ALinqSpecificationVisitor` and O(1) lazy streaming (requires PHP 8.4).
 
 ---
@@ -566,23 +566,23 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 
 • [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (71 assertions)
 • [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (8 assertions)
-• [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (5 assertions)
-• [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (19 assertions)
-• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (36 assertions)
+• [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (17 assertions)
+• [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (36 assertions)
+• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (85 assertions)
 • [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (38 assertions)
 • [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (61 assertions)
 • [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (133 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (96 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (178 assertions)
-• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (134 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (197 assertions)
+• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (212 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (100 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (170 assertions)
-• [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (109 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (194 assertions)
+• [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (169 assertions)
 
 ====================================================================
  FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 1223 | DURATION: ~160ms | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 1482 | DURATION: ~200ms | REGRESSIONS: 0
 ====================================================================
 ```
 
@@ -607,7 +607,7 @@ Key highlights & upcoming roadmap:
 3. **ALinq Lazy Streaming Pipeline & O(1) RAM Evaluation** (Shipped in v1.1.0)
 4. **Review-Driven Hardening: Error State, Strict Typing, Rule Binding & Document Matrix** (Shipped in v1.2.0)
 5. **README Promises I: Every Documented Example Runs** (Shipped in v1.3.0)
-6. **README Promises II: Inter-Process, Unicode, Lazy Sources & Relational Catalog** (v1.4.0)
+6. **README Promises II: Inter-Process, Unicode, Lazy Sources & Relational Catalog** (v1.5.0)
 7. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
 8. **GraphQL AST & OpenAPI 3.1 Query Compilers**
 9. **Parameterized Reflection Specifications & Tautology/Contradiction Detection**

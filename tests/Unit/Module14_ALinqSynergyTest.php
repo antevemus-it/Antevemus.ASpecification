@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Tests\Unit;
 
 use Antevemus\ALinq\ALinqCollection;
 use Antevemus\ALinq\ALinqLazyCollection;
+use Antevemus\ASpecification\AbstractCompositeSpecification;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
@@ -78,6 +79,7 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testALinqVisitorHandsScalarPropertyValuesToCustomLeaves();
         $this->testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties();
         $this->testALinqVisitorParityTableWithCoreEvaluation();
+        $this->testALinqVisitorHandsCandidateAsIsToChildlessComposites();
     }
 
     /**
@@ -697,6 +699,12 @@ class Module14_ALinqSynergyTest extends TestCase
             ['array candidate', Spec::property('severity', Spec::equalTo('high')), ['severity' => 'high']],
             ['array candidate miss', Spec::property('severity', Spec::equalTo('high')), ['severity' => 'low']],
             ['missing property', Spec::property('x', Spec::equalTo(1)), (object)['y' => 1]],
+            // Bug #27 (ZLFW): childless composites receive the candidate as is, like leaves
+            ['childless composite (mixed) on even int', $this->evenIntComposite(), 4],
+            ['childless composite (mixed) on odd int', $this->evenIntComposite(), 3],
+            ['childless composite (mixed) on null', $this->evenIntComposite(), null],
+            ['childless composite (?object) on object', $this->stdClassComposite(), new stdClass()],
+            ['childless composite (?object) on scalar', $this->stdClassComposite(), 4],
         ];
 
         foreach ($cases as [$label, $spec, $candidate]) {
@@ -731,5 +739,73 @@ class Module14_ALinqSynergyTest extends TestCase
         if (ALinqBridge::isAvailable()) {
             $this->assertCount(1, ALinqCollection::from($people)->where($predicate)->toArray());
         }
+    }
+
+    /**
+     * 19. Reprodução do bug #27 (ZLFW): composto sem filhos recebe o candidato como está.
+     *
+     * `compileGenericComposite()` entregava `is_object($c) ? $c : null` ao `isSatisfiedBy()` do composto:
+     * um composto do consumidor que aceita escalares via `mixed` respondia `false` onde o núcleo diz `true`,
+     * e um composto com a assinatura `?object` do núcleo respondia `false` onde o núcleo lança `TypeError`
+     * (erro de avaliação que um NOT nunca inverte). Regra: adendo ABZR v001, RN-01 itens 1 a 3.
+     */
+    private function testALinqVisitorHandsCandidateAsIsToChildlessComposites(): void
+    {
+        $evenInts = $this->evenIntComposite();
+        $this->assertEquals([], $evenInts->getSpecifications(), 'the composite under test has no children');
+
+        $this->assertTrue($evenInts->isSatisfiedBy(4));
+        $this->assertTrue($evenInts->evaluate(4)->isSatisfied);
+        $predicate = ALinqSpecificationVisitor::createPredicate($evenInts);
+        $this->assertTrue($predicate(4), 'visitor: childless composite accepting scalars must see the scalar (core says true)');
+        $this->assertFalse($predicate(3));
+        $this->assertFalse($predicate(null));
+        $this->assertFalse($predicate(new stdClass()));
+
+        // Through a property, the scalar property value reaches the composite as well
+        $viaProperty = ALinqSpecificationVisitor::createPredicate(Spec::property('n', $evenInts));
+        $this->assertTrue($viaProperty((object)['n' => 4]));
+        $this->assertFalse($viaProperty((object)['n' => 3]));
+        $this->assertEquals(Spec::property('n', $evenInts)->isSatisfiedBy((object)['n' => 4]), $viaProperty((object)['n' => 4]));
+
+        // A core-typed (?object) childless composite on a scalar: the core raises TypeError (evaluate() -> error);
+        // the predicate must raise the same, never a silent false that NOT would turn into approval
+        $onObjects = $this->stdClassComposite();
+        $this->assertTrue($onObjects->evaluate(4)->isError);
+        $this->assertEquals(\TypeError::class, get_class($onObjects->evaluate(4)->exception));
+        $this->assertThrows(\TypeError::class, fn() => ALinqSpecificationVisitor::createPredicate($onObjects)(4));
+        $this->assertThrows(\TypeError::class, fn() => ALinqSpecificationVisitor::createPredicate(Spec::not($onObjects))(4));
+        $this->assertTrue(ALinqSpecificationVisitor::createPredicate($onObjects)(new stdClass()));
+    }
+
+    /**
+     * Consumer-defined childless composite that widens the candidate to `mixed` and accepts even integers.
+     */
+    private function evenIntComposite(): AbstractCompositeSpecification
+    {
+        return new class('int') extends AbstractCompositeSpecification {
+            protected function isSpecifyingAllInstancesOfItsType(): bool
+            {
+                return false;
+            }
+
+            public function isSatisfiedBy(mixed $candidate): bool
+            {
+                return is_int($candidate) && $candidate % 2 === 0;
+            }
+        };
+    }
+
+    /**
+     * Core-typed (`?object`) childless composite satisfied by any stdClass.
+     */
+    private function stdClassComposite(): AbstractCompositeSpecification
+    {
+        return new class(stdClass::class) extends AbstractCompositeSpecification {
+            protected function isSpecifyingAllInstancesOfItsType(): bool
+            {
+                return true;
+            }
+        };
     }
 }

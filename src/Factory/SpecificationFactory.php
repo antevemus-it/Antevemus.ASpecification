@@ -32,7 +32,10 @@ use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\String\DateStringSpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\ContainsSpecification;
+use Antevemus\ASpecification\Specifications\String\EndsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
+use Antevemus\ASpecification\Specifications\String\StartsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Factory\Traits\CollectionSpecificationOperationsTrait;
@@ -58,7 +61,7 @@ use DateTimeInterface;
  * - Transparent contravariant/covariant resolution of idiomatic method overloads
  * - Immutable constructor with static factory create()
  *
- * @version    1.3.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -287,22 +290,19 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function contains(string $substring, bool $caseSensitive = true): ISpecification
             {
-                $flags = $caseSensitive ? '' : 'i';
-                return new RegexSpecification('/' . preg_quote($substring, '/') . '/' . $flags);
+                return new ContainsSpecification($substring, $caseSensitive);
             }
 
             /** {@inheritdoc} */
             public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
             {
-                $flags = $caseSensitive ? '' : 'i';
-                return new RegexSpecification('/^' . preg_quote($prefix, '/') . '/' . $flags);
+                return new StartsWithSpecification($prefix, $caseSensitive);
             }
 
             /** {@inheritdoc} */
             public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
             {
-                $flags = $caseSensitive ? '' : 'i';
-                return new RegexSpecification('/' . preg_quote($suffix, '/') . '$/' . $flags);
+                return new EndsWithSpecification($suffix, $caseSensitive);
             }
 
             /** {@inheritdoc} */

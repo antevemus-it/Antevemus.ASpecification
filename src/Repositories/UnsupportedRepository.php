@@ -24,7 +24,7 @@ use BadMethodCallException;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IFakeRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -119,6 +119,16 @@ class UnsupportedRepository extends AbstractRepository implements IFakeRepositor
      * @throws BadMethodCallException Always thrown indicating operation is not supported
      */
     public function remove(IEntity $entity): bool
+    {
+        throw new BadMethodCallException('Operation not supported by repository.');
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * @throws BadMethodCallException Always thrown indicating operation is not supported
+     */
+    public function contains(IEntity $entity): bool
     {
         throw new BadMethodCallException('Operation not supported by repository.');
     }

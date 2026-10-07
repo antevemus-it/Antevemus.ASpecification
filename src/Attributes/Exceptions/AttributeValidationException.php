@@ -18,7 +18,7 @@ use RuntimeException;
  * - Formatted message summarizing all validation failures
  * - Seamless integration with HTTP 422 Unprocessable Entity handlers
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Attributes\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -30,13 +30,20 @@ class AttributeValidationException extends RuntimeException
     /**
      * @param SpecificationResult $result The failed evaluation result
      * @param string|null $message Optional override message
+     * @param \Throwable|null $previous The exception that aborted an evaluation, when the result is an
+     *                                  error (defaults to the result's own exception); null otherwise
      */
     public function __construct(
         public readonly SpecificationResult $result,
-        ?string $message = null
+        ?string $message = null,
+        ?\Throwable $previous = null
     ) {
         $reasons = implode('; ', $result->getReasons());
-        parent::__construct($message ?? "Declarative attribute validation failed: {$reasons}");
+        parent::__construct(
+            $message ?? "Declarative attribute validation failed: {$reasons}",
+            0,
+            $previous ?? $result->exception
+        );
     }
 
     /**

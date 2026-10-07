@@ -7,10 +7,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
 /**
  * OracleDialect - Specialized Dialect for Oracle Database (oracle, oci, oci8)
  *
- * Provides support for double-quoted identifiers, numeric booleans (1/0),
+ * Provides support for double-quoted identifiers in upper case ("COLUMN"), numeric booleans (1/0),
  * case-insensitive matching via LOWER(), and native REGEXP_LIKE pattern matching.
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,6 +31,18 @@ class OracleDialect extends AbstractSqlDialect
     public function getFamily(): string
     {
         return $this->family;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Identifiers created without quotes are stored in upper case by this engine, and a quoted
+     * identifier is case-sensitive, so the quoted form must be upper case to match columns created
+     * by plain DDL (spec 012 RN-03, BUG-20261007-MNZN).
+     */
+    protected function escapeSegment(string $segment): string
+    {
+        return '"' . str_replace('"', '""', strtoupper($segment)) . '"';
     }
 
     /** {@inheritdoc} */

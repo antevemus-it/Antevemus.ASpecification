@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Engine\RuleAction;
  * - Severity and operational violation action identification (RuleAction)
  * - Statutory/legal basis for compliance auditing and contract emission
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -127,6 +127,10 @@ interface IRuleDefinition
 
     /**
      * Returns additional parameters or metadata in associative format.
+     *
+     * Two kinds of entries live here (RN-17): the applicability restrictions read by the catalog
+     * (`codigo_produto`, `codigo_plano`, `data_inicio_vigencia`, `data_fim_vigencia`, hydrated from
+     * the catalog row by `RuleDefinition::fromArray()`) and free data for the rule handlers.
      *
      * @return array<string, mixed>
      */

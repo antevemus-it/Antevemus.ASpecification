@@ -19,7 +19,7 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Universal tautologies (1 = 1 and 1 = 0)
  * - Default LIKE search handling with LOWER()
  *
- * @version    1.1.2
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,7 +78,7 @@ abstract class AbstractSqlDialect implements ISqlDialect
      */
     protected function escapeSegment(string $segment): string
     {
-        // Padrão ANSI: aspas duplas
+        // ANSI default: double quotes
         return '"' . str_replace('"', '""', $segment) . '"';
     }
 

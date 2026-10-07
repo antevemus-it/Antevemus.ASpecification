@@ -20,7 +20,7 @@ use Stringable;
  * - Contextual metadata attachment for diagnostics and telemetry
  * - Human-readable string representation via Stringable
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -70,7 +70,7 @@ final readonly class SpecificationFailure implements Stringable
     public function __toString(): string
     {
         $prefix = $this->code !== null ? "[{$this->code}] " : "";
-        $prop = $this->property !== null ? " (propriedade '{$this->property}')" : "";
+        $prop = $this->property !== null ? " (property '{$this->property}')" : "";
         return "{$prefix}{$this->message}{$prop}";
     }
 }

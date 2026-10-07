@@ -59,6 +59,12 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testIdentifierInjectionIsRejected();
         $this->testReadmeExample8RunsAsWritten();
         $this->testFieldMapperAliasResolution();
+
+        // Lote de correção #20-#29 (2026-10-07): quoting em maiúsculas (Oracle/Firebird),
+        // startsWith/endsWith/contains como LIKE, regex sem delimitadores PHP.
+        $this->testOracleAndFirebirdQuoteIdentifiersInUpperCase();
+        $this->testStringAffixesTranslateToLikeInEveryDialect();
+        $this->testRegexBindHasNoPhpDelimitersOrModifiers();
     }
 
     /**
@@ -231,8 +237,10 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
             $this->assertEquals('[c].[status]', $sqlsrv->escapeIdentifier('c.status'));
         }
 
-        // PostgreSQL, Oracle, Firebird, SQLite e ANSI usam aspas duplas
-        foreach (['pgsql', 'oracle', 'oci', 'firebird', 'fbird', 'ibase', 'sqlite', 'ansi'] as $d) {
+        // PostgreSQL, SQLite e ANSI usam aspas duplas sem alterar a caixa.
+        // Oracle e Firebird (oracle, oci, firebird, fbird, ibase) citam em MAIÚSCULAS: ver
+        // testOracleAndFirebirdQuoteIdentifiersInUpperCase (BUG-20261007-MNZN, decisão de 2026-10-07).
+        foreach (['pgsql', 'sqlite', 'ansi'] as $d) {
             $obj = SqlDialectFactory::create($d);
             $this->assertEquals('"status"', $obj->escapeIdentifier('status'));
             $this->assertEquals('"c"."status"', $obj->escapeIdentifier('c.status'));
@@ -278,7 +286,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         // 4. Diferente (Oracle)
         $specNeq = new PropertySpecification($base, 'status', new NotEqualSpecification('CANCELLED'));
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specNeq);
-        $this->assertEquals('"status" <> :p1', $clauseOra->toSql());
+        $this->assertEquals('"STATUS" <> :p1', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
         $this->assertEquals([':p1' => 'CANCELLED'], $clauseOra->getParameters());
 
         // 5. Booleano no PostgreSQL vs SQL Server
@@ -330,7 +338,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Oracle (oci)
         $clauseOci = (new SqlQueryVisitor('oci'))->translate($spec);
-        $this->assertEquals('(("age" > :p1 AND "status" = :p2) OR NOT ("is_vip" = 1))', $clauseOci->toSql());
+        $this->assertEquals('(("AGE" > :p1 AND "STATUS" = :p2) OR NOT ("IS_VIP" = 1))', $clauseOci->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
     }
 
     private function testTextAndWildcardOperations(): void
@@ -352,11 +360,11 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Oracle usa LOWER(col) LIKE LOWER(:p)
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specCase);
-        $this->assertEquals('LOWER("code") LIKE LOWER(:p1)', $clauseOra->toSql());
+        $this->assertEquals('LOWER("CODE") LIKE LOWER(:p1)', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
 
         // Firebird usa LOWER(col) LIKE LOWER(:p)
         $clauseFb = (new SqlQueryVisitor('firebird'))->translate($specCase);
-        $this->assertEquals('LOWER("code") LIKE LOWER(:p1)', $clauseFb->toSql());
+        $this->assertEquals('LOWER("CODE") LIKE LOWER(:p1)', $clauseFb->toSql()); // Firebird cita em maiúsculas (BUG-20261007-MNZN)
 
         // MySQL usa LIKE
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specCase);
@@ -378,7 +386,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Oracle suporta REGEXP_LIKE
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specRegex);
-        $this->assertEquals('REGEXP_LIKE("phone", :p1, \'c\')', $clauseOra->toSql());
+        $this->assertEquals('REGEXP_LIKE("PHONE", :p1, \'c\')', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
 
         // SQL Server e Firebird lançam exceção unsupported
         $this->assertThrows(UnsupportedSqlOperationException::class, function () use ($specRegex) {
@@ -426,7 +434,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $visitor = Spec::sqlVisitor('oracle');
         $clause3 = $spec->accept($visitor);
         $this->assertInstanceOf(ISqlWhereClause::class, $clause3);
-        $this->assertEquals('"status" = :p1', $clause3->toSql());
+        $this->assertEquals('"STATUS" = :p1', $clause3->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
     }
 
     private function testNonTranslatableException(): void
@@ -458,5 +466,147 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $empty = SqlWhereClause::empty();
         $this->assertTrue($empty->isEmpty());
         $this->assertEquals($c1->toSql(), $c1->and($empty)->toSql());
+    }
+
+    /**
+     * BUG-20261007-MNZN (#26), spec 012 RN-03: Oracle e Firebird citam identificadores em MAIÚSCULAS,
+     * porque nesses SGBDs um identificador criado sem aspas é armazenado em maiúsculas e um identificador
+     * citado é case-sensitive. Reprodução: antes da correção os cinco aliases emitiam "status" / "c"."status",
+     * que não casa com a coluna STATUS do catálogo.
+     */
+    private function testOracleAndFirebirdQuoteIdentifiersInUpperCase(): void
+    {
+        foreach (['oracle', 'oci', 'firebird', 'fbird', 'ibase'] as $d) {
+            $obj = SqlDialectFactory::create($d);
+            $this->assertEquals('"STATUS"', $obj->escapeIdentifier('status'), "$d: segmento simples em maiúsculas");
+            $this->assertEquals('"C"."STATUS"', $obj->escapeIdentifier('c.status'), "$d: cada segmento qualificado em maiúsculas");
+            $this->assertEquals('"VAL_SALARY"', $obj->escapeIdentifier('val_salary'), "$d: underscore preservado");
+            $this->assertEquals('"ALREADY_UP"', $obj->escapeIdentifier('ALREADY_UP'), "$d: já em maiúsculas não muda");
+
+            // Regressão: função declarada pelo mapper continua verbatim (o banco dobra o nome nu),
+            // e a gramática estrita do SJVE continua recusando o que não é identificador.
+            $this->assertEquals('LOWER(name)', $obj->escapeIdentifier('LOWER(name)'), "$d: função passa verbatim");
+            $this->assertThrows(UnsafeIdentifierException::class, fn() => $obj->escapeIdentifier('name; DROP'));
+        }
+
+        // Cláusula completa (exemplo 8 do README) nos dois dialetos
+        $spec = Spec::property('val_salary', Spec::greaterThan(5000))
+            ->and(Spec::property('txt_city', Spec::equalTo('Rio')));
+        foreach (['oracle', 'firebird'] as $d) {
+            $clause = Spec::toSql($spec, $d);
+            $this->assertEquals('("VAL_SALARY" > :p1 AND "TXT_CITY" = :p2)', $clause->getSql(), "$d: cláusula completa");
+            $this->assertEquals([':p1' => 5000, ':p2' => 'Rio'], $clause->getBindings(), "$d: bindings inalterados");
+        }
+
+        // Regressão: os demais dialetos não alteram a caixa
+        $this->assertEquals('"val_salary"', SqlDialectFactory::create('pgsql')->escapeIdentifier('val_salary'));
+        $this->assertEquals('`val_salary`', SqlDialectFactory::create('mysql')->escapeIdentifier('val_salary'));
+        $this->assertEquals('[val_salary]', SqlDialectFactory::create('sqlsrv')->escapeIdentifier('val_salary'));
+        $this->assertEquals('"val_salary"', SqlDialectFactory::create('sqlite')->escapeIdentifier('val_salary'));
+        $this->assertEquals('"val_salary"', SqlDialectFactory::create('ansi')->escapeIdentifier('val_salary'));
+    }
+
+    /**
+     * BUG-20261007-3E3F (#29): startsWith()/endsWith()/contains() traduzem para LIKE em todos os dialetos,
+     * com escape de %, _ e do caractere de escape quando o literal os contém. Antes: REGEX com o padrão PHP
+     * inteiro ('/^Ab/') como bind, que nunca casa em pgsql/mysql/oracle e é recusado em sqlite/firebird/ansi.
+     */
+    private function testStringAffixesTranslateToLikeInEveryDialect(): void
+    {
+        // 1. Reprodução: prefixo, case-sensitive, nos sete dialetos
+        $spec = Spec::property('name', Spec::startsWith('Ab'));
+        $expected = [
+            'pgsql' => '"name" LIKE :p1',
+            'mysql' => 'BINARY `name` LIKE :p1',
+            'sqlsrv' => '[name] LIKE :p1',
+            'sqlite' => '"name" LIKE :p1',
+            'ansi' => '"name" LIKE :p1',
+            'oracle' => '"NAME" LIKE :p1',
+            'firebird' => '"NAME" LIKE :p1',
+        ];
+        foreach ($expected as $d => $sql) {
+            $clause = Spec::toSql($spec, $d);
+            $this->assertEquals($sql, $clause->getSql(), "$d: startsWith vira LIKE");
+            $this->assertEquals([':p1' => 'Ab%'], $clause->getBindings(), "$d: bind é o prefixo com %");
+        }
+
+        // 2. Sufixo e substring
+        $this->assertEquals([':p1' => '%Ab'], Spec::toSql(Spec::property('name', Spec::endsWith('Ab')), 'pgsql')->getBindings());
+        $this->assertEquals([':p1' => '%Ab%'], Spec::toSql(Spec::property('name', Spec::contains('Ab')), 'pgsql')->getBindings());
+
+        // 3. Case-insensitive usa o LIKE insensível de cada dialeto
+        $ci = Spec::property('name', Spec::startsWith('ab', false));
+        $this->assertEquals('"name" ILIKE :p1', Spec::toSql($ci, 'pgsql')->getSql());
+        $this->assertEquals('`name` LIKE :p1', Spec::toSql($ci, 'mysql')->getSql());
+        $this->assertEquals('LOWER("NAME") LIKE LOWER(:p1)', Spec::toSql($ci, 'oracle')->getSql());
+        $this->assertEquals('LOWER([name]) LIKE LOWER(:p1)', Spec::toSql($ci, 'sqlsrv')->getSql());
+
+        // 4. Escape dos curingas do LIKE: só quando o literal os contém, com ESCAPE '!' portável
+        $clause = Spec::toSql(Spec::property('promo', Spec::contains('50%_off!')), 'pgsql');
+        $this->assertEquals('"promo" LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals([':p1' => '%50!%!_off!!%'], $clause->getBindings());
+
+        // Barra invertida é escape padrão do LIKE no MySQL: a cláusula ESCAPE explícita a neutraliza
+        $clause = Spec::toSql(Spec::property('path', Spec::startsWith('C:\\')), 'mysql');
+        $this->assertEquals('BINARY `path` LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
+
+        // 5. NOT continua sendo tratado pelo visitor
+        $this->assertEquals('NOT ("name" LIKE :p1)', Spec::toSql(Spec::not(Spec::property('name', Spec::startsWith('Ab'))), 'pgsql')->getSql());
+
+        // 6. Regressão em memória: semântica idêntica à anterior (case-sensitive por padrão, literal sem regex)
+        $this->assertTrue(Spec::startsWith('Ab')->isSatisfiedBy('Abc'));
+        $this->assertFalse(Spec::startsWith('Ab')->isSatisfiedBy('abc'));
+        $this->assertTrue(Spec::startsWith('ab', false)->isSatisfiedBy('ABC'));
+        $this->assertTrue(Spec::endsWith('.txt')->isSatisfiedBy('file.txt'));
+        $this->assertFalse(Spec::endsWith('.txt')->isSatisfiedBy('file_txt'));
+        $this->assertTrue(Spec::contains('50%_off!')->isSatisfiedBy('today 50%_off! only'));
+        $this->assertFalse(Spec::contains('a.c')->isSatisfiedBy('abc'), 'ponto é literal, não curinga de regex');
+        $this->assertFalse(Spec::startsWith('Ab')->isSatisfiedBy(42));
+
+        // 7. Compatibilidade: as folhas continuam sendo RegexSpecification para os demais visitors
+        $this->assertInstanceOf(RegexSpecification::class, Spec::startsWith('Ab'));
+        $this->assertInstanceOf(RegexSpecification::class, Spec::endsWith('Ab'));
+        $this->assertInstanceOf(RegexSpecification::class, Spec::contains('Ab'));
+        $this->assertTrue(Spec::startsWith('Ab')->equals(Spec::startsWith('Ab')));
+        $this->assertFalse(Spec::startsWith('Ab')->equals(Spec::endsWith('Ab')));
+    }
+
+    /**
+     * BUG-20261007-3E3F (#29), parte 2: RegexSpecification genérica vai ao banco sem os delimitadores e
+     * modificadores do PHP; o modificador i mapeia para o REGEX insensível do dialeto; modificadores sem
+     * equivalente portável são recusados com UnsupportedSqlOperationException.
+     */
+    private function testRegexBindHasNoPhpDelimitersOrModifiers(): void
+    {
+        $base = Spec::specify(stdClass::class);
+
+        $delimited = new PropertySpecification($base, 'phone', new RegexSpecification('/^[0-9]+$/'));
+        $clause = (new SqlQueryVisitor('pgsql'))->translate($delimited);
+        $this->assertEquals('"phone" ~ :p1', $clause->toSql());
+        $this->assertEquals([':p1' => '^[0-9]+$'], $clause->getParameters(), 'bind sem as barras do PHP');
+
+        // Outros delimitadores e o modificador u (sem efeito no banco)
+        $hash = new PropertySpecification($base, 'phone', new RegexSpecification('#^\d{2}/\d{4}$#u'));
+        $this->assertEquals([':p1' => '^\d{2}/\d{4}$'], (new SqlQueryVisitor('mysql'))->translate($hash)->getParameters());
+
+        // Modificador i: REGEX insensível de cada dialeto
+        $ci = new PropertySpecification($base, 'code', new RegexSpecification('/^abc/i'));
+        $this->assertEquals('"code" ~* :p1', (new SqlQueryVisitor('pgsql'))->translate($ci)->toSql());
+        $this->assertEquals('`code` REGEXP :p1', (new SqlQueryVisitor('mysql'))->translate($ci)->toSql());
+        $this->assertEquals('REGEXP_LIKE("CODE", :p1, \'i\')', (new SqlQueryVisitor('oracle'))->translate($ci)->toSql());
+        $this->assertEquals([':p1' => '^abc'], (new SqlQueryVisitor('oracle'))->translate($ci)->getParameters());
+
+        // Modificador sem equivalente portável: recusa explícita
+        $multiline = new PropertySpecification($base, 'code', new RegexSpecification('/^abc$/m'));
+        $e = $this->assertThrows(UnsupportedSqlOperationException::class, fn() => (new SqlQueryVisitor('pgsql'))->translate($multiline));
+        $this->assertTrue(str_contains($e->getMessage(), 'm'), 'a mensagem nomeia o modificador recusado');
+
+        // Regressão: padrão sem delimitadores (uso legado nos testes) passa inalterado
+        $raw = new PropertySpecification($base, 'phone', new RegexSpecification('^[0-9]+$'));
+        $this->assertEquals([':p1' => '^[0-9]+$'], (new SqlQueryVisitor('pgsql'))->translate($raw)->getParameters());
+
+        // Regressão: isBlank() (regex interna) também sai limpo
+        $this->assertEquals([':p1' => '^\s*$'], Spec::toSql(Spec::property('name', Spec::isBlank()), 'pgsql')->getBindings());
     }
 }

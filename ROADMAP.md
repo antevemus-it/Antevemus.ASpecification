@@ -28,36 +28,36 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 
 ---
 
-## 🎯 Short-Term Milestones (v1.4.x)
+## 🎯 Short-Term Milestones (v1.5.x)
 
 ### 6. README Promises II: Inter-Process, Unicode, Lazy Sources & Relational Catalog 🧵
 - **Description:** The remaining README promises that change observable behaviour: `SemaphoreSynchronizer` backed by SysV IPC (`sem_get`) when `ext-sysvsem` is available (in-process fallback documented), Unicode-aware case-insensitive string specifications via `mb_*` (`ext-mbstring`), a truly lazy repository source for `findAsLazyCollection()` (iterator, no `getAll()` materialisation), a typed bridge contract for ALinq collections with `antevemus/alinq-collection` declared in `suggest`, a PDO-backed `IRuleCatalog` mirroring the relational rule and document tables, and `IN (...)` translation of `in()` value sets by the SQL and TCriteria visitors (today emitted as a chain of `OR` equalities).
 - **Goal:** The Requirements and Core Features sections describe what the code does.
-- **Target Release:** v1.4.0
+- **Target Release:** v1.5.0
 
 ### 7. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Add native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets.
 - **Goal:** Enable multi-node high-throughput deployments with distributed cache invalidation across microservices and cluster nodes.
-- **Target Release:** v1.4.0
+- **Target Release:** v1.5.0
 
 ### 8. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Provide bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
 - **Goal:** Unify frontend querying capabilities with domain-layer business validation and database query projection.
-- **Target Release:** v1.4.0
+- **Target Release:** v1.5.0
 
 ---
 
-## 🚀 Medium-Term Milestones (v1.5.x)
+## 🚀 Medium-Term Milestones (v1.6.x)
 
 ### 9. Parameterized Reflection Specifications & Tautology/Contradiction Detection 🔬
 - **Description:** `Specifications/Reflection/` (`FieldParameterizedSpecification`, `MethodParameterizedSpecification`) and structural detection of tautologies and contradictions (`A ∧ ¬A`, `A ∨ ¬A`, disjoint leaves through `isDisjointWith`, absorbing `alwaysTrue()`/`alwaysFalse()`), both promised by the README. Each gets its own forward specification before code.
 - **Goal:** Close the last two README promises of the 2026-10 audit.
-- **Target Release:** v1.5.0
+- **Target Release:** v1.6.0
 
 ### 10. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** Build dedicated GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`.
 - **Goal:** Expand our query-level SQL translation capabilities (currently supporting 12 database drivers over 7 SQL dialects, and Adianti TCriteria) to the two most popular ORM ecosystems in the PHP world.
-- **Target Release:** v1.5.0
+- **Target Release:** v1.6.0
 
 ---
 
@@ -76,9 +76,9 @@ This document outlines the strategic engineering roadmap and upcoming enhancemen
 - **Target Release:** v2.0.0 (or `antevemus/aspecification-async`)
 
 ### 14. Announced-but-Unshipped Backlog (CHANGELOG errata, 2026-10) 📋
-- **Description:** Capabilities that the `1.0.0`/`1.1.0` CHANGELOG entries announced and the code never shipped, kept here so the promise is not lost: ULID and UUID v7 entity identities; TTL and auto-pruning on volatile repositories; topological sorting and cluster indexing on the partition DAG; a severity field on `SpecificationFailure`; `RelationalOperator` cases for `BETWEEN`, `IN`, `LIKE` and `REGEX`; a document requirement state machine (`RequirementState`); DB2, Informix and DuckDB SQL dialects.
+- **Description:** Capabilities that the `1.0.0`/`1.1.0` CHANGELOG entries announced and the code never shipped, kept here so the promise is not lost: ULID and UUID v7 entity identities; TTL and auto-pruning on volatile repositories; topological sorting and cluster indexing on the partition DAG; a severity field on `SpecificationFailure`; `RelationalOperator` cases for `BETWEEN`, `IN`, `LIKE` and `REGEX`; a document requirement state machine (`RequirementState`); DB2, Informix and DuckDB SQL dialects; persisted per-entity persistence metadata in file repositories (the JSON envelope `__persistence_metadata` documented by the 006 data delta and never produced; since v1.4.0 metadata is tracked in memory for the current session only, see the 2026-10 correction lot).
 - **Goal:** Each item is either scheduled into a milestone above or explicitly declined with a note in the CHANGELOG.
-- **Target Release:** unscheduled (triage after v1.4.0).
+- **Target Release:** unscheduled (triage after v1.5.0).
 
 ---
 

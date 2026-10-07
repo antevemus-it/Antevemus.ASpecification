@@ -20,13 +20,15 @@ use InvalidArgumentException;
  * - High-speed volatile memory storage indexed by hash/ID
  * - Synchronous Specification filtering with lazy iteration (yield) and O(N) counting
  * - Idempotent insertions and removals
+ * - O(1) membership test via contains()
  * - Fast O(1) atomic repository clearance via clear()
+ * - Optional repository identifier, preserved by partitions created with addPartitionWithId()
  * - ALinq fluent collection integration
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -42,12 +44,51 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      * Constructs an in-memory repository.
      *
      * @param array<T> $initialEntities Initial entity collection to pre-populate repository
+     * @param string|null $repositoryId Optional identifier (a volatile repository has none by default);
+     *                                  PartitionRepository::addPartitionWithId() passes the partition id here
      */
-    public function __construct(array $initialEntities = [])
-    {
+    public function __construct(
+        array $initialEntities = [],
+        protected readonly ?string $repositoryId = null
+    ) {
         if (!empty($initialEntities)) {
             $this->putAll($initialEntities);
         }
+    }
+
+    /**
+     * Returns the optional repository identifier (null when none was given).
+     *
+     * @return string|null
+     */
+    public function getRepositoryId(): ?string
+    {
+        return $this->repositoryId;
+    }
+
+    /**
+     * Reports whether the entity is stored: O(1) by the same key put()/remove() use
+     * (scalar id or spl_object_hash), then IEntity::equals() as a fallback.
+     *
+     * @param IEntity $entity Entity to look for
+     * @return bool
+     */
+    public function contains(IEntity $entity): bool
+    {
+        $id = $entity->getEntityId();
+        $key = (is_scalar($id)) ? (string) $id : spl_object_hash($entity);
+
+        if (array_key_exists($key, $this->db)) {
+            return true;
+        }
+
+        foreach ($this->db as $stored) {
+            if ($stored->equals($entity)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -11,8 +11,11 @@ use Antevemus\ASpecification\Repositories\File\InMemoryAndFileRepository;
 use Antevemus\ASpecification\Repositories\File\FileNameSanitizer;
 use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
 use Antevemus\ASpecification\Repositories\Serialization\PhpNativeEntitySerializer;
+use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
+use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
+use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Repositories\PersistentPartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
@@ -45,6 +48,10 @@ class Module5_FileRepositoriesTest extends TestCase
             $this->testTwoInstancesOnSameFileDoNotOverwriteEachOther($tmp);
             $this->testConcurrentProcessesDoNotLoseUpdates($tmp);
             $this->testReadmeExample5HybridFactory($tmp);
+            $this->testHybridContainsWorksThroughTheCache($tmp);
+            $this->testPersistenceEnvelopeIsIgnoredOnRead();
+            $this->testSerializedDocumentCarriesNoPersistenceEnvelope($tmp);
+            $this->testFileRepositoriesRecordSessionMetadata($tmp);
 
             $u1 = new TestFileEntity("U1");
             $u2 = new TestFileEntity("U2");
@@ -142,6 +149,160 @@ class Module5_FileRepositoriesTest extends TestCase
         $repo->close();
         $again->close();
         $withCache->close();
+    }
+
+    /**
+     * BUG-20261007-ORNH (regressão): o híbrido do exemplo 5 do README responde contains() pelo cache L1.
+     * Antes da correção: Error "Call to undefined method InMemoryRepository::contains()".
+     */
+    private function testHybridContainsWorksThroughTheCache(string $tmp): void
+    {
+        $storagePath = $tmp . '/contains/customers.json';
+        $alice = new TestFileEntity('Alice');
+        $bob = new TestFileEntity('Bob');
+
+        $repo = InMemoryAndFileRepository::create(
+            storagePath: $storagePath,
+            serializer: new JsonEntitySerializer(TestFileEntity::class)
+        );
+        $repo->put($alice);
+
+        $this->assertTrue($repo->contains($alice), 'entidade gravada é contida pelo híbrido');
+        $this->assertFalse($repo->contains($bob), 'entidade nunca gravada não é contida');
+
+        // Segunda instância sobre o mesmo arquivo: o cache aquecido por create() responde também
+        $again = InMemoryAndFileRepository::create($storagePath, new JsonEntitySerializer(TestFileEntity::class));
+        $this->assertTrue($again->contains($alice), 'cache aquecido do arquivo contém a entidade persistida');
+
+        $this->assertTrue($repo->remove($alice));
+        $this->assertFalse($repo->contains($alice), 'entidade removida deixa de ser contida');
+
+        // As classes de arquivo mantêm o contains() que já tinham
+        $this->assertFalse($repo->getFileBackend()->contains($alice));
+        $repo->close();
+        $again->close();
+    }
+
+    /**
+     * BUG-20261007-5MWT (reprodução): deserialize() de um documento com "__persistence_metadata"
+     * chamava métodos inexistentes de EntityPersistenceMetaData (Error com contador >= 1) ou devolvia
+     * PersistentEntity, violando o retorno IEntity (TypeError com contadores 0). Agora o envelope é
+     * ignorado e a entidade de "__entity_data" é hidratada.
+     */
+    private function testPersistenceEnvelopeIsIgnoredOnRead(): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $original = new TestFileEntity('Enveloped');
+        $entityData = json_decode($ser->serialize($original), true);
+
+        foreach ([1, 0] as $count) {
+            $document = json_encode([
+                '__class' => TestFileEntity::class,
+                '__is_persistent_envelope' => true,
+                '__persistence_metadata' => [
+                    'access_count' => $count,
+                    'write_count' => $count,
+                    'last_access_at' => null,
+                    'last_write_at' => null,
+                ],
+                '__entity_data' => $entityData,
+            ]);
+
+            $entity = $ser->deserialize($document, TestFileEntity::class);
+            $this->assertInstanceOf(TestFileEntity::class, $entity, "envelope com contadores {$count}: devolve a entidade");
+            $this->assertEquals('Enveloped', $entity->title);
+            $this->assertEquals((string) $original->getEntityId(), (string) $entity->getEntityId());
+        }
+    }
+
+    /**
+     * BUG-20261007-5MWT (regressão): nenhum documento produzido pelo serializer ou pelo repositório
+     * de arquivo carrega o envelope; a ida e volta de uma entidade comum continua intacta.
+     */
+    private function testSerializedDocumentCarriesNoPersistenceEnvelope(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $entity = new TestFileEntity('Plain');
+
+        $json = $ser->serialize($entity);
+        $decoded = json_decode($json, true);
+        $this->assertTrue(is_array($decoded));
+        $this->assertFalse(array_key_exists('__is_persistent_envelope', $decoded));
+        $this->assertFalse(array_key_exists('__persistence_metadata', $decoded));
+        $this->assertEquals(TestFileEntity::class, $decoded['__class']);
+
+        $back = $ser->deserialize($json, TestFileEntity::class);
+        $this->assertEquals('Plain', $back->title);
+
+        $path = $tmp . '/no_envelope.json';
+        $repo = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $repo->put($entity);
+        $this->assertFalse(str_contains((string) file_get_contents($path), '__persistence_metadata'));
+    }
+
+    /**
+     * BUG-20261007-6NMZ (reprodução + regressão): os repositórios de arquivo registram metadados por
+     * entidade na sessão corrente. Antes da correção recordWriteMetadata()/recordReadMetadata() não
+     * tinham chamadores e getEntityMetaData() devolvia null para toda entidade.
+     */
+    private function testFileRepositoriesRecordSessionMetadata(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $all = new AllEntitiesSpecification(TestFileEntity::class);
+
+        $single = new SingleFileRepository($tmp . '/meta_single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $perEntity = new FilePerEntityRepository($tmp . '/meta_dir', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+
+        foreach (['single' => $single, 'per-entity' => $perEntity] as $label => $repo) {
+            $e = new TestFileEntity("Meta {$label}");
+            $this->assertTrue($repo->getEntityMetaData($e) === null, "{$label}: entidade nunca tocada não tem metadados");
+
+            $repo->put($e);
+            $meta = $repo->getEntityMetaData($e);
+            $this->assertTrue($meta instanceof IEntityPersistenceMetaData, "{$label}: put() registra metadados");
+            $this->assertEquals(0, $meta->getWriteCount(), "{$label}: a criação não conta como reescrita");
+            $this->assertTrue($meta->getFirstWrite() !== null, "{$label}: a criação marca a primeira gravação");
+            $this->assertEquals(0, $meta->getReadCount());
+
+            $repo->put($e);
+            $this->assertEquals(1, $repo->getEntityMetaData($e)->getWriteCount(), "{$label}: segundo put() incrementa a escrita");
+
+            $found = $repo->findAll($all);
+            $this->assertCount(1, $found);
+            $this->assertEquals(1, $repo->getEntityMetaData($e)->getReadCount(), "{$label}: findAll() registra uma leitura");
+            $this->assertTrue($repo->getEntityMetaData($e)->getLastRead() !== null);
+
+            $repo->findSingle(new UniqueEntitySpecification($e));
+            $this->assertEquals(2, $repo->getEntityMetaData($e)->getReadCount(), "{$label}: findSingle() registra outra leitura");
+
+            $this->assertTrue($repo->remove($e));
+            $this->assertTrue($repo->getEntityMetaData($e) === null, "{$label}: remove() esquece os metadados");
+
+            $repo->put($e);
+            $repo->clear();
+            $this->assertTrue($repo->getEntityMetaData($e) === null, "{$label}: clear() esquece todos os metadados");
+        }
+
+        // Semântica de sessão: nova instância sobre o mesmo arquivo não herda metadados
+        $persisted = new TestFileEntity('Persisted');
+        $single->put($persisted);
+        $reopened = new SingleFileRepository($tmp . '/meta_single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $this->assertTrue($reopened->getEntityMetaData($persisted) === null, 'metadados são da sessão corrente, não do arquivo (carregar do disco não é uma leitura servida)');
+        $reopened->findAll($all);
+        $this->assertEquals(1, $reopened->getEntityMetaData($persisted)->getReadCount());
+        $this->assertEquals(1, $reopened->countAllEntities());
+
+        // Híbrido delega ao backend de arquivo
+        $hybrid = InMemoryAndFileRepository::create($tmp . '/meta_hybrid.json', $ser);
+        $h = new TestFileEntity('Hybrid');
+        $hybrid->put($h);
+        $this->assertTrue($hybrid->getEntityMetaData($h) instanceof IEntityPersistenceMetaData, 'híbrido expõe os metadados do L2');
+        $hybrid->close();
+
+        // Partição persistente continua declarando não suportado (005 RN-14)
+        $this->assertThrows(RepositoryException::class, function () use ($single, $persisted): void {
+            $single->makePartition()->getEntityMetaData($persisted);
+        });
     }
 
     /**

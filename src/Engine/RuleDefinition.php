@@ -17,8 +17,9 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  * - Static factory from relational database records/arrays (fromArray)
  * - Automatic type normalization (RuleAction, int, float, string)
  * - Support for open-ended parameters and contextual metadata
+ * - Applicability columns of the catalog row (product, plan, validity window) hydrated into parametros (RN-17)
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -27,6 +28,12 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  */
 final readonly class RuleDefinition implements IRuleDefinition
 {
+    /**
+     * Catalog row columns that restrict where a rule applies. They travel in `parametros` under the
+     * same keys, where IRuleCatalog implementations read them (RN-17, BUG-20261007-ZB6A).
+     */
+    public const APPLICABILITY_COLUMNS = ['codigo_produto', 'codigo_plano', 'data_inicio_vigencia', 'data_fim_vigencia'];
+
     /**
      * @param string $codigo Unique rule identifier in the catalog
      * @param string $nome Descriptive rule name
@@ -94,6 +101,14 @@ final readonly class RuleDefinition implements IRuleDefinition
         $parametros = isset($row['parametros']) && is_array($row['parametros'])
             ? $row['parametros']
             : [];
+
+        // RN-17: applicability columns are copied into parametros; an explicit entry prevails,
+        // a null or empty column means "no restriction" and is not copied.
+        foreach (self::APPLICABILITY_COLUMNS as $column) {
+            if (!array_key_exists($column, $parametros) && isset($row[$column]) && $row[$column] !== '') {
+                $parametros[$column] = $row[$column];
+            }
+        }
 
         return new self(
             codigo: (string) ($row['codigo'] ?? ''),

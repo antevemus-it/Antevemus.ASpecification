@@ -20,10 +20,11 @@ use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification
  * - Partitioned persistence via individual files
  * - O(1) optimized direct access by unique key
  * - On-demand filesystem iteration
+ * - Session metadata per entity (writes on put, reads on every served entity)
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -98,6 +99,7 @@ class FilePerEntityRepository extends AbstractFileRepository
         $target = $this->getFilePath($entity->getEntityId());
         $content = $this->serializer->serialize($entity);
         $this->writeAtomic($target, $content);
+        $this->recordWriteMetadata($entity);
     }
 
     /**
@@ -144,6 +146,7 @@ class FilePerEntityRepository extends AbstractFileRepository
                     @unlink($target);
                 }
             });
+            $this->forgetMetadata($entity);
             return true;
         }
 
@@ -183,6 +186,7 @@ class FilePerEntityRepository extends AbstractFileRepository
                 }
             });
         }
+        $this->clearMetadata();
     }
 
     /**
@@ -205,6 +209,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             /** @var T|null $entity */
             $entity = $this->readEntityFromFile($target);
             if ($entity !== null && $specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
                 return $entity;
             }
             return null;
@@ -214,6 +219,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             /** @var T|null $entity */
             $entity = $this->readEntityFromFile($filePath);
             if ($entity !== null && $specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
                 return $entity;
             }
         }
@@ -241,6 +247,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             /** @var T|null $entity */
             $entity = $this->readEntityFromFile($filePath);
             if ($entity !== null && $specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
                 $result[] = $entity;
             }
         }
@@ -261,6 +268,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             /** @var T|null $entity */
             $entity = $this->readEntityFromFile($filePath);
             if ($entity !== null && $specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
                 yield $entity;
             }
         }

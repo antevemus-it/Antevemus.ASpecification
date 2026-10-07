@@ -24,7 +24,7 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -145,6 +145,17 @@ class NullRepository extends AbstractRepository implements IVolatileRepository
      * @return bool Always false
      */
     public function remove(IEntity $entity): bool
+    {
+        return false;
+    }
+
+    /**
+     * Always returns false (Null Object): nothing is ever stored.
+     *
+     * @param IEntity $entity
+     * @return bool Always false
+     */
+    public function contains(IEntity $entity): bool
     {
         return false;
     }

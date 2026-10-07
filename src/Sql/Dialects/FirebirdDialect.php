@@ -7,10 +7,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
 /**
  * FirebirdDialect - Specialized Dialect for Firebird and InterBase (firebird, fbird, ibase)
  *
- * Provides support for delimited identifiers ("column"), numeric boolean flags (1/0),
+ * Provides support for delimited identifiers in upper case ("COLUMN"), numeric boolean flags (1/0),
  * and case-insensitive textual filtering with LOWER().
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,5 +31,17 @@ class FirebirdDialect extends AbstractSqlDialect
     public function getFamily(): string
     {
         return $this->family;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Identifiers created without quotes are stored in upper case by this engine, and a quoted
+     * identifier is case-sensitive, so the quoted form must be upper case to match columns created
+     * by plain DDL (spec 012 RN-03, BUG-20261007-MNZN).
+     */
+    protected function escapeSegment(string $segment): string
+    {
+        return '"' . str_replace('"', '""', strtoupper($segment)) . '"';
     }
 }

@@ -15,7 +15,7 @@ namespace Antevemus\ASpecification\Sql;
  * - Normalization of driver names and variants via fromDriver()
  * - Architectural family classification
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -56,7 +56,7 @@ enum SqlDialect: string
 
         $clean = strtolower(trim($driver));
 
-        // Normalização de variantes conhecidas
+        // Normalisation of known variants
         return match ($clean) {
             'pgsql', 'postgres', 'postgresql', 'pdo_pgsql' => self::POSTGRESQL,
             'mysql', 'mariadb', 'pdo_mysql', 'mysqli' => self::MYSQL,

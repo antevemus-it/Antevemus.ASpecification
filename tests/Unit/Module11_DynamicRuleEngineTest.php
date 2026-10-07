@@ -90,6 +90,11 @@ class Module11_DynamicRuleEngineTest extends TestCase
         // Forward 014 (README Promises I): R1 must() — o exemplo 7 do README roda como escrito.
         $this->testReadmeExample7RunsAsWritten();
         $this->testMustInlinePredicateContract();
+
+        // Lote de correção #20-#29 (2026-10-07), BUG-20261007-ZB6A: filtros de aplicabilidade de findRules().
+        $this->testFindRulesHonoursProductAndPlanFilters();
+        $this->testFindRulesHonoursValidityWindow();
+        $this->testRuleDefinitionHydratesApplicabilityColumnsIntoParametros();
     }
 
     /**
@@ -1006,5 +1011,89 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $predicate = ALinqSpecificationVisitor::createPredicate(Spec::allOf($bound, $other));
         $this->assertTrue($predicate((object) ['valor' => 11, 'ativo' => true]), 'predicado ALinq de RuleBound deve aceitar');
         $this->assertFalse($predicate((object) ['valor' => 5, 'ativo' => true]), 'predicado ALinq de RuleBound deve recusar');
+    }
+
+    /**
+     * BUG-20261007-ZB6A (#28), RN-17 (adendo à spec 011): findRules() honra os filtros de aplicabilidade
+     * codigo_produto e codigo_plano, lidos de getParametros(), com semântica AND espelhando escopo/cenário.
+     * Reprodução: antes, findRules('contrato', null, ['codigo_produto' => 'A']) devolvia também a regra do produto B
+     * e, sem filtro, devolvia as regras restritas a produto.
+     */
+    private function testFindRulesHonoursProductAndPlanFilters(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'R_GLOBAL', nome: 'g', tipoRegra: 't', escopo: 'contrato', prioridade: 1));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_PROD_A', nome: 'a', tipoRegra: 't', escopo: 'contrato', prioridade: 2, parametros: ['codigo_produto' => 'A']));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_PROD_B', nome: 'b', tipoRegra: 't', escopo: 'contrato', prioridade: 2, parametros: ['codigo_produto' => 'B']));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_PLAN_A1', nome: 'a1', tipoRegra: 't', escopo: 'contrato', prioridade: 3, parametros: ['codigo_produto' => 'A', 'codigo_plano' => 'P1']));
+
+        $codes = fn(array $filters) => array_map(fn($r) => $r->getCodigo(), $catalog->findRules('contrato', null, $filters));
+
+        // Reprodução
+        $this->assertEquals(['R_PROD_A', 'R_GLOBAL'], $codes(['codigo_produto' => 'A']), 'produto A: global + restrita a A, ordenadas por prioridade');
+        $this->assertEquals(['R_GLOBAL'], $codes([]), 'sem produto: regras restritas a produto não se aplicam');
+
+        // Regressão da semântica AND
+        $this->assertEquals(['R_PROD_B', 'R_GLOBAL'], $codes(['codigo_produto' => 'B']));
+        $this->assertEquals(['R_PLAN_A1', 'R_PROD_A', 'R_GLOBAL'], $codes(['codigo_produto' => 'A', 'codigo_plano' => 'P1']));
+        $this->assertEquals(['R_PROD_A', 'R_GLOBAL'], $codes(['codigo_produto' => 'A', 'codigo_plano' => 'P2']), 'plano diferente exclui a regra restrita a P1');
+        $this->assertEquals(['R_GLOBAL'], $codes(['codigo_plano' => 'P1']), 'plano sem produto: a regra restrita a produto A não casa');
+        $this->assertEquals(['R_GLOBAL'], $codes(['foo' => 'bar']), 'chave desconhecida é ignorada');
+        $this->assertEquals(['R_GLOBAL'], $codes(['codigo_produto' => null]), 'filtro nulo equivale a ausente');
+
+        // O motor repassa o contexto: só as regras aplicáveis entram no veredito
+        $registry = new RuleSpecificationRegistry();
+        $registry->registerClosure('t', fn(IRuleDefinition $r): ISpecification => Spec::alwaysFalse());
+        $engine = new DynamicSpecificationEngine($catalog, $registry);
+        $this->assertEquals(['R_PROD_A', 'R_GLOBAL'], $engine->validate(new stdClass(), 'contrato', null, ['codigo_produto' => 'A'])->getFailureCodes());
+        $this->assertEquals(['R_GLOBAL'], $engine->validate(new stdClass(), 'contrato')->getFailureCodes());
+    }
+
+    /**
+     * BUG-20261007-ZB6A (#28), RN-17 item 3: data_referencia filtra pela vigência da regra
+     * (data_inicio_vigencia <= data_referencia e data_fim_vigencia nula ou >= data_referencia);
+     * sem data_referencia a vigência não é avaliada.
+     */
+    private function testFindRulesHonoursValidityWindow(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'R_SEMPRE', nome: 's', tipoRegra: 't', escopo: 'contrato', prioridade: 1));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_2026H1', nome: 'h1', tipoRegra: 't', escopo: 'contrato', prioridade: 2,
+            parametros: ['data_inicio_vigencia' => '2026-01-01', 'data_fim_vigencia' => '2026-06-30']));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_DESDE_JUL', nome: 'j', tipoRegra: 't', escopo: 'contrato', prioridade: 3,
+            parametros: ['data_inicio_vigencia' => new \DateTimeImmutable('2026-07-01')]));
+
+        $codes = fn(array $filters) => array_map(fn($r) => $r->getCodigo(), $catalog->findRules('contrato', null, $filters));
+
+        $this->assertEquals(['R_DESDE_JUL', 'R_2026H1', 'R_SEMPRE'], $codes([]), 'sem data_referencia a vigência não é avaliada');
+        $this->assertEquals(['R_2026H1', 'R_SEMPRE'], $codes(['data_referencia' => '2026-03-15']));
+        $this->assertEquals(['R_2026H1', 'R_SEMPRE'], $codes(['data_referencia' => new \DateTimeImmutable('2026-06-30 23:59:59')]), 'fim de vigência inclusivo, por dia');
+        $this->assertEquals(['R_DESDE_JUL', 'R_SEMPRE'], $codes(['data_referencia' => '2026-07-01']), 'início inclusivo; fim nulo = aberta');
+        $this->assertEquals(['R_SEMPRE'], $codes(['data_referencia' => '2025-12-31']), 'antes de toda vigência');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $codes(['data_referencia' => 'ontem à noite']), 'data inválida é erro de configuração, não filtro silencioso');
+    }
+
+    /**
+     * BUG-20261007-ZB6A (#28), RN-17 item 4: fromArray() copia as colunas de aplicabilidade da linha
+     * (codigo_produto, codigo_plano, data_inicio_vigencia, data_fim_vigencia) para parametros;
+     * parametros explícito prevalece; coluna nula ou vazia não é copiada.
+     */
+    private function testRuleDefinitionHydratesApplicabilityColumnsIntoParametros(): void
+    {
+        $def = RuleDefinition::fromArray([
+            'codigo' => 'r1', 'nome' => 'n', 'tipo_regra' => 't',
+            'codigo_produto' => 'A', 'codigo_plano' => 'P1',
+            'data_inicio_vigencia' => '2026-01-01', 'data_fim_vigencia' => null,
+        ]);
+        $this->assertEquals(['codigo_produto' => 'A', 'codigo_plano' => 'P1', 'data_inicio_vigencia' => '2026-01-01'], $def->getParametros());
+
+        $explicit = RuleDefinition::fromArray([
+            'codigo' => 'r2', 'nome' => 'n', 'tipo_regra' => 't',
+            'codigo_produto' => 'A', 'parametros' => ['codigo_produto' => 'Z', 'limite' => 3],
+        ]);
+        $this->assertEquals(['codigo_produto' => 'Z', 'limite' => 3], $explicit->getParametros(), 'parametros explícito prevalece sobre a coluna');
+
+        $plain = RuleDefinition::fromArray(['codigo' => 'r3', 'nome' => 'n', 'tipo_regra' => 't', 'codigo_produto' => '']);
+        $this->assertEquals([], $plain->getParametros(), 'coluna vazia não vira restrição');
     }
 }

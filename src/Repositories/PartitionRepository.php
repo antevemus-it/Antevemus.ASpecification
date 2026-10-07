@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\Repositories\Exceptions\PartitionCreationException;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 use Antevemus\ASpecification\Contracts\Repositories\IBinaryFormatRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IFakeRepository;
@@ -33,11 +34,12 @@ use Throwable;
  * - Aggregated query execution with disjoint partition pruning and duplicate elimination
  * - Consistent removal across sibling partitions
  * - Dynamic repartitioning of mutated entities
+ * - Membership test (contains) over the node and every descendant partition
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPartitionRepository<T>
- * @version    1.2.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -228,13 +230,63 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             if ($partitionId === $this->underlyingRepository->getRepositoryId()) {
                 throw new InvalidArgumentException("Identifier '{$partitionId}' cannot duplicate parent repository ID.");
             }
+
+            // A persistent repository needs its own storage, which is never derived from the id:
+            // the caller builds the sibling and uses addPartitionWithRepository() (BUG-20261007-QFSJ).
+            throw new PartitionCreationException(get_class($this->underlyingRepository), $partitionId);
         }
 
-        // Instantiates new repository
+        // Instantiates a new sibling repository of the same type, handing it the identifier when
+        // its constructor accepts one (named parameter "repositoryId"); otherwise the type has no
+        // identifier to keep and the id is used only as the partition's requested name (RN-10).
         $repoClass = get_class($this->underlyingRepository);
-        $newRepo = new $repoClass();
+        $newRepo = $this->constructorAccepts($repoClass, 'repositoryId')
+            ? new $repoClass(repositoryId: $partitionId)
+            : new $repoClass();
 
         return $this->addPartitionWithRepository($specification, $newRepo);
+    }
+
+    /**
+     * Tells whether the constructor of the class declares a parameter with the given name.
+     *
+     * @param class-string $className
+     * @param string $parameterName
+     * @return bool
+     */
+    private function constructorAccepts(string $className, string $parameterName): bool
+    {
+        $constructor = (new \ReflectionClass($className))->getConstructor();
+        if ($constructor === null) {
+            return false;
+        }
+        foreach ($constructor->getParameters() as $parameter) {
+            if ($parameter->getName() === $parameterName) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Reports whether the entity is stored in this node or in any descendant partition.
+     *
+     * @param IEntity $entity Entity to look for
+     * @return bool
+     */
+    public function contains(IEntity $entity): bool
+    {
+        if ($this->underlyingRepository->contains($entity)) {
+            return true;
+        }
+
+        foreach ($this->subPartitions as $partition) {
+            if ($partition->contains($entity)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

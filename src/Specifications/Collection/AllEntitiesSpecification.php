@@ -24,7 +24,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -67,7 +67,7 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('The specification cannot be null');
         }
 
         if ($this->equals($otherSpecification)) {
@@ -88,7 +88,7 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('A especificação não pode ser null');
+            throw new \InvalidArgumentException('The specification cannot be null');
         }
 
         $otherType = $otherSpecification->getType();

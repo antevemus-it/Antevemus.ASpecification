@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IPartitionRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -20,12 +21,13 @@ use RuntimeException;
  * Features:
  * - Provides fluent convenience shortcuts (count, iterate, find, findSingle, removeBy) mapped to canonical contracts
  * - Implements findSingleEntitySpecifiedBy with strict unitary cardinality verification
+ * - Default contains() by entity identity (getEntityId) with equals() fallback
  * - Structural specification validations
  * - Virtual partition factory via makePartition
  *
  * @template T of IEntity
  * @implements IRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -134,6 +136,31 @@ abstract class AbstractRepository implements IRepository
 
         // Return first and only item
         return reset($allFound);
+    }
+
+    /**
+     * Default membership test: scans the repository comparing the scalar entity identifier
+     * and, when the identifier is not scalar or does not match, IEntity::equals().
+     * Concrete repositories with an index override this with an O(1) lookup.
+     *
+     * @param T $entity Entity to look for
+     * @return bool True when a stored entity has the same identity or equals the given one
+     */
+    public function contains(IEntity $entity): bool
+    {
+        $id = $entity->getEntityId();
+        $scalarId = is_scalar($id) ? (string) $id : null;
+
+        foreach ($this->iterateAllEntitiesSpecifiedBy(new AlwaysTrueSpecification()) as $stored) {
+            if ($scalarId !== null && is_scalar($stored->getEntityId()) && (string) $stored->getEntityId() === $scalarId) {
+                return true;
+            }
+            if ($stored->equals($entity)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

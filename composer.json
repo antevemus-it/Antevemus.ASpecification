@@ -39,8 +39,8 @@
     },
     "suggest": {
         "antevemus/alinq-collection": "^1.1 — ALinqBridge, ALinqSpecificationVisitor and O(1) lazy streaming (Module 14); requires PHP 8.4",
-        "ext-mbstring": "Unicode-aware case-insensitive string specifications (planned for v1.4.0, ROADMAP milestone 6)",
-        "ext-sysvsem": "SysV IPC semaphores for SemaphoreSynchronizer across processes (planned for v1.4.0, ROADMAP milestone 6)"
+        "ext-mbstring": "Unicode-aware case-insensitive string specifications (planned for v1.5.0, ROADMAP milestone 6)",
+        "ext-sysvsem": "SysV IPC semaphores for SemaphoreSynchronizer across processes (planned for v1.5.0, ROADMAP milestone 6)"
     },
     "autoload": {
         "psr-4": {

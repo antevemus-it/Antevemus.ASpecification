@@ -18,7 +18,7 @@ use DateTimeImmutable;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -49,7 +49,7 @@ class DateStringSpecification extends AbstractSpecification
         }
         
         $date = DateTimeImmutable::createFromFormat($this->format, $candidate);
-        // O PHP retorna a data se fez parse com sucesso e nós comparamos se o output volta pra string original (validação estrita)
+        // PHP returns the date when parsing succeeds; we then check that the output round-trips to the original string (strict validation)
         return $date !== false && $date->format($this->format) === $candidate;
     }
 

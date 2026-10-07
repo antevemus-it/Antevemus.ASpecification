@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
  * - Automatic addition of configurable table alias/prefix (e.g. 'c.')
  * - Automatic conversion from camelCase to snake_case as fallback
  *
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -74,12 +74,12 @@ class FieldMapper implements IFieldMapper
         } elseif (is_array($this->mapping) && isset($this->mapping[$propertyName])) {
             $target = $this->mapping[$propertyName];
         } else {
-            // Fallback padrão: converte camelCase para snake_case
+            // Default fallback: converts camelCase to snake_case
             $snake = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $propertyName));
             $target = $snake;
         }
 
-        // Se já tiver qualificador de tabela ou parênteses, não adiciona alias
+        // If a table qualifier or parentheses are already present, no alias is added
         if (str_contains($target, '.') || str_contains($target, '(')) {
             return $target;
         }

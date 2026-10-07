@@ -41,7 +41,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.3.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -271,6 +271,11 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
 
     /**
      * Compile generic composite aggregating all child criteria via logical AND.
+     *
+     * A childless composite is evaluated by its own isSatisfiedBy() with the candidate as is
+     * (scalar, array or object), exactly like a custom leaf: a consumer composite that widens the
+     * candidate to mixed sees the scalar, and a core-typed (?object) composite raises the same
+     * TypeError the core raises, never a silent false that NOT could turn into approval.
      */
     private function compileGenericComposite(ICompositeSpecification $specification): Closure
     {
@@ -287,6 +292,6 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
             };
         }
 
-        return fn(mixed $candidate): bool => $specification->isSatisfiedBy(is_object($candidate) ? $candidate : null);
+        return fn(mixed $candidate): bool => $specification->isSatisfiedBy($candidate);
     }
 }

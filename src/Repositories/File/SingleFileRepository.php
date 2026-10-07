@@ -20,10 +20,11 @@ use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySeriali
  * - Centralized single-file persistence
  * - Support for immediate write-through (ReadWrite) or on-demand snapshot (Snapshot)
  * - Safe reloading and shared locking for concurrent reads
+ * - Session metadata per entity (writes on put/putAll, reads on every served entity)
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.2.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -197,7 +198,7 @@ class SingleFileRepository extends AbstractFileRepository
 
             $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             if ($encoded === false) {
-                throw new RepositoryException("Falha ao codificar documento único de entidades: " . json_last_error_msg());
+                throw new RepositoryException("Failed to encode the single entity document: " . json_last_error_msg());
             }
 
             $this->writeAtomic($this->storagePath, $encoded, $this->lockFilePath());
@@ -232,6 +233,7 @@ class SingleFileRepository extends AbstractFileRepository
             $this->entities[(string)$entity->getEntityId()] = $entity;
             return true;
         });
+        $this->recordWriteMetadata($entity);
     }
 
     /**
@@ -249,6 +251,11 @@ class SingleFileRepository extends AbstractFileRepository
             }
             return true;
         });
+        foreach ($collectionOfEntities as $entity) {
+            if ($entity instanceof IEntity) {
+                $this->recordWriteMetadata($entity);
+            }
+        }
     }
 
     /**
@@ -274,7 +281,7 @@ class SingleFileRepository extends AbstractFileRepository
     {
         $this->assertWritable();
 
-        return $this->mutateUnderLock(function () use ($entity): bool {
+        $removed = $this->mutateUnderLock(function () use ($entity): bool {
             $id = (string)$entity->getEntityId();
             if (!isset($this->entities[$id])) {
                 return false;
@@ -282,6 +289,9 @@ class SingleFileRepository extends AbstractFileRepository
             unset($this->entities[$id]);
             return true;
         });
+        $this->forgetMetadata($entity);
+
+        return $removed;
     }
 
     /**
@@ -296,6 +306,7 @@ class SingleFileRepository extends AbstractFileRepository
             foreach ($this->entities as $id => $entity) {
                 if ($specification->isSatisfiedBy($entity)) {
                     unset($this->entities[$id]);
+                    $this->forgetMetadata($entity);
                     $count++;
                 }
             }
@@ -316,6 +327,7 @@ class SingleFileRepository extends AbstractFileRepository
             $this->entities = [];
             return true;
         });
+        $this->clearMetadata();
     }
 
     /**
@@ -331,6 +343,7 @@ class SingleFileRepository extends AbstractFileRepository
         $result = [];
         foreach ($this->entities as $entity) {
             if ($specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
                 $result[] = $entity;
             }
         }

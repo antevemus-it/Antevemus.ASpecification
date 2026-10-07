@@ -20,7 +20,7 @@ use BadMethodCallException;
  *
  * @template T of IEntity
  * @extends UnsupportedRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -115,6 +115,16 @@ class NotImplementedRepository extends UnsupportedRepository
      * @throws BadMethodCallException Always thrown indicating operation is not implemented
      */
     public function remove(IEntity $entity): bool
+    {
+        throw new BadMethodCallException('Operation not implemented by repository.');
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * @throws BadMethodCallException Always thrown indicating operation is not implemented
+     */
+    public function contains(IEntity $entity): bool
     {
         throw new BadMethodCallException('Operation not implemented by repository.');
     }

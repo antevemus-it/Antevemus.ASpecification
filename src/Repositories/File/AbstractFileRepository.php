@@ -32,11 +32,12 @@ use Antevemus\ASpecification\Repositories\EntityPersistenceMetaData;
  * - Strict validation of ReadOnly, WriteOnly, ReadWrite, and Snapshot modes
  * - Atomic writes via temporary files and atomic rename operations
  * - Native integration with fluent partitioning promotion (Module 4)
+ * - Per-entity persistence metadata of the current session (getEntityMetaData)
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.2.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -185,7 +186,7 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     protected function assertWritable(): void
     {
         if ($this->persistenceDefinition === PersistenceDefinition::ReadOnly) {
-            throw new RepositoryException("Operação de escrita rejeitada: o repositório '{$this->repositoryId}' está em modo ReadOnly.");
+            throw new RepositoryException("Write operation rejected: repository '{$this->repositoryId}' is in ReadOnly mode.");
         }
     }
 
@@ -200,6 +201,10 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
+     * Per-entity persistence metadata of the CURRENT SESSION, keyed by entity id.
+     * Nothing here is written to disk: a new instance over the same storage starts empty
+     * (BUG-20261007-6NMZ, spec 006 addendum).
+     *
      * @var array<string, IEntityPersistenceMetaData>
      */
     protected array $metadataMap = [];
@@ -221,12 +226,40 @@ abstract class AbstractFileRepository extends AbstractRepository implements
     }
 
     /**
+     * Returns the persistence metadata recorded for the entity in the current session:
+     * the first put() creates the record (first/last write set, counters at zero), every
+     * further write increments the write counter, every read served by this instance
+     * (findAll, findSingle, iterate) increments the read counter. Null for an entity this
+     * instance never wrote or served, including entities loaded from disk and not yet read.
+     * remove()/clear() forget the record.
+     *
      * {@inheritdoc}
      */
     public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData
     {
         $id = (string) $entity->getEntityId();
         return $this->metadataMap[$id] ?? null;
+    }
+
+    /**
+     * Forgets the metadata recorded for an entity (after remove()).
+     *
+     * @param IEntity $entity
+     * @return void
+     */
+    protected function forgetMetadata(IEntity $entity): void
+    {
+        unset($this->metadataMap[(string) $entity->getEntityId()]);
+    }
+
+    /**
+     * Forgets every metadata record (after clear()).
+     *
+     * @return void
+     */
+    protected function clearMetadata(): void
+    {
+        $this->metadataMap = [];
     }
 
     /**
@@ -279,7 +312,7 @@ abstract class AbstractFileRepository extends AbstractRepository implements
         $dir = dirname($targetFile);
         if (!is_dir($dir)) {
             if (!@mkdir($dir, 0777, true) && !is_dir($dir)) {
-                throw new RepositoryException("Não foi possível criar o diretório de destino: {$dir}");
+                throw new RepositoryException("Could not create the destination directory: {$dir}");
             }
         }
 
@@ -288,7 +321,7 @@ abstract class AbstractFileRepository extends AbstractRepository implements
         $this->withExclusiveLock($lockPath ?? $targetFile, function () use ($tmpFile, $targetFile, $content): void {
             $handle = @fopen($tmpFile, "wb");
             if ($handle === false) {
-                throw new RepositoryException("Falha ao abrir descritor de arquivo temporário: {$tmpFile}");
+                throw new RepositoryException("Failed to open the temporary file descriptor: {$tmpFile}");
             }
 
             $bytesWritten = fwrite($handle, $content);
@@ -297,12 +330,12 @@ abstract class AbstractFileRepository extends AbstractRepository implements
 
             if ($bytesWritten === false || $bytesWritten !== strlen($content)) {
                 @unlink($tmpFile);
-                throw new RepositoryException("Falha ao escrever bytes no arquivo temporário: {$tmpFile}");
+                throw new RepositoryException("Failed to write bytes to the temporary file: {$tmpFile}");
             }
 
             if (!@rename($tmpFile, $targetFile)) {
                 @unlink($tmpFile);
-                throw new RepositoryException("Falha ao mover arquivo temporário para o destino final: {$targetFile}");
+                throw new RepositoryException("Failed to move the temporary file to its final destination: {$targetFile}");
             }
         });
     }

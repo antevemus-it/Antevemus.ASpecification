@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
  * @template T of IEntity
  * @extends PartitionRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -159,6 +159,6 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
      */
     public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData
     {
-        throw new RepositoryException('Operação de metadados individuais não suportada em repositório particionado.');
+        throw new RepositoryException('Per-entity metadata operations are not supported on a partitioned repository.');
     }
 }

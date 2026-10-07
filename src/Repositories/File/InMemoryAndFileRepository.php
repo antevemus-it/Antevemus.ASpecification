@@ -35,7 +35,7 @@ use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.3.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,7 +78,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
             $this->memoryCache = $backendOrCache;
             $this->fileBackend = $secondArg;
         } else {
-            throw new RepositoryException("InMemoryAndFileRepository requer um IPersistentRepository e opcionalmente um IVolatileRepository.");
+            throw new RepositoryException("InMemoryAndFileRepository requires an IPersistentRepository and optionally an IVolatileRepository.");
         }
         $this->persistenceDefinition = $persistenceDefinition;
         $this->repositoryId = $repositoryId ?? ("hybrid_" . $this->fileBackend->getRepositoryId());
@@ -219,6 +219,9 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
+     * Delegates to the L2 file backend: the record reflects the writes this hybrid forwarded to
+     * the backend; reads served from the L1 cache are not backend reads and are not counted.
+     *
      * {@inheritdoc}
      */
     public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData
@@ -366,16 +369,14 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     }
 
     /**
+     * Answers from the L1 cache (contains() is part of IRepository since 1.4.0, BUG-20261007-ORNH).
+     *
      * {@inheritdoc}
      */
     public function contains(IEntity $entity): bool
     {
         return $this->memoryCache->contains($entity);
     }
-
-    /**
-     * {@inheritdoc}
-     */
 
     /**
      * Convenience alias for findSingleEntitySpecifiedBy.
@@ -417,7 +418,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
     protected function assertWritable(): void
     {
         if ($this->persistenceDefinition === PersistenceDefinition::ReadOnly) {
-            throw new RepositoryException("Operação de escrita rejeitada: o repositório híbrido '{$this->repositoryId}' está em modo ReadOnly.");
+            throw new RepositoryException("Write operation rejected: hybrid repository '{$this->repositoryId}' is in ReadOnly mode.");
         }
     }
 }

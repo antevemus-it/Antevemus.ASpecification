@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Attributes\AssertSpec;
 use Antevemus\ASpecification\Attributes\AttributeValidator;
 use Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException;
 use Antevemus\ASpecification\Attributes\Exceptions\UnknownRuleOperatorException;
+use Antevemus\ASpecification\Attributes\Exceptions\UnknownSpecificationClassException;
 use Antevemus\ASpecification\Attributes\ValidateRule;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Tests\TestCase;
@@ -167,6 +168,63 @@ class Readme11NotBlankHolder
     }
 }
 
+// BUG #24 (unknown specification class) and BUG #25 (evaluation error) fixtures.
+class UnavailableServiceSpec extends AbstractSpecification
+{
+    public function getType(): string
+    {
+        return 'mixed';
+    }
+
+    public function isSatisfiedBy(mixed $candidate): bool
+    {
+        throw new \RuntimeException('tariff service unavailable');
+    }
+}
+
+class NotASpecificationClass
+{
+}
+
+#[AssertSpec('App\Specs\DoesNotExist', code: 'AGG_001')]
+class UnknownSpecOnClassDto
+{
+    public int $x = 1;
+}
+
+class UnknownSpecOnGetterDto
+{
+    #[AssertSpec('App\Specs\ScoreSpecificaton', code: 'SCORE')]
+    public function getScore(): int
+    {
+        return 10;
+    }
+}
+
+class EvaluationErrorDto
+{
+    #[AssertSpec(UnavailableServiceSpec::class, code: 'TARIFF', message: 'Tariff must be valid')]
+    public int $tariff = 10;
+
+    #[AssertSpec(IsAdultSpecification::class, code: 'CUST_AGE', message: 'Customer must be an adult')]
+    public int $age = 5;
+}
+
+#[AssertSpec(UnavailableServiceSpec::class, code: 'AGG_ERR')]
+class EvaluationErrorOnClassDto
+{
+    public int $x = 1;
+}
+
+class EvaluationErrorOnGetterDto
+{
+    #[AssertSpec(UnavailableServiceSpec::class, code: 'SCORE_ERR')]
+    public function getScore(): int
+    {
+        return 1;
+    }
+}
+
 /**
  * Module15_AttributesTest - Unit test suite for PHP 8.4 Declarative Attributes
  *
@@ -198,6 +256,166 @@ class Module15_AttributesTest extends TestCase
         $this->testReadmeExample11RunsAsWritten();
         $this->testNotBlankOperator();
         $this->testValueIsAnAliasOfExpected();
+        $this->testUnknownSpecificationClassIsRejectedLoudly();
+        $this->testKnownSpecificationClassKeepsResolvingAndCaching();
+        $this->testAssertSpecEvaluationErrorBecomesErrorResult();
+        $this->testPlainAttributeViolationsAreNotErrors();
+    }
+
+    /**
+     * Reproduction (BUG #24): a #[AssertSpec] naming a class that does not exist, or that is not a
+     * specification, is a configuration error and must raise UnknownSpecificationClassException,
+     * never be skipped in silence (which turned the invariant off without any notice).
+     */
+    private function testUnknownSpecificationClassIsRejectedLoudly(): void
+    {
+        // 1. Property target with a typo in the class name: before the fix, satisfied with 0 failures
+        $typoOnProperty = new class {
+            #[AssertSpec('App\Specs\IsAdultSpecificaton', code: 'CUST_AGE', message: 'Customer must be an adult')]
+            public int $age = 5;
+        };
+        $e = $this->assertThrows(
+            UnknownSpecificationClassException::class,
+            fn() => Spec::validateAttributes($typoOnProperty),
+            'validateAttributes must refuse a specification class that does not exist'
+        );
+        $this->assertEquals('App\Specs\IsAdultSpecificaton', $e->specificationClass);
+        $this->assertTrue(str_contains($e->getMessage(), "'App\Specs\IsAdultSpecificaton'"), 'Message names the class');
+        $this->assertTrue(str_contains($e->getMessage(), "property 'age'"), 'Message names the annotated property');
+        $this->assertTrue(str_contains($e->getMessage(), 'does not exist'), 'Message states the reason');
+
+        // 2. Class target through assert(): the configuration error wins over AttributeValidationException
+        $e = $this->assertThrows(
+            UnknownSpecificationClassException::class,
+            fn() => Spec::assertAttributes(new UnknownSpecOnClassDto()),
+            'assertAttributes must raise UnknownSpecificationClassException, not AttributeValidationException'
+        );
+        $this->assertEquals('App\Specs\DoesNotExist', $e->specificationClass);
+        $this->assertTrue(str_contains($e->getMessage(), 'class ' . UnknownSpecOnClassDto::class), 'Message names the annotated class');
+
+        // 3. Getter target
+        $e = $this->assertThrows(
+            UnknownSpecificationClassException::class,
+            fn() => Spec::validateAttributes(new UnknownSpecOnGetterDto()),
+            'validateAttributes must refuse an unknown class on a getter'
+        );
+        $this->assertTrue(str_contains($e->getMessage(), "method 'getScore()'"), 'Message names the annotated method');
+
+        // 4. The class exists but is not a specification: same typed error (was an untyped TypeError)
+        $notASpec = new class {
+            #[AssertSpec(NotASpecificationClass::class, code: 'X')]
+            public int $v = 1;
+        };
+        $e = $this->assertThrows(
+            UnknownSpecificationClassException::class,
+            fn() => Spec::validateAttributes($notASpec),
+            'A class that does not implement ISpecification must be refused with the same typed error'
+        );
+        $this->assertEquals(NotASpecificationClass::class, $e->specificationClass);
+        $this->assertTrue(str_contains($e->getMessage(), 'does not implement'), 'Message states the reason');
+        $this->assertInstanceOf(\InvalidArgumentException::class, $e, 'Configuration errors are InvalidArgumentException, like UnknownRuleOperatorException');
+    }
+
+    /**
+     * Regression (BUG #24): an existing specification class keeps being resolved, instantiated once
+     * (parameterless) and reused from the cache; parameterized ones are instantiated per use; a
+     * violation of a known specification is still a plain failure.
+     */
+    private function testKnownSpecificationClassKeepsResolvingAndCaching(): void
+    {
+        AttributeValidator::clearCache();
+        $cacheProperty = new \ReflectionProperty(AttributeValidator::class, 'instanceCache');
+
+        $dto = new CustomerRegistrationDto('Alan Turing', 41, 'alan@bletchley.uk');
+        $this->assertTrue(Spec::validateAttributes($dto)->isSatisfied, 'Known specification classes still validate');
+
+        $cache = $cacheProperty->getValue();
+        $this->assertTrue(isset($cache[IsAdultSpecification::class]), 'Parameterless specification is cached after the first resolution');
+        $this->assertFalse(isset($cache[MinimumLengthSpecification::class]), 'Parameterized specification is never cached');
+        $first = $cache[IsAdultSpecification::class];
+
+        Spec::validateAttributes($dto);
+        $cache = $cacheProperty->getValue();
+        $this->assertTrue($first === $cache[IsAdultSpecification::class], 'Cached instance is reused on the next validation');
+
+        $young = new CustomerRegistrationDto('Ada Lovelace', 15, 'ada@example.com');
+        $result = Spec::validateAttributes($young);
+        $this->assertTrue($result->hasError('CUST_AGE'), 'A known specification that is not satisfied still reports its failure');
+        $this->assertFalse($result->isError, 'A plain violation is not an evaluation error');
+    }
+
+    /**
+     * Reproduction (BUG #25): an exception thrown while evaluating a #[AssertSpec] specification is an
+     * evaluation error of the Notification Pattern (isError, exception), aggregated into the result,
+     * never a raw exception escaping validateAttributes(); assertAttributes() wraps it.
+     */
+    private function testAssertSpecEvaluationErrorBecomesErrorResult(): void
+    {
+        $dto = new EvaluationErrorDto();
+
+        // Before the fix: RuntimeException('tariff service unavailable') escaped here
+        $result = Spec::validateAttributes($dto);
+        $this->assertFalse($result->isSatisfied);
+        $this->assertTrue($result->isError, 'An evaluation exception is an error result, as in evaluate() and in the rule engine');
+        $this->assertInstanceOf(\RuntimeException::class, $result->exception);
+        $this->assertEquals('tariff service unavailable', $result->exception->getMessage());
+
+        $errorFailures = $result->getFailuresForProperty('tariff');
+        $this->assertCount(1, $errorFailures);
+        $this->assertEquals('TARIFF', $errorFailures[0]->code, 'The attribute code is kept on the error failure');
+        $this->assertEquals(UnavailableServiceSpec::class, $errorFailures[0]->ruleName);
+        $this->assertEquals('tariff service unavailable', $errorFailures[0]->message, 'The error failure carries the exception message, not the business message');
+        $this->assertEquals(\RuntimeException::class, $errorFailures[0]->metadata['evaluation_error']);
+
+        // The plain violation on the same object is still reported, unchanged
+        $this->assertTrue($result->hasError('CUST_AGE'));
+        $this->assertEquals('Customer must be an adult', $result->getFailuresForProperty('age')[0]->message);
+        $this->assertCount(2, $result);
+
+        // Class-level and getter-level targets follow the same rule
+        $onClass = Spec::validateAttributes(new EvaluationErrorOnClassDto());
+        $this->assertTrue($onClass->isError);
+        $this->assertTrue($onClass->hasError('AGG_ERR'));
+        $onGetter = Spec::validateAttributes(new EvaluationErrorOnGetterDto());
+        $this->assertTrue($onGetter->isError);
+        $this->assertCount(1, $onGetter->getFailuresForProperty('getScore'));
+
+        // assertAttributes(): AttributeValidationException carrying the error result and the cause
+        $e = $this->assertThrows(
+            AttributeValidationException::class,
+            fn() => Spec::assertAttributes($dto),
+            'assertAttributes must wrap the evaluation error, never let the raw exception escape'
+        );
+        $this->assertTrue($e->getResult()->isError);
+        $this->assertInstanceOf(\RuntimeException::class, $e->getPrevious());
+    }
+
+    /**
+     * Regression (BUG #25): plain violations keep exactly the same shape (no error state, no exception,
+     * no evaluation_error metadata) and a valid object is satisfied without error.
+     */
+    private function testPlainAttributeViolationsAreNotErrors(): void
+    {
+        $invalid = new CustomerRegistrationDto(name: 'Al', age: 15, email: 'fail', creditLimit: 60000.0, tier: 'GOLD', cnpj: 'x');
+        $result = Spec::validateAttributes($invalid);
+        $this->assertFalse($result->isSatisfied);
+        $this->assertFalse($result->isError, 'Violations of the candidate are never an error');
+        $this->assertTrue($result->exception === null);
+        foreach ($result->failures as $failure) {
+            $this->assertFalse(isset($failure->metadata['evaluation_error']), 'No evaluation_error metadata on a plain violation');
+        }
+        foreach (['AGG_001', 'NAME_LEN', 'CUST_AGE', 'CUST_EMAIL', 'TIER_INVALID', 'TAX_ID'] as $code) {
+            $this->assertTrue($result->hasError($code), "Code {$code} still reported");
+        }
+
+        $valid = new CustomerRegistrationDto('Grace Hopper', 85, 'grace@navy.mil');
+        $ok = Spec::validateAttributes($valid);
+        $this->assertTrue($ok->isSatisfied);
+        $this->assertFalse($ok->isError);
+
+        $e = $this->assertThrows(AttributeValidationException::class, fn() => Spec::assertAttributes($invalid));
+        $this->assertFalse($e->getResult()->isError);
+        $this->assertTrue($e->getPrevious() === null, 'No cause attached when there is no evaluation error');
     }
 
     /**

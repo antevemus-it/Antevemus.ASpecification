@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.3.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.3.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1223%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1482%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -78,8 +78,8 @@ Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limi
 - **PHP**: `^8.2` (testado no PHP 8.2 e 8.4). O PHP 8.4 só é exigido pela integração opcional com o ALinq (`Antevemus.AlinqCollection`, Módulo 14), detectada em tempo de execução.
 - **Extensões PHP**:
   - `ext-json` (para serialização JSON; obrigatória)
-  - `ext-mbstring` *(opcional hoje: as operações de string case-insensitive com Unicode previstas para a v1.4.0 vão usá-la)*
-  - `ext-sysvsem` *(opcional: os semáforos SysV IPC previstos para a v1.4.0 vão usá-la para sincronização entre processos em Linux)*
+  - `ext-mbstring` *(opcional hoje: as operações de string case-insensitive com Unicode previstas para a v1.5.0 vão usá-la)*
+  - `ext-sysvsem` *(opcional: os semáforos SysV IPC previstos para a v1.5.0 vão usá-la para sincronização entre processos em Linux)*
 - **Pacote opcional**: `antevemus/alinq-collection` `^1.1` para `ALinqBridge`, `ALinqSpecificationVisitor` e streaming lazy O(1) (exige PHP 8.4).
 
 ---
@@ -578,23 +578,23 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 
 • [SUITE] Módulo 1: Especificações e Álgebra Booleana... ✅ PASS (71 asserções)
 • [SUITE] Módulo 2: Entidades e Identificadores... ✅ PASS (8 asserções)
-• [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (5 asserções)
-• [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (19 asserções)
-• [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (36 asserções)
+• [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (17 asserções)
+• [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (36 asserções)
+• [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (85 asserções)
 • [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (38 asserções)
 • [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (61 asserções)
 • [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (133 asserções)
 • [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (96 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
-• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (178 asserções)
-• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (134 asserções)
+• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (197 asserções)
+• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (212 asserções)
 • [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (100 asserções)
-• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (170 asserções)
-• [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (109 asserções)
+• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (194 asserções)
+• [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (169 asserções)
 
 ====================================================================
  RESULTADO FINAL: 15/15 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 1223 | TEMPO: ~160ms | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 1482 | TEMPO: ~200ms | REGRESSÕES: 0
 ====================================================================
 ```
 
@@ -619,7 +619,7 @@ Principais destaques:
 3. **Pipeline de Streaming Lazy com ALinq e O(1) de RAM** (entregue na v1.1.0)
 4. **Endurecimento pós-revisão: estado de erro, tipagem estrita, vínculo de regra e matriz documental** (entregue na v1.2.0)
 5. **Promessas do README I: todo exemplo documentado roda** (entregue na v1.3.0)
-6. **Promessas do README II: IPC entre processos, Unicode, fontes lazy e catálogo relacional** (v1.4.0)
+6. **Promessas do README II: IPC entre processos, Unicode, fontes lazy e catálogo relacional** (v1.5.0)
 7. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis)
 8. **Compiladores AST para GraphQL & OpenAPI 3.1**
 9. **Especificações Parametrizadas por Reflexão & Detecção de Tautologia/Contradição**

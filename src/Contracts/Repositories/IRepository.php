@@ -17,7 +17,7 @@ use RuntimeException;
  * are driven by Specification objects.
  *
  * @template T of IEntity
- * @version    1.1.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -88,6 +88,18 @@ interface IRepository
 
     /** Alias of findSingleEntitySpecifiedBy */
     public function findSingle(ISpecification $specification): ?IEntity;
+
+    /**
+     * Reports whether the given entity is stored in this repository.
+     *
+     * Membership is decided by identity: an entity whose getEntityId() matches a stored
+     * entity is contained; implementations may fall back to IEntity::equals(). A partitioned
+     * repository answers for its own node and every descendant partition (BUG-20261007-ORNH).
+     *
+     * @param T $entity Entity to look for
+     * @return bool True when the entity is stored, false otherwise (always false for a NullRepository)
+     */
+    public function contains(IEntity $entity): bool;
 
     /**
      * Inserts the given entity into this repository.

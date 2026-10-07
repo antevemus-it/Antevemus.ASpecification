@@ -7,11 +7,17 @@ namespace Antevemus\ASpecification\Tests\Unit;
 use Antevemus\ASpecification\Tests\TestCase;
 use Antevemus\ASpecification\Repositories\PartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
+use Antevemus\ASpecification\Repositories\File\SingleFileRepository;
+use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
+use Antevemus\ASpecification\Contracts\Repositories\Exceptions\PartitionCreationException;
+use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
+use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use InvalidArgumentException;
 
 /** Entidade com uma etiqueta, para as partições do BUG-20261007-C5YG. */
 class M4TaggedEntity extends AbstractUUIDEntity
@@ -47,6 +53,8 @@ class Module4_PartitionRepositoriesTest extends TestCase
         $this->testSiblingLeavesOfSameClassAreNotEquivalent();
         $this->testEquivalentLeafReplacesPartitionWithoutLosingEntities();
         $this->testCollectPartitionsAcceptsLeafWithoutCustomEquals();
+        $this->testAddPartitionWithIdOnPersistentNodeIsRefusedExplicitly();
+        $this->testAddPartitionWithIdOnVolatileNodeKeepsTheId();
 
         $u1 = new class extends AbstractUUIDEntity {};
         $memRepo = new InMemoryRepository();
@@ -138,5 +146,81 @@ class Module4_PartitionRepositoriesTest extends TestCase
         $this->assertTrue($anonymous instanceof ISpecification);
         $this->assertCount(1, $root->collectPartitions(new M4TagIs('a')));
         $this->assertCount(1, $root->collectPartitions($anonymous));
+    }
+
+    /**
+     * BUG-20261007-QFSJ (reprodução): addPartitionWithId() validava o id e fazia `new $repoClass()`
+     * sem argumentos. Sobre um repositório de arquivo (storagePath obrigatório) isso terminava em
+     * ArgumentCountError. Agora a recusa é explícita e tipada (PartitionCreationException), mandando
+     * usar addPartitionWithRepository(); nenhum caminho de arquivo é derivado do id.
+     */
+    private function testAddPartitionWithIdOnPersistentNodeIsRefusedExplicitly(): void
+    {
+        $tmp = sys_get_temp_dir() . '/test_aspec_m4_' . uniqid();
+        mkdir($tmp, 0777, true);
+
+        try {
+            $ser = new JsonEntitySerializer(M4TaggedEntity::class);
+            $file = new SingleFileRepository($tmp . '/root.json', M4TaggedEntity::class, PersistenceDefinition::ReadWrite, $ser);
+            $root = $file->makePartition();
+
+            $e = $this->assertThrows(PartitionCreationException::class, function () use ($root): void {
+                $root->addPartitionWithId(new M4TagIs('b'), 'tag-b');
+            });
+            $this->assertInstanceOf(RepositoryException::class, $e, 'a recusa é uma RepositoryException tipada');
+            $this->assertTrue(str_contains($e->getMessage(), 'addPartitionWithRepository'), 'a mensagem aponta o caminho suportado');
+            $this->assertTrue(str_contains($e->getMessage(), SingleFileRepository::class), 'a mensagem nomeia o tipo do nó');
+            $this->assertFalse(file_exists($tmp . '/tag-b.json'), 'nenhum arquivo irmão é derivado do id');
+            $this->assertCount(0, $root->getDirectPartitions(), 'nenhuma partição é criada na recusa');
+
+            // Regras pré-existentes continuam: id vazio e id do pai são InvalidArgumentException
+            $this->assertThrows(InvalidArgumentException::class, function () use ($root): void {
+                $root->addPartitionWithId(new M4TagIs('b'), '   ');
+            });
+            $this->assertThrows(InvalidArgumentException::class, function () use ($root, $file): void {
+                $root->addPartitionWithId(new M4TagIs('b'), $file->getRepositoryId());
+            });
+
+            // Caminho suportado (regressão): addPartitionWithRepository() com um repositório explícito
+            $child = new SingleFileRepository($tmp . '/tag-b.json', M4TaggedEntity::class, PersistenceDefinition::ReadWrite, $ser, 'tag-b');
+            $partB = $root->addPartitionWithRepository(new M4TagIs('b'), $child);
+            $root->put(new M4TaggedEntity('b'));
+            $this->assertEquals('tag-b', $partB->getUnderlyingRepository()->getRepositoryId());
+            $this->assertTrue(file_exists($tmp . '/tag-b.json'), 'entidade roteada para a partição persistente explícita');
+            $this->assertEquals(1, $root->count(new AllEntitiesSpecification()));
+        } finally {
+            foreach (glob($tmp . '/*') ?: [] as $f) {
+                @unlink($f);
+            }
+            @rmdir($tmp);
+        }
+    }
+
+    /**
+     * BUG-20261007-QFSJ (regressão): em nó volátil a partição filha nasce do mesmo tipo e, quando o
+     * tipo aceita um identificador no construtor (InMemoryRepository::__construct(..., repositoryId:)),
+     * o id informado é preservado em vez de descartado.
+     */
+    private function testAddPartitionWithIdOnVolatileNodeKeepsTheId(): void
+    {
+        $root = PartitionRepository::create(new InMemoryRepository());
+        $partB = $root->addPartitionWithId(new M4TagIs('b'), 'tag-b');
+
+        $underlying = $partB->getUnderlyingRepository();
+        $this->assertInstanceOf(InMemoryRepository::class, $underlying, 'a filha é do mesmo tipo do nó');
+        $this->assertEquals('tag-b', $underlying->getRepositoryId(), 'o id informado é preservado');
+
+        $root->put(new M4TaggedEntity('b'));
+        $root->put(new M4TaggedEntity('a'));
+        $this->assertEquals(1, $partB->count(new AllEntitiesSpecification()));
+        $this->assertEquals(2, $root->count(new AllEntitiesSpecification()));
+
+        // Sem id (addPartition) o repositório filho continua sem identificador
+        $partA = $root->addPartition(new M4TagIs('a'));
+        $this->assertTrue($partA->getUnderlyingRepository()->getRepositoryId() === null);
+
+        $this->assertThrows(InvalidArgumentException::class, function () use ($root): void {
+            $root->addPartitionWithId(new M4TagIs('c'), '');
+        });
     }
 }

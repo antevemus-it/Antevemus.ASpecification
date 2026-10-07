@@ -7,6 +7,10 @@ namespace Antevemus\ASpecification\Engine;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use DateTimeImmutable;
+use DateTimeInterface;
+use Exception;
+use InvalidArgumentException;
 
 /**
  * InMemoryRuleCatalog - In-Memory Rule and Document Catalog
@@ -19,8 +23,9 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  * - Filtering by operational scope, business scenario, and active status
  * - Exact scope/scenario matching for documents (no cross-scope leakage); null scenario = scope-global only
  * - Native descending priority sorting
+ * - Applicability filters (codigo_produto, codigo_plano, data_referencia) read from the rule's parametros (RN-17)
  *
- * @version    1.2.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -29,6 +34,15 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  */
 class InMemoryRuleCatalog implements IRuleCatalog
 {
+    /** Reserved `$filters` key: product code the validation is about (RN-17). */
+    public const FILTER_PRODUCT = 'codigo_produto';
+
+    /** Reserved `$filters` key: plan code the validation is about (RN-17). */
+    public const FILTER_PLAN = 'codigo_plano';
+
+    /** Reserved `$filters` key: reference date for the validity window (RN-17). */
+    public const FILTER_REFERENCE_DATE = 'data_referencia';
+
     /** @var list<IRuleDefinition> */
     private array $rules = [];
 
@@ -97,6 +111,10 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
+            if (!$this->ruleMatchesFilters($rule, $filters)) {
+                continue;
+            }
+
             $matched[] = $rule;
         }
 
@@ -125,6 +143,83 @@ class InMemoryRuleCatalog implements IRuleCatalog
         usort($matched, fn(IDocumentRuleDefinition $a, IDocumentRuleDefinition $b) => $a->getOrdem() <=> $b->getOrdem());
 
         return $matched;
+    }
+
+    /**
+     * Decides whether a rule applies under the applicability filters (RN-17, BUG-20261007-ZB6A).
+     *
+     * Reads the rule's restrictions from `getParametros()` (`codigo_produto`, `codigo_plano`,
+     * `data_inicio_vigencia`, `data_fim_vigencia`) and the reserved keys of `$filters`, with AND
+     * semantics mirroring scope and scenario: a restriction only passes when the filter brings the
+     * same value, so a missing filter excludes every restricted rule and never excludes a global one.
+     * The validity window is evaluated only when `data_referencia` is given (inclusive, by day).
+     * Unknown filter keys are ignored.
+     *
+     * @param IRuleDefinition $rule
+     * @param array<string, mixed> $filters
+     * @return bool
+     * @throws InvalidArgumentException When a date value cannot be read as a date
+     */
+    protected function ruleMatchesFilters(IRuleDefinition $rule, array $filters): bool
+    {
+        $restrictions = $rule->getParametros();
+
+        foreach ([self::FILTER_PRODUCT, self::FILTER_PLAN] as $key) {
+            $required = $restrictions[$key] ?? null;
+            if ($required === null || $required === '') {
+                continue;
+            }
+            $given = $filters[$key] ?? null;
+            if (!is_scalar($given) || !is_scalar($required) || (string) $given !== (string) $required) {
+                return false;
+            }
+        }
+
+        $reference = $filters[self::FILTER_REFERENCE_DATE] ?? null;
+        if ($reference === null) {
+            return true;
+        }
+        $day = self::toDay($reference, self::FILTER_REFERENCE_DATE);
+
+        $start = $restrictions['data_inicio_vigencia'] ?? null;
+        if ($start !== null && $start !== '' && self::toDay($start, 'data_inicio_vigencia') > $day) {
+            return false;
+        }
+
+        $end = $restrictions['data_fim_vigencia'] ?? null;
+        if ($end !== null && $end !== '' && self::toDay($end, 'data_fim_vigencia') < $day) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Normalizes a date value (DateTimeInterface or date string) to `Y-m-d`.
+     *
+     * @param mixed $value
+     * @param string $field Name used in the error message
+     * @return string
+     * @throws InvalidArgumentException When the value is not a readable date
+     */
+    private static function toDay(mixed $value, string $field): string
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        if (is_string($value) && $value !== '') {
+            try {
+                return (new DateTimeImmutable($value))->format('Y-m-d');
+            } catch (Exception) {
+                // falls through to the typed error below
+            }
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'Rule applicability value "%s" must be a DateTimeInterface or a date string, %s given.',
+            $field,
+            is_string($value) ? '"' . $value . '"' : get_debug_type($value)
+        ));
     }
 
     /**

@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryExcepti
  * - Safe execution under shared lock (withSharedLock)
  * - Microsecond backoff retries with configurable timeout
  *
- * @version    1.2.0
+ * @version    1.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -96,7 +96,7 @@ trait FileLockTrait
 
         $handle = @fopen($lockFilePath, "c+");
         if ($handle === false) {
-            throw new RepositoryException("Não foi possível abrir o descritor de lock para o arquivo: {$lockFilePath}");
+            throw new RepositoryException("Could not open the lock descriptor for file: {$lockFilePath}");
         }
 
         $startTime = microtime(true);
@@ -112,7 +112,7 @@ trait FileLockTrait
 
         if (!$acquired) {
             fclose($handle);
-            throw new RepositoryException("Timeout de {$this->lockTimeoutMs}ms excedido ao tentar obter lock para: {$lockFilePath}");
+            throw new RepositoryException("Timeout of {$this->lockTimeoutMs}ms exceeded while acquiring the lock for: {$lockFilePath}");
         }
 
         $this->heldLockPaths[$lockFilePath] = 1;
