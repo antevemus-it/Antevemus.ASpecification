@@ -51,7 +51,7 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   without PHP delimiters (BUG-20261007-3E3F)
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.4.0
+ * @version    1.4.1
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -350,10 +350,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     private function translateWildcard(string $col, string $rawPattern, bool $caseSensitive): SqlWhereClause
     {
-        $pattern = str_replace(['*', '?'], ['%', '_'], $rawPattern);
-        $param = $this->createParameter($pattern);
-        $sql = $this->dialect->formatLike($col, $param['name'], $caseSensitive);
-        return new SqlWhereClause($sql, $param['binding']);
+        // `*` and `?` are the consumer's wildcards; `%`, `_` and `!` in the glob are literal and
+        // escaped, so the LIKE matches exactly what fnmatch matches in memory (BUG-20261007-ZY6E).
+        return $this->likeClause($col, LikePattern::fromGlob($rawPattern), $caseSensitive);
     }
 
     /**
@@ -370,9 +369,6 @@ class SqlQueryVisitor implements ISpecificationVisitor
         return new SqlWhereClause($sql, $param['binding']);
     }
 
-    /** LIKE escape character used when a literal contains a LIKE wildcard (portable across the dialects). */
-    private const LIKE_ESCAPE = '!';
-
     /**
      * Translate startsWith/endsWith/contains as a portable LIKE over the literal.
      *
@@ -386,17 +382,21 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     private function translateLiteralPattern(string $col, LiteralPatternSpecification $specification): SqlWhereClause
     {
-        $literal = $specification->getLiteral();
-        $needsEscape = strpbrk($literal, '%_\\' . self::LIKE_ESCAPE) !== false;
-        $escaped = $needsEscape
-            ? str_replace([self::LIKE_ESCAPE, '%', '_'], [self::LIKE_ESCAPE . self::LIKE_ESCAPE, self::LIKE_ESCAPE . '%', self::LIKE_ESCAPE . '_'], $literal)
-            : $literal;
+        return $this->likeClause($col, LikePattern::fromLiteral($specification), $specification->isCaseSensitive());
+    }
 
-        $param = $this->createParameter($specification->toWildcardPattern($escaped, '%'));
-        $sql = $this->dialect->formatLike($col, $param['name'], $specification->isCaseSensitive());
-        if ($needsEscape) {
-            $sql .= " ESCAPE '" . self::LIKE_ESCAPE . "'";
-        }
+    /**
+     * Bind a LIKE pattern through the dialect, appending the ESCAPE clause when the pattern needs it.
+     *
+     * @param string $col
+     * @param LikePattern $pattern
+     * @param bool $caseSensitive
+     * @return SqlWhereClause
+     */
+    private function likeClause(string $col, LikePattern $pattern, bool $caseSensitive): SqlWhereClause
+    {
+        $param = $this->createParameter($pattern->pattern);
+        $sql = $this->dialect->formatLike($col, $param['name'], $caseSensitive) . $pattern->escapeClause();
 
         return new SqlWhereClause($sql, $param['binding']);
     }

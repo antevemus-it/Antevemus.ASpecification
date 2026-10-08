@@ -65,6 +65,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testOracleAndFirebirdQuoteIdentifiersInUpperCase();
         $this->testStringAffixesTranslateToLikeInEveryDialect();
         $this->testRegexBindHasNoPhpDelimitersOrModifiers();
+
+        // Lote de correção #30-#32 (2026-10-07): % e _ literais de like() escapados no LIKE.
+        $this->testWildcardLiteralsAreEscapedInLike();
     }
 
     /**
@@ -608,5 +611,58 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Regressão: isBlank() (regex interna) também sai limpo
         $this->assertEquals([':p1' => '^\s*$'], Spec::toSql(Spec::property('name', Spec::isBlank()), 'pgsql')->getBindings());
+    }
+
+    /**
+     * BUG-20261007-ZY6E (#32): os caracteres %, _ e ! literais de um padrão wildcard (like()) iam ao
+     * SQL sem escape e o LIKE casava mais do que a avaliação em memória (fnmatch). Agora recebem o
+     * mesmo escape das fábricas de string (bug #29), com ESCAPE '!' só quando necessário.
+     */
+    private function testWildcardLiteralsAreEscapedInLike(): void
+    {
+        // 1. Reprodução: % literal no padrão, nos sete dialetos
+        $spec = Spec::property('name', Spec::like('100%*'));
+        $expected = [
+            'pgsql' => '"name" LIKE :p1 ESCAPE \'!\'',
+            'mysql' => 'BINARY `name` LIKE :p1 ESCAPE \'!\'',
+            'sqlsrv' => '[name] LIKE :p1 ESCAPE \'!\'',
+            'sqlite' => '"name" LIKE :p1 ESCAPE \'!\'',
+            'ansi' => '"name" LIKE :p1 ESCAPE \'!\'',
+            'oracle' => '"NAME" LIKE :p1 ESCAPE \'!\'',
+            'firebird' => '"NAME" LIKE :p1 ESCAPE \'!\'',
+        ];
+        foreach ($expected as $d => $sql) {
+            $clause = Spec::toSql($spec, $d);
+            $this->assertEquals($sql, $clause->getSql(), "$d: like com % literal leva ESCAPE");
+            $this->assertEquals([':p1' => '100!%%'], $clause->getBindings(), "$d: % literal escapado, * vira %");
+        }
+
+        // 2. _ e ! literais; ? vira _ sem escape
+        $this->assertEquals([':p1' => 'a!_b_'], Spec::toSql(Spec::property('name', Spec::like('a_b?')), 'pgsql')->getBindings());
+        $this->assertEquals([':p1' => '50!%!!%'], Spec::toSql(Spec::property('name', Spec::like('50%!*')), 'pgsql')->getBindings());
+
+        // 3. Barra invertida: escape padrão do LIKE no MySQL, neutralizada pela cláusula ESCAPE explícita
+        $clause = Spec::toSql(Spec::property('path', Spec::like('C:\\*')), 'mysql');
+        $this->assertEquals('BINARY `path` LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
+
+        // 4. Ignore-case usa o LIKE insensível do dialeto, com o mesmo escape
+        $ci = Spec::toSql(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('100%*')), 'pgsql');
+        $this->assertEquals('"name" ILIKE :p1 ESCAPE \'!\'', $ci->getSql());
+        $this->assertEquals([':p1' => '100!%%'], $ci->getBindings());
+
+        // 5. NOT envolve a cláusula inteira
+        $this->assertEquals('NOT ("name" LIKE :p1 ESCAPE \'!\')', Spec::toSql(Spec::not($spec), 'pgsql')->getSql());
+
+        // 6. Regressão: padrão sem % / _ / ! / barra invertida sai exatamente como antes, sem ESCAPE
+        $plain = Spec::toSql(Spec::property('name', Spec::like('J*hn?')), 'pgsql');
+        $this->assertEquals('"name" LIKE :p1', $plain->getSql());
+        $this->assertEquals([':p1' => 'J%hn_'], $plain->getBindings());
+
+        // 7. Paridade com a memória: o LIKE passa a distinguir o que fnmatch distingue
+        $this->assertTrue(Spec::like('100%*')->isSatisfiedBy('100%x'));
+        $this->assertFalse(Spec::like('100%*')->isSatisfiedBy('1000x'), 'em memória 1000x nunca casou; o SQL agora também não');
+        $this->assertTrue(Spec::like('a_b?')->isSatisfiedBy('a_bc'));
+        $this->assertFalse(Spec::like('a_b?')->isSatisfiedBy('aXbc'));
     }
 }

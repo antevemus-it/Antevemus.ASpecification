@@ -36,6 +36,15 @@ $cases = [
     'nestedOr'             => Spec::property('uf', Spec::equalTo('RJ'))
                                   ->or(Spec::property('nome', Spec::wildcard('A*'))
                                   ->and(Spec::property('sigla', Spec::equalIgnoreCase('sp')))),
+    // BUG-20261007-3TVR / ZY6E: LIKE portável com ESCAPE emitido por um TFilter derivado
+    'startsWith'                => Spec::property('name', Spec::startsWith('Ab')),
+    'startsWithIgnoreCase'      => Spec::property('name', Spec::startsWith('ab', false)),
+    'containsEscaped'           => Spec::property('promo', Spec::contains('50%_off!')),
+    'notStartsWith'             => Spec::not(Spec::property('name', Spec::startsWith('Ab'))),
+    'wildcardEscaped'           => Spec::property('name', Spec::wildcard('100%*')),
+    'wildcardEscapedIgnoreCase' => Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('a_b*')),
+    'affixMixedAnd'             => Spec::property('name', Spec::startsWith('Ab'))
+                                       ->and(Spec::property('sigla', Spec::equalIgnoreCase('sp'))),
 ];
 
 $out = [];

@@ -53,6 +53,123 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->testRealAdiantiHonorsCaseInsensitive();
         $this->testReadmePtBrExample9Section3RunsAsWritten();
         $this->testFieldMapperAliasOnCriteriaBridges();
+
+        // Lote de correção #30-#32 (2026-10-07): startsWith/endsWith/contains como LIKE no TCriteria,
+        // % e _ literais de like() escapados, prova com o Adianti real.
+        $this->testStringAffixesTranslateToLikeInTCriteria();
+        $this->testWildcardLiteralsAreEscapedInTCriteria();
+        $this->testRealAdiantiEmitsEscapedLike();
+    }
+
+    /**
+     * BUG-20261007-3TVR (#31): startsWith()/endsWith()/contains() chegavam ao TCriteria como REGEXP
+     * (inexistente em SQLite, Firebird, SQL Server e ANSI; a flag de caixa era perdida). Agora viram
+     * LIKE portável com escape de curingas, como o visitor SQL desde o bug #29.
+     */
+    private function testStringAffixesTranslateToLikeInTCriteria(): void
+    {
+        // 1. Reprodução: as três fábricas viram LIKE com a posição certa do curinga
+        $this->assertEquals("(name LIKE 'Ab%')", Spec::toCriteria(Spec::property('name', Spec::startsWith('Ab')))->dump());
+        $this->assertEquals("(name LIKE '%Ab')", Spec::toCriteria(Spec::property('name', Spec::endsWith('Ab')))->dump());
+        $this->assertEquals("(name LIKE '%Ab%')", Spec::toCriteria(Spec::property('name', Spec::contains('Ab')))->dump());
+
+        // 2. Ignore-case sobrevive ao dump() do TCriteria (TCaseInsensitiveFilter, bug #9)
+        $ci = Spec::toCriteria(Spec::property('name', Spec::startsWith('ab', false)));
+        $this->assertEquals("(UPPER(name) LIKE UPPER('ab%'))", $ci->dump());
+        $ci->setCaseInsensitive(false);
+        $this->assertEquals("(UPPER(name) LIKE UPPER('ab%'))", $ci->dump(), 'o flag da folha não pode ser desligado pelo critério raiz');
+
+        // 3. Escape de %, _ e ! do literal, com ESCAPE '!' só quando necessário; também em modo prepared
+        $escaped = Spec::toCriteria(Spec::property('promo', Spec::contains('50%_off!')));
+        $this->assertEquals("(promo LIKE '%50!%!_off!!%' ESCAPE '!')", $escaped->dump());
+        $this->assertEquals("(promo LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', $escaped->dump(true)));
+        $this->assertEquals("(path LIKE 'C:\\%' ESCAPE '!')", Spec::toCriteria(Spec::property('path', Spec::startsWith('C:\\')))->dump(), 'barra invertida pede ESCAPE explícito (MySQL)');
+        $this->assertEquals("(UPPER(name) LIKE UPPER('%a!%%') ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::contains('a%', false)))->dump());
+
+        // 4. De Morgan: NOT LIKE, com e sem ESCAPE
+        $this->assertEquals("(name NOT LIKE 'Ab%')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::startsWith('Ab'))))->dump());
+        $this->assertEquals("(promo NOT LIKE '%50!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('promo', Spec::contains('50%'))))->dump());
+
+        // 5. Composição com irmãs: a folha sensível continua sensível ao lado de uma insensível
+        $mixed = Spec::property('name', Spec::startsWith('Ab'))->and(Spec::property('sigla', Spec::equalIgnoreCase('sp')));
+        $this->assertEquals("(name LIKE 'Ab%' AND UPPER(sigla) LIKE UPPER('sp'))", Spec::toCriteria($mixed)->dump());
+
+        // 6. Fronteira de confiança (bug #2): o literal é inspecionado, porque como LIKE ele chega ao TFilter sem o ^ do regex
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('name', Spec::startsWith('NOESC:x'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('name', Spec::contains('{session.user_id}'))));
+
+        // 7. Regressão: RegexSpecification genérica continua REGEXP sem delimitadores
+        $this->assertEquals("(cpf REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', Spec::regex('/^[0-9]+$/')))->dump());
+        $this->assertEquals("(cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
+    }
+
+    /**
+     * BUG-20261007-ZY6E (#32), lado TCriteria: % e _ literais de like()/wildcard() iam ao LIKE sem
+     * escape e casavam mais do que em memória.
+     */
+    private function testWildcardLiteralsAreEscapedInTCriteria(): void
+    {
+        // Reprodução
+        $this->assertEquals("(name LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::wildcard('100%*')))->dump());
+        $this->assertEquals("(name LIKE 'a!_b_' ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::like('a_b?')))->dump());
+        $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('a_b*')))->dump());
+        $this->assertEquals("(name NOT LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::wildcard('100%*'))))->dump());
+        $this->assertEquals("(name LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', Spec::toCriteria(Spec::property('name', Spec::wildcard('100%*')))->dump(true)));
+
+        // Regressão: sem caracteres especiais do LIKE, saída idêntica à anterior (sem ESCAPE)
+        $this->assertEquals("(cidade LIKE 'São%')", Spec::toCriteria(Spec::property('cidade', Spec::wildcard('São*')))->dump());
+        $this->assertEquals("(nome LIKE 'J%hn_')", Spec::toCriteria(Spec::property('nome', Spec::like('J*hn?')))->dump());
+        $this->assertEquals("(UPPER(cidade) LIKE UPPER('são%'))", Spec::toCriteria(Spec::property('cidade', Spec::wildcardExpressionMatcherIgnoreCase('são*')))->dump());
+    }
+
+    /**
+     * BUG-20261007-3TVR / ZY6E: a cláusula ESCAPE é acrescentada por um TFilter derivado (o TFilter
+     * real não tem lugar para ela). Prova com as classes reais do Adianti em processo filho, quando
+     * disponíveis ao lado do repositório; sem elas, avisa e segue (RN-07).
+     */
+    private function testRealAdiantiEmitsEscapedLike(): void
+    {
+        $out = $this->runRealAdiantiProbe();
+        if ($out === null) {
+            return;
+        }
+
+        $this->assertEquals("(name LIKE 'Ab%')", $out['startsWith']['dump']);
+        $this->assertEquals("(UPPER(name) LIKE UPPER('ab%'))", $out['startsWithIgnoreCase']['dump']);
+        $this->assertEquals("(promo LIKE '%50!%!_off!!%' ESCAPE '!')", $out['containsEscaped']['dump']);
+        $this->assertEquals("(promo LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', $out['containsEscaped']['prepared']));
+        $this->assertEquals("(name NOT LIKE 'Ab%')", $out['notStartsWith']['dump']);
+        $this->assertEquals("(name LIKE '100!%%' ESCAPE '!')", $out['wildcardEscaped']['dump']);
+        $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", $out['wildcardEscapedIgnoreCase']['dump']);
+        $this->assertEquals("(name LIKE 'Ab%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['affixMixedAnd']['dump']);
+    }
+
+    /**
+     * Roda tests/Support/real_adianti_probe.php com as classes reais do Adianti e devolve o JSON
+     * decodificado, ou null (com aviso) quando o Adianti não está ao lado do repositório.
+     *
+     * @return array<string, array{dump: string, prepared: string}>|null
+     */
+    private function runRealAdiantiProbe(): ?array
+    {
+        $adianti = dirname(__DIR__, 3) . '/Antevemus.AflowEngine/lib/adianti/database';
+        if (!is_file($adianti . '/TCriteria.php')) {
+            fwrite(STDOUT, "    [AVISO] Adianti real não encontrado em {$adianti}; verificação com classes reais pulada.\n");
+            return null;
+        }
+
+        $probe = dirname(__DIR__) . '/Support/real_adianti_probe.php';
+        $cmd = sprintf(
+            '%s -d xdebug.mode=off %s %s 2>/dev/null',
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg($probe),
+            escapeshellarg($adianti)
+        );
+        $json = (string) shell_exec($cmd);
+        $out = json_decode($json, true);
+        $this->assertTrue(is_array($out), 'Sonda com o Adianti real não devolveu JSON: ' . $json);
+
+        return $out;
     }
 
     /**
@@ -194,22 +311,10 @@ class Module13_TCriteriaBuilderTest extends TestCase
      */
     private function testRealAdiantiHonorsCaseInsensitive(): void
     {
-        $adianti = dirname(__DIR__, 3) . '/Antevemus.AflowEngine/lib/adianti/database';
-        if (!is_file($adianti . '/TCriteria.php')) {
-            fwrite(STDOUT, "    [AVISO] Adianti real não encontrado em {$adianti}; verificação com classes reais pulada.\n");
+        $out = $this->runRealAdiantiProbe();
+        if ($out === null) {
             return;
         }
-
-        $probe = dirname(__DIR__) . '/Support/real_adianti_probe.php';
-        $cmd = sprintf(
-            '%s -d xdebug.mode=off %s %s 2>/dev/null',
-            escapeshellarg(PHP_BINARY),
-            escapeshellarg($probe),
-            escapeshellarg($adianti)
-        );
-        $json = (string) shell_exec($cmd);
-        $out = json_decode($json, true);
-        $this->assertTrue(is_array($out), 'Sonda com o Adianti real não devolveu JSON: ' . $json);
 
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $out['equalIgnoreCase']['dump']);
         $this->assertEquals("(UPPER(cidade) LIKE UPPER('são%'))", $out['wildcardIgnoreCase']['dump']);

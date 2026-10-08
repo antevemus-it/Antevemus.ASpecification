@@ -30,9 +30,11 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Sql\LikePattern;
 use Antevemus\ASpecification\Sql\FieldMapper;
 
 /**
@@ -49,7 +51,7 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - Case-insensitive filter translation for textual specifications
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.3.0
+ * @version    1.4.1
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -230,6 +232,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof EqualIgnoreCaseStringSpecification =>
                 $this->translateEqualIgnoreCase($col, $specification->getValue()),
 
+            // startsWith/endsWith/contains: portable LIKE, never REGEXP (BUG-20261007-3TVR)
+            $specification instanceof LiteralPatternSpecification =>
+                $this->translateLiteralPattern($col, $specification, false),
+
             $specification instanceof RegexSpecification =>
                 new TFilter($col, 'REGEXP', $this->cleanRegexPattern($specification->getPattern())),
 
@@ -271,7 +277,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Translate wildcard patterns by replacing * with % and ? with _.
+     * Translate wildcard patterns: * becomes %, ? becomes _, and the literal %, _ and ! of the
+     * glob are escaped so the LIKE matches what fnmatch matches in memory (BUG-20261007-ZY6E).
      *
      * @param string $col
      * @param string $rawPattern
@@ -280,30 +287,58 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateWildcard(string $col, string $rawPattern, bool $caseInsensitive): TFilter
     {
-        $pattern = str_replace(['*', '?'], ['%', '_'], $rawPattern);
-        return $this->likeFilter($col, 'LIKE', $pattern, $caseInsensitive);
+        return $this->likeFilter($col, 'LIKE', LikePattern::fromGlob($rawPattern), $caseInsensitive);
+    }
+
+    /**
+     * Translate startsWith/endsWith/contains as a portable LIKE over the literal, with the same
+     * wildcard escaping as the SQL visitor (BUG-20261007-3TVR). A generic RegexSpecification keeps
+     * going out as REGEXP; these three leaves are recognised before that branch.
+     *
+     * @param string $col
+     * @param LiteralPatternSpecification $specification
+     * @param bool $negated Whether the leaf is being inverted (De Morgan)
+     * @return TFilter
+     */
+    private function translateLiteralPattern(string $col, LiteralPatternSpecification $specification, bool $negated): TFilter
+    {
+        return $this->likeFilter(
+            $col,
+            $negated ? 'NOT LIKE' : 'LIKE',
+            LikePattern::fromLiteral($specification),
+            !$specification->isCaseSensitive()
+        );
     }
 
     /**
      * Build a LIKE / NOT LIKE filter. Case-insensitive leaves use TCaseInsensitiveFilter,
      * because the real TCriteria::dump() resets every child's flag to its own (false by
      * default) and a plain TFilter would silently become case-sensitive (BUG-20261007-M646).
+     * A pattern that relies on escaped wildcards is emitted by TEscapedLikeFilter, the only way
+     * to get an ESCAPE clause past TFilter::dump() without raw SQL.
      *
      * @param string $col
      * @param string $operator 'LIKE' or 'NOT LIKE'
-     * @param mixed $value
+     * @param LikePattern|string $value Escaped pattern, or a plain value (equalIgnoreCase)
      * @param bool $caseInsensitive
      * @return TFilter
      */
-    private function likeFilter(string $col, string $operator, mixed $value, bool $caseInsensitive): TFilter
+    private function likeFilter(string $col, string $operator, LikePattern|string $value, bool $caseInsensitive): TFilter
     {
+        if ($value instanceof LikePattern) {
+            if ($value->escaped) {
+                return new TEscapedLikeFilter($col, $operator, $value->pattern, LikePattern::ESCAPE, $caseInsensitive);
+            }
+            $value = $value->pattern;
+        }
+
         return $caseInsensitive
             ? new TCaseInsensitiveFilter($col, $operator, $value)
             : new TFilter($col, $operator, $value);
     }
 
     /**
-     * Translate negated wildcard patterns by replacing * with % and ? with _.
+     * Translate negated wildcard patterns (NOT LIKE) with the same escaping as translateWildcard().
      *
      * @param string $col
      * @param string $rawPattern
@@ -312,8 +347,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateNotWildcard(string $col, string $rawPattern, bool $caseInsensitive): TFilter
     {
-        $pattern = str_replace(['*', '?'], ['%', '_'], $rawPattern);
-        return $this->likeFilter($col, 'NOT LIKE', $pattern, $caseInsensitive);
+        return $this->likeFilter($col, 'NOT LIKE', LikePattern::fromGlob($rawPattern), $caseInsensitive);
     }
 
     /**
@@ -466,6 +500,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $inner instanceof EqualIgnoreCaseStringSpecification =>
                 $this->translateNotEqualIgnoreCase($col, $inner->getValue()),
 
+            $inner instanceof LiteralPatternSpecification =>
+                $this->translateLiteralPattern($col, $inner, true),
+
             $inner instanceof RegexSpecification =>
                 new TFilter($col, 'NOT REGEXP', $this->cleanRegexPattern($inner->getPattern())),
 
@@ -488,6 +525,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function assertSafeValue(string $col, ISpecification $leaf): void
     {
         $value = match (true) {
+            // The literal is what reaches the TFilter as a LIKE operand (prefix first, without the regex anchor)
+            $leaf instanceof LiteralPatternSpecification => $leaf->getLiteral(),
             $leaf instanceof WildcardSpecification,
             $leaf instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification,
             $leaf instanceof RegexSpecification => $leaf->getPattern(),

@@ -225,6 +225,55 @@ class EvaluationErrorOnGetterDto
     }
 }
 
+// BUG-20261007-MXUG (#30): the annotated getter itself throws when invoked (before any evaluation)
+class ThrowingAssertSpecGetterDto
+{
+    #[AssertSpec(IsAdultSpecification::class, code: 'AGE_ERR', message: 'Customer must be an adult')]
+    public function getAge(): int
+    {
+        throw new \RuntimeException('boom');
+    }
+
+    #[AssertSpec(MinimumLengthSpecification::class, code: 'NAME_OK')]
+    public function getName(): string
+    {
+        return 'Alan Turing';
+    }
+}
+
+class ThrowingValidateRuleGetterDto
+{
+    #[ValidateRule('>', 0, code: 'TOTAL_ERR', message: 'Total must be positive')]
+    public function total(): int
+    {
+        throw new \LogicException('ledger not loaded');
+    }
+}
+
+class ThrowingGetterWithEmptyMessageDto
+{
+    #[ValidateRule('notNull', code: 'EMPTY_MSG')]
+    public function value(): ?string
+    {
+        throw new \DomainException();
+    }
+}
+
+class HealthyGettersDto
+{
+    #[AssertSpec(IsAdultSpecification::class, code: 'AGE_OK')]
+    public function getAge(): int
+    {
+        return 41;
+    }
+
+    #[ValidateRule('>', 100, code: 'TOTAL_LOW', message: 'Total too low')]
+    public function total(): int
+    {
+        return 50;
+    }
+}
+
 /**
  * Module15_AttributesTest - Unit test suite for PHP 8.4 Declarative Attributes
  *
@@ -260,6 +309,98 @@ class Module15_AttributesTest extends TestCase
         $this->testKnownSpecificationClassKeepsResolvingAndCaching();
         $this->testAssertSpecEvaluationErrorBecomesErrorResult();
         $this->testPlainAttributeViolationsAreNotErrors();
+        $this->testThrowingAnnotatedGetterBecomesErrorResult();
+        $this->testHealthyAnnotatedGettersAreUnchanged();
+    }
+
+    /**
+     * Reproduction (BUG #30): an annotated getter that throws when invoked (before any evaluation)
+     * must become an error result of the Notification Pattern, exactly like a specification that
+     * throws while being evaluated (BUG #25): never a raw exception escaping validateAttributes().
+     */
+    private function testThrowingAnnotatedGetterBecomesErrorResult(): void
+    {
+        // 1. #[AssertSpec] on a getter that throws: before the fix, RuntimeException('boom') escaped here
+        $result = Spec::validateAttributes(new ThrowingAssertSpecGetterDto());
+        $this->assertFalse($result->isSatisfied);
+        $this->assertTrue($result->isError, 'A getter that throws is an evaluation error, as in RN-03 (bug #25)');
+        $this->assertInstanceOf(\RuntimeException::class, $result->exception);
+        $this->assertEquals('boom', $result->exception->getMessage());
+
+        $failures = $result->getFailuresForProperty('getAge');
+        $this->assertCount(1, $failures);
+        $this->assertEquals('boom', $failures[0]->message, 'The error failure carries the exception message, not the business message');
+        $this->assertEquals('AGE_ERR', $failures[0]->code, 'The attribute code is kept');
+        $this->assertEquals(IsAdultSpecification::class, $failures[0]->ruleName);
+        $this->assertEquals('getAge', $failures[0]->property);
+        $this->assertEquals(\RuntimeException::class, $failures[0]->metadata['evaluation_error']);
+        $this->assertEquals('ERROR', $failures[0]->metadata['severity']);
+        $this->assertCount(1, $result, 'The healthy getter on the same object is still evaluated and satisfied');
+
+        $e = $this->assertThrows(
+            AttributeValidationException::class,
+            fn() => Spec::assertAttributes(new ThrowingAssertSpecGetterDto()),
+            'assertAttributes must wrap the getter exception, never let it escape'
+        );
+        $this->assertTrue($e->getResult()->isError);
+        $this->assertTrue($e->getPrevious() === $e->getResult()->exception, 'The cause is chained');
+        $this->assertEquals('boom', $e->getPrevious()->getMessage());
+
+        // 2. #[ValidateRule] on a getter that throws: same rule, ruleName = ValidateRule(<operator>)
+        $result = Spec::validateAttributes(new ThrowingValidateRuleGetterDto());
+        $this->assertFalse($result->isSatisfied);
+        $this->assertTrue($result->isError);
+        $this->assertInstanceOf(\LogicException::class, $result->exception);
+
+        $failures = $result->getFailuresForProperty('total');
+        $this->assertCount(1, $failures);
+        $this->assertEquals('ledger not loaded', $failures[0]->message);
+        $this->assertEquals('TOTAL_ERR', $failures[0]->code);
+        $this->assertEquals('ValidateRule(>)', $failures[0]->ruleName);
+        $this->assertEquals('total', $failures[0]->property);
+        $this->assertEquals(\LogicException::class, $failures[0]->metadata['evaluation_error']);
+
+        $e = $this->assertThrows(
+            AttributeValidationException::class,
+            fn() => Spec::assertAttributes(new ThrowingValidateRuleGetterDto())
+        );
+        $this->assertInstanceOf(\LogicException::class, $e->getPrevious());
+
+        // 3. Exception without message: the failure message falls back to the exception class
+        $result = Spec::validateAttributes(new ThrowingGetterWithEmptyMessageDto());
+        $this->assertTrue($result->isError);
+        $this->assertEquals(\DomainException::class, $result->getFailuresForProperty('value')[0]->message);
+        $this->assertEquals('EMPTY_MSG', $result->getFailuresForProperty('value')[0]->code);
+    }
+
+    /**
+     * Regression (BUG #30): getters that return normally keep exactly the same behavior: a satisfied
+     * getter adds no failure, a plain violation on a getter is not an error (no isError, no exception,
+     * no evaluation_error metadata), and the business message is kept.
+     */
+    private function testHealthyAnnotatedGettersAreUnchanged(): void
+    {
+        $result = Spec::validateAttributes(new HealthyGettersDto());
+        $this->assertFalse($result->isSatisfied);
+        $this->assertFalse($result->isError, 'A plain violation on a getter is not an error');
+        $this->assertTrue($result->exception === null);
+        $this->assertCount(0, $result->getFailuresForProperty('getAge'), 'The satisfied getter adds no failure');
+
+        $failures = $result->getFailuresForProperty('total');
+        $this->assertCount(1, $failures);
+        $this->assertEquals('Total too low', $failures[0]->message, 'The business message is kept on a plain violation');
+        $this->assertEquals('TOTAL_LOW', $failures[0]->code);
+        $this->assertEquals('ValidateRule(>)', $failures[0]->ruleName);
+        $this->assertFalse(array_key_exists('evaluation_error', $failures[0]->metadata));
+        $this->assertEquals(50, $failures[0]->metadata['actual']);
+
+        $e = $this->assertThrows(AttributeValidationException::class, fn() => Spec::assertAttributes(new HealthyGettersDto()));
+        $this->assertTrue($e->getPrevious() === null, 'No cause is chained on a plain violation');
+
+        // A fully valid object with getters is satisfied without error, as before
+        $valid = Spec::validateAttributes(new CustomerRegistrationDto('Grace Hopper', 85, 'grace@navy.mil'));
+        $this->assertTrue($valid->isSatisfied);
+        $this->assertFalse($valid->isError);
     }
 
     /**

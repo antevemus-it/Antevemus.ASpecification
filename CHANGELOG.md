@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-07
+
+### Fixed
+
+- **`#[AssertSpec]` / `#[ValidateRule]` on a getter that throws.** An exception thrown by the annotated getter itself, before its specification or rule is evaluated, no longer propagates raw from `Spec::validateAttributes()`: it becomes a failure carrying the exception message, the attribute `code`, the method name and `metadata['evaluation_error']`, the result reports `isError()` with the exception, the remaining attributes are still evaluated, and `assertAttributes()` throws `AttributeValidationException` with the cause chained (`getPrevious()`), exactly as an error while evaluating the specification already did. **Breaking for** code that caught the getter's exception around `validateAttributes()`: read `isError()` / `exception` on the result instead.
+- **TCriteria bridge: `startsWith()`, `endsWith()` and `contains()` translate to `LIKE`.** `Spec::toCriteria()` emitted them as `REGEXP`, an operator missing in SQLite, Firebird, SQL Server and ANSI (`~` on PostgreSQL), and dropped the case-insensitive flag on the way. They now become `col LIKE 'Ab%'` / `'%Ab'` / `'%Ab%'`, `UPPER(col) LIKE UPPER('ab%')` when case-insensitive, `NOT LIKE` under negation, with `%`, `_` and `!` of the literal escaped and an `ESCAPE '!'` clause appended by a dedicated `TFilter` subclass, in plain and prepared mode, verified against the real Adianti classes. A generic `regex()` still goes out as `REGEXP`. The value guard now inspects the literal, so a literal starting with `NOESC:` or `(SELECT`, or containing `{session.`, is refused like any other value.
+- **`like()` / `wildcard()` escape the literal `%`, `_` and `!` of the pattern** in the SQL visitor (every dialect) and in the TCriteria bridge, adding `ESCAPE '!'` only when needed (also when the pattern contains a backslash, MySQL's default escape). `Spec::like('100%*')` was bound as `100%%` and matched `1000x`, which the in-memory evaluation (`fnmatch`) never did; it is now `100!%%` with `ESCAPE '!'`. `*` and `?` remain the consumer's wildcards. Patterns without those characters produce exactly the same SQL as before.
+
+### Added
+
+- `Sql\LikePattern` (`@internal`): the LIKE escaping rule shared by the SQL and TCriteria translators. `Criteria\TEscapedLikeFilter` (`@internal`): `TFilter` that appends the `ESCAPE` clause after the parent's rendering.
+
 ## [1.4.0] - 2026-10-07
 
 ### Changed
@@ -266,7 +278,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.2.0...v1.3.0
