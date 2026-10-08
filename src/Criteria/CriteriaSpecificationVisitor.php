@@ -49,9 +49,10 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - Supports De Morgan algebraic logic inversion for negations (NotSpecification)
  * - Preserves boolean operator precedence via nested TCriteria sub-instances
  * - Case-insensitive filter translation for textual specifications
+ * - REGEXP for generic regular expressions, with the `i` modifier carried as an inline flag
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.4.1
+ * @version    1.4.2
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -237,7 +238,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 $this->translateLiteralPattern($col, $specification, false),
 
             $specification instanceof RegexSpecification =>
-                new TFilter($col, 'REGEXP', $this->cleanRegexPattern($specification->getPattern())),
+                new TFilter($col, 'REGEXP', $this->regexPattern($specification)),
 
             $specification instanceof IValueBoundSpecification =>
                 new TFilter($col, '=', $specification->getValue()),
@@ -293,7 +294,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     /**
      * Translate startsWith/endsWith/contains as a portable LIKE over the literal, with the same
      * wildcard escaping as the SQL visitor (BUG-20261007-3TVR). A generic RegexSpecification keeps
-     * going out as REGEXP; these three leaves are recognised before that branch.
+     * going out as REGEXP (with its case flag inline, see regexPattern()); these three leaves are
+     * recognised before that branch.
      *
      * @param string $col
      * @param LiteralPatternSpecification $specification
@@ -504,7 +506,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 $this->translateLiteralPattern($col, $inner, true),
 
             $inner instanceof RegexSpecification =>
-                new TFilter($col, 'NOT REGEXP', $this->cleanRegexPattern($inner->getPattern())),
+                new TFilter($col, 'NOT REGEXP', $this->regexPattern($inner)),
 
             default => throw new NonTranslatableCriteriaException($inner, "Unable to logically invert specified rule."),
         };
@@ -553,16 +555,37 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Strip PHP regex delimiters (e.g. '/pattern/i' => 'pattern') for SQL/TCriteria usage.
+     * Value bound to the REGEXP operator: the pattern body (PHP delimiters stripped) prefixed by an
+     * inline case flag that carries the `i` modifier (BUG-20261007-K7RM).
      *
-     * @param string $pattern
+     * TCriteria has no notion of dialect, so the modifier cannot be mapped to an operator the way the
+     * SQL visitor does (`~*`, `REGEXP BINARY`); the flag travels inside the pattern instead: `(?i)` when
+     * the specification is case-insensitive, `(?-i)` otherwise, because MySQL's REGEXP is
+     * case-insensitive by default on non-binary columns. Both flags are understood by the engines
+     * where the REGEXP operator exists (MySQL 8 ICU, MariaDB PCRE, a PCRE function registered on
+     * SQLite). `u` is accepted (the engine applies its own charset); any other modifier has no
+     * equivalent and is refused. A legacy pattern without delimiters goes out unchanged.
+     *
+     * @param RegexSpecification $specification
      * @return string
+     * @throws NonTranslatableCriteriaException When the pattern carries a modifier other than i or u
      */
-    private function cleanRegexPattern(string $pattern): string
+    private function regexPattern(RegexSpecification $specification): string
     {
-        if (preg_match('/^[\/~#%](.*)[\/~#%][imsxeADSUXJu]*$/s', $pattern, $matches)) {
-            return $matches[1];
+        $body = $specification->getBody();
+        if ($body === $specification->getPattern()) {
+            return $body;
         }
-        return $pattern;
+
+        $modifiers = $specification->getModifiers();
+        $unsupported = str_replace(['i', 'u'], '', $modifiers);
+        if ($unsupported !== '') {
+            throw new NonTranslatableCriteriaException(
+                $specification,
+                "REGEX modifier \"{$unsupported}\" has no equivalent in TCriteria (only \"i\" and \"u\" are supported)."
+            );
+        }
+
+        return (str_contains($modifiers, 'i') ? '(?i)' : '(?-i)') . $body;
     }
 }

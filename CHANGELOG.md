@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-08
+
+### Fixed
+
+- **TCriteria bridge: the `i` modifier of a regular expression survives.** `Spec::toCriteria()` dropped the PCRE modifiers together with the PHP delimiters, so `regex('/^abc/i')` and `regex('/^Abc/')` reached the database as the same `REGEXP '^abc'` / `'^Abc'`, and case sensitivity depended on the engine (MySQL's `REGEXP` is case-insensitive by default on non-binary columns, so the case-sensitive pattern was evaluated without case too). `TCriteria` has no dialect, so the flag now travels inside the pattern: `REGEXP '(?i)^abc'` for a pattern with `i`, `REGEXP '(?-i)^Abc'` without it, in plain and prepared mode and under `NOT`, verified against the real Adianti classes. `u` is accepted; any other modifier (`m`, `s`, `x`, ...) is refused with `NonTranslatableCriteriaException` naming it instead of being silently discarded, as the SQL visitor already did. A pattern without delimiters (built directly, the factory refuses it) is unchanged. **Breaking for** code matching the `REGEXP` value emitted by `toCriteria()` textually: every delimited pattern now carries the `(?i)`/`(?-i)` prefix. The `REGEXP` operator itself remains what the Adianti `TFilter` can render: it works on MySQL 8 (ICU), MariaDB (PCRE) and SQLite with a registered PCRE function; on PostgreSQL, Oracle, Firebird and SQL Server use `toSql()` with the dialect.
+
 ## [1.4.1] - 2026-10-07
 
 ### Fixed
@@ -278,7 +284,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.0...v1.3.1

@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.4.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1586%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1606%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -588,13 +588,13 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (197 asserções)
 • [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (239 asserções)
-• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (133 asserções)
+• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (153 asserções)
 • [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (194 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (213 asserções)
 
 ====================================================================
  RESULTADO FINAL: 15/15 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 1586 | TEMPO: ~200ms | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 1606 | TEMPO: ~200ms | REGRESSÕES: 0
 ====================================================================
 ```
 

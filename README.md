@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.4.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1586%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1606%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -576,13 +576,13 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (197 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (239 assertions)
-• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (133 assertions)
+• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (153 assertions)
 • [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (194 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (213 assertions)
 
 ====================================================================
  FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 1586 | DURATION: ~200ms | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 1606 | DURATION: ~200ms | REGRESSIONS: 0
 ====================================================================
 ```
 

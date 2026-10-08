@@ -26,6 +26,7 @@ foreach (['TExpression', 'TFilter', 'TCriteria'] as $class) {
 require_once dirname(__DIR__) . '/bootstrap.php';
 
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 
 $cases = [
     'equalIgnoreCase'      => Spec::property('sigla', Spec::equalIgnoreCase('sp')),
@@ -45,6 +46,11 @@ $cases = [
     'wildcardEscapedIgnoreCase' => Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('a_b*')),
     'affixMixedAnd'             => Spec::property('name', Spec::startsWith('Ab'))
                                        ->and(Spec::property('sigla', Spec::equalIgnoreCase('sp'))),
+    // BUG-20261007-K7RM: modificadores de regex como flag inline do padrão
+    'regexIgnoreCase'           => Spec::property('code', Spec::regex('/^abc/i')),
+    'regexSensitive'            => Spec::property('code', Spec::regex('/^Abc/')),
+    'notRegexIgnoreCase'        => Spec::not(Spec::property('code', Spec::regex('/^abc/i'))),
+    'regexLegacy'               => Spec::property('cpf', new RegexSpecification('^[0-9]+$')),
 ];
 
 $out = [];

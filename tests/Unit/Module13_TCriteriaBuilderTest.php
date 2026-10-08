@@ -59,6 +59,73 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->testStringAffixesTranslateToLikeInTCriteria();
         $this->testWildcardLiteralsAreEscapedInTCriteria();
         $this->testRealAdiantiEmitsEscapedLike();
+
+        // Lote de correção #33 (2026-10-08): modificadores de RegexSpecification no TCriteria.
+        $this->testRegexModifiersSurviveInTCriteria();
+        $this->testRealAdiantiEmitsRegexFlags();
+    }
+
+    /**
+     * BUG-20261007-K7RM (#33): cleanRegexPattern() descartava os modificadores junto com os
+     * delimitadores, então regex('/^abc/i') saía como REGEXP '^abc' (sensível, ou dependente do
+     * SGBD: o REGEXP do MySQL é insensível por padrão). O TCriteria não conhece o dialeto, então o
+     * modificador vai como flag inline do próprio padrão: (?i) para insensível, (?-i) para sensível;
+     * u é aceito, qualquer outro é recusado como no visitor SQL (RN-08 item 3 do adendo 3E3F v001).
+     */
+    private function testRegexModifiersSurviveInTCriteria(): void
+    {
+        // 1. Reprodução: o modificador i sobrevive como flag inline
+        $ci = Spec::toCriteria(Spec::property('code', Spec::regex('/^abc/i')));
+        $this->assertEquals("(code REGEXP '(?i)^abc')", $ci->dump());
+        $this->assertEquals("(code REGEXP :p)", preg_replace('/:par_\d+/', ':p', $ci->dump(true)));
+
+        // 2. Sem i: sensibilidade explícita, porque o REGEXP do MySQL é insensível por padrão
+        $this->assertEquals("(code REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::property('code', Spec::regex('/^Abc/')))->dump());
+
+        // 3. u é aceito e não aparece no padrão; delimitador alternativo
+        $this->assertEquals("(code REGEXP '(?i)^abc')", Spec::toCriteria(Spec::property('code', Spec::regex('/^abc/iu')))->dump());
+        $this->assertEquals("(code REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::property('code', Spec::regex('/^Abc/u')))->dump());
+        $this->assertEquals("(path REGEXP '(?i)^a/b')", Spec::toCriteria(Spec::property('path', Spec::regex('~^a/b~i')))->dump());
+
+        // 4. Modificadores sem equivalente: recusa tipada que nomeia o modificador
+        $this->assertThrows(NonTranslatableCriteriaException::class, fn() => Spec::toCriteria(Spec::property('code', Spec::regex('/^abc/m'))));
+        try {
+            Spec::toCriteria(Spec::property('code', Spec::regex('/^abc/is')));
+            $this->assertTrue(false, 'modificador s deveria ser recusado');
+        } catch (NonTranslatableCriteriaException $e) {
+            $this->assertTrue(str_contains($e->getMessage(), '"s"'), 'a mensagem nomeia o modificador recusado: ' . $e->getMessage());
+        }
+
+        // 5. De Morgan: NOT REGEXP com a mesma flag
+        $this->assertEquals("(code NOT REGEXP '(?i)^abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^abc/i'))))->dump());
+        $this->assertEquals("(code NOT REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^Abc/'))))->dump());
+
+        // 6. Regressão: padrão legado sem delimitadores (só por construção direta; a fábrica o recusa) vai inalterado
+        $legacy = new \Antevemus\ASpecification\Specifications\String\RegexSpecification('^[0-9]+$');
+        $this->assertEquals("(cpf REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', $legacy))->dump());
+        $this->assertEquals("(cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', $legacy)))->dump());
+
+        // 7. Regressão: a guarda de valores continua inspecionando o padrão regex (bug #2); um padrão
+        //    delimitado nunca começa por NOESC:/(SELECT, e com a flag inline o valor tampouco
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('code', Spec::regex('/{session.user_id}/'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('code', new \Antevemus\ASpecification\Specifications\String\RegexSpecification('NOESC:x'))));
+    }
+
+    /**
+     * BUG-20261007-K7RM: o TFilter real repassa a flag inline dentro do valor, em plain e prepared.
+     */
+    private function testRealAdiantiEmitsRegexFlags(): void
+    {
+        $out = $this->runRealAdiantiProbe();
+        if ($out === null) {
+            return;
+        }
+
+        $this->assertEquals("(code REGEXP '(?i)^abc')", $out['regexIgnoreCase']['dump']);
+        $this->assertEquals("(code REGEXP :p)", preg_replace('/:par_\d+/', ':p', $out['regexIgnoreCase']['prepared']));
+        $this->assertEquals("(code REGEXP '(?-i)^Abc')", $out['regexSensitive']['dump']);
+        $this->assertEquals("(code NOT REGEXP '(?i)^abc')", $out['notRegexIgnoreCase']['dump']);
+        $this->assertEquals("(cpf REGEXP '^[0-9]+$')", $out['regexLegacy']['dump']);
     }
 
     /**
@@ -99,8 +166,9 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('name', Spec::contains('{session.user_id}'))));
 
         // 7. Regressão: RegexSpecification genérica continua REGEXP sem delimitadores
-        $this->assertEquals("(cpf REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', Spec::regex('/^[0-9]+$/')))->dump());
-        $this->assertEquals("(cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
+        //    (desde o bug #33 a sensibilidade sai como flag inline: (?-i) para um padrão sem i)
+        $this->assertEquals("(cpf REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', Spec::regex('/^[0-9]+$/')))->dump());
+        $this->assertEquals("(cpf NOT REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
     }
 
     /**
@@ -430,10 +498,10 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $c3 = TCriteriaBuilder::fromSpecification($spec3);
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $c3->dump());
 
-        // Regex
+        // Regex (sensível a caixa: flag inline (?-i) desde o bug #33, porque o REGEXP do MySQL é insensível por padrão)
         $spec4 = Spec::property('cpf', Spec::regex('/^[0-9]+$/'));
         $c4 = TCriteriaBuilder::fromSpecification($spec4);
-        $this->assertEquals("(cpf REGEXP '^[0-9]+$')", $c4->dump());
+        $this->assertEquals("(cpf REGEXP '(?-i)^[0-9]+$')", $c4->dump());
     }
 
     private function testConjunctionAndDisjunction(): void
