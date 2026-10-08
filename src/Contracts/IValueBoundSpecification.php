@@ -7,7 +7,8 @@ namespace Antevemus\ASpecification\Contracts;
 /**
  * IValueBoundSpecification - Interface for specifications bound to a reference value.
  *
- * Part of the Evans/Fowler Specifications pattern.
+ * Part of the Evans/Fowler Specifications pattern (sentence from the Domian javadoc, Copyright 2006-2010
+ * the original author or authors, Apache License 2.0; see THIRD_PARTY_NOTICES.md).
  *
  * Represents a binary relational specification bound to a specific reference operand.
  * The candidate passed to isSatisfiedBy() acts as the second operand in the evaluation.
@@ -33,7 +34,7 @@ namespace Antevemus\ASpecification\Contracts;
  *
  * @template T
  * @extends ILeafSpecification<T>
- * @version    1.1.0
+ * @version    1.4.3
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -8,9 +8,11 @@ third-party software relevant to the distribution and execution of this library.
 1. DOMIAN (Domain-Driven Design for Java) — Apache License 2.0
 -------------------------------------------------------------------------------
 
-Antevemus ASpecification is an independent PHP 8.4+ implementation inspired by
-and based upon the architectural concepts, specification patterns, and set theory
-algebra introduced by the Domian framework.
+Antevemus ASpecification is an independent, unofficial PHP 8.2+ reimplementation
+of the architecture, public API and semantics of the Domian framework, written
+with its public sources at hand (not a clean-room rewrite). It is not affiliated
+with, maintained by or endorsed by the Domian authors. NOTICE.md lists, package
+by package, which parts follow Domian and which are original to this library.
 
     Original Project: Domian (Domain-Driven Design for Java)
     Website: https://domian.sourceforge.net/
@@ -18,7 +20,9 @@ algebra introduced by the Domian framework.
       - Eirik Torske (Project Administrator, Developer)
       - Bjørn Nordlund (Contributor)
     Roles as declared on the project site (https://domian.sourceforge.net/team-list.html).
-    Copyright (c) 2009-2012 Eirik Torske and Domian contributors.
+    Copyright notice as it appears in the Domian sources (trunk r1209, 0.5.1-SNAPSHOT;
+    last release 0.5, 2010-04-23): "Copyright 2006-2010 the original author or authors."
+    Developers declared in the project pom.xml: Eirik Torske, Bjørn Nordlund.
 
 In strict compliance with Section 4 of the Apache License, Version 2.0,
 the complete official license text is reproduced below:

@@ -5,7 +5,7 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.4.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.2)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1606%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
@@ -13,7 +13,7 @@
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
-> Full-fidelity modern port and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (12 drivers, 7 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, and high-concurrency IPC primitives.
+> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (12 drivers, 7 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, and high-concurrency IPC primitives.
 
 ---
 
@@ -28,7 +28,7 @@
    - **Constraint Satisfaction**: Specify preconditions required to instantiate or transition entities between domain lifecycle states.
 
 2. **The Upstream Origin: Domian (Java)**:
-   This library is the modern evolution and official PHP port of the [Domian (Domain-Driven Design for Java)](https://domian.sourceforge.net/index.html) framework, originally authored by **Eirik Torske** and **Bjørn Nordlund** under the **Apache License, Version 2.0**. Domian pioneered unifying Boolean algebra, Venn diagram set theory, collection-scoped specifications, Directed Acyclic Graph (DAG) partitioned repositories, and concurrent synchronization.
+   This library is an independent, unofficial PHP port and modern evolution of the [Domian (Domain-Driven Design for Java)](https://domian.sourceforge.net/index.html) framework, originally authored by **Eirik Torske** and **Bjørn Nordlund** under the **Apache License, Version 2.0**. It is not affiliated with, maintained by or endorsed by the Domian authors: the design, public API and semantics follow Domian's public sources, and the PHP code was written by Antevemus. Domian pioneered unifying Boolean algebra, Venn diagram set theory, collection-scoped specifications, Directed Acyclic Graph (DAG) partitioned repositories, and concurrent synchronization.
 
 ---
 
@@ -587,7 +587,7 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 ```
 
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
-- **Java (Domian) Traceability:** 100% conceptual and architectural parity with the upstream framework.
+- **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
 - **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, `PropertyAccessor` dot-notation resolution and the `InMemoryRepository` bridge methods.
 - **Multi-DBMS Compatibility:** 12 drivers (7 SQL dialects) certified with proper identifier quoting and bound prepared statements.
@@ -622,14 +622,14 @@ Key highlights & upcoming roadmap:
 
 **Antevemus ASpecification** expresses its deepest respect and gratitude to the pioneer authors who established the theoretical and practical foundations of this pattern:
 
-- **Eirik Torske** (Project Administrator & Developer) and **Bjørn Nordlund** (Contributor), creators of the **[Domian (Java)](https://domian.sourceforge.net/)** framework, whose pioneering work in Boolean algebra, Venn set calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`), and partitioned repository architectures served as the inspiring foundation for this PHP 8.4+ implementation.
+- **Eirik Torske** (Project Administrator & Developer) and **Bjørn Nordlund** (Contributor), creators of the **[Domian (Java)](https://domian.sourceforge.net/)** framework, whose pioneering work in Boolean algebra, Venn set calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`), and partitioned repository architectures served as the inspiring foundation for this PHP 8.2+ implementation.
 - **Eric Evans** and **Martin Fowler**, for authoring the seminal paper *[Specifications (2002)](http://www.martinfowler.com/apsupp/spec.pdf)* and foundational works on Domain-Driven Design (DDD).
 
 ### Apache License 2.0 Compliance
-The upstream **Domian** framework is distributed under the terms of the **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright &copy; Eirik Torske and Domian contributors). In full compliance with Section 4 of said license:
+The upstream **Domian** framework is distributed under the terms of the **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright 2006-2010 the original author or authors, as stated in the Domian sources; developers Eirik Torske and Bjørn Nordlund). In full compliance with Section 4 of said license:
 - Original authorship and copyright notices are fully preserved.
 - The [NOTICE.md](NOTICE.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) files contain the formal provenance and full third-party license texts.
-- This clean-room, independent modern rewrite for PHP 8.2+ is made available to the global open-source community under the **MIT** license.
+- This independent PHP implementation is made available to the global open-source community under the **MIT** license. It is not a clean-room rewrite: it was written with Domian's public sources at hand, and the files that follow a specific Domian class or reuse a sentence of its documentation say so in their DocBlock, keeping the upstream attribution as Section 4 of the Apache License requires.
 
 ---
 

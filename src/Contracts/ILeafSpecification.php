@@ -7,7 +7,8 @@ namespace Antevemus\ASpecification\Contracts;
 /**
  * ILeafSpecification - Marker interface for atomic leaf specifications.
  *
- * Part of the Evans/Fowler Specifications pattern.
+ * Part of the Evans/Fowler Specifications pattern (sentence from the Domian javadoc, Copyright 2006-2010
+ * the original author or authors, Apache License 2.0; see THIRD_PARTY_NOTICES.md).
  *
  * Marks a specification as an atomic "leaf" in the specification composite tree.
  * Leaf specifications represent individual, indivisible business rules.
@@ -27,7 +28,7 @@ namespace Antevemus\ASpecification\Contracts;
  *
  * @template T
  * @extends ISpecification<T>
- * @version    1.1.0
+ * @version    1.4.3
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

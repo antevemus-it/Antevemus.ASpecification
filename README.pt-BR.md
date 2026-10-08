@@ -5,7 +5,7 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.4.2-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.2)
+[![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1606%20Assertions)-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
@@ -13,7 +13,7 @@
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Framework Corporativo do Padrão Specification para PHP 8.2+** (PHP 8.4 só para a integração opcional com o ALinq)  
-> Portagem completa, moderna e de alta fidelidade do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (12 drivers, 7 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
+> Reimplementação PHP independente e não oficial, com evolução moderna, do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (12 drivers, 7 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
 
 ---
 
@@ -28,7 +28,7 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
    - **Construção e Satisfação de Restrições**: Especificar o que é necessário para instanciar ou transicionar entidades.
 
 2. **A Biblioteca de Origem: Domian (Java)**:
-   Este projeto é a evolução moderna e portagem para o ecossistema PHP do framework [Domian (Domain-Driven Design for Java)](https://domian.sourceforge.net/index.html), criado originalmente por **Eirik Torske** e **Bjørn Nordlund**, distribuído sob a **Apache License, Version 2.0**. O Domian foi pioneiro em unificar álgebra booleana, teoria dos conjuntos (Venn), especificações de coleções, arquitetura de repositórios particionados em Grafo Acíclico Dirigido (DAG) e sincronização concorrente.
+   Este projeto é uma portagem PHP independente e não oficial, com evolução moderna, do framework [Domian (Domain-Driven Design for Java)](https://domian.sourceforge.net/index.html), criado originalmente por **Eirik Torske** e **Bjørn Nordlund**, distribuído sob a **Apache License, Version 2.0**. Não é afiliado, mantido nem endossado pelos autores do Domian: o desenho, a API pública e a semântica seguem as fontes públicas do Domian, e o código PHP foi escrito pela Antevemus. O Domian foi pioneiro em unificar álgebra booleana, teoria dos conjuntos (Venn), especificações de coleções, arquitetura de repositórios particionados em Grafo Acíclico Dirigido (DAG) e sincronização concorrente.
 
 ---
 
@@ -599,7 +599,7 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 ```
 
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
-- **Rastreabilidade Java (Domian):** 100% de paridade conceitual com o framework original.
+- **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
 - **ALinq Synergy & Coleções Fluentes:** Sinergia nativa com `Antevemus.AlinqCollection`, com compilador `ALinqSpecificationVisitor`, resolução flexível de propriedades `PropertyAccessor` (dot notation) e integração em `InMemoryRepository`.
 - **Multi-SGBD SQL Translator:** 12 drivers (7 dialetos SQL) homologados com quoting de identificadores e prepared statements.
@@ -638,10 +638,10 @@ O **Antevemus ASpecification** expressa seu mais profundo respeito e agradecimen
 - **Eric Evans** e **Martin Fowler**, pela autoria do seminal paper *[Specifications (2002)](http://www.martinfowler.com/apsupp/spec.pdf)* e pelas obras fundamentais sobre Domain-Driven Design (DDD).
 
 ### Conformidade com a Licença Apache 2.0
-O framework original **Domian** é distribuído sob os termos da **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright &copy; Eirik Torske and Domian contributors). Em plena conformidade com a Seção 4 da referida licença:
+O framework original **Domian** é distribuído sob os termos da **[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)** (Copyright 2006-2010 the original author or authors, como consta nas fontes do Domian; desenvolvedores Eirik Torske e Bjørn Nordlund). Em plena conformidade com a Seção 4 da referida licença:
 - As atribuições de autoria e direitos autorais do projeto original são integralmente preservadas.
 - O arquivo [NOTICE.md](NOTICE.md) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) contêm a declaração formal de procedência, avisos e textos integrais das licenças de terceiros.
-- Esta implementação independente e reescrita moderna para PHP 8.2+ é disponibilizada à comunidade sob a licença **MIT**.
+- Esta implementação PHP independente é disponibilizada à comunidade sob a licença **MIT**. Não é uma reescrita clean-room: foi escrita com as fontes públicas do Domian em mãos, e os arquivos que seguem uma classe específica do Domian ou reaproveitam uma frase da documentação dele dizem isso no DocBlock, preservando a atribuição de origem como exige a Seção 4 da Apache License.
 
 ---
 

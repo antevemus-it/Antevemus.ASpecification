@@ -7,7 +7,8 @@ namespace Antevemus\ASpecification\Contracts;
 /**
  * ICompositeSpecification - Contract for composite specifications formed by logical operators.
  *
- * Part of the Evans/Fowler Specifications pattern.
+ * Part of the Evans/Fowler Specifications pattern (sentence from the Domian javadoc, Copyright 2006-2010
+ * the original author or authors, Apache License 2.0; see THIRD_PARTY_NOTICES.md).
  *
  * Represents a composite specification created by combining multiple specifications
  * using logical operators (AND, OR, NOT, WHERE).
@@ -23,7 +24,7 @@ namespace Antevemus\ASpecification\Contracts;
  *
  * @template T
  * @extends ISpecification<T>
- * @version    1.1.0
+ * @version    1.4.3
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

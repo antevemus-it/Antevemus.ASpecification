@@ -9,7 +9,10 @@ use RuntimeException;
 /**
  * SemaphoreSynchronizer - Read/Write Lock Synchronizer Based on Counting Semaphores
  *
- * Direct port of the Java implementation net.sourceforge.domian.util.concurrent.locks.SemaphoreSynchronizer.
+ * Modeled on the algorithm of net.sourceforge.domian.util.concurrent.locks.SemaphoreSynchronizer (Domian,
+ * Copyright 2006-2010 the original author or authors, Apache License 2.0; see THIRD_PARTY_NOTICES.md).
+ * The Java original uses two java.util.concurrent.Semaphore instances and a ThreadLocal for reentrancy;
+ * this single-process PHP rewrite keeps the permit model and the reentrancy rule with plain counters.
  * Utilizes a permit-counting model with high capacity (10,000 concurrent permits)
  * for non-blocking parallel reads, and drains all permits for exclusive isolation
  * during atomic mutations/writes, with full reentrancy support.
@@ -21,7 +24,7 @@ use RuntimeException;
  * - Transparent reentrancy detection preventing self-deadlocks
  * - State introspection methods (getAvailablePermits, isExclusiveLocked)
  *
- * @version    1.3.1
+ * @version    1.4.3
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

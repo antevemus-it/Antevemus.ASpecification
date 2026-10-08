@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-08
+
+### Documentation
+
+- **Provenance statements corrected.** The READMEs called the library both a "clean-room, independent rewrite" and a "full-fidelity", "official" port of Domian; none of the three holds. It is an independent, unofficial PHP reimplementation of Domian's architecture, public API and semantics, written with Domian's public Apache-2.0 sources at hand, not affiliated with or endorsed by the Domian authors. `NOTICE.md` and `THIRD_PARTY_NOTICES.md` now reproduce the copyright notice exactly as it appears in the Domian sources ("Copyright 2006-2010 the original author or authors"), name the developers from the project `pom.xml`, carry a provenance table (which PHP namespaces follow which Domian packages, and which parts are original to this library), and state the PHP 8.2 floor instead of 8.4. The `SemaphoreSynchronizer` DocBlock says "modeled on the algorithm of" instead of "direct port" (the Java original uses two semaphores and a thread-local; the PHP rewrite keeps the permit model with counters), and the three contract DocBlocks that reuse a sentence of the Domian javadoc now say so. No code change.
+
 ## [1.4.2] - 2026-10-08
 
 ### Fixed
@@ -284,7 +290,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.3.1...v1.4.0
