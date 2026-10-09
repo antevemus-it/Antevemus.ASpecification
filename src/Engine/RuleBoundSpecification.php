@@ -37,7 +37,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *   `acao` when it recorded one, the rule's otherwise) maps BLOCK → ERROR, WARN → WARNING,
  *   LOG → INFO. A severity set explicitly on a customized (coded) failure is kept.
  *
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -111,6 +111,26 @@ final class RuleBoundSpecification extends AbstractSpecification
             : array_map(fn(SpecificationFailure $f): SpecificationFailure => $this->stamp($f), $result->failures);
 
         return new SpecificationResult($result->isSatisfied, $stamped, $result->isError, $result->exception);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The binding does not change what the inner specification accepts (1.6.0, forward 019).
+     */
+    public function isTautology(): bool
+    {
+        return $this->inner->isTautology();
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The binding does not change what the inner specification accepts (1.6.0, forward 019).
+     */
+    public function isContradiction(): bool
+    {
+        return $this->inner->isContradiction();
     }
 
     /** {@inheritdoc} */

@@ -24,11 +24,12 @@ use ReflectionClass;
  *   leaves are inverted, De Morgan on their composites); ¬A ⊇ ¬B ⇔ B ⊇ A; ¬A ⊇ X ⇔ X ⟂ A;
  *   ¬A ⟂ X ⇔ A ⊇ X
  * - Structural equality: same class and equal negated specification
+ * - Tautology/contradiction (1.6.0): ¬X is a tautology iff X is a contradiction, and vice versa
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -278,5 +279,25 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         return !$this->isDisjointWith($otherSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-04 (forward 019): ¬X is a tautology iff X is a contradiction.
+     */
+    public function isTautology(): bool
+    {
+        return $this->specification->isContradiction();
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-04 (forward 019): ¬X is a contradiction iff X is a tautology.
+     */
+    public function isContradiction(): bool
+    {
+        return $this->specification->isTautology();
     }
 }

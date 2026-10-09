@@ -22,11 +22,13 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
  * - Complete subsumption and set algebra (Domian lemma 1): (A ∧ B) ⊇ X ⇔ A ⊇ X ∧ B ⊇ X;
  *   X ⊇ (A ∧ B) if X ⊇ A ∨ X ⊇ B; (A ∧ B) ⟂ X if A ⟂ X ∨ B ⟂ X
  * - Structural equality: same class and the same unordered pair of operands
+ * - Structural tautology/contradiction detection over the flattened chain (1.6.0): A ∧ ¬A,
+ *   disjoint operands and absorbing contradictions
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -234,5 +236,27 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         return !$this->isDisjointWith($otherSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-05 (forward 019): the associative chain is flattened ((a ∧ b) ∧ ¬a → [a, b, ¬a]); it is a
+     * contradiction when an operand is a contradiction, two operands are complementary (A ∧ ¬A) or
+     * two operands are disjoint (isDisjointWith). O(n²) in the flattened operands.
+     */
+    public function isContradiction(): bool
+    {
+        return SpecificationAlgebra::isContradictoryConjunction(SpecificationAlgebra::flattenConjunction($this));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-05 (forward 019): a conjunction is a tautology iff every flattened operand is.
+     */
+    public function isTautology(): bool
+    {
+        return SpecificationAlgebra::isTautologicalConjunction(SpecificationAlgebra::flattenConjunction($this));
     }
 }

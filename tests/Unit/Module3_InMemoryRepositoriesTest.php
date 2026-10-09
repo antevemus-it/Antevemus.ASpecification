@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Tests\Unit;
 
+use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Tests\TestCase;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
+use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 use Antevemus\ASpecification\Repositories\AbstractRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Repositories\NullRepository;
@@ -22,6 +24,45 @@ use Antevemus\ASpecification\Tests\Support\CountingSpecification;
 use Antevemus\ASpecification\Tests\Support\InstrumentedInMemoryRepository;
 use Antevemus\ASpecification\Tests\Support\LazyProbeEntity;
 use Generator;
+use InvalidArgumentException;
+
+/** Intervalo [lo, hi) sobre LazyProbeEntity::$n, com álgebra exata, para as partições do RN-05 (1.6.0). */
+class M3NumberRange extends AbstractSpecification
+{
+    public function __construct(public readonly int $lo, public readonly int $hi)
+    {
+    }
+
+    public function getType(): string
+    {
+        return LazyProbeEntity::class;
+    }
+
+    public function isSatisfiedBy(?object $candidate): bool
+    {
+        return $candidate instanceof LazyProbeEntity && $candidate->n >= $this->lo && $candidate->n < $this->hi;
+    }
+
+    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    {
+        return $otherSpecification instanceof self && $otherSpecification->lo >= $this->lo && $otherSpecification->hi <= $this->hi;
+    }
+
+    public function isSpecialCaseOf(ISpecification $otherSpecification): bool
+    {
+        return $otherSpecification instanceof self && $this->lo >= $otherSpecification->lo && $this->hi <= $otherSpecification->hi;
+    }
+
+    public function isDisjointWith(ISpecification $otherSpecification): bool
+    {
+        return $otherSpecification instanceof self && ($otherSpecification->hi <= $this->lo || $otherSpecification->lo >= $this->hi);
+    }
+
+    public function equals(mixed $other): bool
+    {
+        return $other instanceof self && $other->lo === $this->lo && $other->hi === $this->hi;
+    }
+}
 
 class Module3_InMemoryRepositoriesTest extends TestCase
 {
@@ -52,6 +93,12 @@ class Module3_InMemoryRepositoriesTest extends TestCase
         $this->testRn04InMemoryIterateIsLazyWithoutCopy();
         $this->testRn04VolatilePartitionIterateIsLazy();
         $this->testRn04LazyCollectionNeverCallsGetAll();
+
+        // Forward 020 (v1.6.0), RN-05: TTL e auto-prune nos repositórios voláteis.
+        $this->testRn05TtlIsPartOfTheVolatileContract();
+        $this->testRn05ExpiredEntriesAreInvisibleAndEvicted();
+        $this->testRn05WriteRefreshesTheTtlAndTtlCanBeChanged();
+        $this->testRn05VolatilePartitionsShareTheTtl();
     }
 
     /**
@@ -267,5 +314,159 @@ class Module3_InMemoryRepositoriesTest extends TestCase
         $first = $repo->asLazyCollection()->first();
         $this->assertEquals(0, $first->n);
         $this->assertEquals(0, $repo->getAllCalls);
+    }
+
+    /**
+     * RN-05 (forward 020, v1.6.0): withTtl()/prune() entram no contrato de IVolatileRepository; o
+     * repositório nulo aceita e não guarda nada; TTL negativo é recusado; 0 desliga.
+     */
+    private function testRn05TtlIsPartOfTheVolatileContract(): void
+    {
+        $contract = new \ReflectionClass(IVolatileRepository::class);
+        $this->assertTrue($contract->hasMethod('withTtl'), 'withTtl(int): static no contrato');
+        $this->assertTrue($contract->hasMethod('prune'), 'prune(): int no contrato');
+
+        $repo = new InMemoryRepository();
+        $this->assertTrue($repo->getTtl() === null, 'sem TTL por padrão');
+        $this->assertTrue($repo->withTtl(30) === $repo, 'fluente: devolve a própria instância');
+        $this->assertEquals(30, $repo->getTtl());
+        $this->assertTrue($repo->withTtl(0)->getTtl() === null, 'withTtl(0) desliga a expiração');
+        $this->assertEquals(0, $repo->prune(), 'sem TTL nada expira');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $repo->withTtl(-1));
+
+        $null = new NullRepository();
+        $this->assertTrue($null->withTtl(10) === $null);
+        $this->assertEquals(0, $null->prune());
+        $this->assertThrows(InvalidArgumentException::class, fn() => $null->withTtl(-5));
+    }
+
+    /**
+     * RN-05: entrada expirada não volta em findAll, iterate, count, findSingle, contains e getAll; o acesso a remove
+     * (lazy) e prune() remove todas de uma vez. Relógio injetado (segundos).
+     */
+    private function testRn05ExpiredEntriesAreInvisibleAndEvicted(): void
+    {
+        $now = 1000.0;
+        $repo = (new InMemoryRepository())->withClock(function () use (&$now): float {
+            return $now;
+        })->withTtl(10);
+        $all = new AlwaysTrueSpecification();
+
+        $repo->put(new LazyProbeEntity(1));      // expira em 1010
+        $now = 1005.0;
+        $repo->put(new LazyProbeEntity(2));      // expira em 1015
+
+        $now = 1009.999;
+        $this->assertEquals(2, $repo->count($all), 'antes do prazo as duas estão vivas');
+
+        $now = 1010.0;                            // a entrada 1 expira exatamente no prazo
+        $this->assertEquals(1, $repo->count($all));
+        $this->assertEquals([2], array_map(fn($e) => $e->n, $repo->findAll($all)));
+        $this->assertEquals([2], array_map(fn($e) => $e->n, iterator_to_array($repo->iterate($all), false)));
+        $this->assertFalse($repo->contains(new LazyProbeEntity(1)), 'contains() não enxerga a expirada');
+        $this->assertTrue($repo->findSingle(new M3NumberRange(1, 2)) === null, 'findSingle() também não');
+        $this->assertCount(1, $repo->getAll());
+        $this->assertFalse($repo->remove(new LazyProbeEntity(1)), 'remover uma expirada não remove nada');
+        $this->assertEquals(0, $repo->prune(), 'a leitura já removeu a expirada (lazy)');
+
+        // A iteração (fora do permit do synchronizer) só pula a expirada; quem remove é a próxima leitura ou prune()
+        $repo->put(new LazyProbeEntity(3));       // expira em 1020
+        $now = 1020.0;                            // 2 e 3 expiradas, nenhuma leitura ainda
+        $this->assertEquals([], iterator_to_array($repo->iterate($all), false));
+        $this->assertEquals(2, $repo->prune(), 'prune() remove as duas de uma vez');
+        $this->assertEquals(0, $repo->prune(), 'e não sobra nada para a segunda chamada');
+
+        // Desligar a expiração depois da remoção não ressuscita nada
+        $this->assertEquals(0, $repo->withTtl(0)->count($all));
+
+        // removeAll() e findAll() também ignoram (e removem) as expiradas
+        $repo->withTtl(5);
+        $repo->putAll([new LazyProbeEntity(10), new LazyProbeEntity(11)]);
+        $now = 1023.0;
+        $repo->put(new LazyProbeEntity(12));      // expira em 1028
+        $now = 1025.0;                            // 10 e 11 expiradas
+        $this->assertEquals(1, $repo->removeAll($all), 'só a viva é contada como removida');
+        $this->assertEquals(0, $repo->prune());
+    }
+
+    /**
+     * RN-05: o prazo conta da última escrita (put/update renovam); entradas gravadas antes de ligar o TTL
+     * contam a partir de quando ele foi ligado; mudar o TTL aplica a nova duração a todas.
+     */
+    private function testRn05WriteRefreshesTheTtlAndTtlCanBeChanged(): void
+    {
+        $now = 0;
+        $repo = (new InMemoryRepository())->withClock(function () use (&$now): int {
+            return $now;
+        });
+        $all = new AlwaysTrueSpecification();
+
+        $repo->put(new LazyProbeEntity(1));       // gravada sem TTL
+        $now = 100;
+        $repo->withTtl(10);                       // conta de 100: expira em 110
+        $now = 108;
+        $repo->update(new LazyProbeEntity(1));    // renovada: expira em 118
+        $now = 115;
+        $this->assertEquals(1, $repo->count($all), 'update() renovou o prazo');
+        $now = 118;
+        $this->assertEquals(0, $repo->count($all), 'e o novo prazo vence');
+
+        $now = 200;
+        $repo->put(new LazyProbeEntity(2));
+        $now = 205;
+        $repo->withTtl(3);                        // nova duração sobre a última escrita (200): já vencida
+        $this->assertEquals(0, $repo->count($all));
+        $repo->put(new LazyProbeEntity(3));
+        $repo->withTtl(60);
+        $now = 264;
+        $this->assertEquals(1, $repo->count($all), 'aumentar o TTL estende o prazo das existentes');
+
+        // Relógio do sistema quando nenhum é injetado
+        $system = (new InMemoryRepository())->withTtl(3600);
+        $system->put(new LazyProbeEntity(9));
+        $this->assertTrue($system->contains(new LazyProbeEntity(9)));
+        $this->assertTrue($system->withClock(null) === $system);
+    }
+
+    /**
+     * RN-05: no DAG volátil withTtl() vale para o nó e todas as partições; partições criadas depois por
+     * addPartition() herdam TTL e relógio; prune() soma as remoções de cada repositório uma vez.
+     */
+    private function testRn05VolatilePartitionsShareTheTtl(): void
+    {
+        $now = 0;
+        $base = (new InMemoryRepository())->withClock(function () use (&$now): int {
+            return $now;
+        });
+        $root = $base->makePartition();
+        $this->assertInstanceOf(VolatilePartitionRepository::class, $root);
+        $low = $root->addPartition(new M3NumberRange(0, 100));
+
+        $this->assertTrue($root->withTtl(10) === $root);
+        $this->assertEquals(10, $base->getTtl());
+        $this->assertEquals(10, $low->getUnderlyingRepository()->getTtl(), 'partição existente recebe o TTL');
+
+        $high = $root->addPartition(new M3NumberRange(100, 200));
+        $this->assertEquals(10, $high->getUnderlyingRepository()->getTtl(), 'partição nova herda o TTL do pai');
+
+        $root->put(new LazyProbeEntity(5));       // em low
+        $root->put(new LazyProbeEntity(150));     // em high (relógio herdado: expira em 10)
+        $root->put(new LazyProbeEntity(500));     // fica na raiz
+        $now = 5;
+        $root->put(new LazyProbeEntity(6));       // em low, expira em 15
+        $all = new AlwaysTrueSpecification();
+        $this->assertEquals(4, $root->count($all));
+
+        $now = 10;
+        $this->assertEquals([6], array_map(fn($e) => $e->n, $root->findAll($all)));
+        $this->assertFalse($root->contains(new LazyProbeEntity(150)), 'expirada na partição herdada');
+        $now = 15;
+        $this->assertEquals(1, $root->prune(), 'só sobrou a 6 para remover (as outras saíram na leitura)');
+        $this->assertEquals(0, $root->count($all));
+
+        // TTL 0 desliga em todo o grafo; negativo é recusado
+        $root->withTtl(0);
+        $this->assertTrue($high->getUnderlyingRepository()->getTtl() === null);
+        $this->assertThrows(InvalidArgumentException::class, fn() => $root->withTtl(-1));
     }
 }

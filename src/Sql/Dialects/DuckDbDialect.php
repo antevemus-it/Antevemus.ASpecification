@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 /**
- * PostgreSqlDialect - Specialized Dialect for PostgreSQL
+ * DuckDbDialect - Specialized Dialect for DuckDB (duckdb, pdo_duckdb)
  *
- * Provides support for double-quoted identifiers, native boolean types (TRUE/FALSE),
- * ILIKE operator for case-insensitive matching, and native POSIX regular expressions (~ and ~*).
- *
- * Pagination (1.6.0): `LIMIT n OFFSET m`.
+ * Features:
+ * - Double-quoted identifiers without case change (DuckDB resolves identifiers case-insensitively,
+ *   quoted or not, and keeps the case they were created with)
+ * - Native booleans (TRUE/FALSE)
+ * - Case-insensitive LIKE through ILIKE; LIKE/ILIKE ... ESCAPE as in ANSI
+ * - Regular expressions through regexp_matches(column, pattern[, 'i']), which searches the string
+ *   like preg_match() does (DuckDB's `~` is a full match)
+ * - Pagination `LIMIT n OFFSET m`
  *
  * @version    1.6.0
  * @package    Antevemus\ASpecification
@@ -19,12 +23,12 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class PostgreSqlDialect extends AbstractSqlDialect
+class DuckDbDialect extends AbstractSqlDialect
 {
     /** {@inheritdoc} */
     public function getFamily(): string
     {
-        return 'pgsql';
+        return 'duckdb';
     }
 
     /** {@inheritdoc} */
@@ -46,8 +50,9 @@ class PostgreSqlDialect extends AbstractSqlDialect
     /** {@inheritdoc} */
     public function formatRegex(string $column, string $paramPlaceholder, bool $caseSensitive = true): string
     {
-        $op = $caseSensitive ? '~' : '~*';
-        return "{$column} {$op} {$paramPlaceholder}";
+        return $caseSensitive
+            ? "regexp_matches({$column}, {$paramPlaceholder})"
+            : "regexp_matches({$column}, {$paramPlaceholder}, 'i')";
     }
 
     /** {@inheritdoc} */

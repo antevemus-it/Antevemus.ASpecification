@@ -21,11 +21,13 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * - Complete subsumption and set algebra (Domian lemma 1): (A ∨ B) ⊇ X if A ⊇ X ∨ B ⊇ X;
  *   X ⊇ (A ∨ B) ⇔ X ⊇ A ∧ X ⊇ B; (A ∨ B) ⟂ X ⇔ A ⟂ X ∧ B ⟂ X
  * - Structural equality: same class and the same unordered pair of operands
+ * - Structural tautology/contradiction detection over the flattened chain (1.6.0): A ∨ ¬A and
+ *   absorbing tautologies
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -260,5 +262,26 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
     public function remainderUnsatisfiedBy(object $candidate): ?ICompositeSpecification
     {
         throw new \InvalidArgumentException('Partial satisfaction of disjunctive specifications is not supported');
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-06 (forward 019): the associative chain is flattened; it is a tautology when an operand is
+     * a tautology or two operands are complementary (A ∨ ¬A). O(n²) in the flattened operands.
+     */
+    public function isTautology(): bool
+    {
+        return SpecificationAlgebra::isTautologicalDisjunction(SpecificationAlgebra::flattenDisjunction($this));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-06 (forward 019): a disjunction is a contradiction iff every flattened operand is.
+     */
+    public function isContradiction(): bool
+    {
+        return SpecificationAlgebra::isContradictoryDisjunction(SpecificationAlgebra::flattenDisjunction($this));
     }
 }

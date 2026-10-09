@@ -55,24 +55,24 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 
 ---
 
-## 🎯 v1.6.0 — Algebra & Announced Backlog II (next)
+## ✅ v1.6.0 — Algebra & Announced Backlog II (Shipped in v1.6.0, except milestone 12)
 
-### 9. `MethodParameterizedSpecification`: Declarative Method Calls 🔬
+### 9. `MethodParameterizedSpecification`: Declarative Method Calls 🔬 (Shipped in v1.6.0)
 - **Description:** The README tree promises `Specifications/Reflection/` with parameterized specifications. Field access already exists as `where()` with the `PropertyAccessor`, so no field-parameterized class is built. The method-parameterized one is: `Spec::calling('isEligibleFor', [$date], $resultSpec)` calls a method of the candidate with arguments declared as data (scalars, arrays, enums, dates) and applies a specification to the result. Unlike `must(closure)`, it has structural `equals()`, its own type, and can be described in a rule catalog.
 - **Goal:** Close the README promise with the half that adds value, and state plainly that `where()` is the field half.
 - **Specification:** Reversa forward 018 (decision D8).
 
-### 10. Tautology & Contradiction Detection 📐
+### 10. Tautology & Contradiction Detection 📐 (Shipped in v1.6.0)
 - **Description:** `isTautology()` and `isContradiction()` on every specification, structural and conservative (`true` only when the shape of the tree proves it): `AlwaysTrue`/`AlwaysFalse`, `not`, flattened `and`/`or` with `A ∧ ¬A` and `A ∨ ¬A`, disjoint leaves through `isDisjointWith`, `in([])`, inverted `between`. A truth-table test guards soundness. The rule engine reports a `RuleCompilationWarning` for catalog rules that can never fail or never pass.
 - **Goal:** Close the last README promise of the 2026-10 audit without a SAT solver and without touching `evaluate()`.
 - **Specification:** Reversa forward 019 (decision D9).
 
-### 11. Announced-but-Unshipped Backlog II: TTL, Partition DAG Index & Three SQL Dialects 📋
+### 11. Announced-but-Unshipped Backlog II: TTL, Partition DAG Index & Three SQL Dialects 📋 (Shipped in v1.6.0)
 - **Description:** TTL and auto-pruning on volatile repositories (`withTtl()`, `prune()`); a materialised index on the partition DAG (topological order and clusters of mutually disjoint sibling partitions) so that routing and traversal stop testing every sibling in large DAGs, shipped only if a reproducible benchmark proves the gain at 100+ partitions; and the DB2, Informix and DuckDB SQL dialects.
-- **Goal:** Each item is either code with a benchmark or a measured number explaining why it is not.
+- **Goal:** Each item is either code with a benchmark or a measured number explaining why it is not. **Outcome:** the traversal index ships on by default (`findAll` 45 % to 77 % faster); the routing clusters ship off by default because building them (one `isDisjointWith()` per sibling pair, 88 ms for two `in()` sets of 162 values) made `put()` 3 to 6 times slower with library specifications (`tests/Benchmark/REPORT-dag-index.md`); `paginate()` added to every dialect on the way.
 - **Specification:** Reversa forward 020.
 
-### 12. Specification `simplify()` 🧮
+### 12. Specification `simplify()` 🧮 (next)
 - **Description:** Structural simplification built on milestone 10: absorbing identities, double negation, idempotent duplicates, contradictory conjunctions collapsed to `alwaysFalse()`, tautological disjunctions to `alwaysTrue()`.
 - **Goal:** Smaller trees for the visitors and for the catalog.
 - **Target Release:** v1.6.x (after milestone 10; own forward specification).
@@ -98,7 +98,7 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 ## 🗓️ Unscheduled
 
 ### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
-- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6).
+- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here: the core has no `fromArray`/`jsonSerialize` of specifications yet).
 - **Goal:** Multi-node high-throughput deployments with distributed cache invalidation.
 
 ### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍

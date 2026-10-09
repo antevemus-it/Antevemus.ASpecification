@@ -10,7 +10,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Provides support for backtick delimiters (`column`), case-sensitive matching with BINARY,
  * numeric boolean representation (1/0), and the native REGEXP operator.
  *
- * @version    1.1.0
+ * Pagination (1.6.0): `LIMIT n OFFSET m`; MySQL has no OFFSET without LIMIT, so an offset alone
+ * carries the documented maximum `LIMIT 18446744073709551615`.
+ *
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -52,5 +55,11 @@ class MySqlDialect extends AbstractSqlDialect
     public function supportsRegex(): bool
     {
         return true;
+    }
+
+    /** {@inheritdoc} `LIMIT n OFFSET m`; an offset alone needs the maximum limit in MySQL. */
+    protected function formatPagination(string $sql, ?int $limit, ?int $offset): string
+    {
+        return $this->limitOffsetPagination($sql, $limit, $offset, '18446744073709551615');
     }
 }

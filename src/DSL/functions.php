@@ -15,8 +15,9 @@ declare(strict_types=1);
  * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in, notIn)
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
+ * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -85,6 +86,24 @@ function property(
     ?ISpecification $baseSpecification = null
 ): PropertySpecification {
     return Spec::property($propertyName, $specification, $baseSpecification);
+}
+
+/**
+ * Creates a declarative method-call specification: calls the public method of the candidate with the
+ * given arguments and applies the result specification to the returned value (1.6.0, forward 018).
+ *
+ * <code>
+ * calling('isEligibleFor', [new DateTimeImmutable('2026-12-01')], isTrue());
+ * </code>
+ *
+ * @param string $methodName Public method of the candidate to call
+ * @param list<mixed> $arguments Positional, declarative arguments
+ * @param ISpecification $resultSpecification Specification applied to the returned value
+ * @return ISpecification
+ */
+function calling(string $methodName, array $arguments, ISpecification $resultSpecification): ISpecification
+{
+    return Spec::calling($methodName, $arguments, $resultSpecification);
 }
 
 /**

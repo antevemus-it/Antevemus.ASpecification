@@ -31,6 +31,7 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
@@ -56,9 +57,11 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - REGEXP for generic regular expressions, with the `i` modifier carried as an inline flag
  * - Set membership (InSpecification, 1.5.0) as `TFilter('col', 'IN', [...])` and its negation as
  *   `TFilter('col', 'NOT IN', [...])`
+ * - A declarative method call (MethodParameterizedSpecification, 1.6.0) is opaque to TCriteria: it
+ *   raises NonTranslatableCriteriaException, as the inline closure of must() does
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -202,6 +205,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 $specification,
                 "An inline PHP closure (must()) is opaque and cannot be converted to TCriteria; express the rule with property specifications."
             );
+        }
+
+        if ($specification instanceof MethodParameterizedSpecification) {
+            throw self::methodCallNotTranslatable($specification);
         }
 
         $col = $this->currentProperty;
@@ -523,6 +530,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             );
         }
 
+        if ($inner instanceof MethodParameterizedSpecification) {
+            throw self::methodCallNotTranslatable($inner);
+        }
+
         $col = $this->currentProperty;
         if ($col === null) {
             throw new NonTranslatableCriteriaException(
@@ -656,5 +667,19 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         }
 
         return (str_contains($modifiers, 'i') ? '(?i)' : '(?-i)') . $body;
+    }
+
+    /**
+     * The exception for a declarative method call: it is evaluated in PHP, never in the database.
+     */
+    private static function methodCallNotTranslatable(MethodParameterizedSpecification $specification): NonTranslatableCriteriaException
+    {
+        return new NonTranslatableCriteriaException(
+            $specification,
+            sprintf(
+                "A method call on the candidate (%s) is evaluated in PHP and cannot be converted to TCriteria; express the rule with property specifications.",
+                $specification->getRuleName()
+            )
+        );
     }
 }

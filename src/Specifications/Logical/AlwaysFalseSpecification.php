@@ -20,11 +20,12 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * - Constant `false` evaluation for any candidate
  * - Universal disjointness in relation to all specifications (RF-10)
  * - Generalizes only the empty set itself (and whatever resolves to it, e.g. not(alwaysTrue()))
+ * - Structurally a contradiction (isContradiction() is true, 1.6.0)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -79,6 +80,16 @@ class AlwaysFalseSpecification extends AbstractSpecification implements ILeafSpe
      * {@inheritdoc}
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
+    {
+        return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-03 (forward 019): the empty specification is the contradiction.
+     */
+    public function isContradiction(): bool
     {
         return true;
     }

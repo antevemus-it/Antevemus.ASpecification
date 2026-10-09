@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Tests\Unit;
 
 use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -16,6 +17,7 @@ use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Sql\Dialects\InformixDialect;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
@@ -31,9 +33,10 @@ use stdClass;
  * Module12_SqlVisitorAndDialectsTest - Suíte de Testes para o Tradutor Multi-SGBD SQL
  *
  * Valida a conversão de árvores de especificações em cláusulas WHERE parametrizadas para
- * todos os dialetos do ecossistema: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql e sqlite.
+ * todos os dialetos do ecossistema: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite,
+ * e desde 1.6.0 db2, informix e duckdb (com paginação em todos os dialetos).
  *
- * @version    0.1
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -71,6 +74,15 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Forward 017 (v1.5.0), RN-07: in() traduzido como IN (...) em todos os dialetos.
         $this->testRn07InTranslatesToSqlInList();
+
+        // Forward 018 (v1.6.0), RN-07: chamada de método é opaca ao SQL (exceção de folha não traduzível).
+        $this->testF018MethodCallIsNotTranslatableToSql();
+
+        // Forward 020 (v1.6.0), RN-07: dialetos Db2, Informix e DuckDB; paginação em todos os dialetos.
+        $this->testRn07Db2Dialect();
+        $this->testRn07InformixDialect();
+        $this->testRn07DuckDbDialect();
+        $this->testPaginationAcrossDialects();
     }
 
     /**
@@ -740,5 +752,286 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
                 $this->assertEquals($memoryIds, $sqlIds, 'SQL e memória concordam para ' . $clause->getSql());
             }
         }
+    }
+
+    /**
+     * Forward 018 RN-07 / §3 cenário "tradução": toSql() de uma chamada declarativa de método lança
+     * a mesma exceção de folha não traduzível que o predicado de must(), em qualquer posição da árvore.
+     */
+    private function testF018MethodCallIsNotTranslatableToSql(): void
+    {
+        $call = Spec::calling('isEligibleFor', [new \DateTimeImmutable('2026-12-01')], Spec::isTrue());
+        $cases = [
+            'folha solta' => $call,
+            'sob propriedade' => Spec::property('contract', $call),
+            'em conjunção' => Spec::property('status', Spec::equalTo('A'))->and($call),
+            'negada' => $call->not(),
+            'whereMethod' => Spec::property('status', Spec::equalTo('A'))->whereMethod('total', [3], Spec::greaterThan(10)),
+        ];
+        foreach ($cases as $label => $spec) {
+            foreach (['pgsql', 'mysql', 'ansi'] as $dialect) {
+                $e = $this->assertThrows(NonTranslatableSpecificationException::class, fn() => $spec->toSql($dialect), "{$label} / {$dialect}");
+                $this->assertTrue(str_contains($e->getMessage(), '(...)'), "mensagem nomeia o método: {$label}");
+            }
+        }
+        $e = $this->assertThrows(NonTranslatableSpecificationException::class, fn() => Spec::toSql($call, 'pgsql'));
+        $this->assertTrue(str_contains($e->getMessage(), 'isEligibleFor(...)'));
+    }
+
+    /**
+     * Forward 020 (v1.6.0), RN-07: IBM Db2. Aspas duplas em MAIÚSCULAS (como Oracle/Firebird), booleanos 1/0,
+     * LIKE insensível por LOWER(), REGEXP_LIKE com 'c'/'i', paginação SQL:2008 (FETCH FIRST / OFFSET ... ROWS).
+     */
+    private function testRn07Db2Dialect(): void
+    {
+        foreach (['db2' => 'db2', 'ibm' => 'db2', 'ibm_db2' => 'db2', 'pdo_ibm' => 'db2', 'DB2' => 'db2'] as $driver => $family) {
+            $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
+        }
+        $this->assertTrue(SqlDialect::fromDriver('ibm_db2') === SqlDialect::DB2);
+
+        $db2 = SqlDialectFactory::create(SqlDialect::DB2);
+        $this->assertEquals('"STATUS"', $db2->escapeIdentifier('status'));
+        $this->assertEquals('"C"."STATUS"', $db2->escapeIdentifier('c.status'));
+        $this->assertEquals('LOWER(name)', $db2->escapeIdentifier('LOWER(name)'), 'função declarada pelo mapper passa verbatim');
+        $this->assertThrows(UnsafeIdentifierException::class, fn() => $db2->escapeIdentifier('name; DROP'));
+        $this->assertEquals('1', $db2->formatBoolean(true));
+        $this->assertEquals('0', $db2->formatBoolean(false));
+        $this->assertEquals('1 = 1', $db2->getTrueCondition());
+        $this->assertEquals('1 = 0', $db2->getFalseCondition());
+
+        $this->assertDialectClauses('db2', [
+            'eq' => '"AGE" = :p1',
+            'gte' => '"AGE" >= :p1',
+            'lte' => '"AGE" <= :p1',
+            'neq' => '"STATUS" <> :p1',
+            'in' => '"STATUS" IN (:p1, :p2)',
+            'inNull' => '("STATUS" IN (:p1) OR "STATUS" IS NULL)',
+            'isNull' => '"DELETED_AT" IS NULL',
+            'notNull' => '"DELETED_AT" IS NOT NULL',
+            'bool' => '"ACTIVE" = 1',
+            'notBool' => '"ACTIVE" = 0',
+            'likeEscape' => '"PROMO" LIKE :p1 ESCAPE \'!\'',
+            'likeCi' => 'LOWER("NAME") LIKE LOWER(:p1)',
+            'regex' => 'REGEXP_LIKE("PHONE", :p1, \'c\')',
+            'regexCi' => 'REGEXP_LIKE("CODE", :p1, \'i\')',
+            'combined' => '("AGE" >= :p1 AND "STATUS" IN (:p2, :p3))',
+        ]);
+        $this->assertTrue($db2->supportsRegex());
+
+        $this->assertPagination($db2, [
+            'limit' => 'SELECT * FROM t ORDER BY id FETCH FIRST 10 ROWS ONLY',
+            'both' => 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS FETCH FIRST 10 ROWS ONLY',
+            'offset' => 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS',
+        ]);
+    }
+
+    /**
+     * Forward 020 (v1.6.0), RN-07: IBM Informix. Sem DELIMIDENT o Informix lê "x" como literal de texto, então
+     * o identificador sai sem delimitador (a gramática fechada já garante que é seguro); com DELIMIDENT declarado
+     * sai entre aspas em minúsculas. Booleanos 't'/'f', LIKE insensível por LOWER(), sem REGEX, paginação
+     * SKIP/FIRST na cláusula de projeção.
+     */
+    private function testRn07InformixDialect(): void
+    {
+        foreach (['informix' => 'informix', 'ifx' => 'informix', 'pdo_informix' => 'informix'] as $driver => $family) {
+            $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
+        }
+        $this->assertTrue(SqlDialect::fromDriver('pdo_informix') === SqlDialect::INFORMIX);
+
+        $ifx = SqlDialectFactory::create(SqlDialect::INFORMIX);
+        $this->assertEquals('status', $ifx->escapeIdentifier('status'));
+        $this->assertEquals('c.status', $ifx->escapeIdentifier('c.status'));
+        $this->assertEquals('Val_Salary', $ifx->escapeIdentifier('Val_Salary'), 'sem delimitador o Informix ignora a caixa');
+        $this->assertThrows(UnsafeIdentifierException::class, fn() => $ifx->escapeIdentifier('name; DROP'));
+        $this->assertThrows(UnsafeIdentifierException::class, fn() => $ifx->escapeIdentifier('"status"'));
+        $this->assertThrows(UnsafeIdentifierException::class, fn() => $ifx->escapeIdentifier('a b'));
+        $this->assertEquals("'t'", $ifx->formatBoolean(true));
+        $this->assertEquals("'f'", $ifx->formatBoolean(false));
+        $this->assertEquals('1 = 0', $ifx->getFalseCondition());
+
+        $delimited = new InformixDialect(delimitedIdentifiers: true);
+        $this->assertEquals('"status"', $delimited->escapeIdentifier('STATUS'));
+        $this->assertEquals('"c"."val_salary"', $delimited->escapeIdentifier('C.Val_Salary'));
+        $this->assertEquals('"status" = :p1', (new SqlQueryVisitor($delimited))->translate(Spec::property('status', Spec::equalTo('A')))->toSql());
+
+        $this->assertDialectClauses('informix', [
+            'eq' => 'age = :p1',
+            'gte' => 'age >= :p1',
+            'lte' => 'age <= :p1',
+            'neq' => 'status <> :p1',
+            'in' => 'status IN (:p1, :p2)',
+            'inNull' => '(status IN (:p1) OR status IS NULL)',
+            'isNull' => 'deleted_at IS NULL',
+            'notNull' => 'deleted_at IS NOT NULL',
+            'bool' => "active = 't'",
+            'notBool' => "active = 'f'",
+            'likeEscape' => 'promo LIKE :p1 ESCAPE \'!\'',
+            'likeCi' => 'LOWER(name) LIKE LOWER(:p1)',
+            'regex' => UnsupportedSqlOperationException::class,
+            'regexCi' => UnsupportedSqlOperationException::class,
+            'combined' => '(age >= :p1 AND status IN (:p2, :p3))',
+        ]);
+        $this->assertFalse($ifx->supportsRegex());
+        $this->assertEquals("active IN ('t')", Spec::toSql(Spec::property('active', Spec::in(true)), 'informix')->getSql());
+
+        $this->assertPagination($ifx, [
+            'limit' => 'SELECT FIRST 10 * FROM t ORDER BY id',
+            'both' => 'SELECT SKIP 20 FIRST 10 * FROM t ORDER BY id',
+            'offset' => 'SELECT SKIP 20 * FROM t ORDER BY id',
+        ]);
+        $this->assertEquals('select SKIP 5 FIRST 1 DISTINCT a FROM t', $ifx->paginate('select DISTINCT a FROM t', 1, 5), 'SKIP/FIRST antes de DISTINCT, palavra-chave em qualquer caixa');
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $ifx->paginate('WITH x AS (SELECT 1) SELECT * FROM x', 10));
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $ifx->paginate('SELECTED_ROWS', 10), 'SELECT precisa ser a palavra inteira');
+    }
+
+    /**
+     * Forward 020 (v1.6.0), RN-07: DuckDB. Aspas duplas sem mudar a caixa, TRUE/FALSE, ILIKE, regexp_matches()
+     * (busca, como preg_match) com flag 'i', paginação LIMIT/OFFSET.
+     */
+    private function testRn07DuckDbDialect(): void
+    {
+        foreach (['duckdb' => 'duckdb', 'pdo_duckdb' => 'duckdb', 'DuckDB' => 'duckdb'] as $driver => $family) {
+            $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
+        }
+        $this->assertTrue(SqlDialect::fromDriver('duckdb') === SqlDialect::DUCKDB);
+
+        $duck = SqlDialectFactory::create(SqlDialect::DUCKDB);
+        $this->assertEquals('"status"', $duck->escapeIdentifier('status'));
+        $this->assertEquals('"c"."Val_Salary"', $duck->escapeIdentifier('c.Val_Salary'), 'caixa preservada');
+        $this->assertThrows(UnsafeIdentifierException::class, fn() => $duck->escapeIdentifier('name; DROP'));
+        $this->assertEquals('TRUE', $duck->formatBoolean(true));
+        $this->assertEquals('FALSE', $duck->formatBoolean(false));
+
+        $this->assertDialectClauses('duckdb', [
+            'eq' => '"age" = :p1',
+            'gte' => '"age" >= :p1',
+            'lte' => '"age" <= :p1',
+            'neq' => '"status" <> :p1',
+            'in' => '"status" IN (:p1, :p2)',
+            'inNull' => '("status" IN (:p1) OR "status" IS NULL)',
+            'isNull' => '"deleted_at" IS NULL',
+            'notNull' => '"deleted_at" IS NOT NULL',
+            'bool' => '"active" = TRUE',
+            'notBool' => '"active" = FALSE',
+            'likeEscape' => '"promo" LIKE :p1 ESCAPE \'!\'',
+            'likeCi' => '"name" ILIKE :p1',
+            'regex' => 'regexp_matches("phone", :p1)',
+            'regexCi' => 'regexp_matches("code", :p1, \'i\')',
+            'combined' => '("age" >= :p1 AND "status" IN (:p2, :p3))',
+        ]);
+        $this->assertTrue($duck->supportsRegex());
+        $this->assertEquals('"name" ILIKE :p1 ESCAPE \'!\'', Spec::toSql(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('100%*')), 'duckdb')->getSql());
+
+        $this->assertPagination($duck, [
+            'limit' => 'SELECT * FROM t ORDER BY id LIMIT 10',
+            'both' => 'SELECT * FROM t ORDER BY id LIMIT 10 OFFSET 20',
+            'offset' => 'SELECT * FROM t ORDER BY id OFFSET 20',
+        ]);
+    }
+
+    /**
+     * Forward 020 (v1.6.0), RN-07: paginate() (ISqlPagination) em todos os dialetos, com validação dos argumentos;
+     * a forma do SQLite roda num banco em memória.
+     */
+    private function testPaginationAcrossDialects(): void
+    {
+        $expected = [
+            'pgsql' => ['SELECT * FROM t ORDER BY id LIMIT 10', 'SELECT * FROM t ORDER BY id LIMIT 10 OFFSET 20', 'SELECT * FROM t ORDER BY id OFFSET 20'],
+            'mysql' => ['SELECT * FROM t ORDER BY id LIMIT 10', 'SELECT * FROM t ORDER BY id LIMIT 10 OFFSET 20', 'SELECT * FROM t ORDER BY id LIMIT 18446744073709551615 OFFSET 20'],
+            'sqlite' => ['SELECT * FROM t ORDER BY id LIMIT 10', 'SELECT * FROM t ORDER BY id LIMIT 10 OFFSET 20', 'SELECT * FROM t ORDER BY id LIMIT -1 OFFSET 20'],
+            'sqlsrv' => ['SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS'],
+            'oracle' => ['SELECT * FROM t ORDER BY id FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS'],
+            'firebird' => ['SELECT * FROM t ORDER BY id FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS'],
+            'ansi' => ['SELECT * FROM t ORDER BY id FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS FETCH FIRST 10 ROWS ONLY', 'SELECT * FROM t ORDER BY id OFFSET 20 ROWS'],
+        ];
+        foreach ($expected as $driver => [$limit, $both, $offset]) {
+            $this->assertPagination(SqlDialectFactory::create($driver), ['limit' => $limit, 'both' => $both, 'offset' => $offset]);
+        }
+        foreach (['mssql', 'dblib'] as $alias) {
+            $this->assertInstanceOf(ISqlPagination::class, SqlDialectFactory::create($alias));
+        }
+
+        // SQL Server exige ORDER BY antes de OFFSET/FETCH
+        $this->assertEquals(
+            'SELECT * FROM t ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY',
+            SqlDialectFactory::create('sqlsrv')->paginate('SELECT * FROM t', 5)
+        );
+
+        // Validação e normalização comuns a todos
+        $pg = SqlDialectFactory::create('pgsql');
+        $this->assertEquals('SELECT 1', $pg->paginate('SELECT 1;  ', null, null), 'sem limite nem deslocamento: inalterado, sem o ponto e vírgula');
+        $this->assertEquals('SELECT 1 LIMIT 3', $pg->paginate('SELECT 1;', 3, 0), 'deslocamento 0 é omitido');
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $pg->paginate('SELECT 1', 0));
+        $this->assertThrows(\InvalidArgumentException::class, fn() => $pg->paginate('SELECT 1', 10, -1));
+
+        // A forma do SQLite executa e devolve a janela esperada, inclusive o deslocamento sem limite
+        if (extension_loaded('pdo_sqlite')) {
+            $pdo = new \PDO('sqlite::memory:');
+            $pdo->exec('CREATE TABLE t (id INTEGER)');
+            for ($i = 1; $i <= 30; $i++) {
+                $pdo->exec("INSERT INTO t (id) VALUES ({$i})");
+            }
+            $sqlite = SqlDialectFactory::create('sqlite');
+            $ids = fn(string $sql): array => array_map('intval', $pdo->query($sql)->fetchAll(\PDO::FETCH_COLUMN));
+            $this->assertEquals([21, 22, 23], $ids($sqlite->paginate('SELECT id FROM t ORDER BY id', 3, 20)));
+            $this->assertEquals([29, 30], $ids($sqlite->paginate('SELECT id FROM t ORDER BY id', null, 28)));
+            $this->assertEquals([1, 2], $ids($sqlite->paginate('SELECT id FROM t ORDER BY id', 2)));
+        }
+    }
+
+    /**
+     * Traduz o mesmo conjunto de folhas num dialeto e compara com o esperado (string) ou com a exceção (classe).
+     *
+     * @param array<string, string> $expected
+     */
+    private function assertDialectClauses(string $driver, array $expected): void
+    {
+        $leaves = [
+            'eq' => Spec::property('age', Spec::equalTo(30)),
+            'gte' => Spec::property('age', Spec::greaterThanOrEqualTo(18)),
+            'lte' => Spec::property('age', Spec::lessThanOrEqualTo(65)),
+            'neq' => Spec::property('status', Spec::notEqual('X')),
+            'in' => Spec::property('status', Spec::in('A', 'B')),
+            'inNull' => Spec::property('status', Spec::in('A', null)),
+            'isNull' => Spec::property('deletedAt', Spec::isNull()),
+            'notNull' => Spec::property('deletedAt', Spec::isNotNull()),
+            'bool' => Spec::property('active', Spec::equalTo(true)),
+            'notBool' => Spec::property('active', Spec::notEqual(true)),
+            'likeEscape' => Spec::property('promo', Spec::contains('50%_off')),
+            'likeCi' => Spec::property('name', Spec::startsWith('ab', false)),
+            'regex' => Spec::property('phone', Spec::regex('/^[0-9]+$/')),
+            'regexCi' => Spec::property('code', Spec::regex('/^abc/i')),
+            'combined' => Spec::property('age', Spec::greaterThanOrEqualTo(18))->and(Spec::property('status', Spec::in('A', 'B'))),
+        ];
+
+        foreach ($expected as $case => $sql) {
+            if (class_exists($sql)) {
+                $this->assertThrows($sql, fn() => Spec::toSql($leaves[$case], $driver), "{$driver}/{$case}: recusado");
+                continue;
+            }
+            $clause = Spec::toSql($leaves[$case], $driver);
+            $this->assertEquals($sql, $clause->getSql(), "{$driver}/{$case}");
+        }
+
+        // Os valores nunca entram no SQL: vão como bindings, com o escape do LIKE quando preciso
+        $this->assertEquals([':p1' => 18], Spec::toSql($leaves['gte'], $driver)->getBindings());
+        $this->assertEquals([':p1' => 'A', ':p2' => 'B'], Spec::toSql($leaves['in'], $driver)->getBindings());
+        $this->assertEquals([':p1' => '%50!%!_off%'], Spec::toSql($leaves['likeEscape'], $driver)->getBindings());
+        $this->assertEquals([], Spec::toSql($leaves['isNull'], $driver)->getBindings());
+        $this->assertEquals('NOT (' . Spec::toSql($leaves['in'], $driver)->getSql() . ')', Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), $driver)->getSql());
+    }
+
+    /**
+     * @param array{limit: string, both: string, offset: string} $expected
+     */
+    private function assertPagination(object $dialect, array $expected): void
+    {
+        $this->assertInstanceOf(ISqlPagination::class, $dialect);
+        $base = 'SELECT * FROM t ORDER BY id';
+        $family = $dialect->getFamily();
+        $this->assertEquals($expected['limit'], $dialect->paginate($base, 10), "{$family}: só limite");
+        $this->assertEquals($expected['both'], $dialect->paginate($base, 10, 20), "{$family}: limite e deslocamento");
+        $this->assertEquals($expected['offset'], $dialect->paginate($base . ';', null, 20), "{$family}: só deslocamento");
+        $this->assertEquals($base, $dialect->paginate($base, null), "{$family}: nada a aplicar");
     }
 }

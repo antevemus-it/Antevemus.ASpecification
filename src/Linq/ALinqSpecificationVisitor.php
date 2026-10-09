@@ -19,6 +19,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Closure;
@@ -37,6 +38,8 @@ use Closure;
  * - Direct execution compatible with ALinqCollection::where() and ALinqQueryBuilder
  * - Set membership (InSpecification, 1.5.0) compiled to `in_array($candidate, $values, true)`
  * - Case-insensitive equality compared with `mb_strtolower(..., 'UTF-8')`, as the leaf (1.5.0)
+ * - Declarative method call (MethodParameterizedSpecification, 1.6.0) compiled to the call of the
+ *   method on the item, the result filtered by the compiled result specification
  *
  * Parity contract: for the same candidate, the compiled predicate returns exactly what the
  * specification's own isSatisfiedBy()/evaluate() would decide, and throws the same typed
@@ -44,7 +47,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -151,6 +154,9 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof InSpecification =>
                 $this->compileIn($specification),
 
+            $specification instanceof MethodParameterizedSpecification =>
+                $this->compileMethodCall($specification),
+
             $specification instanceof RegexSpecification =>
                 fn(mixed $candidate): bool => is_string($candidate) && preg_match($specification->getPattern(), $candidate) === 1,
 
@@ -194,6 +200,30 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
 
         return static fn(mixed $candidate): bool => in_array($candidate, $values, true)
             || $specification->isSatisfiedBy($candidate);
+    }
+
+    /**
+     * Compile a declarative method call (RN-07 of forward 018): the method is called on the item with
+     * the declared arguments and the returned value is filtered by the compiled result specification.
+     * Mirrors MethodParameterizedSpecification::isSatisfiedBy(): a non-object item and a null returned
+     * value never satisfy; a missing or non-public method raises the same BadMethodCallException.
+     */
+    private function compileMethodCall(MethodParameterizedSpecification $specification): Closure
+    {
+        $resultPredicate = $this->visit($specification->getResultSpecification());
+
+        return static function(mixed $candidate) use ($specification, $resultPredicate): bool {
+            if (!is_object($candidate)) {
+                return false;
+            }
+
+            $result = $specification->callOn($candidate);
+            if ($result === null) {
+                return false;
+            }
+
+            return $resultPredicate($result);
+        };
     }
 
     /**

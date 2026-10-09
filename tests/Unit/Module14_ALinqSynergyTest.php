@@ -48,7 +48,7 @@ use stdClass;
  * - Interoperabilidade fluente com ALinqCollection (where, orderBy, take, sum)
  * - Integração nativa de InMemoryRepository com asLinqCollection e findAsLinqCollection
  *
- * @version    0.1
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -87,6 +87,9 @@ class Module14_ALinqSynergyTest extends TestCase
 
         // Forward 017 (v1.5.0): RN-07 (in_array estrito), RN-05 (ponte tipada), RN-04 (ponte sobre IRepository).
         $this->testRn07ALinqCompilesInToStrictInArray();
+
+        // Forward 018 (v1.6.0), RN-07: o visitor ALinq compila a chamada declarativa de método.
+        $this->testF018ALinqCompilesMethodCall();
         if (ALinqBridge::isLazyAvailable()) {
             $this->testRn05BridgeReturnsALinqInterfaces();
             $this->testRn04BridgeStreamsAnyRepositoryLazily();
@@ -934,6 +937,54 @@ class Module14_ALinqSynergyTest extends TestCase
         } finally {
             $files->clear();
             @rmdir($tmp);
+        }
+    }
+
+    /**
+     * Forward 018 RN-07 / §3 cenário "tradução": o visitor ALinq filtra a coleção chamando o método
+     * no item; o predicado compilado decide exatamente o que isSatisfiedBy() decide e lança o mesmo
+     * BadMethodCallException para método ausente ou não público.
+     */
+    private function testF018ALinqCompilesMethodCall(): void
+    {
+        $make = static fn(int $occurrences, ?string $plan): object => new class($occurrences, $plan) {
+            public function __construct(public int $occurrences, private ?string $plan) {}
+            public function total(int $factor): int { return $this->occurrences * $factor; }
+            public function plan(): ?string { return $this->plan; }
+            private function secret(): bool { return true; }
+        };
+        $items = [$make(2, 'gold'), $make(5, 'silver'), $make(7, null), $make(1, 'gold')];
+
+        $spec = Spec::calling('total', [3], Spec::greaterThan(10));
+        $predicate = ALinqSpecificationVisitor::createPredicate($spec);
+        foreach ($items as $i => $item) {
+            $this->assertEquals($spec->isSatisfiedBy($item), $predicate($item), "paridade item {$i}");
+        }
+        $this->assertEquals([1, 2], array_keys(array_filter($items, $predicate)));
+
+        // Spec de resultado composta e compilada; retorno nulo nunca satisfaz; não objeto reprova
+        $plan = ALinqSpecificationVisitor::createPredicate(Spec::calling('plan', [], Spec::in('gold', 'platinum')));
+        $this->assertEquals([true, false, false, true], array_map($plan, $items));
+        $this->assertFalse($plan(null));
+        $this->assertFalse($plan('plan'));
+        $negated = ALinqSpecificationVisitor::createPredicate(Spec::calling('plan', [], Spec::equalTo('gold'))->not());
+        $this->assertEquals([false, true, true, false], array_map($negated, $items), 'NOT sobre retorno nulo: ¬false');
+
+        // Combinada com propriedade, como no núcleo
+        $combined = Spec::property('occurrences', Spec::lessThan(6))->whereMethod('total', [2], Spec::greaterThanOrEqualTo(4));
+        $compiled = ALinqSpecificationVisitor::createPredicate($combined);
+        foreach ($items as $i => $item) {
+            $this->assertEquals($combined->isSatisfiedBy($item), $compiled($item), "paridade combinada item {$i}");
+        }
+
+        // Mesmo tipo de exceção do núcleo
+        $this->assertThrows(\BadMethodCallException::class, fn() => ALinqSpecificationVisitor::createPredicate(Spec::calling('missing', [], Spec::isTrue()))($items[0]));
+        $this->assertThrows(\BadMethodCallException::class, fn() => ALinqSpecificationVisitor::createPredicate(Spec::calling('secret', [], Spec::isTrue()))($items[0]));
+
+        if (ALinqBridge::isAvailable()) {
+            $filtered = ALinqBridge::filter($items, $spec);
+            $this->assertEquals(2, $filtered->count());
+            $this->assertEquals([5, 7], $filtered->select(fn($e) => $e->occurrences)->toArray());
         }
     }
 }

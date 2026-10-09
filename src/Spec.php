@@ -15,9 +15,11 @@ declare(strict_types=1);
  * - Temporal and calendar date validations (before, isBefore, after, isAfter, between)
  * - String evaluation and collection cardinality (contains, startsWith, isEmpty, hasSize)
  * - Declarative attribute validation runner (validateAttributes, assertAttributes)
+ * - Declarative method-call restriction (calling, 1.6.0)
+ * - Structural tautology/contradiction detection (isTautology, isContradiction, 1.6.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,6 +33,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use DateTimeInterface;
 
 final class Spec
@@ -101,6 +104,54 @@ final class Spec
             $propertyName,
             $specification
         );
+    }
+
+    /**
+     * Creates a declarative method-call specification: calls the public method `$methodName` of the
+     * candidate with `$arguments` and applies `$resultSpecification` to the returned value
+     * (1.6.0, forward 018). Field access is where()/property(); this is its method counterpart.
+     *
+     * <code>
+     * Spec::calling('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTrue());
+     * </code>
+     *
+     * @param string $methodName Public method of the candidate to call
+     * @param list<mixed> $arguments Positional, declarative arguments (scalars, null, arrays of those,
+     *                               BackedEnum, DateTimeInterface)
+     * @param ISpecification $resultSpecification Specification applied to the returned value
+     * @return MethodParameterizedSpecification
+     * @throws \InvalidArgumentException If the method name is invalid or an argument is not declarative
+     */
+    public static function calling(
+        string $methodName,
+        array $arguments,
+        ISpecification $resultSpecification
+    ): MethodParameterizedSpecification {
+        return new MethodParameterizedSpecification($methodName, $arguments, $resultSpecification);
+    }
+
+    /**
+     * Tells whether the structure of the specification proves it is satisfied by every (non-null)
+     * candidate (1.6.0, forward 019). Structural and conservative: false means "not proven".
+     *
+     * @param ISpecification $specification Specification to inspect
+     * @return bool
+     */
+    public static function isTautology(ISpecification $specification): bool
+    {
+        return $specification->isTautology();
+    }
+
+    /**
+     * Tells whether the structure of the specification proves no candidate satisfies it
+     * (1.6.0, forward 019). Structural and conservative: false means "not proven".
+     *
+     * @param ISpecification $specification Specification to inspect
+     * @return bool
+     */
+    public static function isContradiction(ISpecification $specification): bool
+    {
+        return $specification->isContradiction();
     }
 
     // ==========================================

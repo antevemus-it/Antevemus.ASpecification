@@ -10,7 +10,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Provides support for delimited identifiers in upper case ("COLUMN"), numeric boolean flags (1/0),
  * and case-insensitive textual filtering with LOWER().
  *
- * @version    1.4.0
+ * Pagination (1.6.0): the SQL:2008 form inherited from AbstractSqlDialect,
+ * `OFFSET m ROWS FETCH FIRST n ROWS ONLY` (Firebird 3.0+).
+ *
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -36,7 +36,8 @@ use DateTimeInterface;
  * - `in(V) ⊇ in(W)` ⇔ `W ⊆ V`; `in(V) ⟂ in(W)` ⇔ `V ∩ W = ∅`
  * - `X ⊇ in(V)` ⇔ `X ⊇ equalTo(v)` for every `v ∈ V`; `X ⟂ in(V)` ⇔ `X ⟂ equalTo(v)` for every
  *   `v ∈ V` (SpecificationAlgebra applies these two rules for every specification class)
- * - `in([])` is the contradiction: generalized by everything and disjoint with everything
+ * - `in([])` is the contradiction: generalized by everything and disjoint with everything, and
+ *   isContradiction() says so (1.6.0, forward 019 RN-09)
  * - `equals()` compares the two sets as sets (order and repetitions are irrelevant)
  *
  * Membership in the algebra compares date-times by instant, like the relational leaves; evaluation
@@ -45,7 +46,7 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -257,6 +258,16 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
         }
 
         return $otherSpecification->isGeneralizationOf($this);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-09 (forward 019): the empty set in([]) is the contradiction; any other set is not.
+     */
+    public function isContradiction(): bool
+    {
+        return $this->values === [];
     }
 
     /**

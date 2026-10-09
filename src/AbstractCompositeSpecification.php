@@ -18,11 +18,13 @@ declare(strict_types=1);
  * - Reflection and getter based property access
  * - Remainder calculation and disjunction checking
  * - Fluent composition operators
+ * - Type disjointness only when single inheritance proves it (1.6.0: unrelated interfaces are not
+ *   disjoint; a value-bound leaf is disjoint only when strict identity or a scalar bound proves it)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -37,6 +39,10 @@ use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
+use DateTimeInterface;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
@@ -330,11 +336,31 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
         $other = SpecificationAlgebra::resolve($specification);
         if ($other instanceof IValueBoundSpecification && !SpecificationAlgebra::isTopType($this->type)) {
             $value = $other->getValue();
-            return !is_object($value) || !($value instanceof $this->type);
+            if ($other::class === EqualSpecification::class) {
+                // Strict identity: only the value itself satisfies it.
+                return !is_object($value) || !($value instanceof $this->type);
+            }
+            if ($other instanceof NotEqualSpecification) {
+                // An object candidate is only strictly comparable with null or another object; against
+                // a scalar or an array the comparison raises (evaluation error).
+                return $value !== null && !is_object($value);
+            }
+            if ($other instanceof AbstractComparableValueBoundSpecification && !$other instanceof EqualSpecification) {
+                // Ordering (<, <=, >, >=): an object candidate is only orderable with a date-time value,
+                // and only when it is itself a date-time; anything else raises (evaluation error).
+                return !$value instanceof DateTimeInterface
+                    || (class_exists($this->type) && !$this->canCastAtLeastOneWay($this->type, DateTimeInterface::class));
+            }
+            // 1.6.0: a loose or same-instant equality may accept an instance of a type its value does
+            // not belong to: not proven here, the type rule below decides. Before, every value-bound
+            // leaf was declared disjoint by the class of its value alone, which made notEqual(null) or
+            // greaterThan(new DateTime(...)) disjoint from specify(DateTimeImmutable) and turned their
+            // conjunction into a false contradiction.
         }
 
-        $otherType = $other->getType();
-        if (SpecificationAlgebra::isClassLike($otherType) && !$this->canCastAtLeastOneWay($this->type, $otherType)) {
+        if (SpecificationAlgebra::areTypesDisjoint($this->type, $other->getType())) {
+            // Unrelated types are disjoint only when single inheritance proves it (1.6.0): two
+            // interfaces, or an interface and a non-final class, may share an instance.
             return true;
         }
 

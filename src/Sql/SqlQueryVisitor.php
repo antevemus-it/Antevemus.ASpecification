@@ -27,6 +27,7 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
@@ -46,7 +47,9 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * compiling SQL injection-proof query fragments compliant with specific database dialects.
  *
  * Features:
- * - Multi-dialect support (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI)
+ * - Multi-dialect support (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI, and since 1.6.0
+ *   IBM Db2, IBM Informix and DuckDB); every dialect-specific form (quoting, boolean literal, LIKE/ILIKE,
+ *   REGEX) is delegated to the ISqlDialect, so the new dialects needed no change in the translation
  * - Flexible object-relational property mapping via IFieldMapper
  * - Sequential isolated named parameter generation (:p1, :p2, etc.)
  * - Idiomatic null handling (IS NULL, IS NOT NULL)
@@ -55,9 +58,11 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   without PHP delimiters (BUG-20261007-3E3F)
  * - Set membership (InSpecification, 1.5.0) emitted as `"col" IN (:p1, :p2)`; the empty set as the
  *   dialect's false condition (`1 = 0`), a null member as an extra `OR "col" IS NULL`
+ * - A declarative method call (MethodParameterizedSpecification, 1.6.0) is opaque to SQL: it raises
+ *   NonTranslatableSpecificationException, as the inline closure of must() does
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -241,6 +246,16 @@ class SqlQueryVisitor implements ISpecificationVisitor
             throw new NonTranslatableSpecificationException(
                 $specification,
                 'An inline PHP closure (must()) is opaque and cannot be translated to SQL; express the rule with property specifications.'
+            );
+        }
+
+        if ($specification instanceof MethodParameterizedSpecification) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                sprintf(
+                    'A method call on the candidate (%s) is evaluated in PHP and cannot be translated to SQL; express the rule with property specifications.',
+                    $specification->getRuleName()
+                )
             );
         }
 

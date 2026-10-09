@@ -24,8 +24,11 @@ use Antevemus\ASpecification\Spec;
  * - Rich evaluation of domain entities returning a typed RuleEngineVerdict
  * - Automated triage of operational failures (HTTP 403 blocks, warnings, and audit logs)
  * - Transparent integration with ASpecification algebra and SpecificationResult
+ * - Catalog validation mode (1.6.0): one RuleCompilationWarning per compiled rule that is
+ *   structurally a contradiction (never satisfied) or a tautology (never fails); reported through
+ *   getCompilationWarnings(), never blocking, never part of the verdict
  *
- * @version    1.2.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -37,16 +40,72 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     private DocumentGroupSpecificationBuilder $documentBuilder;
 
     /**
+     * Whether compileSpecification() inspects each compiled rule (catalog validation mode).
+     */
+    private bool $catalogValidation;
+
+    /**
+     * Warnings of the last compilation (empty when catalog validation is disabled).
+     *
+     * @var list<RuleCompilationWarning>
+     */
+    private array $compilationWarnings = [];
+
+    /**
      * @param IRuleCatalog $catalog Provider/repository for rule catalog
      * @param IRuleSpecificationRegistry $registry Registry for rule specification handlers
      * @param DocumentGroupSpecificationBuilder|null $documentBuilder Optional document specification compiler
+     * @param bool $catalogValidation Enables the catalog validation mode (1.6.0): each compiled rule is
+     *                                inspected for structural contradiction/tautology
      */
     public function __construct(
         private readonly IRuleCatalog $catalog,
         private readonly IRuleSpecificationRegistry $registry,
-        ?DocumentGroupSpecificationBuilder $documentBuilder = null
+        ?DocumentGroupSpecificationBuilder $documentBuilder = null,
+        bool $catalogValidation = false
     ) {
         $this->documentBuilder = $documentBuilder ?? new DocumentGroupSpecificationBuilder();
+        $this->catalogValidation = $catalogValidation;
+    }
+
+    /**
+     * Returns a copy of this engine with the catalog validation mode enabled (or disabled).
+     *
+     * In this mode every compileSpecification() (and therefore every validate()) inspects each rule
+     * compiled by its handler and records a RuleCompilationWarning when the rule is structurally a
+     * contradiction (it can never be satisfied) or a tautology (it can never fail). The warnings are
+     * only reported through getCompilationWarnings(): compilation never fails because of them and the
+     * compiled specification, its evaluation and the verdict are unchanged (forward 019 RN-11).
+     *
+     * @param bool $enabled
+     * @return static
+     */
+    public function withCatalogValidation(bool $enabled = true): static
+    {
+        $clone = clone $this;
+        $clone->catalogValidation = $enabled;
+        $clone->compilationWarnings = [];
+
+        return $clone;
+    }
+
+    /**
+     * Whether the catalog validation mode is enabled.
+     */
+    public function isCatalogValidationEnabled(): bool
+    {
+        return $this->catalogValidation;
+    }
+
+    /**
+     * Warnings recorded by the last compileSpecification()/validate() call in catalog validation mode,
+     * one per degenerate rule, in catalog order. Empty when the mode is disabled.
+     *
+     * @return list<RuleCompilationWarning>
+     */
+    public function getCompilationWarnings(): array
+    {
+        return $this->compilationWarnings;
     }
 
     /** {@inheritdoc} */
@@ -69,11 +128,19 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         array $context = []
     ): ISpecification {
         $specs = [];
+        $this->compilationWarnings = [];
 
         // 1. Load and compile business rules
         $rules = $this->catalog->findRules($escopo, $cenario, $context);
         foreach ($rules as $rule) {
-            $specs[] = $this->bindRule($this->registry->buildSpecification($rule), $rule);
+            $compiled = $this->registry->buildSpecification($rule);
+            if ($this->catalogValidation) {
+                $warning = RuleCompilationWarning::inspect($compiled, $rule);
+                if ($warning !== null) {
+                    $this->compilationWarnings[] = $warning;
+                }
+            }
+            $specs[] = $this->bindRule($compiled, $rule);
         }
 
         // 2. Load and compile mandatory document requirements

@@ -37,11 +37,14 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  *   bounded by a subtype
  * - Sets (1.5.0): in(V) is the union of equalTo(v) for v ∈ V, so X ⊇ in(V) ⇔ X ⊇ equalTo(v) for
  *   every v and X ⟂ in(V) ⇔ X ⟂ equalTo(v) for every v; in([]) resolves to the contradiction
+ * - Tautology/contradiction (1.6.0, forward 019): structural and conservative detection over
+ *   flattened conjunctions/disjunctions (A ∧ ¬A, A ∨ ¬A, pairwise disjoint operands, absorbing
+ *   identities); "false" always means "not proven"
  *
  * Where the Domian code and the set algebra disagree the algebra wins; the deviations are
  * documented in docs/paridade-domian-2026-10-09 (lote 1.4.4).
  *
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -236,6 +239,170 @@ final class SpecificationAlgebra
     }
 
     // ==========================================
+    // 2a. Tautology and contradiction (1.6.0)
+    // ==========================================
+
+    /**
+     * Flattens an associative chain of conjunctions into the list of its operands:
+     * ((a ∧ b) ∧ ¬a) becomes [a, b, ¬a]. Only AndSpecification nodes are opened; any other node
+     * (negation, disjunction, property restriction, rule binding) is an operand as a whole.
+     * An annotation (because()/withCode()) does not change what a conjunction accepts, so annotated
+     * conjunctions are flattened too.
+     *
+     * @param ISpecification<mixed> $specification
+     * @return list<ISpecification<mixed>>
+     */
+    public static function flattenConjunction(ISpecification $specification): array
+    {
+        if (!$specification instanceof AndSpecification) {
+            return [$specification];
+        }
+
+        return array_merge(
+            self::flattenConjunction($specification->getLeftSide()),
+            self::flattenConjunction($specification->getRightSide())
+        );
+    }
+
+    /**
+     * Flattens an associative chain of disjunctions into the list of its operands.
+     *
+     * @param ISpecification<mixed> $specification
+     * @return list<ISpecification<mixed>>
+     */
+    public static function flattenDisjunction(ISpecification $specification): array
+    {
+        if (!$specification instanceof OrSpecification) {
+            return [$specification];
+        }
+
+        return array_merge(
+            self::flattenDisjunction($specification->getLeftSide()),
+            self::flattenDisjunction($specification->getRightSide())
+        );
+    }
+
+    /**
+     * RN-05: a conjunction of the given (flattened) operands is a contradiction when one operand is
+     * a contradiction, when two operands are complementary (A ∧ ¬A, by structural equality) or when
+     * two operands are disjoint by the existing algebra (equalTo('A') ∧ equalTo('B') on the same
+     * property, an inverted between(), ...). O(n²) in the number of operands.
+     *
+     * @param list<ISpecification<mixed>> $operands
+     */
+    public static function isContradictoryConjunction(array $operands): bool
+    {
+        foreach ($operands as $operand) {
+            if ($operand->isContradiction()) {
+                return true;
+            }
+        }
+
+        $count = count($operands);
+        for ($i = 0; $i < $count; $i++) {
+            for ($j = $i + 1; $j < $count; $j++) {
+                $a = $operands[$i];
+                $b = $operands[$j];
+                if (self::areComplementary($a, $b) || self::provenDisjoint($a, $b)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * RN-05: a conjunction is a tautology iff every operand is a tautology.
+     *
+     * @param list<ISpecification<mixed>> $operands
+     */
+    public static function isTautologicalConjunction(array $operands): bool
+    {
+        foreach ($operands as $operand) {
+            if (!$operand->isTautology()) {
+                return false;
+            }
+        }
+
+        return $operands !== [];
+    }
+
+    /**
+     * RN-06: a disjunction of the given (flattened) operands is a tautology when one operand is a
+     * tautology or two operands are complementary (A ∨ ¬A, by structural equality). O(n²).
+     *
+     * @param list<ISpecification<mixed>> $operands
+     */
+    public static function isTautologicalDisjunction(array $operands): bool
+    {
+        foreach ($operands as $operand) {
+            if ($operand->isTautology()) {
+                return true;
+            }
+        }
+
+        $count = count($operands);
+        for ($i = 0; $i < $count; $i++) {
+            for ($j = $i + 1; $j < $count; $j++) {
+                if (self::areComplementary($operands[$i], $operands[$j])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * RN-06: a disjunction is a contradiction iff every operand is a contradiction.
+     *
+     * @param list<ISpecification<mixed>> $operands
+     */
+    public static function isContradictoryDisjunction(array $operands): bool
+    {
+        foreach ($operands as $operand) {
+            if (!$operand->isContradiction()) {
+                return false;
+            }
+        }
+
+        return $operands !== [];
+    }
+
+    /**
+     * True when one operand is structurally the negation of the other: A->equals(B->not()) or
+     * B->equals(A->not()). A specification whose not() or equals() raises is never complementary.
+     *
+     * @param ISpecification<mixed> $a
+     * @param ISpecification<mixed> $b
+     */
+    public static function areComplementary(ISpecification $a, ISpecification $b): bool
+    {
+        try {
+            return $a->equals($b->not()) || $b->equals($a->not());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the algebra proves the two operands disjoint in either direction. Detection is a
+     * query: a specification whose isDisjointWith() raises is "not proven", never an error.
+     *
+     * @param ISpecification<mixed> $a
+     * @param ISpecification<mixed> $b
+     */
+    private static function provenDisjoint(ISpecification $a, ISpecification $b): bool
+    {
+        try {
+            return $a->isDisjointWith($b) || $b->isDisjointWith($a);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    // ==========================================
     // 3. Types
     // ==========================================
 
@@ -320,6 +487,35 @@ final class SpecificationAlgebra
     }
 
     /**
+     * True when no object can be an instance of both types (1.6.0). Unrelated types are only
+     * disjoint when single inheritance proves it: two classes neither of which extends the other, or
+     * an interface and a FINAL class that does not implement it. Two unrelated interfaces are NOT
+     * disjoint (one class may implement both), nor an interface and a non-final class (a subclass may
+     * implement it). Pseudo-types and unknown names are never disjoint.
+     *
+     * Before 1.6.0 every pair of unrelated types was treated as disjoint, which made
+     * specify(IFoo) ⟂ specify(IBar) and turned their conjunction into a false contradiction
+     * (found by the tautology/contradiction truth-table guard, forward 019 RN-02).
+     */
+    public static function areTypesDisjoint(string $type1, string $type2): bool
+    {
+        if (!self::isClassLike($type1) || !self::isClassLike($type2) || self::canCastAtLeastOneWay($type1, $type2)) {
+            return false;
+        }
+
+        $first = new \ReflectionClass($type1);
+        $second = new \ReflectionClass($type2);
+        if (!$first->isInterface() && !$second->isInterface()) {
+            return true;
+        }
+        if ($first->isInterface() && $second->isInterface()) {
+            return false;
+        }
+
+        return ($first->isInterface() ? $second : $first)->isFinal();
+    }
+
+    /**
      * True when the type is a declared class or interface.
      */
     public static function isClassLike(string $type): bool
@@ -336,13 +532,16 @@ final class SpecificationAlgebra
     }
 
     /**
-     * True when the leaf tests equality of a value (not a range, not a difference).
+     * True when the leaf tests equality of a value (not a range, not a difference) in a way that
+     * bounds its candidates by the class of the value. A same-instant equality does not: a DateTime
+     * and a DateTimeImmutable at the same instant both satisfy it (1.6.0).
      *
      * @param ISpecification<mixed> $specification
      */
     private static function isEqualityLeaf(ISpecification $specification): bool
     {
-        return $specification instanceof Comparison\EqualSpecification;
+        return $specification instanceof Comparison\EqualSpecification
+            && !$specification instanceof Comparison\SameInstantSpecification;
     }
 
     // ==========================================

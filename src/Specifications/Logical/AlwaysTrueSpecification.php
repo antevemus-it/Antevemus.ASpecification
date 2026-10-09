@@ -20,11 +20,12 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * - Constant `true` evaluation for any candidate
  * - Universal generalization over all type-compatible specifications (RF-10)
  * - Disjoint only with the contradiction (and with whatever resolves to it, e.g. not(alwaysTrue()))
+ * - Structurally a tautology (isTautology() is true, 1.6.0)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -73,5 +74,15 @@ class AlwaysTrueSpecification extends AbstractSpecification implements ILeafSpec
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         return SpecificationAlgebra::resolve($otherSpecification) instanceof AlwaysFalseSpecification;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-03 (forward 019): the universal specification is the tautology.
+     */
+    public function isTautology(): bool
+    {
+        return true;
     }
 }

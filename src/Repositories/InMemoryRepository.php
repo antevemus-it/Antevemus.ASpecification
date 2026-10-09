@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
+use Closure;
 use Generator;
 use InvalidArgumentException;
 
@@ -38,11 +39,17 @@ use InvalidArgumentException;
  * - Optional repository identifier, preserved by partitions created with addPartitionWithId()
  * - Optional ISynchronizer (NullSynchronizer by default) wrapping every operation
  * - ALinq fluent collection integration
+ * - Optional time-to-live (1.6.0, RN-05): withTtl($seconds) makes every entry expire $seconds after
+ *   its last write (put/update); an expired entry is never returned by find*()/iterate()/count()/
+ *   contains()/findSingle()/getAll(), is evicted lazily when a scan or a membership test meets it,
+ *   and prune() evicts every expired entry at once. The clock is injectable (withClock()) so that
+ *   tests drive the expiry deterministically. Without a TTL nothing is timestamped and no read checks
+ *   expiry (reads go straight to the map, as before).
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.5.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -53,6 +60,15 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
 {
     /** @var array<string, T> Primary internal storage map key->entity */
     protected array $db = [];
+
+    /** Time-to-live of an entry in seconds, counted from its last write; null = entries never expire (RN-05). */
+    private ?int $ttlSeconds = null;
+
+    /** @var array<string, int|float> Time of the last write of each entry (only kept while a TTL is set) */
+    private array $writtenAt = [];
+
+    /** @var (Closure(): (int|float))|null Clock returning the current Unix time in seconds; null = system clock */
+    private ?Closure $clock = null;
 
     /**
      * Constructs an in-memory repository.
@@ -95,11 +111,12 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function contains(IEntity $entity): bool
     {
         return $this->readConcurrently(function () use ($entity): bool {
-            if (array_key_exists($this->keyOf($entity), $this->db)) {
+            $storage = $this->liveStorage();
+            if (array_key_exists($this->keyOf($entity), $storage)) {
                 return true;
             }
 
-            foreach ($this->db as $stored) {
+            foreach ($storage as $stored) {
                 if ($stored->equals($entity)) {
                     return true;
                 }
@@ -120,7 +137,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
         $this->validateSpecification($specification);
         return $this->readConcurrently(function () use ($specification): int {
             $count = 0;
-            foreach ($this->db as $entity) {
+            foreach ($this->liveStorage() as $entity) {
                 if ($specification->isSatisfiedBy($entity)) {
                     $count++;
                 }
@@ -152,7 +169,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
         $this->validateSpecification($specification);
         return $this->readConcurrently(function () use ($specification): array {
             $results = [];
-            foreach ($this->db as $entity) {
+            foreach ($this->liveStorage() as $entity) {
                 if ($specification->isSatisfiedBy($entity)) {
                     $results[] = $entity;
                 }
@@ -171,7 +188,11 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     {
         $this->writeExclusively(function () use ($entity): void {
             // Uses entity ID (if scalar/string) or spl_object_hash as storage key
-            $this->db[$this->keyOf($entity)] = $entity;
+            $key = $this->keyOf($entity);
+            $this->db[$key] = $entity;
+            if ($this->ttlSeconds !== null) {
+                $this->writtenAt[$key] = $this->now();
+            }
         });
     }
 
@@ -218,9 +239,9 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
         $this->validateSpecification($specification);
         return $this->writeExclusively(function () use ($specification): int {
             $removed = 0;
-            foreach ($this->db as $key => $entity) {
+            foreach ($this->liveStorage() as $key => $entity) {
                 if ($specification->isSatisfiedBy($entity)) {
-                    unset($this->db[$key]);
+                    unset($this->db[$key], $this->writtenAt[$key]);
                     $removed++;
                 }
             }
@@ -238,16 +259,17 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     {
         return $this->writeExclusively(function () use ($entity): bool {
             $key = $this->keyOf($entity);
+            $storage = $this->liveStorage();
 
-            if (array_key_exists($key, $this->db)) {
-                unset($this->db[$key]);
+            if (array_key_exists($key, $storage)) {
+                unset($this->db[$key], $this->writtenAt[$key]);
                 return true;
             }
 
             // Proactive fallback comparing entity equality
-            foreach ($this->db as $k => $e) {
+            foreach ($storage as $k => $e) {
                 if ($e->equals($entity)) {
-                    unset($this->db[$k]);
+                    unset($this->db[$k], $this->writtenAt[$k]);
                     return true;
                 }
             }
@@ -265,6 +287,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     {
         $this->writeExclusively(function (): void {
             $this->db = [];
+            $this->writtenAt = [];
         });
     }
 
@@ -275,7 +298,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function getAll(): array
     {
-        return $this->readConcurrently(fn(): array => array_values($this->db));
+        return $this->readConcurrently(fn(): array => array_values($this->liveStorage()));
     }
 
     /**
@@ -288,7 +311,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function asLinqCollection(): IALinqCollection
     {
-        return \Antevemus\ASpecification\Linq\ALinqBridge::toCollection($this->db);
+        return \Antevemus\ASpecification\Linq\ALinqBridge::toCollection($this->readConcurrently(fn(): array => $this->liveStorage()));
     }
 
     /**
@@ -323,10 +346,170 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     private function iterateMatching(ISpecification $specification): Generator
     {
-        foreach ($this->db as $entity) {
+        if ($this->ttlSeconds === null) {
+            foreach ($this->db as $entity) {
+                if ($specification->isSatisfiedBy($entity)) {
+                    yield $entity;
+                }
+            }
+            return;
+        }
+
+        // TTL: the iteration runs outside the synchronizer's permit, so it only skips expired
+        // entries (evicting them is left to the next scan, membership test or prune()).
+        $now = $this->now();
+        foreach ($this->db as $key => $entity) {
+            if ($this->isExpired($key, $now)) {
+                continue;
+            }
             if ($specification->isSatisfiedBy($entity)) {
                 yield $entity;
             }
         }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Time-to-live (1.6.0, RN-05)
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * {@inheritdoc}
+     *
+     * Entries already stored when the TTL is turned on start counting from that moment; changing the
+     * TTL later applies the new duration to every entry from its last write. withTtl(0) turns the
+     * expiry off and drops the timestamps.
+     *
+     * @throws InvalidArgumentException When $seconds is negative
+     */
+    public function withTtl(int $seconds): static
+    {
+        if ($seconds < 0) {
+            throw new InvalidArgumentException("TTL must be zero (no expiry) or a positive number of seconds, {$seconds} given.");
+        }
+
+        $this->writeExclusively(function () use ($seconds): void {
+            if ($seconds === 0) {
+                $this->ttlSeconds = null;
+                $this->writtenAt = [];
+                return;
+            }
+
+            $this->ttlSeconds = $seconds;
+            $now = $this->now();
+            foreach ($this->db as $key => $_) {
+                $this->writtenAt[$key] ??= $now;
+            }
+        });
+
+        return $this;
+    }
+
+    /**
+     * Returns the time-to-live in seconds, or null when entries never expire.
+     *
+     * @return int|null
+     */
+    public function getTtl(): ?int
+    {
+        return $this->ttlSeconds;
+    }
+
+    /**
+     * Replaces the clock used by the time-to-live, fluently (deterministic tests, simulated time).
+     *
+     * @param (Closure(): (int|float))|null $clock Returns the current Unix time in seconds; null = system clock
+     * @return static
+     */
+    public function withClock(?Closure $clock): static
+    {
+        $this->clock = $clock;
+        return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function prune(): int
+    {
+        return $this->writeExclusively(function (): int {
+            if ($this->ttlSeconds === null) {
+                return 0;
+            }
+
+            $now = $this->now();
+            $pruned = 0;
+            foreach ($this->writtenAt as $key => $_) {
+                if ($this->isExpired($key, $now)) {
+                    unset($this->db[$key], $this->writtenAt[$key]);
+                    $pruned++;
+                }
+            }
+
+            return $pruned;
+        });
+    }
+
+    /**
+     * Copies the expiry policy (TTL and clock) of another in-memory repository. Used by
+     * PartitionRepository when it builds the repository of a new partition, so that partitions of a
+     * repository with a TTL expire the same way.
+     *
+     * @internal
+     * @param InMemoryRepository $source
+     * @return static
+     */
+    public function adoptExpiryPolicyOf(InMemoryRepository $source): static
+    {
+        $this->clock = $source->clock;
+        if ($source->ttlSeconds !== null) {
+            $this->withTtl($source->ttlSeconds);
+        }
+        return $this;
+    }
+
+    /**
+     * The storage without its expired entries. Without a TTL it is the map itself (no copy); with a
+     * TTL the expired entries are evicted on the way (lazy removal on access).
+     *
+     * @return array<string, T>
+     */
+    private function liveStorage(): array
+    {
+        if ($this->ttlSeconds === null) {
+            return $this->db;
+        }
+
+        $now = $this->now();
+        foreach ($this->writtenAt as $key => $_) {
+            if ($this->isExpired($key, $now)) {
+                unset($this->db[$key], $this->writtenAt[$key]);
+            }
+        }
+
+        return $this->db;
+    }
+
+    /**
+     * Whether the entry stored under the key has outlived the TTL at the given time.
+     *
+     * @param int|string $key Storage key (PHP turns numeric string keys into integers)
+     * @param int|float $now
+     * @return bool
+     */
+    private function isExpired(int|string $key, int|float $now): bool
+    {
+        return $this->ttlSeconds !== null
+            && isset($this->writtenAt[$key])
+            && $this->writtenAt[$key] + $this->ttlSeconds <= $now;
+    }
+
+    /**
+     * Current Unix time in seconds, from the injected clock or the system clock.
+     *
+     * @return int|float
+     */
+    private function now(): int|float
+    {
+        return $this->clock !== null ? ($this->clock)() : microtime(true);
     }
 }

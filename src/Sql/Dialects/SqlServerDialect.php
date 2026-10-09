@@ -10,7 +10,11 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Provides support for bracket delimiters ([column]), BIT boolean representation (1/0),
  * and case-insensitive textual filtering with LOWER().
  *
- * @version    1.1.0
+ * Pagination (1.6.0): `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (SQL Server 2012+), which requires an
+ * ORDER BY and an OFFSET: `OFFSET 0 ROWS` is always written and `ORDER BY (SELECT NULL)` is appended
+ * when the statement has no ORDER BY.
+ *
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -37,5 +41,24 @@ class SqlServerDialect extends AbstractSqlDialect
     protected function escapeSegment(string $segment): string
     {
         return '[' . str_replace(']', ']]', $segment) . ']';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * SQL Server 2012+ only accepts OFFSET/FETCH after an ORDER BY, and FETCH only after an OFFSET.
+     */
+    protected function formatPagination(string $sql, ?int $limit, ?int $offset): string
+    {
+        if (preg_match('/\bORDER\s+BY\b/i', $sql) !== 1) {
+            $sql .= ' ORDER BY (SELECT NULL)';
+        }
+
+        $suffix = 'OFFSET ' . ($offset ?? 0) . ' ROWS';
+        if ($limit !== null) {
+            $suffix .= " FETCH NEXT {$limit} ROWS ONLY";
+        }
+
+        return "{$sql} {$suffix}";
     }
 }

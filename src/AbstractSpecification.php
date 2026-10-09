@@ -13,10 +13,12 @@ declare(strict_types=1);
  * - Notification pattern diagnostic integration (evaluate, because, withCode)
  * - Visitor pattern dispatch for SQL and Criteria translation
  * - Set algebra analysis hooks (generalization, specialization, disjointness)
+ * - Structural tautology/contradiction detection defaults (1.6.0: "not proven")
+ * - Declarative method-call restriction (whereMethod, 1.6.0)
  *
  * @template T
  * @implements ISpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +37,7 @@ use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use ReflectionClass;
 
@@ -178,6 +181,37 @@ abstract class AbstractSpecification implements ISpecification
         }
 
         return new PropertySpecification($this, $accessibleObjectName, $accessibleObjectSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The method-call leaf declares the same candidate type as this specification (as must() does),
+     * so that typed composites (Spec::specify(T)) accept the conjunction.
+     */
+    public function whereMethod(string $methodName, array $arguments, ISpecification $resultSpecification): ICompositeSpecification
+    {
+        return $this->and(new MethodParameterizedSpecification($methodName, $arguments, $resultSpecification, $this->getType()));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Default: not proven (false). Only the classes whose structure can prove it override this.
+     */
+    public function isTautology(): bool
+    {
+        return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Default: not proven (false). Only the classes whose structure can prove it override this.
+     */
+    public function isContradiction(): bool
+    {
+        return false;
     }
 
     /**

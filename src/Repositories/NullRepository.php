@@ -30,7 +30,7 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
  * @extends AbstractRepository<T>
  * @implements IFakeRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -164,5 +164,30 @@ class NullRepository extends AbstractRepository implements IFakeRepository, IVol
     public function contains(IEntity $entity): bool
     {
         return false;
+    }
+
+    /**
+     * Accepts any time-to-live and keeps nothing (Null Object, RN-05).
+     *
+     * @param int $seconds
+     * @return static
+     * @throws \InvalidArgumentException When $seconds is negative, like every volatile repository
+     */
+    public function withTtl(int $seconds): static
+    {
+        if ($seconds < 0) {
+            throw new \InvalidArgumentException("TTL must be zero (no expiry) or a positive number of seconds, {$seconds} given.");
+        }
+        return $this;
+    }
+
+    /**
+     * Nothing is stored, so nothing expires (Null Object, RN-05).
+     *
+     * @return int Always 0
+     */
+    public function prune(): int
+    {
+        return 0;
     }
 }

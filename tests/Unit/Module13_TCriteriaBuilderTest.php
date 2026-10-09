@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Tests\TestCase;
  * - Teste de precedência e aninhamento de parênteses
  * - Suporte a propriedades de paginação, ordenação e mapeamento de colunas
  *
- * @version    0.1
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -67,6 +67,9 @@ class Module13_TCriteriaBuilderTest extends TestCase
         // Forward 017 (v1.5.0), RN-07: in() vira TFilter('col', 'IN', [...]).
         $this->testRn07InTranslatesToTFilterIn();
         $this->testRealAdiantiEmitsInList();
+
+        // Forward 018 (v1.6.0), RN-07: chamada de método é opaca ao TCriteria.
+        $this->testF018MethodCallIsNotTranslatableToCriteria();
     }
 
     /**
@@ -709,5 +712,25 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(status IN ('A') OR status IS NULL)", $out['inWithNull']['dump']);
         $this->assertEquals("(n IN (1,2,3))", $out['inIntegers']['dump']);
         $this->assertTrue(str_contains($out['inList']['prepared'], 'status IN ('), 'modo prepared: ' . $out['inList']['prepared']);
+    }
+
+    /**
+     * Forward 018 RN-07: toCriteria() de uma chamada declarativa de método lança a exceção de folha
+     * não traduzível (como must()), inclusive negada sob uma propriedade (ramo visitNotLeaf).
+     */
+    private function testF018MethodCallIsNotTranslatableToCriteria(): void
+    {
+        $call = Spec::calling('total', [3], Spec::greaterThan(10));
+        $cases = [
+            'folha solta' => $call,
+            'sob propriedade' => Spec::property('contract', $call),
+            'negada sob propriedade' => Spec::property('contract', $call->not()),
+            'em disjunção' => Spec::property('status', Spec::equalTo('A'))->or($call),
+        ];
+        foreach ($cases as $label => $spec) {
+            $e = $this->assertThrows(NonTranslatableCriteriaException::class, fn() => TCriteriaBuilder::fromSpecification($spec), $label);
+            $this->assertTrue(str_contains($e->getMessage(), 'total(...)'), "mensagem nomeia o método: {$label}");
+            $this->assertThrows(NonTranslatableCriteriaException::class, fn() => $spec->toCriteria(), "{$label} via toCriteria()");
+        }
     }
 }

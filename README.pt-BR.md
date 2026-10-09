@@ -7,13 +7,13 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2305%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2870%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Framework Corporativo do Padrão Specification para PHP 8.2+** (PHP 8.4 só para a integração opcional com o ALinq)  
-> Reimplementação PHP independente e não oficial, com evolução moderna, do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (12 drivers, 7 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
+> Reimplementação PHP independente e não oficial, com evolução moderna, do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (15 drivers, 10 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
 
 ---
 
@@ -36,13 +36,14 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
 
 - 🎯 **Fluent Chaining & DSL em Linguagem Natural**: Escreva especificações expressivas e legíveis como sentenças de domínio (`Spec::specify(Customer::class)->where('gender', is('FEMALE'))->and('membershipDate', isBefore($oneYearAgo))`).
 - 🛡️ **Notification Pattern & Diagnóstico Rico (Zero Exceptions)**: Avalie regras sem lançar exceções de fluxo com `evaluate()`, obtendo `SpecificationResult` com lista detalhada de `SpecificationFailure`, códigos de erro (`withCode()`), mensagens de negócio (`because()`) e metadados.
-- ⚡ **SQL Query Visitor & Multi-SGBD (Módulo 12)**: Tradução direta da AST de especificações para cláusulas `WHERE` parametrizadas e seguras (`:p1`, `:p2`) com suporte a 12 drivers mapeados em 7 dialetos SQL (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite e ANSI).
+- ⚡ **SQL Query Visitor & Multi-SGBD (Módulo 12)**: Tradução direta da AST de especificações para cláusulas `WHERE` parametrizadas e seguras (`:p1`, `:p2`) com suporte a 15 drivers mapeados em 10 dialetos SQL (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, IBM Db2, IBM Informix, DuckDB e ANSI), com `paginate()` em todo dialeto.
 - 🔗 **TCriteria Builder & Adianti Database Bridge (Módulo 13)**: Compilação direta de regras de domínio puro em objetos nativos `TCriteria` e `TFilter` do Adianti Framework, com inversão lógica de De Morgan para negações, preservação rigorosa de parênteses e precedência, e suporte fluente a paginação (`limit`, `offset`), ordenação (`orderBy`, `direction`) e agrupamento (`groupBy`).
 - 🧩 **Dynamic Rule Engine & Requisitos Documentais (Módulo 11)**: Compilação dinâmica a partir de catálogos relacionais de banco de dados (`RuleDefinition`), triagem operacional de vereditos por severidade (`BLOCK`, `WARN`, `LOG`), e álgebra de requisitos documentais (`ALL`, `ANY`, `ONE_OF_SET`).
 - ✂️ **Satisfação Parcial (`remainderUnsatisfiedBy`)**: Isole cirurgicamente em tempo de execução quais cláusulas específicas falharam para um determinado candidato.
-- 📐 **Álgebra Booleana Completa & Subsunção**: Composição lógica rigorosa (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), detecção de tautologias/contradições e cálculos de subsunção (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`).
+- 📐 **Álgebra Booleana Completa & Subsunção**: Composição lógica rigorosa (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), cálculo de subsunção (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) e detecção estrutural de tautologia/contradição (`isTautology()`, `isContradiction()`): prova `A ∧ ¬A`, `A ∨ ¬A`, conjunções de operandos disjuntos, `in([])` e as identidades absorventes (`alwaysTrue()`/`alwaysFalse()`); é conservadora (`false` significa "não provado", não há resolução SAT), e o motor de regras aponta regras degeneradas do catálogo como `RuleCompilationWarning` (exemplo 12).
 - 🗄️ **Arquitetura de Repositórios & Particionamento em Grafo (DAG)**:
-  - Descarte antecipado $O(1)$ de ramos em árvores de consulta através de disjunção de especificações.
+  - Descarte antecipado $O(1)$ de ramos em árvores de consulta através de disjunção de especificações, sobre um índice topológico materializado do DAG (`findAll` 45 % a 77 % mais rápido que a caminhada recursiva, ver `tests/Benchmark/REPORT-dag-index.md`).
+  - TTL e auto-prune em repositórios voláteis (`withTtl()`, `prune()`, relógio injetável), herdados pelas partições.
   - Implementações em memória (`InMemoryRepository`), nulas (`NullRepository`) e fake (`FakePartitionRepository`).
   - Persistência desacoplada em disco (`FilePerEntityRepository`, `SingleFileRepository`) com serialização plugável (`JsonEntitySerializer`; o `PhpNativeEntitySerializer` está depreciado desde a v1.5.0 e sai na v2.0.0, por ser o único `unserialize()` da biblioteca: para migrar, carregue o `.bin` existente com ele e grave com o serializer JSON).
   - Cache híbrido $L1$ (RAM) + $L2$ (Disco) via `InMemoryAndFileRepository`.
@@ -59,7 +60,7 @@ Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limi
 | :--- | :---: | :---: | :---: |
 | **Notification Pattern (Zero Exceptions)** | ❌ Apenas booleano | ❌ Apenas booleano ou exceptions | ✅ `evaluate()`, lista agregada de `SpecificationFailure`, códigos e razões |
 | **Classificação por Severidade** | ❌ Não possui | ❌ Não possui | ✅ `BLOCK` (impeditivo), `WARN` (alerta operacional) e `LOG` (auditoria) |
-| **Compilador SQL Multi-SGBD** | ❌ Não possui | ❌ Raro / restrito a 1 banco | ✅ **12 drivers, 7 dialetos** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, ANSI) |
+| **Compilador SQL Multi-SGBD** | ❌ Não possui | ❌ Raro / restrito a 1 banco | ✅ **15 drivers, 10 dialetos** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, Db2, Informix, DuckDB, ANSI) |
 | **Adianti Framework Database Bridge** | ❌ Não aplicável | ❌ Não possui | ✅ `TCriteria` & `TFilter` nativos, De Morgan automático e parênteses estritos |
 | **ALinq Synergy & Coleções Funcionais** | ❌ Não possui | ❌ Não possui | ✅ Compilador GoF de AST para predicados LINQ de curto-circuito e `ALinqBridge` |
 | **Navegação em Propriedades Aninhadas** | ⚠️ Reflexão estrita | ⚠️ Apenas métodos públicos | ✅ **Dot-notation** (`PropertyAccessor`) em objetos profundos e arrays associativos |
@@ -307,7 +308,7 @@ echo $whereClause->getSql();
 print_r($whereClause->getBindings());
 // [':p1' => 5000, ':p2' => 'São%']
 
-// 3. Suporte a 12 drivers em 7 dialetos SQL (SQL Server, Oracle, Firebird, MySQL, SQLite, etc.)
+// 3. Suporte a 15 drivers em 10 dialetos SQL (SQL Server, Oracle, Firebird, MySQL, SQLite, Db2, Informix, DuckDB, etc.)
 $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
 // '([ativo] = 1 AND ([salario] > :p1 OR [cidade] LIKE :p2))'
 
@@ -503,6 +504,69 @@ try {
 }
 ```
 
+### 12. Detecção de Tautologia e Contradição
+
+Toda especificação responde a duas perguntas estruturais, `isTautology()` e `isContradiction()`. Um `true` é prova pela forma da árvore; um `false` significa "não provado" (não há resolução SAT, e `evaluate()` não muda). O motor de regras pode apontar as regras do catálogo que nunca passam ou nunca falham:
+
+```php
+use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
+use Antevemus\ASpecification\Engine\RuleDefinition;
+use Antevemus\ASpecification\Spec;
+
+$active   = Spec::property('status', Spec::equalTo('ACTIVE'));
+$inactive = Spec::property('status', Spec::equalTo('INACTIVE'));
+
+Spec::isContradiction($active->and($active->not()));         // true  (A ∧ ¬A)
+Spec::isTautology($active->or($active->not()));              // true  (A ∨ ¬A)
+$active->and($inactive)->isContradiction();                  // true  (disjoint leaves, same property)
+Spec::in()->isContradiction();                               // true  (the empty set)
+Spec::greaterThan(5)->or(Spec::lessThan(10))->isTautology(); // false: not proven (no SAT solving)
+
+// Rule engine: report the rules that can never pass (or never fail), without blocking
+$catalog = new InMemoryRuleCatalog();
+$catalog->addRule(new RuleDefinition(codigo: 'R-12', nome: 'Active and inactive', tipoRegra: 'status_both', escopo: 'rental_contract'));
+$registry = Spec::ruleRegistry()->registerClosure('status_both', fn() => $active->and($inactive));
+
+$engine = Spec::engine($catalog, $registry)->withCatalogValidation();
+$engine->compileSpecification('rental_contract');
+foreach ($engine->getCompilationWarnings() as $warning) {
+    echo $warning->ruleCode . ': ' . $warning->kind, PHP_EOL;   // "R-12: contradiction"
+}
+```
+
+### 13. Chamadas de Método Declarativas (`MethodParameterizedSpecification`)
+
+`where()` lê uma propriedade; `whereMethod()` / `Spec::calling()` chamam um método público do candidato com argumentos declarados como dados e aplicam uma especificação ao resultado. Diferente de `must(closure)`, nome do método e argumentos são dados: a especificação tem `equals()` estrutural, nome de regra e pode ser descrita num catálogo. Método ausente é erro de avaliação, nunca um `false` silencioso.
+
+```php
+use Antevemus\ASpecification\Spec;
+
+final class Contract
+{
+    public function __construct(private DateTimeImmutable $endsAt, private int $installments) {}
+    public function isEligibleFor(DateTimeInterface $date): bool { return $date <= $this->endsAt; }
+    public function installmentsLeft(int $paid): int { return $this->installments - $paid; }
+}
+
+$eligible = Spec::specify(Contract::class)
+    ->whereMethod('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTrue())
+    ->and(Spec::calling('installmentsLeft', [3], Spec::greaterThan(0)));
+
+$eligible->isSatisfiedBy(new Contract(new DateTimeImmutable('2027-06-30'), 12)); // true
+$eligible->isSatisfiedBy(new Contract(new DateTimeImmutable('2026-06-30'), 12)); // false (not eligible)
+$eligible->isSatisfiedBy(new Contract(new DateTimeImmutable('2027-06-30'), 3));  // false (nothing left)
+
+// Declarative: method name and arguments are data, so equality is structural
+Spec::calling('installmentsLeft', [3], Spec::greaterThan(0))
+    ->equals(Spec::calling('installmentsLeft', [3], Spec::greaterThan(0)));      // true
+
+// A missing method is an evaluation error, never a silent false
+Spec::calling('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTrue())
+    ->evaluate(new stdClass())->isError;                                          // true
+```
+
+Os visitors SQL e TCriteria recusam a chamada de método como folha não traduzível (como `must()`); o visitor ALinq a compila.
+
 ---
 
 ## 🏗️ Estrutura de Diretórios
@@ -528,12 +592,12 @@ src/
 │   ├── Logical/              # AlwaysTrue, AlwaysFalse, JointDenial (NOR), DefaultValue
 │   ├── String/               # Regex, Wildcard, DateString, EnumName
 │   ├── Collection/           # CollectionSpecification, AllEntities, Unique
-│   └── Reflection/           # FieldParameterized, MethodParameterized
+│   └── Reflection/           # MethodParameterizedSpecification (chamada de método declarativa; acesso a campo é where())
 ├── Repositories/              # Repositórios concretos e particionamento
 │   ├── File/                 # SingleFileRepository, FilePerEntityRepository
 │   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
-├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, Builders
+├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
 │   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException
 │   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
 │   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET
@@ -576,35 +640,35 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
  ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
 ====================================================================
 
-• [SUITE] Módulo 1: Especificações e Álgebra Booleana... ✅ PASS (178 asserções)
+• [SUITE] Módulo 1: Especificações e Álgebra Booleana... ✅ PASS (284 asserções)
 • [SUITE] Módulo 2: Entidades e Identificadores... ✅ PASS (59 asserções)
-• [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (46 asserções)
-• [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (36 asserções)
+• [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (90 asserções)
+• [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (94 asserções)
 • [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (115 asserções)
 • [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (97 asserções)
 • [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (61 asserções)
 • [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (133 asserções)
-• [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (96 asserções)
+• [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (203 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
-• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (230 asserções)
-• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (260 asserções)
-• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (174 asserções)
-• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (239 asserções)
+• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (252 asserções)
+• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (459 asserções)
+• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 asserções)
+• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (256 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (213 asserções)
 • [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (303 asserções)
 
 ====================================================================
  RESULTADO FINAL: 16/16 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 2305 | TEMPO: ~1,7s | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 2870 | TEMPO: ~2s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (213 testes PHPUnit, 2.043 asserções; `vendor/bin/phpunit` roda 231 testes e 4.371 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (213 testes PHPUnit, 2.043 asserções; `vendor/bin/phpunit` roda 231 testes e 4.936 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
 - **ALinq Synergy & Coleções Fluentes:** Sinergia nativa com `Antevemus.AlinqCollection`, com compilador `ALinqSpecificationVisitor`, resolução flexível de propriedades `PropertyAccessor` (dot notation) e integração em `InMemoryRepository`.
-- **Multi-SGBD SQL Translator:** 12 drivers (7 dialetos SQL) homologados com quoting de identificadores e prepared statements.
+- **Multi-SGBD SQL Translator:** 15 drivers (10 dialetos SQL) homologados com quoting de identificadores e prepared statements.
 - **Adianti Database Bridge:** Conversão completa para `TCriteria`/`TFilter` com De Morgan e precedência.
 
 ---
@@ -625,9 +689,9 @@ Principais destaques:
 6. **Promessas do README II: IPC entre processos, Unicode, fontes lazy, catálogo relacional e `IN`** (entregue na v1.5.0)
 7. **Backlog anunciado e não entregue I: identidades ULID / UUID v7 e severidade da falha** (entregue na v1.5.0)
 8. **Aposentadoria do serializer PHP nativo, etapa 1: depreciação** (entregue na v1.5.0)
-9. **`MethodParameterizedSpecification`: chamadas de método declarativas** (v1.6.0)
-10. **Detecção de tautologia e contradição** (v1.6.0)
-11. **Backlog anunciado e não entregue II: TTL, índice do DAG de partições e três dialetos SQL** (v1.6.0)
+9. **`MethodParameterizedSpecification`: chamadas de método declarativas** (entregue na v1.6.0)
+10. **Detecção de tautologia e contradição** (entregue na v1.6.0)
+11. **Backlog anunciado e não entregue II: TTL, índice do DAG de partições e três dialetos SQL** (entregue na v1.6.0)
 12. **`simplify()` de especificações** (v1.6.x)
 13. **Aposentadoria do serializer PHP nativo, etapa 2: remoção e envelope só JSON** (v2.0.0)
 14. **Accessor de propriedades compartilhado com o ALinq** (v2.0.0)

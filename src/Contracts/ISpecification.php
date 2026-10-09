@@ -23,9 +23,15 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * - Subsumption algebra (isGeneralizationOf, isSpecialCaseOf, isDisjointWith, isIntersectionOf, intersectsWith)
  * - AST Visitor support (accept, toSql, toCriteria)
  * - Failure notification context (because, withCode)
+ * - Structural tautology/contradiction detection (isTautology, isContradiction; 1.6.0)
+ * - Declarative method-call restriction (whereMethod; 1.6.0)
+ *
+ * Contract extension (1.6.0): isTautology(), isContradiction() and whereMethod() were added to this
+ * interface, as equals() was in 1.2.0. AbstractSpecification provides the defaults; an external class
+ * implementing ISpecification directly (without extending AbstractSpecification) must add them.
  *
  * @template T
- * @version    1.3.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -54,6 +60,28 @@ interface ISpecification
      * @throws \BadMethodCallException If called multiple times consecutively in the same expression
      */
     public function where(string $accessibleObjectName, ISpecification $accessibleObjectSpecification): ICompositeSpecification;
+
+    /**
+     * Restricts the candidate by a declarative method call: calls the public method `$methodName`
+     * of the candidate with `$arguments` and requires the returned value to satisfy `$resultSpecification`.
+     *
+     * The method-call counterpart of where() (1.6.0, forward 018): the method name and the arguments
+     * are data (scalars, null, arrays of those, BackedEnum, DateTimeInterface), so the resulting
+     * MethodParameterizedSpecification has structural equals() and can be described by a catalog.
+     *
+     * <code>
+     * $spec = Spec::specify(Contract::class)
+     *     ->whereMethod('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTrue());
+     * </code>
+     *
+     * @template R
+     * @param string $methodName Public method of the candidate to call
+     * @param list<mixed> $arguments Positional, declarative arguments of the call
+     * @param ISpecification<R> $resultSpecification Specification applied to the returned value
+     * @return ICompositeSpecification<T> Conjunction of this specification with the method-call leaf
+     * @throws \InvalidArgumentException If the method name is invalid or an argument is not declarative
+     */
+    public function whereMethod(string $methodName, array $arguments, ISpecification $resultSpecification): ICompositeSpecification;
 
     /**
      * Appends an inline business rule (closure) to this specification with logical AND.
@@ -339,4 +367,36 @@ interface ISpecification
      * @return bool True when both denote the same predicate
      */
     public function equals(mixed $other): bool;
+
+    /**
+     * Tells whether the structure of this specification proves that every candidate satisfies it.
+     *
+     * Structural and conservative (1.6.0, forward 019): true only when the form of the tree proves
+     * the property (AlwaysTrue, ¬contradiction, A ∨ ¬A, a disjunction holding a tautology, a
+     * conjunction of tautologies); false means "not proven", never "proven false". No SAT solving and
+     * no candidate is evaluated. Null candidates and candidates whose evaluation raises an exception
+     * are outside the claim (a composite never accepts null; an exception is an evaluation error).
+     * A property or method restriction (where(), whereMethod()) is never a tautology: a missing or
+     * null value does not satisfy it.
+     *
+     * Cost: O(n²) in the children of each conjunction/disjunction node (pairwise comparisons).
+     *
+     * @return bool True when the tautology is structurally proven
+     */
+    public function isTautology(): bool;
+
+    /**
+     * Tells whether the structure of this specification proves that no candidate satisfies it.
+     *
+     * Structural and conservative (1.6.0, forward 019): true only when the form of the tree proves
+     * the property (AlwaysFalse, in([]), ¬tautology, A ∧ ¬A, a conjunction holding a contradiction or
+     * two disjoint operands such as equalTo('A') ∧ equalTo('B') on the same property or an inverted
+     * between(), a disjunction of contradictions, a property or method restriction whose inner
+     * specification is a contradiction); false means "not proven", never "proven satisfiable".
+     *
+     * Cost: O(n²) in the children of each conjunction/disjunction node (pairwise comparisons).
+     *
+     * @return bool True when the contradiction is structurally proven
+     */
+    public function isContradiction(): bool;
 }

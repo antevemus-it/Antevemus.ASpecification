@@ -44,11 +44,27 @@ use Throwable;
  * - Consistent removal across sibling partitions
  * - In-place repartitioning of mutated entities, never inserting unknown entities (RN-09)
  * - Membership test (contains) over the node and every descendant partition
+ * - Materialized DAG index (1.6.0, RN-06), invalidated by every structural change (a partition
+ *   attached, detached or re-wired by addPartition*()), in two parts with their own switches:
+ *   (i) per node, the clusters of mutually disjoint direct partitions: put() stops testing the
+ *       partitions of a cluster as soon as one of them accepts the entity, since the algebra
+ *       guarantees that no other member can (disjointness is required in both directions, and a
+ *       failing algebra call never clusters); maintained incrementally on attach/detach. Off by
+ *       default (setDagRoutingEnabled()), see the benchmark report;
+ *   (ii) per subtree, the topological order of its nodes (general to specific, each node once,
+ *       shared nodes included) with the parent and child lists: findAll()/iterate*() walk the
+ *       subtree with an explicit stack over it (no generator per node, one duplicate filter),
+ *       keeping the result order of the recursive walk; remove(), removeAll*() and contains() walk
+ *       the topological order. Pruning by disjunction is unchanged. A structural change during an
+ *       iteration hands the rest of it to the recursive walk (RN-18 preserved). On by default
+ *       (setDagIndexEnabled()).
+ *   Both switches are process-wide; tests/Benchmark/REPORT-dag-index.md holds the measurements that
+ *   decided their defaults.
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPartitionRepository<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -76,6 +92,47 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     protected SplObjectStorage $subPartitions;
 
     protected string $entityType;
+
+    /** Process-wide switch of the subtree index (RN-06 (ii), topological order); see setDagIndexEnabled(). */
+    private static bool $dagIndexEnabled = true;
+
+    /** Process-wide switch of the routing clusters (RN-06 (i)); see setDagRoutingEnabled(). */
+    private static bool $dagRoutingEnabled = false;
+
+    /** Bumped on every structural change of any partition graph (attach, detach, re-wiring). */
+    private static int $graphVersion = 0;
+
+    /** Library classes whose traversal the subtree index may take over (user subclasses keep the recursive walk). */
+    private const INDEXABLE_CLASSES = [
+        self::class => true,
+        VolatilePartitionRepository::class => true,
+        PersistentPartitionRepository::class => true,
+        FakePartitionRepository::class => true,
+        HumanReadableFormatPartitionRepository::class => true,
+        BinaryFormatPartitionRepository::class => true,
+        TextualFormatPartitionRepository::class => true,
+    ];
+
+    /**
+     * Routing index of the direct partitions (RN-06 (i)): object id => [partition, specification, cluster id],
+     * in attachment order; null until the first put() with the index enabled, then maintained incrementally.
+     *
+     * @var array<int, array{0: IPartitionRepository<T>, 1: ISpecification<T>|null, 2: int}>|null
+     */
+    private ?array $routingIndex = null;
+
+    /** @var array<int, array<int, true>> Cluster id => object ids of its mutually disjoint members */
+    private array $routingClusters = [];
+
+    private int $nextClusterId = 0;
+
+    /**
+     * Subtree index (RN-06 (ii)) and the graph version it was built at; 'plan' is null when the subtree
+     * cannot be indexed (a node of a user class, or a cycle).
+     *
+     * @var array{version: int, plan: array{nodes: list<PartitionRepository<T>>, repos: list<IRepository<T>>, specs: list<ISpecification<T>|null>, children: list<list<int>>, parents: list<list<int>>, topo: list<int>}|null}|null
+     */
+    private ?array $subtreeIndex = null;
 
     /**
      * Constructs a PartitionRepository.
@@ -134,6 +191,56 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         }
 
         return new self($underlying, $spec, $parent, $entityType);
+    }
+
+    /**
+     * Turns the subtree index of the DAG (RN-06 (ii): topological order and adjacency walked by
+     * findAll()/iterate*()/remove()/removeAll*()/contains()) on or off for every partition graph of
+     * the process. On by default. Results never depend on it, only the traversal cost does.
+     *
+     * @param bool $enabled
+     * @return void
+     */
+    public static function setDagIndexEnabled(bool $enabled): void
+    {
+        self::$dagIndexEnabled = $enabled;
+    }
+
+    /**
+     * Whether the subtree index of the DAG (RN-06 (ii)) is in use.
+     *
+     * @return bool
+     */
+    public static function isDagIndexEnabled(): bool
+    {
+        return self::$dagIndexEnabled;
+    }
+
+    /**
+     * Turns the routing clusters of put() (RN-06 (i): direct partitions grouped by mutual disjunction,
+     * so that put() stops testing a cluster once a member accepts the entity) on or off for every
+     * partition graph of the process. Off by default: building the clusters costs one
+     * isDisjointWith() pair per sibling pair, and with set specifications (in() of a few hundred
+     * values) that pair costs tens of milliseconds, more than the evaluations it saves on the measured
+     * workloads (tests/Benchmark/REPORT-dag-index.md). Turn it on for graphs whose partition
+     * specifications have cheap disjunction and many siblings. Results never depend on it.
+     *
+     * @param bool $enabled
+     * @return void
+     */
+    public static function setDagRoutingEnabled(bool $enabled): void
+    {
+        self::$dagRoutingEnabled = $enabled;
+    }
+
+    /**
+     * Whether the routing clusters of put() (RN-06 (i)) are in use.
+     *
+     * @return bool
+     */
+    public static function isDagRoutingEnabled(): bool
+    {
+        return self::$dagRoutingEnabled;
     }
 
     /**
@@ -217,7 +324,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         $repoClass = get_class($this->underlyingRepository);
         $newRepo = new $repoClass();
 
-        return $this->addPartitionWithRepository($specification, $newRepo);
+        return $this->addPartitionWithRepository($specification, $this->withInheritedExpiry($newRepo));
     }
 
     /**
@@ -251,7 +358,22 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             ? new $repoClass(repositoryId: $partitionId)
             : new $repoClass();
 
-        return $this->addPartitionWithRepository($specification, $newRepo);
+        return $this->addPartitionWithRepository($specification, $this->withInheritedExpiry($newRepo));
+    }
+
+    /**
+     * A repository the library builds for a new partition expires like this node's own (TTL and clock,
+     * RN-05 of 1.6.0); a repository supplied by the caller is never touched.
+     *
+     * @param IRepository<T> $repository
+     * @return IRepository<T>
+     */
+    private function withInheritedExpiry(IRepository $repository): IRepository
+    {
+        if ($repository instanceof InMemoryRepository && $this->underlyingRepository instanceof InMemoryRepository) {
+            $repository->adoptExpiryPolicyOf($this->underlyingRepository);
+        }
+        return $repository;
     }
 
     /**
@@ -283,6 +405,16 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
      */
     public function contains(IEntity $entity): bool
     {
+        $plan = $this->subtreePlan();
+        if ($plan !== null) {
+            foreach ($plan['topo'] as $i) {
+                if ($plan['repos'][$i]->contains($entity)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         if ($this->underlyingRepository->contains($entity)) {
             return true;
         }
@@ -367,8 +499,8 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             if ($this->specsEquivalent($specification, $existingSpec)) {
                 // (a) Equivalent: replaces P, migrating every entity of P's subtree
                 $onThisLevel = $this->adopt($node);
-                $this->subPartitions->detach($existing);
-                $this->subPartitions->attach($onThisLevel);
+                $this->detachPartition($existing);
+                $this->attachPartition($onThisLevel);
                 foreach ($existing->findAllEntitiesSpecifiedBy(new AlwaysTrueSpecification()) as $entity) {
                     $onThisLevel->put($entity);
                 }
@@ -382,7 +514,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             } elseif ($specification->isGeneralizationOf($existingSpec)) {
                 // (c) S generalizes P: P is re-wired (same node, sub-partitions kept) below the new node
                 $onThisLevel ??= $this->adopt($node);
-                $this->subPartitions->detach($existing);
+                $this->detachPartition($existing);
                 if ($existing instanceof self) {
                     $onThisLevel->insertNode($existing);
                 } else {
@@ -417,7 +549,7 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         }
 
         if (!$placed) {
-            $this->subPartitions->attach($result);
+            $this->attachPartition($result);
             if ($this->underlyingRepository !== $result->getUnderlyingRepository()) {
                 $this->moveMatchingEntities($specification, $result);
             }
@@ -450,6 +582,234 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         $this->parentRepository = $parent;
         $this->parentSpecification = $parent?->getSpecification();
         $this->rootPartition = $parent !== null ? $parent->getRootPartition() : $this;
+        self::$graphVersion++;
+    }
+
+    /**
+     * Attaches a direct partition, invalidating the subtree indexes and updating this node's routing
+     * clusters incrementally (RN-06).
+     *
+     * @param IPartitionRepository<T> $partition
+     * @return void
+     */
+    private function attachPartition(IPartitionRepository $partition): void
+    {
+        if ($this->subPartitions->contains($partition)) {
+            return;
+        }
+        $this->subPartitions->attach($partition);
+        self::$graphVersion++;
+        if ($this->routingIndex !== null) {
+            if (self::$dagRoutingEnabled) {
+                $this->addToRouting($partition);
+            } else {
+                $this->dropRouting(); // rebuilt on demand if the clusters are turned on again
+            }
+        }
+    }
+
+    /**
+     * Forgets the routing clusters of this node.
+     *
+     * @return void
+     */
+    private function dropRouting(): void
+    {
+        $this->routingIndex = null;
+        $this->routingClusters = [];
+    }
+
+    /**
+     * Detaches a direct partition, invalidating the subtree indexes and updating this node's routing
+     * clusters incrementally (RN-06).
+     *
+     * @param IPartitionRepository<T> $partition
+     * @return void
+     */
+    private function detachPartition(IPartitionRepository $partition): void
+    {
+        if (!$this->subPartitions->contains($partition)) {
+            return;
+        }
+        $this->subPartitions->detach($partition);
+        self::$graphVersion++;
+        if ($this->routingIndex !== null && !self::$dagRoutingEnabled) {
+            $this->dropRouting();
+        } elseif ($this->routingIndex !== null) {
+            $oid = spl_object_id($partition);
+            $cluster = $this->routingIndex[$oid][2] ?? null;
+            unset($this->routingIndex[$oid]);
+            if ($cluster !== null) {
+                unset($this->routingClusters[$cluster][$oid]);
+                if ($this->routingClusters[$cluster] === []) {
+                    unset($this->routingClusters[$cluster]);
+                }
+            }
+        }
+    }
+
+    /**
+     * The routing index of the direct partitions, built on first use (RN-06 (i)); null when the index is off.
+     *
+     * @return array<int, array{0: IPartitionRepository<T>, 1: ISpecification<T>|null, 2: int}>|null
+     */
+    private function routing(): ?array
+    {
+        if (!self::$dagRoutingEnabled) {
+            return null;
+        }
+        if ($this->routingIndex === null) {
+            $this->routingIndex = [];
+            $this->routingClusters = [];
+            foreach ($this->subPartitions as $partition) {
+                $this->addToRouting($partition);
+            }
+        }
+        return $this->routingIndex;
+    }
+
+    /**
+     * Places a direct partition in the first cluster whose members are all disjoint with it, or in a
+     * new cluster of its own.
+     *
+     * @param IPartitionRepository<T> $partition
+     * @return void
+     */
+    private function addToRouting(IPartitionRepository $partition): void
+    {
+        $spec = $partition->getSpecification();
+        $target = null;
+        if ($spec !== null) {
+            foreach ($this->routingClusters as $cluster => $members) {
+                $fits = true;
+                foreach ($members as $memberOid => $_) {
+                    if (!self::mutuallyDisjoint($spec, $this->routingIndex[$memberOid][1])) {
+                        $fits = false;
+                        break;
+                    }
+                }
+                if ($fits) {
+                    $target = $cluster;
+                    break;
+                }
+            }
+        }
+        $target ??= $this->nextClusterId++;
+
+        $oid = spl_object_id($partition);
+        $this->routingIndex[$oid] = [$partition, $spec, $target];
+        $this->routingClusters[$target][$oid] = true;
+    }
+
+    /**
+     * Two partition specifications can share a routing cluster only when the algebra declares them
+     * disjoint in both directions; a null specification or a failing algebra call never clusters.
+     *
+     * @param ISpecification<T>|null $a
+     * @param ISpecification<T>|null $b
+     * @return bool
+     */
+    private static function mutuallyDisjoint(?ISpecification $a, ?ISpecification $b): bool
+    {
+        if ($a === null || $b === null) {
+            return false;
+        }
+        try {
+            return $a->isDisjointWith($b) && $b->isDisjointWith($a);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * The subtree index of this node (RN-06 (ii)), rebuilt when any graph changed since it was built:
+     * the nodes in first-visit order (index 0 is this node) with their repositories, specifications,
+     * child and parent lists, and their topological order (every parent before its children).
+     * Null when the index is off or the subtree cannot be indexed.
+     *
+     * @return array{nodes: list<PartitionRepository<T>>, repos: list<IRepository<T>>, specs: list<ISpecification<T>|null>, children: list<list<int>>, parents: list<list<int>>, topo: list<int>}|null
+     */
+    private function subtreePlan(): ?array
+    {
+        if (!self::$dagIndexEnabled) {
+            return null;
+        }
+        if ($this->subtreeIndex !== null && $this->subtreeIndex['version'] === self::$graphVersion) {
+            return $this->subtreeIndex['plan'];
+        }
+
+        $plan = $this->buildSubtreePlan();
+        $this->subtreeIndex = ['version' => self::$graphVersion, 'plan' => $plan];
+        return $plan;
+    }
+
+    /**
+     * Builds the subtree index (see subtreePlan()).
+     *
+     * @return array{nodes: list<PartitionRepository<T>>, repos: list<IRepository<T>>, specs: list<ISpecification<T>|null>, children: list<list<int>>, parents: list<list<int>>, topo: list<int>}|null
+     */
+    private function buildSubtreePlan(): ?array
+    {
+        if (!isset(self::INDEXABLE_CLASSES[static::class])) {
+            return null;
+        }
+
+        $ids = [spl_object_id($this) => 0];
+        $nodes = [$this];
+        $children = [[]];
+        $parents = [[]];
+        for ($i = 0; $i < count($nodes); $i++) {
+            foreach ($nodes[$i]->subPartitions as $child) {
+                if (!$child instanceof self || !isset(self::INDEXABLE_CLASSES[$child::class])) {
+                    return null;
+                }
+                $oid = spl_object_id($child);
+                if (!isset($ids[$oid])) {
+                    $ids[$oid] = count($nodes);
+                    $nodes[] = $child;
+                    $children[] = [];
+                    $parents[] = [];
+                }
+                $children[$i][] = $ids[$oid];
+                $parents[$ids[$oid]][] = $i;
+            }
+        }
+
+        // Kahn's algorithm, first-in first-out: general to specific, ties in discovery order
+        $inDegree = array_map('count', $parents);
+        if ($inDegree[0] !== 0) {
+            return null;
+        }
+        $topo = [];
+        $queue = [0];
+        for ($head = 0; $head < count($queue); $head++) {
+            $i = $queue[$head];
+            $topo[] = $i;
+            foreach ($children[$i] as $c) {
+                if (--$inDegree[$c] === 0) {
+                    $queue[] = $c;
+                }
+            }
+        }
+        if (count($topo) !== count($nodes)) {
+            return null; // a cycle: the recursive walk keeps its own behaviour
+        }
+
+        $repos = [];
+        $specs = [];
+        foreach ($nodes as $node) {
+            $repos[] = $node->underlyingRepository;
+            $specs[] = $node->specification;
+        }
+
+        return [
+            'nodes' => $nodes,
+            'repos' => $repos,
+            'specs' => $specs,
+            'children' => $children,
+            'parents' => $parents,
+            'topo' => $topo,
+        ];
     }
 
     /**
@@ -614,11 +974,27 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     public function put(IEntity $entity): void
     {
         $routed = false;
-        foreach ($this->subPartitions as $partition) {
-            $spec = $partition->getSpecification();
-            if ($spec !== null && $spec->isSatisfiedBy($entity)) {
-                $partition->put($entity);
-                $routed = true;
+        if (self::$dagRoutingEnabled && ($routing = $this->routing()) !== null) {
+            // RN-06 (i): once a member of a cluster of disjoint partitions accepts the entity, the
+            // other members cannot, so they are not evaluated
+            $matched = [];
+            foreach ($routing as [$partition, $spec, $cluster]) {
+                if (isset($matched[$cluster])) {
+                    continue;
+                }
+                if ($spec !== null && $spec->isSatisfiedBy($entity)) {
+                    $partition->put($entity);
+                    $routed = true;
+                    $matched[$cluster] = true;
+                }
+            }
+        } else {
+            foreach ($this->subPartitions as $partition) {
+                $spec = $partition->getSpecification();
+                if ($spec !== null && $spec->isSatisfiedBy($entity)) {
+                    $partition->put($entity);
+                    $routed = true;
+                }
             }
         }
 
@@ -827,6 +1203,17 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     {
         $removed = false;
 
+        $plan = $this->subtreePlan();
+        if ($plan !== null) {
+            // RN-06 (ii): every repository of the subtree once, in topological order (RN-07)
+            foreach ($plan['topo'] as $i) {
+                if ($plan['repos'][$i]->remove($entity)) {
+                    $removed = true;
+                }
+            }
+            return $removed;
+        }
+
         // Remove across all child partitions (RN-07)
         foreach ($this->subPartitions as $partition) {
             if ($partition->remove($entity)) {
@@ -851,6 +1238,32 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
         // O(1) pruning if disjoint from current partition (RN-06)
         if ($this->specification !== null && $this->specification->isDisjointWith($specification)) {
             return 0;
+        }
+
+        $plan = $this->subtreePlan();
+        if ($plan !== null) {
+            // RN-06 (ii): topological order; a node is visited when a visited parent reaches it and it
+            // is not disjoint with the specification (the same nodes the recursive walk prunes)
+            $active = [];
+            $totalRemoved = 0;
+            foreach ($plan['topo'] as $i) {
+                if ($i !== 0) {
+                    $reached = false;
+                    foreach ($plan['parents'][$i] as $parent) {
+                        if (isset($active[$parent])) {
+                            $reached = true;
+                            break;
+                        }
+                    }
+                    $spec = $plan['specs'][$i];
+                    if (!$reached || ($spec !== null && $spec->isDisjointWith($specification))) {
+                        continue;
+                    }
+                }
+                $active[$i] = true;
+                $totalRemoved += $plan['repos'][$i]->removeAllEntitiesSpecifiedBy($specification);
+            }
+            return $totalRemoved;
         }
 
         $totalRemoved = $this->underlyingRepository->removeAllEntitiesSpecifiedBy($specification);
@@ -888,6 +1301,80 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             return;
         }
 
+        $plan = $this->subtreePlan();
+        if ($plan === null) {
+            foreach ($this->iterateRecursively($specification) as $entity) {
+                yield $entity;
+            }
+            return;
+        }
+
+        // RN-06 (ii): depth-first walk with an explicit stack over the index, each node once, in the
+        // order of the recursive walk; one duplicate filter for the whole subtree
+        $version = self::$graphVersion;
+        $seen = [];
+        $visited = [];
+        $stack = [0];
+        $stale = false;
+        while ($stack !== []) {
+            $i = array_pop($stack);
+            if (isset($visited[$i])) {
+                continue;
+            }
+            $visited[$i] = true;
+            if ($i !== 0) {
+                $spec = $plan['specs'][$i];
+                if ($spec !== null && $spec->isDisjointWith($specification)) {
+                    continue;
+                }
+            }
+
+            foreach ($plan['repos'][$i]->iterateAllEntitiesSpecifiedBy($specification) as $entity) {
+                $key = self::identityKey($entity);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                yield $entity;
+            }
+
+            if (self::$graphVersion !== $version) {
+                $stale = true;
+                break;
+            }
+
+            $kids = $plan['children'][$i];
+            for ($k = count($kids) - 1; $k >= 0; $k--) {
+                if (!isset($visited[$kids[$k]])) {
+                    $stack[] = $kids[$k];
+                }
+            }
+        }
+
+        if ($stale) {
+            // The graph changed while the consumer held the iteration (RN-18): the live recursive
+            // walk finishes it, the duplicate filter keeps what was already yielded out
+            foreach ($this->iterateRecursively($specification) as $entity) {
+                $key = self::identityKey($entity);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                yield $entity;
+            }
+        }
+    }
+
+    /**
+     * The recursive walk of 1.4.4 (index off, user node classes, or a graph changed mid-iteration):
+     * the node's own repository, then each partition's own generator, re-scanning the partitions of
+     * this node until no new one appears (RN-18).
+     *
+     * @param ISpecification<T> $specification
+     * @return Generator<int, T>
+     */
+    private function iterateRecursively(ISpecification $specification): Generator
+    {
         $seen = [];
 
         foreach ($this->underlyingRepository->iterateAllEntitiesSpecifiedBy($specification) as $entity) {

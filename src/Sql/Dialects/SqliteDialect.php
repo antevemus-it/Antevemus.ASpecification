@@ -10,7 +10,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Provides support for double-quoted identifiers, numeric booleans (1/0),
  * and portable text comparisons.
  *
- * @version    1.1.0
+ * Pagination (1.6.0): `LIMIT n OFFSET m`; an offset alone is `LIMIT -1 OFFSET m` (SQLite has no
+ * OFFSET without LIMIT).
+ *
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -23,5 +26,11 @@ class SqliteDialect extends AbstractSqlDialect
     public function getFamily(): string
     {
         return 'sqlite';
+    }
+
+    /** {@inheritdoc} `LIMIT n OFFSET m`; an offset alone is `LIMIT -1 OFFSET m`. */
+    protected function formatPagination(string $sql, ?int $limit, ?int $offset): string
+    {
+        return $this->limitOffsetPagination($sql, $limit, $offset, '-1');
     }
 }

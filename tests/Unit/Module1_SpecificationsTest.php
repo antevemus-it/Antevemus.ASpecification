@@ -26,6 +26,32 @@ use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
+use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
+use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
+use Antevemus\ASpecification\Engine\RuleDefinition;
+
+interface F019Payable
+{
+}
+
+interface F019Shippable
+{
+}
+
+class F019Order implements F019Payable, F019Shippable
+{
+    public string $status = 'open';
+}
+
+class F019Invoice implements F019Payable
+{
+}
+
+final class F019Receipt
+{
+}
 
 class Module1_SpecificationsTest extends TestCase
 {
@@ -37,6 +63,14 @@ class Module1_SpecificationsTest extends TestCase
         $this->testRn03IgnoreCaseLeavesAreUnicodeAware();
         $this->testRn07InIsOneSetLeaf();
         $this->testRn07InSetAlgebra();
+
+        // Forward 019 (v1.6.0): detecção estrutural de tautologia e contradição.
+        $this->testF019IdentitiesNegationAndDefaults();
+        $this->testF019GherkinScenarios();
+        $this->testF019LeavesAndRestrictions();
+        $this->testF019TruthTableSoundness();
+        $this->testReadmeF019BlockRunsAsWritten();
+        $this->testF019TypeDisjointnessOnlyWhenSingleInheritanceProvesIt();
         $eq10 = new EqualSpecification(10);
         $gt5 = new GreaterThanSpecification(5);
         $lt20 = new LessThanSpecification(20);
@@ -342,5 +376,301 @@ class Module1_SpecificationsTest extends TestCase
         $this->assertFalse($empty->isGeneralizationOf(Spec::equalTo(1)));
         $this->assertTrue($empty->isSpecialCaseOf(Spec::equalTo(1)));
         $this->assertTrue(Spec::not($empty)->isGeneralizationOf(Spec::equalTo(1)), '¬∅ é a tautologia');
+    }
+
+    /**
+     * Forward 019 RN-01, RN-03, RN-04: default "não provado" na base; identidades; negação.
+     */
+    private function testF019IdentitiesNegationAndDefaults(): void
+    {
+        // RN-01: default da base é false/false (folhas comuns, predicado opaco)
+        foreach ([Spec::equalTo(1), Spec::greaterThan(5), Spec::isNull(), Spec::isNotNull(), Spec::matches('/x/'),
+                  new PredicateSpecification(fn($c) => true), Spec::in(1, 2)] as $leaf) {
+            $this->assertFalse($leaf->isTautology(), (string) $leaf . ' não é tautologia por si');
+            $this->assertFalse($leaf->isContradiction(), (string) $leaf . ' não é contradição por si');
+        }
+
+        // RN-03: identidades
+        $this->assertTrue(Spec::alwaysTrue()->isTautology());
+        $this->assertFalse(Spec::alwaysTrue()->isContradiction());
+        $this->assertTrue(Spec::alwaysFalse()->isContradiction());
+        $this->assertFalse(Spec::alwaysFalse()->isTautology());
+
+        // RN-04: negação troca os papéis, inclusive em dupla negação
+        $this->assertTrue(Spec::not(Spec::alwaysFalse())->isTautology());
+        $this->assertTrue(Spec::not(Spec::alwaysTrue())->isContradiction());
+        $this->assertTrue(Spec::not(Spec::not(Spec::alwaysTrue()))->isTautology());
+        $this->assertFalse(Spec::not(Spec::equalTo(1))->isTautology());
+        $this->assertFalse(Spec::not(Spec::equalTo(1))->isContradiction());
+        $this->assertTrue(Spec::not(Spec::in())->isTautology(), '¬in([]) é tautologia');
+
+        // RN-06/RN-05 com identidades absorventes
+        $x = Spec::property('x', Spec::equalTo(1));
+        $this->assertTrue($x->or(Spec::alwaysTrue())->isTautology());
+        $this->assertTrue($x->and(Spec::alwaysFalse())->isContradiction());
+        $this->assertFalse($x->and(Spec::alwaysTrue())->isTautology(), 'conjunção exige todos tautologias');
+        $this->assertTrue(Spec::alwaysTrue()->and(Spec::not(Spec::alwaysFalse()))->isTautology());
+        $this->assertFalse($x->or(Spec::alwaysFalse())->isContradiction(), 'disjunção exige todos contradições');
+        $this->assertTrue(Spec::alwaysFalse()->or(Spec::in())->isContradiction());
+    }
+
+    /**
+     * Forward 019 §3: os cenários Gherkin, um a um.
+     */
+    private function testF019GherkinScenarios(): void
+    {
+        // Cenário: A ∧ ¬A
+        $a = Spec::property('status', Spec::equalTo('x'));
+        $this->assertTrue($a->and($a->not())->isContradiction(), 'A ∧ ¬A');
+        $this->assertFalse($a->and($a->not())->isTautology());
+        $this->assertTrue($a->or($a->not())->isTautology(), 'A ∨ ¬A');
+        $this->assertFalse($a->or($a->not())->isContradiction());
+        $this->assertTrue($a->not()->and($a)->isContradiction(), 'ordem irrelevante');
+
+        // Cenário: folhas disjuntas (isDisjointWith)
+        $isA = Spec::property('status', Spec::equalTo('A'));
+        $isB = Spec::property('status', Spec::equalTo('B'));
+        $this->assertTrue($isA->and($isB)->isContradiction());
+        $this->assertFalse($isA->or($isB)->isTautology());
+        $this->assertFalse($isA->or($isB)->isContradiction());
+        $this->assertFalse($isA->and(Spec::property('other', Spec::equalTo('B')))->isContradiction(), 'propriedades diferentes');
+
+        // Cenário: conservador (tautologia semântica que a forma não prova)
+        $this->assertFalse(Spec::greaterThan(5)->or(Spec::lessThan(10))->isTautology());
+        $this->assertFalse(Spec::property('n', Spec::greaterThan(5))->or(Spec::property('n', Spec::lessThan(10)))->isTautology());
+        $this->assertFalse(Spec::property('n', Spec::lessThan(5))->or(Spec::property('n', Spec::greaterThanOrEqualTo(5)))->isTautology(),
+            'complemento só por equals(not()): x<5 ∨ x>=5 falha para valor nulo');
+
+        // Cenário: achatamento ((a ∧ b) ∧ ¬a)
+        $b = Spec::property('kind', Spec::equalTo('k'));
+        $this->assertTrue($a->and($b)->and($a->not())->isContradiction());
+        $this->assertTrue(new AndSpecification(new AndSpecification($a, $b), new NotSpecification($a)) instanceof ISpecification);
+        $this->assertTrue((new AndSpecification(new AndSpecification($a, $b), new NotSpecification($a)))->isContradiction());
+        $this->assertTrue((new AndSpecification($b, new AndSpecification($a->not(), $b)))->and($a)->isContradiction(), 'qualquer associação');
+        $this->assertTrue($a->or($b)->or($a->not())->isTautology(), 'disjunção achatada');
+        $this->assertTrue(Spec::allOf($a, $b, Spec::property('kind', Spec::equalTo('z')))->isContradiction(), 'par disjunto no meio da cadeia');
+        $this->assertTrue(Spec::isContradiction($a->and($a->not())));
+        $this->assertTrue(Spec::isTautology($a->or($a->not())));
+
+        // RN-07: NOR ≡ ¬(a ∨ b)
+        $this->assertTrue(Spec::nor($a, $a->not())->isContradiction(), 'NOR(A, ¬A) ≡ ¬(A ∨ ¬A)');
+        $this->assertTrue(Spec::nor(Spec::alwaysFalse(), Spec::in())->isTautology());
+        $this->assertTrue(Spec::nor($a, Spec::alwaysTrue())->isContradiction());
+        $this->assertFalse(Spec::nor($a, $b)->isContradiction());
+        $this->assertFalse(Spec::nor($a, $b)->isTautology());
+        $this->assertTrue(Spec::nor($a->or($b), $a->not())->isContradiction(), 'operandos do NOR achatados');
+    }
+
+    /**
+     * Forward 019 RN-08, RN-09: where() só herda contradição; in([]) e between invertido.
+     */
+    private function testF019LeavesAndRestrictions(): void
+    {
+        // RN-09
+        $this->assertTrue(Spec::in()->isContradiction());
+        $this->assertTrue(Spec::in([])->isContradiction());
+        $this->assertFalse(Spec::in(1)->isContradiction());
+        $inverted = Spec::between(new \DateTimeImmutable('2026-12-01'), new \DateTimeImmutable('2026-01-01'));
+        $this->assertTrue($inverted->isContradiction(), 'between(a, b) com a > b');
+        $this->assertFalse(Spec::between(new \DateTimeImmutable('2026-01-01'), new \DateTimeImmutable('2026-12-01'))->isContradiction());
+        $this->assertTrue(Spec::between(new \DateTimeImmutable('2026-01-01'), new \DateTimeImmutable('2026-01-01'))->isContradiction() === false, 'intervalo fechado de um ponto');
+        $this->assertTrue(Spec::greaterThan(10)->and(Spec::lessThan(5))->isContradiction(), 'faixas disjuntas');
+        $this->assertTrue(Spec::equalTo(5)->and(Spec::notEqual(5))->isContradiction());
+        $this->assertFalse(Spec::greaterThan(5)->and(Spec::lessThan(10))->isContradiction());
+
+        // RN-08: where(prop, X) herda só a contradição de X
+        $this->assertTrue(Spec::property('a', Spec::alwaysFalse())->isContradiction());
+        $this->assertTrue(Spec::property('a', Spec::in())->isContradiction());
+        $this->assertTrue(Spec::property('a', Spec::greaterThan(10)->and(Spec::lessThan(5)))->isContradiction());
+        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->isTautology(), 'propriedade ausente ou nula não satisfaz');
+        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->isSatisfiedBy((object) ['a' => null]));
+        $this->assertTrue(Spec::property('a', Spec::alwaysFalse())->not()->isTautology(), '¬where(contradição)');
+        $this->assertTrue(Spec::property('a', Spec::alwaysTrue(), Spec::alwaysFalse())->isContradiction(), 'base contraditória');
+    }
+
+    /**
+     * Forward 019 RN-02: guarda de soundness por tabela-verdade. Árvores aleatórias (semente fixa)
+     * sobre três folhas, avaliadas em todos os candidatos possíveis: isTautology() ⇒ todas
+     * verdadeiras; isContradiction() ⇒ todas falsas. Dois conjuntos de folhas: igualdades (o do
+     * requisito) e relacionais (guarda da álgebra de faixas e da inversão de operador com valor nulo).
+     */
+    private function testF019TruthTableSoundness(): void
+    {
+        $pools = [
+            'igualdade' => [
+                'leaves' => [
+                    Spec::property('a', Spec::equalTo(1)),
+                    Spec::property('a', Spec::equalTo(2)),
+                    Spec::property('b', Spec::equalTo(1)),
+                ],
+                'domain' => [1, 2, null],
+            ],
+            'relacional' => [
+                'leaves' => [
+                    Spec::property('a', Spec::lessThan(2)),
+                    Spec::property('a', Spec::greaterThanOrEqualTo(2)),
+                    Spec::property('b', Spec::greaterThan(1)),
+                ],
+                'domain' => [1, 2, 3, null],
+            ],
+        ];
+
+        foreach ($pools as $poolName => $pool) {
+            $candidates = [];
+            foreach ($pool['domain'] as $va) {
+                foreach ($pool['domain'] as $vb) {
+                    $candidates[] = (object) ['a' => $va, 'b' => $vb];
+                }
+            }
+
+            mt_srand(20261009);
+            $tautologies = 0;
+            $contradictions = 0;
+            $violations = [];
+            for ($i = 0; $i < 1500; $i++) {
+                $tree = $this->randomTree($pool['leaves'], 4);
+                $values = array_map(static fn(object $c): bool => $tree->isSatisfiedBy($c), $candidates);
+
+                $isTautology = $tree->isTautology();
+                $isContradiction = $tree->isContradiction();
+                $label = sprintf('[%s #%d] %s', $poolName, $i, (string) $tree);
+
+                if ($isTautology && $isContradiction) {
+                    $violations[] = "tautologia e contradição ao mesmo tempo: {$label}";
+                }
+                if ($isTautology) {
+                    $tautologies++;
+                    if (in_array(false, $values, true)) {
+                        $violations[] = "tautologia refutada por um candidato: {$label}";
+                    }
+                }
+                if ($isContradiction) {
+                    $contradictions++;
+                    if (in_array(true, $values, true)) {
+                        $violations[] = "contradição satisfeita por um candidato: {$label}";
+                    }
+                }
+            }
+
+            // Nenhum true indevido em 1500 árvores × todos os candidatos (uma asserção por conjunto).
+            $this->assertEquals([], $violations, "[{$poolName}] " . implode(PHP_EOL, array_slice($violations, 0, 5)));
+            // A guarda não é vacuamente verdadeira: a detecção disparou nos dois sentidos.
+            $this->assertTrue($tautologies > 0, "[{$poolName}] nenhuma tautologia detectada");
+            $this->assertTrue($contradictions > 0, "[{$poolName}] nenhuma contradição detectada");
+        }
+    }
+
+    /**
+     * Árvore aleatória sobre as folhas dadas: NOT, AND, OR, NOR e os padrões X ∧ ¬X / X ∨ ¬X
+     * (para que a detecção positiva seja exercitada, não só a negativa).
+     *
+     * @param list<ISpecification> $leaves
+     */
+    private function randomTree(array $leaves, int $depth): ISpecification
+    {
+        if ($depth === 0 || mt_rand(0, 9) < 3) {
+            return $leaves[mt_rand(0, count($leaves) - 1)];
+        }
+
+        $d = $depth - 1;
+        return match (mt_rand(0, 6)) {
+            0 => new NotSpecification($this->randomTree($leaves, $d)),
+            1, 2 => new AndSpecification($this->randomTree($leaves, $d), $this->randomTree($leaves, $d)),
+            3, 4 => new OrSpecification($this->randomTree($leaves, $d), $this->randomTree($leaves, $d)),
+            5 => new JointDenialSpecification($this->randomTree($leaves, $d), $this->randomTree($leaves, $d)),
+            default => (function () use ($leaves, $d): ISpecification {
+                $x = $this->randomTree($leaves, $d);
+                $other = $this->randomTree($leaves, $d);
+                return mt_rand(0, 1) === 0
+                    ? new AndSpecification(new AndSpecification($x, $other), $x->not())
+                    : new OrSpecification($x->not(), new OrSpecification($other, $x));
+            })(),
+        };
+    }
+
+    /**
+     * Forward 019 RN-12: o bloco de exemplo do README (EN/pt-BR) transcrito; cada comentário
+     * "// true"/"// false" do bloco é uma asserção aqui.
+     */
+    private function testReadmeF019BlockRunsAsWritten(): void
+    {
+        $active   = Spec::property('status', Spec::equalTo('ACTIVE'));
+        $inactive = Spec::property('status', Spec::equalTo('INACTIVE'));
+
+        $this->assertTrue(Spec::isContradiction($active->and($active->not())));      // true  (A ∧ ¬A)
+        $this->assertTrue(Spec::isTautology($active->or($active->not())));           // true  (A ∨ ¬A)
+        $this->assertTrue($active->and($inactive)->isContradiction());               // true  (disjoint leaves, same property)
+        $this->assertTrue(Spec::in()->isContradiction());                            // true  (the empty set)
+        $this->assertFalse(Spec::greaterThan(5)->or(Spec::lessThan(10))->isTautology()); // false: not proven (no SAT solving)
+
+        // Rule engine: report the rules that can never pass (or never fail), without blocking
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'R-12', nome: 'Active and inactive', tipoRegra: 'status_both', escopo: 'rental_contract'));
+        $registry = Spec::ruleRegistry()->registerClosure('status_both', fn() => $active->and($inactive));
+
+        $engine = Spec::engine($catalog, $registry)->withCatalogValidation();
+        $engine->compileSpecification('rental_contract');
+        $lines = [];
+        foreach ($engine->getCompilationWarnings() as $warning) {
+            $lines[] = $warning->ruleCode . ': ' . $warning->kind;                // "R-12: contradiction"
+        }
+        $this->assertEquals(['R-12: contradiction'], $lines);
+    }
+
+    /**
+     * Forward 019 RN-02 (achado da guarda): tipos sem relação só são disjuntos quando a herança
+     * simples prova. Antes, specify(IFoo) ⟂ specify(IBar) e a conjunção virava contradição falsa
+     * embora uma classe possa implementar as duas.
+     */
+    private function testF019TypeDisjointnessOnlyWhenSingleInheritanceProvesIt(): void
+    {
+        $payable = Spec::specify(F019Payable::class);
+        $shippable = Spec::specify(F019Shippable::class);
+        $order = new F019Order();
+
+        // Duas interfaces: não disjuntas, a conjunção não é contradição e é satisfeita
+        $this->assertFalse($payable->isDisjointWith($shippable));
+        // (o and() fluente de specify(T) mantém a guarda de paridade Domian por tipos atribuíveis;
+        // a conjunção é montada diretamente)
+        $both = new AndSpecification($payable, $shippable);
+        $this->assertFalse($both->isContradiction());
+        $this->assertTrue($both->isSatisfiedBy($order));
+        $this->assertFalse(Spec::property('status', Spec::equalTo('open'), $payable)
+            ->isDisjointWith(Spec::property('status', Spec::equalTo('open'), $shippable)));
+
+        // Interface × classe não final: uma subclasse pode implementar a interface
+        $this->assertFalse(Spec::specify(F019Shippable::class)->isDisjointWith(Spec::specify(F019Invoice::class)));
+        // Interface × classe final que não a implementa: disjuntas
+        $this->assertTrue(Spec::specify(F019Shippable::class)->isDisjointWith(Spec::specify(F019Receipt::class)));
+        // Duas classes sem relação: disjuntas (herança simples), como antes
+        $this->assertTrue(Spec::specify(F019Invoice::class)->isDisjointWith(Spec::specify(F019Receipt::class)));
+        $this->assertTrue((new AndSpecification(Spec::specify(F019Invoice::class), Spec::specify(F019Order::class)))->isContradiction());
+        // Hierarquia: nunca disjuntas
+        $this->assertFalse(Spec::specify(F019Payable::class)->isDisjointWith(Spec::specify(F019Order::class)));
+
+        // Folhas de valor × spec tipada: disjunção só quando identidade estrita ou a comparação
+        // (que lançaria para um candidato do tipo) prova. Antes, notEqual(null) e greaterThan(DateTime)
+        // eram declaradas disjuntas de specify(DateTimeImmutable) só pela classe do valor.
+        $immutable = Spec::specify(\DateTimeImmutable::class);
+        $afterMutable = Spec::greaterThan(new \DateTime('2020-01-01'));
+        $this->assertFalse($immutable->isDisjointWith($afterMutable));
+        $this->assertFalse((new AndSpecification($immutable, $afterMutable))->isContradiction());
+        $this->assertTrue((new AndSpecification($immutable, $afterMutable))->isSatisfiedBy(new \DateTimeImmutable('2025-01-01')));
+        $invoice = Spec::specify(F019Invoice::class);
+        $this->assertFalse($invoice->isDisjointWith(Spec::notEqual(null)), 'qualquer Invoice é !== null');
+        $this->assertTrue($invoice->isDisjointWith(Spec::notEqual(5)), 'objeto × escalar lança: nenhuma Invoice satisfaz');
+        $this->assertTrue($invoice->isDisjointWith(Spec::greaterThan(5)));
+        $this->assertTrue($invoice->isDisjointWith(Spec::after(new \DateTimeImmutable('2020-01-01'))), 'classe que não é data');
+        $this->assertFalse(Spec::specify(F019Payable::class)->isDisjointWith(Spec::after(new \DateTimeImmutable('2020-01-01'))),
+            'interface: uma subclasse de DateTime pode implementá-la');
+        $this->assertTrue($invoice->isDisjointWith(Spec::equalTo(new F019Order())), 'identidade estrita, como antes');
+        $this->assertFalse(Spec::specify(F019Order::class)->isDisjointWith(Spec::equalTo(new F019Order())));
+
+        // Mesmo instante não limita a classe do candidato: DateTime e DateTimeImmutable no mesmo instante
+        $instant = Spec::atTheSameTimeAs(new \DateTimeImmutable('2026-01-01 00:00:00'));
+        $this->assertFalse($immutable->isGeneralizationOf($instant));
+        $outsideImmutable = new AndSpecification($immutable->not(), $instant);
+        $this->assertFalse($outsideImmutable->isContradiction());
+        $this->assertTrue($outsideImmutable->isSatisfiedBy(new \DateTime('2026-01-01 00:00:00')));
     }
 }

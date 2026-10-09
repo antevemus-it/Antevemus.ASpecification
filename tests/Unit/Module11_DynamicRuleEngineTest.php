@@ -19,6 +19,7 @@ use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
 use Antevemus\ASpecification\Engine\RuleAction;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
+use Antevemus\ASpecification\Engine\RuleCompilationWarning;
 use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 use Antevemus\ASpecification\Engine\RuleDefinition;
 use Antevemus\ASpecification\Engine\RuleEngineVerdict;
@@ -52,7 +53,7 @@ final class Module11Contract
  * de requisitos documentais (ALL, ANY, ONE_OF_SET), a triagem operacional de vereditos (RuleEngineVerdict)
  * e o isolamento de handlers plugáveis.
  *
- * @version    0.1
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -104,6 +105,9 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $this->testEngineStampsSeverityFromRuleAction();
         $this->testSeverityFollowsEffectiveActionAndEvaluationErrors();
         $this->testDocumentFailuresAreErrorSeverity();
+
+        // Forward 019 RN-11 (1.6.0): RuleCompilationWarning no modo de validação do catálogo.
+        $this->testCatalogValidationWarnsDegenerateRules();
     }
 
     /**
@@ -1247,5 +1251,76 @@ class Module11_DynamicRuleEngineTest extends TestCase
         foreach ($errorVerdict->getAllFailures() as $failure) {
             $this->assertEquals(FailureSeverity::ERROR, $failure->getSeverity(), 'erro de avaliação documental é ERROR');
         }
+    }
+
+    /**
+     * Forward 019 §3 (cenário "motor de regras") e RN-11: em modo de validação do catálogo, cada
+     * regra compilada que é contradição (nunca satisfeita) ou tautologia (nunca falha) gera um
+     * RuleCompilationWarning; a compilação não falha e o veredito não muda.
+     */
+    private function testCatalogValidationWarnsDegenerateRules(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $registry = new RuleSpecificationRegistry();
+
+        $catalog->addRule(new RuleDefinition(codigo: 'r_contra', nome: 'Status A e B', tipoRegra: 'status_ab', escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'r_ok', nome: 'Valor positivo', tipoRegra: 'positivo', escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'r_tauto', nome: 'Ativo ou não', tipoRegra: 'ativo_ou_nao', escopo: 'x'));
+
+        $registry->registerClosure('status_ab', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('status', Spec::equalTo('A'))->and(Spec::property('status', Spec::equalTo('B'))));
+        $registry->registerClosure('positivo', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('valor', Spec::greaterThan(0)));
+        $active = Spec::property('ativo', Spec::isTrue());
+        $registry->registerClosure('ativo_ou_nao', fn(IRuleDefinition $r): ISpecification => $active->or($active->not()));
+
+        // Modo desligado (default): nenhuma inspeção
+        $plain = new DynamicSpecificationEngine($catalog, $registry);
+        $this->assertFalse($plain->isCatalogValidationEnabled());
+        $plain->compileSpecification('x');
+        $this->assertEquals([], $plain->getCompilationWarnings());
+
+        // Modo ligado: um aviso por regra degenerada, na ordem do catálogo; compilação não falha
+        $engine = $plain->withCatalogValidation();
+        $this->assertTrue($engine->isCatalogValidationEnabled());
+        $this->assertFalse($plain->isCatalogValidationEnabled(), 'withCatalogValidation() devolve cópia');
+        $compiled = $engine->compileSpecification('x');
+        $this->assertInstanceOf(ISpecification::class, $compiled);
+        $warnings = $engine->getCompilationWarnings();
+        $this->assertCount(2, $warnings);
+        $this->assertInstanceOf(RuleCompilationWarning::class, $warnings[0]);
+        $this->assertEquals('r_contra', $warnings[0]->ruleCode);
+        $this->assertEquals('status_ab', $warnings[0]->ruleType);
+        $this->assertTrue($warnings[0]->isContradiction());
+        $this->assertEquals(RuleCompilationWarning::KIND_CONTRADICTION, $warnings[0]->kind);
+        $this->assertTrue(str_contains((string) $warnings[0], 'r_contra'));
+        $this->assertEquals('r_tauto', $warnings[1]->ruleCode);
+        $this->assertTrue($warnings[1]->isTautology());
+        $this->assertTrue($warnings[1]->specification->isTautology());
+
+        // O veredito é o mesmo com e sem o modo: o aviso só é reportado, nunca bloqueia nem entra no veredito
+        $candidate = (object) ['status' => 'A', 'valor' => 5, 'ativo' => true];
+        $withMode = $engine->validate($candidate, 'x');
+        $withoutMode = $plain->validate($candidate, 'x');
+        $this->assertEquals($withoutMode->getFailureCodes(), $withMode->getFailureCodes());
+        $this->assertEquals(['r_contra'], $withMode->getFailureCodes(), 'a regra contraditória falha sempre');
+        $this->assertCount(2, $engine->getCompilationWarnings(), 'validate() também compila com o modo');
+
+        // Construtor também liga o modo; aviso atravessa RuleBoundSpecification devolvida pelo handler
+        $boundRegistry = new RuleSpecificationRegistry();
+        $boundCatalog = new InMemoryRuleCatalog();
+        $rule = new RuleDefinition(codigo: 'r_bound', nome: 'Vazio', tipoRegra: 'vazio', escopo: 'y');
+        $boundCatalog->addRule($rule);
+        $boundRegistry->registerClosure('vazio', fn(IRuleDefinition $r): ISpecification =>
+            new RuleBoundSpecification(Spec::property('tipo', Spec::in()), $r));
+        $byConstructor = new DynamicSpecificationEngine($boundCatalog, $boundRegistry, null, true);
+        $byConstructor->compileSpecification('y');
+        $this->assertCount(1, $byConstructor->getCompilationWarnings());
+        $this->assertTrue($byConstructor->getCompilationWarnings()[0]->isContradiction());
+
+        // Catálogo sem regras degeneradas: lista vazia, e a lista é zerada a cada compilação
+        $engine->compileSpecification('escopo_sem_regras');
+        $this->assertEquals([], $engine->getCompilationWarnings());
+        $this->assertEquals([], $plain->withCatalogValidation(false)->getCompilationWarnings());
     }
 }

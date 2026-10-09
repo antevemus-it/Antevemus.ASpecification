@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
+use InvalidArgumentException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 
@@ -18,15 +20,17 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Composite escaping for qualified identifiers (table.column)
  * - Universal tautologies (1 = 1 and 1 = 0)
  * - Default LIKE search handling with LOWER()
+ * - Default pagination in the SQL:2008 form (`OFFSET m ROWS FETCH FIRST n ROWS ONLY`, 1.6.0), which
+ *   Oracle 12c+, Firebird 3+ and Db2 accept; dialects with another syntax override formatPagination()
  *
- * @version    1.4.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-abstract class AbstractSqlDialect implements ISqlDialect
+abstract class AbstractSqlDialect implements ISqlDialect, ISqlPagination
 {
     /** Plain identifier segment: letter or underscore, then letters, digits, underscore or dollar. */
     private const SEGMENT = '[A-Za-z_][A-Za-z0-9_$]*';
@@ -120,5 +124,79 @@ abstract class AbstractSqlDialect implements ISqlDialect
     public function supportsRegex(): bool
     {
         return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Validates the arguments, drops a trailing semicolon and delegates the syntax to
+     * formatPagination().
+     */
+    public function paginate(string $selectSql, ?int $limit, ?int $offset = null): string
+    {
+        if ($limit !== null && $limit < 1) {
+            throw new InvalidArgumentException("The row limit must be at least 1, {$limit} given.");
+        }
+        if ($offset !== null && $offset < 0) {
+            throw new InvalidArgumentException("The row offset cannot be negative, {$offset} given.");
+        }
+
+        $sql = rtrim(rtrim($selectSql), ';');
+        $sql = rtrim($sql);
+        if ($offset === 0) {
+            $offset = null;
+        }
+        if ($limit === null && $offset === null) {
+            return $sql;
+        }
+
+        return $this->formatPagination($sql, $limit, $offset);
+    }
+
+    /**
+     * Places the (validated) limit and offset in the statement. Default: SQL:2008
+     * `OFFSET m ROWS FETCH FIRST n ROWS ONLY` (each part only when present).
+     *
+     * @param string $sql Statement without trailing semicolon
+     * @param int|null $limit Row limit (>= 1) or null
+     * @param int|null $offset Offset (>= 1) or null
+     * @return string
+     */
+    protected function formatPagination(string $sql, ?int $limit, ?int $offset): string
+    {
+        $suffix = [];
+        if ($offset !== null) {
+            $suffix[] = "OFFSET {$offset} ROWS";
+        }
+        if ($limit !== null) {
+            $suffix[] = "FETCH FIRST {$limit} ROWS ONLY";
+        }
+
+        return $sql . ' ' . implode(' ', $suffix);
+    }
+
+    /**
+     * `LIMIT n OFFSET m` form shared by PostgreSQL, MySQL, SQLite and DuckDB; $limitWhenOffsetOnly is
+     * what the engine needs in place of the limit when only an offset is given (null: OFFSET alone).
+     *
+     * @param string $sql
+     * @param int|null $limit
+     * @param int|null $offset
+     * @param string|null $limitWhenOffsetOnly
+     * @return string
+     */
+    protected function limitOffsetPagination(string $sql, ?int $limit, ?int $offset, ?string $limitWhenOffsetOnly = null): string
+    {
+        $suffix = [];
+        if ($limit !== null) {
+            $suffix[] = "LIMIT {$limit}";
+        } elseif ($limitWhenOffsetOnly !== null) {
+            $suffix[] = "LIMIT {$limitWhenOffsetOnly}";
+        }
+        if ($offset !== null) {
+            $suffix[] = "OFFSET {$offset}";
+        }
+
+        return $sql . ' ' . implode(' ', $suffix);
     }
 }

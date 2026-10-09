@@ -30,11 +30,12 @@ use Throwable;
  * - Attribute-targeted diagnostic failures via Notification Pattern
  * - Polymorphic resolution via PropertyAccessor
  * - Composition AST traversal
+ * - Contradiction inherited from the inner specification, never the tautology (1.6.0)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -340,11 +341,7 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
         if ($other instanceof self) {
             $thisType = $this->getType();
             $otherType = $other->getType();
-            if (
-                SpecificationAlgebra::isClassLike($thisType)
-                && SpecificationAlgebra::isClassLike($otherType)
-                && !SpecificationAlgebra::canCastAtLeastOneWay($thisType, $otherType)
-            ) {
+            if (SpecificationAlgebra::areTypesDisjoint($thisType, $otherType)) {
                 return true;
             }
             if ($this->propertyName === $other->getPropertyName()) {
@@ -361,5 +358,17 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         return !$this->isDisjointWith($otherSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-08 (forward 019): a property restriction is a contradiction when its inner specification (or
+     * its base) is one. It never inherits a tautology: a missing or null property does not satisfy it.
+     */
+    public function isContradiction(): bool
+    {
+        return $this->propertySpecification->isContradiction()
+            || $this->baseSpecification->isContradiction();
     }
 }

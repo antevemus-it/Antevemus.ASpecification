@@ -10,7 +10,10 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Provides support for double-quoted identifiers in upper case ("COLUMN"), numeric booleans (1/0),
  * case-insensitive matching via LOWER(), and native REGEXP_LIKE pattern matching.
  *
- * @version    1.4.0
+ * Pagination (1.6.0): the SQL:2008 form inherited from AbstractSqlDialect,
+ * `OFFSET m ROWS FETCH FIRST n ROWS ONLY` (Oracle 12c+).
+ *
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

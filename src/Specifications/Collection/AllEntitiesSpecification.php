@@ -26,7 +26,7 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -91,10 +91,8 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
         }
 
         $otherType = SpecificationAlgebra::resolve($otherSpecification)->getType();
-        if (
-            SpecificationAlgebra::isClassLike($otherType)
-            && !SpecificationAlgebra::canCastAtLeastOneWay($otherType, $this->targetType)
-        ) {
+        if (SpecificationAlgebra::areTypesDisjoint($otherType, $this->targetType)) {
+            // Only when single inheritance proves it (1.6.0): unrelated interfaces may share an instance.
             return true;
         }
 

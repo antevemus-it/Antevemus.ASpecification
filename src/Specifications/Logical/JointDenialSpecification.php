@@ -24,11 +24,12 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * - Composite operand inspection (left, right, specifications list)
  * - Set algebra by equivalence with ¬(A ∨ B): subsumption, disjointness and structural
  *   equality (same unordered pair of operands) delegate to that form
+ * - Tautology/contradiction (1.6.0) derived from ¬(A ∨ B)
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.4.4
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -182,5 +183,39 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
         return !$this->isDisjointWith($otherSpecification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-07 (forward 019): NOR(a, b) ≡ ¬(a ∨ b), so it is a tautology iff a ∨ b is a contradiction
+     * (RN-04 over RN-06).
+     */
+    public function isTautology(): bool
+    {
+        return SpecificationAlgebra::isContradictoryDisjunction($this->disjunctionOperands());
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * RN-07 (forward 019): NOR(a, b) is a contradiction iff a ∨ b is a tautology.
+     */
+    public function isContradiction(): bool
+    {
+        return SpecificationAlgebra::isTautologicalDisjunction($this->disjunctionOperands());
+    }
+
+    /**
+     * The flattened operands of the denied disjunction a ∨ b.
+     *
+     * @return list<ISpecification<mixed>>
+     */
+    private function disjunctionOperands(): array
+    {
+        return array_merge(
+            SpecificationAlgebra::flattenDisjunction($this->left),
+            SpecificationAlgebra::flattenDisjunction($this->right)
+        );
     }
 }

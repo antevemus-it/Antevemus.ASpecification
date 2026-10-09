@@ -13,10 +13,11 @@ use Antevemus\ASpecification\Sql\SqlDialect;
  * Instantiates the matching dialect strategy based on driver enum or string.
  *
  * Features:
- * - Resolution across 9 driver families (sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite, ansi)
+ * - Resolution of 15 driver names (sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql,
+ *   sqlite, ansi, db2, informix, duckdb) into 10 dialect classes
  * - Immutable instance caching for high performance
  *
- * @version    1.1.0
+ * @version    1.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -54,6 +55,9 @@ final class SqlDialectFactory
             SqlDialect::ORACLE, SqlDialect::OCI => new OracleDialect($enum->value),
             SqlDialect::SQLSRV, SqlDialect::MSSQL, SqlDialect::DBLIB => new SqlServerDialect($enum->value),
             SqlDialect::FIREBIRD, SqlDialect::FBIRD, SqlDialect::IBASE => new FirebirdDialect($enum->value),
+            SqlDialect::DB2 => new Db2Dialect(),
+            SqlDialect::INFORMIX => new InformixDialect(),
+            SqlDialect::DUCKDB => new DuckDbDialect(),
             SqlDialect::ANSI => new AnsiSqlDialect(),
         };
 
