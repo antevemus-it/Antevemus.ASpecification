@@ -51,6 +51,11 @@ $cases = [
     'regexSensitive'            => Spec::property('code', Spec::regex('/^Abc/')),
     'notRegexIgnoreCase'        => Spec::not(Spec::property('code', Spec::regex('/^abc/i'))),
     'regexLegacy'               => Spec::property('cpf', new RegexSpecification('^[0-9]+$')),
+    // Forward 017 (v1.5.0), RN-07: InSpecification como TFilter IN / NOT IN
+    'inList'                    => Spec::property('status', Spec::in('A', 'B')),
+    'notInList'                 => Spec::property('status', Spec::notIn('A', 'B')),
+    'inWithNull'                => Spec::property('status', Spec::in('A', null)),
+    'inIntegers'                => Spec::property('n', Spec::in(1, 2, 3)),
 ];
 
 $out = [];

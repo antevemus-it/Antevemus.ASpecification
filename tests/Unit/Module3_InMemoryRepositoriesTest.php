@@ -15,6 +15,13 @@ use Antevemus\ASpecification\Repositories\PartitionRepository;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
+use Antevemus\ASpecification\Linq\ALinqBridge;
+use Antevemus\ASpecification\Repositories\VolatilePartitionRepository;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
+use Antevemus\ASpecification\Tests\Support\CountingSpecification;
+use Antevemus\ASpecification\Tests\Support\InstrumentedInMemoryRepository;
+use Antevemus\ASpecification\Tests\Support\LazyProbeEntity;
+use Generator;
 
 class Module3_InMemoryRepositoriesTest extends TestCase
 {
@@ -40,6 +47,11 @@ class Module3_InMemoryRepositoriesTest extends TestCase
 
         $this->testContainsIsPartOfEveryRepository();
         $this->testContainsDefaultImplementationAndPartitions();
+
+        // Forward 017 (v1.5.0), RN-04: iterate*() lazy de verdade e findAsLazyCollection() sem getAll().
+        $this->testRn04InMemoryIterateIsLazyWithoutCopy();
+        $this->testRn04VolatilePartitionIterateIsLazy();
+        $this->testRn04LazyCollectionNeverCallsGetAll();
     }
 
     /**
@@ -139,5 +151,121 @@ class Module3_InMemoryRepositoriesTest extends TestCase
         $this->assertTrue($root->contains($u2), 'raiz enxerga a entidade do próprio nó');
         $root->remove($u1);
         $this->assertFalse($root->contains($u1));
+    }
+
+    /**
+     * RN-04 (forward 017, v1.5.0): InMemoryRepository::iterate() é um generator que avalia cada
+     * entidade só quando puxada, sem getAll() e sem copiar o mapa; escritas durante a iteração não
+     * a perturbam (snapshot copy-on-write).
+     */
+    private function testRn04InMemoryIterateIsLazyWithoutCopy(): void
+    {
+        $repo = new InstrumentedInMemoryRepository();
+        for ($i = 0; $i < 1000; $i++) {
+            $repo->put(new LazyProbeEntity($i));
+        }
+
+        $spec = new CountingSpecification(fn(LazyProbeEntity $e): bool => $e->n % 2 === 0);
+        $iterator = $repo->iterate($spec);
+        $this->assertTrue($iterator instanceof Generator, 'iterate() devolve um Generator');
+        $this->assertEquals(0, $spec->evaluations, 'nada é avaliado antes do primeiro pull');
+
+        $this->assertEquals(0, $iterator->current()->n);
+        $this->assertEquals(1, $spec->evaluations, 'o primeiro item custa uma avaliação');
+        $iterator->next();
+        $this->assertEquals(2, $iterator->current()->n);
+        $this->assertEquals(3, $spec->evaluations);
+
+        // Escrita no meio da iteração: o generator continua sobre o snapshot
+        $repo->put(new LazyProbeEntity(5000));
+        $repo->remove(new LazyProbeEntity(4));
+        $seen = [];
+        for (; $iterator->valid(); $iterator->next()) {
+            $seen[] = $iterator->current()->n;
+        }
+        $this->assertTrue(in_array(4, $seen, true), 'o snapshot ainda tem o removido');
+        $this->assertFalse(in_array(5000, $seen, true), 'nem vê o inserido depois do início');
+        $this->assertEquals(0, $repo->getAllCalls);
+
+        // Aliases e repositório nulo
+        $this->assertTrue($repo->iterateAll(new AlwaysTrueSpecification()) instanceof Generator);
+        $this->assertEquals([], iterator_to_array((new NullRepository())->iterate(new AlwaysTrueSpecification())));
+    }
+
+    /**
+     * RN-04: a partição volátil (InMemoryRepository promovido a DAG) consome o nó e cada partição
+     * pelos próprios generators: o primeiro item custa só as avaliações para alcançá-lo.
+     */
+    private function testRn04VolatilePartitionIterateIsLazy(): void
+    {
+        $base = new InMemoryRepository();
+        for ($i = 0; $i < 500; $i++) {
+            $base->put(new LazyProbeEntity($i));
+        }
+        $partition = $base->makePartition();
+        $this->assertInstanceOf(VolatilePartitionRepository::class, $partition);
+
+        $spec = new CountingSpecification(fn(LazyProbeEntity $e): bool => $e->n >= 3);
+        $iterator = $partition->iterate($spec);
+        $this->assertEquals(0, $spec->evaluations);
+        $this->assertEquals(3, $iterator->current()->n);
+        $this->assertEquals(4, $spec->evaluations, 'quatro avaliações (0, 1, 2, 3) e não 500');
+    }
+
+    /**
+     * Cenário Gherkin RN-04 "fonte lazy sem getAll()": InMemoryRepository com 100.000 entidades
+     * instrumentado; findAsLazyCollection($spec)->take(10)->toArray() não chama getAll() e só visita
+     * os itens necessários para 10 acertos. A coleção é re-iterável (um generator novo por travessia).
+     */
+    private function testRn04LazyCollectionNeverCallsGetAll(): void
+    {
+        $repo = new InstrumentedInMemoryRepository();
+        $entities = [];
+        for ($i = 0; $i < 100000; $i++) {
+            $entities[] = new LazyProbeEntity($i);
+        }
+        $repo->putAll($entities);
+        unset($entities);
+
+        $spec = new CountingSpecification(fn(LazyProbeEntity $e): bool => $e->n % 3 === 0);
+
+        // Sem a ponte: iterate() já é a fonte lazy
+        $hits = [];
+        foreach ($repo->iterate($spec) as $entity) {
+            $hits[] = $entity->n;
+            if (count($hits) === 10) {
+                break;
+            }
+        }
+        $this->assertEquals([0, 3, 6, 9, 12, 15, 18, 21, 24, 27], $hits);
+        $this->assertEquals(28, $spec->evaluations, '10 acertos a cada 3: 28 avaliações, não 100.000');
+        $this->assertEquals(0, $repo->getAllCalls);
+
+        if (!ALinqBridge::isLazyAvailable()) {
+            fwrite(STDOUT, "    [AVISO] antevemus/alinq-collection não encontrado; findAsLazyCollection() (RN-04) pulado.\n");
+            return;
+        }
+
+        $spec->evaluations = 0;
+        $repo->iterateCalls = 0;
+        $lazy = $repo->findAsLazyCollection($spec);
+        $this->assertEquals(0, $spec->evaluations, 'montar a coleção não avalia nada');
+        $this->assertEquals(0, $repo->iterateCalls, 'nem pede o generator antes da travessia');
+
+        $ten = $lazy->take(10)->toArray();
+        $this->assertCount(10, $ten);
+        $this->assertEquals(0, $ten[0]->n);
+        $this->assertEquals(27, $ten[9]->n);
+        $this->assertEquals(0, $repo->getAllCalls, 'getAll() não é chamado');
+        $this->assertEquals(28, $spec->evaluations, 'só os itens necessários para 10 acertos são visitados');
+
+        // Re-iterável: a segunda travessia pede um generator novo e devolve o mesmo resultado
+        $again = $lazy->take(10)->toArray();
+        $this->assertEquals(array_map(fn($e) => $e->n, $ten), array_map(fn($e) => $e->n, $again));
+        $this->assertEquals(2, $repo->iterateCalls, 'um generator por travessia');
+
+        $first = $repo->asLazyCollection()->first();
+        $this->assertEquals(0, $first->n);
+        $this->assertEquals(0, $repo->getAllCalls);
     }
 }

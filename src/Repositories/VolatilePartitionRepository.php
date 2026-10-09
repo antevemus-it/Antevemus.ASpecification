@@ -15,11 +15,14 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
  * Features:
  * - Strict implementation of IVolatileRepository
  * - Semantic preservation of in-memory repository partitions
+ * - Lazy iterate*() inherited from PartitionRepository: the node and each partition are consumed
+ *   through their own generators, nothing is materialized before the first entity (1.4.4, checked
+ *   by the 1.5.0 RN-04 suite)
  *
  * @template T of IEntity
  * @extends PartitionRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.1.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

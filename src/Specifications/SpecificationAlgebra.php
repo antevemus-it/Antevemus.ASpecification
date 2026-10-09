@@ -10,6 +10,8 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
@@ -33,11 +35,13 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  *   leaf is the leaf with the inverted relational operator (x < 10 ≡ ¬(x >= 10))
  * - Type hierarchy: a type specification generalizes any specification whose candidates are
  *   bounded by a subtype
+ * - Sets (1.5.0): in(V) is the union of equalTo(v) for v ∈ V, so X ⊇ in(V) ⇔ X ⊇ equalTo(v) for
+ *   every v and X ⟂ in(V) ⇔ X ⟂ equalTo(v) for every v; in([]) resolves to the contradiction
  *
  * Where the Domian code and the set algebra disagree the algebra wins; the deviations are
  * documented in docs/paridade-domian-2026-10-09 (lote 1.4.4).
  *
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -65,6 +69,10 @@ final class SpecificationAlgebra
      */
     public static function resolve(ISpecification $specification): ISpecification
     {
+        if ($specification instanceof InSpecification && $specification->isEmpty()) {
+            // in([]) is the contradiction (RN-07)
+            return new AlwaysFalseSpecification();
+        }
         if ($specification instanceof JointDenialSpecification) {
             return self::resolve(new NotSpecification(new OrSpecification(
                 $specification->getLeftSide(),
@@ -121,6 +129,9 @@ final class SpecificationAlgebra
         if ($specification instanceof AlwaysFalseSpecification) {
             return new AlwaysTrueSpecification($specification->getType());
         }
+        if ($specification instanceof InSpecification && $specification->isEmpty()) {
+            return new AlwaysTrueSpecification();
+        }
         if ($specification instanceof AndSpecification || $specification instanceof OrSpecification) {
             $left = self::invert($specification->getLeftSide());
             $right = self::invert($specification->getRightSide());
@@ -169,6 +180,15 @@ final class SpecificationAlgebra
             return $this_->isGeneralizationOf($other->getLeftSide())
                 || $this_->isGeneralizationOf($other->getRightSide());
         }
+        if ($other instanceof InSpecification) {
+            // X ⊇ in(V) ⇔ X ⊇ equalTo(v) for every v ∈ V (in(V) is the union of the equalities)
+            foreach ($other->getValues() as $value) {
+                if (!$this_->isGeneralizationOf(new EqualSpecification($value))) {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         return false;
     }
@@ -201,6 +221,15 @@ final class SpecificationAlgebra
         if ($other instanceof OrSpecification) {
             return $this_->isDisjointWith($other->getLeftSide())
                 && $this_->isDisjointWith($other->getRightSide());
+        }
+        if ($other instanceof InSpecification) {
+            // X ⟂ in(V) ⇔ X ⟂ equalTo(v) for every v ∈ V
+            foreach ($other->getValues() as $value) {
+                if (!$this_->isDisjointWith(new EqualSpecification($value))) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         return false;
@@ -242,6 +271,14 @@ final class SpecificationAlgebra
         }
         if ($specification instanceof PropertySpecification) {
             return self::isBoundedByType($specification->getBaseSpecification(), $type);
+        }
+        if ($specification instanceof InSpecification) {
+            foreach ($specification->getValues() as $value) {
+                if (!is_object($value) || !$value instanceof $type) {
+                    return false;
+                }
+            }
+            return true;
         }
         if ($specification instanceof AllEntitiesSpecification || $specification instanceof AbstractCompositeSpecification) {
             return self::canCastFromTo($specification->getType(), $type);

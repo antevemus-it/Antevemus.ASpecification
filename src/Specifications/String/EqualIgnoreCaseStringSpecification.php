@@ -8,15 +8,19 @@ use Antevemus\ASpecification\AbstractSpecification;
 /**
  * EqualIgnoreCaseStringSpecification - Leaf specification for case-insensitive string equality.
  *
- * Uses native PHP `strcasecmp` to compare strings regardless of uppercase or lowercase characters.
+ * Compares both strings lowered with `mb_strtolower(..., 'UTF-8')`, so the comparison ignores the
+ * case of any Unicode letter (`'ÀGUA'` matches `'água'`, `'ẞ'` matches `'ß'`). Before 1.5.0 the
+ * leaf used `strcasecmp()`, which folds ASCII letters only (breaking change RN-03). Requires
+ * `ext-mbstring`. The SQL and TCriteria visitors are unchanged: case in the database is a
+ * matter of collation.
  *
  * Features:
- * - Case-insensitive string comparison (`strcasecmp`)
+ * - Unicode case-insensitive string comparison (`mb_strtolower`, UTF-8)
  * - Safe handling of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -56,7 +60,8 @@ class EqualIgnoreCaseStringSpecification extends AbstractSpecification
             return false;
         }
 
-        return strcasecmp($candidate, $this->value) === 0;
+        // Unicode-aware (1.5.0, RN-03): 'ÀGUA' matches 'água'; strcasecmp() only folded ASCII.
+        return mb_strtolower($candidate, 'UTF-8') === mb_strtolower($this->value, 'UTF-8');
     }
 
     /**

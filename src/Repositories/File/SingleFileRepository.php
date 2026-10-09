@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -113,6 +113,10 @@ class SingleFileRepository extends AbstractFileRepository
 
     /**
      * {@inheritdoc}
+     *
+     * Non-JSON branch (serializer extension other than `json`, e.g. PhpNativeEntitySerializer `.bin`):
+     * deprecated since 1.5.0, removed in 2.0.0; use JsonEntitySerializer. The `serialize()` envelope
+     * goes away with PhpNativeEntitySerializer and the single-file envelope becomes JSON-only.
      */
     public function load(): void
     {
@@ -149,6 +153,7 @@ class SingleFileRepository extends AbstractFileRepository
                     }
                 }
             } else {
+                // Deprecated 1.5.0, removed in 2.0.0 (use JsonEntitySerializer): see load() docblock.
                 // The envelope only carries arrays, scalars and the serialized entity strings.
                 // Entities are reconstructed below through the serializer whitelist; the envelope
                 // itself must never instantiate a class (BUG-20261007-HIJG).
@@ -169,6 +174,10 @@ class SingleFileRepository extends AbstractFileRepository
 
     /**
      * {@inheritdoc}
+     *
+     * Non-JSON branch (serializer extension other than `json`, e.g. PhpNativeEntitySerializer `.bin`):
+     * deprecated since 1.5.0, removed in 2.0.0; use JsonEntitySerializer. The `serialize()` envelope
+     * goes away with PhpNativeEntitySerializer and the single-file envelope becomes JSON-only.
      */
     public function store(): void
     {
@@ -204,6 +213,7 @@ class SingleFileRepository extends AbstractFileRepository
 
             $this->writeAtomic($this->storagePath, $encoded, $this->lockFilePath());
         } else {
+            // Deprecated 1.5.0, removed in 2.0.0 (use JsonEntitySerializer): see store() docblock.
             $serializedList = [];
             foreach ($this->entities as $entity) {
                 $serializedList[] = $this->serializer->serialize($entity);
@@ -365,11 +375,24 @@ class SingleFileRepository extends AbstractFileRepository
 
     /**
      * {@inheritdoc}
+     *
+     * Lazy over the loaded document (1.5.0, RN-04): the file is loaded once (load(), when not yet
+     * loaded) and each entity is evaluated only when the consumer pulls it; nothing is collected
+     * into an intermediate array. The iteration walks a snapshot of the in-memory map (PHP
+     * copy-on-write), so writes during the iteration do not disturb it.
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
-        foreach ($this->findAllEntitiesSpecifiedBy($specification) as $entity) {
-            yield $entity;
+        if (!$this->isReadable()) {
+            return;
+        }
+        $this->ensureLoaded();
+
+        foreach ($this->entities as $entity) {
+            if ($specification->isSatisfiedBy($entity)) {
+                $this->recordReadMetadata($entity);
+                yield $entity;
+            }
         }
     }
 

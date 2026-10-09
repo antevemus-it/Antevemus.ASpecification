@@ -11,13 +11,18 @@ use Antevemus\ASpecification\AbstractSpecification;
  *
  * Validates whether the candidate string matches a wildcard pattern (e.g. `*.txt`) in a case-insensitive manner.
  *
+ * Pattern and candidate are lowered with `mb_strtolower(..., 'UTF-8')` before `fnmatch()`, so the
+ * case of any Unicode letter is ignored (`'ÁGUA*'` matches `'água mineral'`); before 1.5.0 the
+ * lowering was the ASCII-only `strtolower()` (breaking change RN-03). `fnmatch()` itself works on
+ * bytes: `?` matches one byte, so use `*` around multibyte characters. Requires `ext-mbstring`.
+ *
  * Features:
- * - Case-insensitive glob matching using lowercase conversion and `fnmatch`
+ * - Unicode case-insensitive glob matching (`mb_strtolower` then `fnmatch`)
  * - Safe rejection of non-string candidates
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -57,7 +62,8 @@ class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpe
             return false;
         }
         
-        return fnmatch(strtolower($this->pattern), strtolower($candidate));
+        // Unicode-aware (1.5.0, RN-03): both sides lowered with mbstring before fnmatch().
+        return fnmatch(mb_strtolower($this->pattern, 'UTF-8'), mb_strtolower($candidate, 'UTF-8'));
     }
 
     /**

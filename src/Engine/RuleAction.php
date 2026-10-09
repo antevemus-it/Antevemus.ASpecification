@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
+use Antevemus\ASpecification\Results\FailureSeverity;
+
 /**
  * RuleAction - Operational Action Resulting from a Business Rule Violation
  *
@@ -14,8 +16,9 @@ namespace Antevemus\ASpecification\Engine;
  * - Typed enumeration for operational actions (BLOCK, WARN, LOG)
  * - Helper methods for severity checking (isBlocking, isWarning, isLogOnly)
  * - Flexible string converter with fallback support
+ * - Mapping to the FailureSeverity carried by engine failures (toSeverity, 1.5.0)
  *
- * @version    1.1.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -56,6 +59,21 @@ enum RuleAction: string
     public function isLogOnly(): bool
     {
         return $this === self::LOG;
+    }
+
+    /**
+     * Maps the action to the severity stamped on the failures it produces:
+     * BLOCK → ERROR, WARN → WARNING, LOG → INFO.
+     *
+     * @return FailureSeverity
+     */
+    public function toSeverity(): FailureSeverity
+    {
+        return match ($this) {
+            self::BLOCK => FailureSeverity::ERROR,
+            self::WARN => FailureSeverity::WARNING,
+            self::LOG => FailureSeverity::INFO,
+        };
     }
 
     /**

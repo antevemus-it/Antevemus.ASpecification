@@ -20,12 +20,13 @@ use Antevemus\ASpecification\Tests\Unit\Module12_SqlVisitorAndDialectsTest;
 use Antevemus\ASpecification\Tests\Unit\Module13_TCriteriaBuilderTest;
 use Antevemus\ASpecification\Tests\Unit\Module14_ALinqSynergyTest;
 use Antevemus\ASpecification\Tests\Unit\Module15_AttributesTest;
+use Antevemus\ASpecification\Tests\Unit\Module16_PdoRuleCatalogTest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Throwable;
 
 /**
- * ModuleSuitesTest - PHPUnit bridge over the fifteen module suites.
+ * ModuleSuitesTest - PHPUnit bridge over the module suites.
  *
  * The canonical runner of this library is `tests/run_all.php` (custom `Tests\TestCase`,
  * one suite per architectural module, assertion counting and regression watch). This
@@ -46,7 +47,7 @@ use Throwable;
 final class ModuleSuitesTest extends TestCase
 {
     /**
-     * The fifteen module suites, in the same order and with the same titles as `tests/run_all.php`.
+     * The module suites, in the same order and with the same titles as `tests/run_all.php`.
      *
      * @return iterable<string, array{class-string<ModuleSuite>}>
      */
@@ -67,6 +68,7 @@ final class ModuleSuitesTest extends TestCase
         yield 'Módulo 13: TCriteria Builder & Adianti Database Bridge' => [Module13_TCriteriaBuilderTest::class];
         yield 'Módulo 14: ALinq Synergy & Coleções Fluentes LINQ' => [Module14_ALinqSynergyTest::class];
         yield 'Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])' => [Module15_AttributesTest::class];
+        yield 'Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)' => [Module16_PdoRuleCatalogTest::class];
     }
 
     /**

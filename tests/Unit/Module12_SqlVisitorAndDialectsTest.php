@@ -68,6 +68,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Lote de correção #30-#32 (2026-10-07): % e _ literais de like() escapados no LIKE.
         $this->testWildcardLiteralsAreEscapedInLike();
+
+        // Forward 017 (v1.5.0), RN-07: in() traduzido como IN (...) em todos os dialetos.
+        $this->testRn07InTranslatesToSqlInList();
     }
 
     /**
@@ -664,5 +667,78 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertFalse(Spec::like('100%*')->isSatisfiedBy('1000x'), 'em memória 1000x nunca casou; o SQL agora também não');
         $this->assertTrue(Spec::like('a_b?')->isSatisfiedBy('a_bc'));
         $this->assertFalse(Spec::like('a_b?')->isSatisfiedBy('aXbc'));
+    }
+
+    /**
+     * RN-07 (forward 017, v1.5.0): InSpecification vira `"col" IN (:p1, :p2)`; antes a cadeia de OR
+     * emitia `("col" = :p1 OR "col" = :p2)`. in([]) é a forma falsa do dialeto (`1 = 0`); um null no
+     * conjunto vira `OR "col" IS NULL` (IN nunca casa NULL em SQL); notIn() vira NOT (... IN ...).
+     */
+    private function testRn07InTranslatesToSqlInList(): void
+    {
+        // Cenário Gherkin
+        $spec = Spec::property('status', Spec::in('A', 'B'));
+        $where = Spec::toSql($spec, SqlDialect::POSTGRESQL);
+        $this->assertEquals('"status" IN (:p1, :p2)', $where->getSql());
+        $this->assertEquals([':p1' => 'A', ':p2' => 'B'], $where->getBindings());
+
+        // Cada dialeto com o próprio quoting
+        $this->assertEquals('`status` IN (:p1, :p2)', Spec::toSql($spec, 'mysql')->getSql());
+        $this->assertEquals('[status] IN (:p1, :p2)', Spec::toSql($spec, 'sqlsrv')->getSql());
+        $this->assertEquals('"STATUS" IN (:p1, :p2)', Spec::toSql($spec, 'oracle')->getSql());
+        $this->assertEquals('"STATUS" IN (:p1, :p2)', Spec::toSql($spec, 'firebird')->getSql());
+        $this->assertEquals('"status" IN (:p1, :p2)', Spec::toSql($spec, 'sqlite')->getSql());
+        $this->assertEquals('"status" IN (:p1, :p2)', Spec::toSql($spec, 'ansi')->getSql());
+
+        // Vazio: a forma falsa do dialeto, sem parâmetros
+        $empty = Spec::toSql(Spec::property('status', Spec::in()), 'pgsql');
+        $this->assertEquals('1 = 0', $empty->getSql());
+        $this->assertEquals([], $empty->getBindings());
+
+        // null e booleanos no conjunto
+        $this->assertEquals('("status" IN (:p1) OR "status" IS NULL)', Spec::toSql(Spec::property('status', Spec::in('A', null)), 'pgsql')->getSql());
+        $this->assertEquals('"status" IS NULL', Spec::toSql(Spec::property('status', Spec::in(null)), 'pgsql')->getSql());
+        $this->assertEquals('`ativo` IN (1)', Spec::toSql(Spec::property('ativo', Spec::in(true)), 'mysql')->getSql());
+
+        // Negação e composição: numeração de parâmetros contínua
+        $this->assertEquals('NOT ("status" IN (:p1, :p2))', Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), 'pgsql')->getSql());
+        $combined = Spec::toSql(
+            Spec::property('status', Spec::in('A', 'B'))->and(Spec::property('uf', Spec::in(['SP', 'RJ', 'MG']))),
+            'pgsql'
+        );
+        $this->assertEquals('("status" IN (:p1, :p2) AND "uf" IN (:p3, :p4, :p5))', $combined->getSql());
+        $this->assertEquals([':p1' => 'A', ':p2' => 'B', ':p3' => 'SP', ':p4' => 'RJ', ':p5' => 'MG'], $combined->getBindings());
+
+        // Fora de propriedade não há coluna
+        $this->assertThrows(NonTranslatableSpecificationException::class, fn() => Spec::toSql(Spec::in(1, 2), 'pgsql'));
+
+        // O SQL emitido roda num SQLite em memória e devolve o mesmo que a avaliação em memória
+        if (extension_loaded('pdo_sqlite')) {
+            $pdo = new \PDO('sqlite::memory:');
+            $pdo->exec('CREATE TABLE t (id INTEGER, status TEXT)');
+            foreach ([[1, 'A'], [2, 'B'], [3, 'C'], [4, null], [5, 'a']] as [$id, $st]) {
+                $stmt = $pdo->prepare('INSERT INTO t (id, status) VALUES (?, ?)');
+                $stmt->execute([$id, $st]);
+            }
+            foreach ([Spec::in('A', 'B'), Spec::in('A', null), Spec::in(), Spec::notIn('A', 'B')] as $leaf) {
+                $clause = Spec::toSql(Spec::property('status', $leaf), 'sqlite');
+                $stmt = $pdo->prepare('SELECT id FROM t WHERE ' . $clause->getSql() . ' ORDER BY id');
+                $stmt->execute($clause->getBindings());
+                $sqlIds = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+
+                $memoryIds = [];
+                foreach ([[1, 'A'], [2, 'B'], [3, 'C'], [4, null], [5, 'a']] as [$id, $st]) {
+                    if ($leaf->isSatisfiedBy($st)) {
+                        $memoryIds[] = $id;
+                    }
+                }
+                if ($leaf instanceof \Antevemus\ASpecification\Specifications\NotSpecification) {
+                    // SQL: NOT (NULL IN (...)) é desconhecido, a linha nula não volta; a folha em memória
+                    // aceita null para notIn. Diferença de três valores conhecida da negação em SQL.
+                    $memoryIds = array_values(array_diff($memoryIds, [4]));
+                }
+                $this->assertEquals($memoryIds, $sqlIds, 'SQL e memória concordam para ' . $clause->getSql());
+            }
+        }
     }
 }

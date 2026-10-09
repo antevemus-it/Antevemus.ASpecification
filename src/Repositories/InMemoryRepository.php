@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories;
 
+use Antevemus\ALinq\Interfaces\IALinqCollection;
 use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
@@ -23,6 +24,9 @@ use InvalidArgumentException;
  * (put, putAll, update, updateWithDelta, remove, removeAll, clear) in exclusive mode. As in the Java
  * original, the lazy iterator of iterateAllEntitiesSpecifiedBy() is CREATED under the permit; the
  * iteration itself runs outside it, over a snapshot of the storage taken when the generator starts.
+ * The snapshot is PHP's copy-on-write of the map: nothing is copied unless the repository is
+ * written to while the generator is alive, and each entity is evaluated only when it is pulled
+ * (getAll() is never involved, RN-04 of 1.5.0).
  *
  * Features:
  * - High-speed volatile memory storage indexed by hash/ID
@@ -38,7 +42,7 @@ use InvalidArgumentException;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -277,9 +281,12 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     /**
      * Returns all stored entities as a fluent ALinqCollection.
      *
-     * @return object Instance of \Antevemus\ALinq\ALinqCollection
+     * asLazyCollection() and findAsLazyCollection() live in AbstractRepository since 1.5.0 (every
+     * repository has them, over iterate()).
+     *
+     * @return IALinqCollection
      */
-    public function asLinqCollection(): object
+    public function asLinqCollection(): IALinqCollection
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::toCollection($this->db);
     }
@@ -288,32 +295,11 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      * Queries all entities satisfying specification and returns as an ALinqCollection.
      *
      * @param ISpecification $specification
-     * @return object Instance of \Antevemus\ALinq\ALinqCollection
+     * @return IALinqCollection
      */
-    public function findAsLinqCollection(ISpecification $specification): object
+    public function findAsLinqCollection(ISpecification $specification): IALinqCollection
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::queryRepository($this, $specification);
-    }
-
-    /**
-     * Returns all stored entities as a generator-based ALinqLazyCollection stream.
-     *
-     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
-     */
-    public function asLazyCollection(): object
-    {
-        return \Antevemus\ASpecification\Linq\ALinqBridge::toLazyCollection($this);
-    }
-
-    /**
-     * Queries all entities satisfying specification and returns as an ALinqLazyCollection stream.
-     *
-     * @param ISpecification $specification
-     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
-     */
-    public function findAsLazyCollection(ISpecification $specification): object
-    {
-        return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($this, $specification);
     }
 
     /**

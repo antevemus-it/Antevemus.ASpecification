@@ -3,7 +3,7 @@
   PHPUnit bridge configuration for Antevemus.ASpecification.
 
   The canonical runner is `tests/run_all.php`; this file lets CI pipelines, IDEs and
-  coverage tools execute the same fifteen module suites through `vendor/bin/phpunit`
+  coverage tools execute the same module suites through `vendor/bin/phpunit`
   (see tests/PhpUnit/ModuleSuitesTest.php). The bootstrap is the project's own
   `tests/bootstrap.php`, which also resolves the optional sibling `Antevemus.AlinqCollection`
   checkout and the Adianti stubs used by the TCriteria suite. Coverage is not configured

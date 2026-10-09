@@ -17,7 +17,7 @@ use RuntimeException;
  * are driven by Specification objects.
  *
  * @template T of IEntity
- * @version    1.4.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -48,6 +48,12 @@ interface IRepository
     /**
      * Finds and yields all entities satisfying the specification via
      * lazy iteration (Generator), conserving RAM.
+     *
+     * Contract (1.5.0, RN-04): every repository of the library returns a real generator that
+     * evaluates each entity only when the consumer pulls it, without materializing the result or
+     * the storage first (in memory over the map, single file over the loaded document, file per
+     * entity over the directory entry by entry, partitions over each node's own generator).
+     * ALinqBridge and AbstractRepository::findAsLazyCollection() build lazy collections on it.
      *
      * @param ISpecification<T> $specification
      * @return iterable<T>

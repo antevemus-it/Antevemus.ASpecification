@@ -12,11 +12,11 @@ declare(strict_types=1);
  * Features:
  * - Fluent candidate root specification initiation (specify)
  * - Logical predicate composition (allOf, anyOf, not, nor, noneOf)
- * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in)
+ * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in, notIn)
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
  *
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -248,17 +248,28 @@ function lessThanOrEqualTo(mixed $value): ISpecification
 }
 
 /**
- * Creates a set membership specification (equivalent to IN / disjunction of equalities).
+ * Creates a set membership specification (one InSpecification leaf, translated as IN).
  *
  * The values may be passed variadically or as a single array: `in(0, 2, 4)` and
  * `in([0, 2, 4])` are equivalent. An empty set never matches.
  *
  * @param mixed ...$values Set of accepted values, or a single array holding them
- * @return ISpecification Disjunctive set membership specification
+ * @return ISpecification Set membership specification
  */
 function in(mixed ...$values): ISpecification
 {
     return Spec::in(...$values);
+}
+
+/**
+ * Creates the negated set membership specification: not(in(...)).
+ *
+ * @param mixed ...$values Set of rejected values, or a single array holding them
+ * @return ISpecification Negated set membership specification
+ */
+function notIn(mixed ...$values): ISpecification
+{
+    return Spec::notIn(...$values);
 }
 
 /**

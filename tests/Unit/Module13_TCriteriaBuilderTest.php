@@ -63,6 +63,10 @@ class Module13_TCriteriaBuilderTest extends TestCase
         // Lote de correção #33 (2026-10-08): modificadores de RegexSpecification no TCriteria.
         $this->testRegexModifiersSurviveInTCriteria();
         $this->testRealAdiantiEmitsRegexFlags();
+
+        // Forward 017 (v1.5.0), RN-07: in() vira TFilter('col', 'IN', [...]).
+        $this->testRn07InTranslatesToTFilterIn();
+        $this->testRealAdiantiEmitsInList();
     }
 
     /**
@@ -657,5 +661,53 @@ class Module13_TCriteriaBuilderTest extends TestCase
             $this->assertTrue(str_contains($e->getMessage(), "PropertySpecification"));
         }
         $this->assertTrue($threw);
+    }
+
+    /**
+     * RN-07 (forward 017, v1.5.0): Spec::property('status', Spec::in('A', 'B'))->toCriteria() produz
+     * TFilter('status', 'IN', ['A', 'B']); antes, um TCriteria com dois TFilter '=' ligados por OR.
+     */
+    private function testRn07InTranslatesToTFilterIn(): void
+    {
+        // Cenário Gherkin: o filtro em si
+        $criteria = Spec::property('status', Spec::in('A', 'B'))->toCriteria();
+        $expressions = $criteria->getExpressions();
+        $this->assertCount(1, $expressions);
+        $filter = $expressions[0];
+        $this->assertInstanceOf(TFilter::class, $filter);
+        $this->assertEquals('status', $filter->getVariable());
+        $this->assertEquals('IN', $filter->getOperator());
+        $this->assertEquals(['A', 'B'], $filter->getValue());
+        $this->assertEquals("(status IN ('A','B'))", $criteria->dump());
+
+        // Negação, null no conjunto, vazio
+        $this->assertEquals("(status NOT IN ('A','B'))", Spec::toCriteria(Spec::property('status', Spec::notIn('A', 'B')))->dump());
+        $this->assertEquals("(status NOT IN ('A','B'))", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', 'B'))))->dump());
+        $this->assertEquals("(status IN ('A') OR status IS NULL)", Spec::toCriteria(Spec::property('status', Spec::in('A', null)))->dump());
+        $this->assertEquals("(status NOT IN ('A') AND status IS NOT NULL)", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', null))))->dump());
+        $this->assertEquals("(1 = 0)", Spec::toCriteria(Spec::property('status', Spec::in()))->dump());
+        $this->assertEquals("(1 = 1)", Spec::toCriteria(Spec::property('status', Spec::notIn()))->dump());
+        $this->assertEquals("(n IN (1,2,3))", Spec::toCriteria(Spec::property('n', Spec::in(1, 2, 3)))->dump());
+
+        // Valores do conjunto passam pela mesma barreira de passthrough do Adianti (bug KJ36)
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('name', Spec::in('ok', '(SELECT 1)'))));
+        $this->assertThrows(UnsafeCriteriaValueException::class, fn() => Spec::toCriteria(Spec::property('name', Spec::notIn('ok', '{session.user}'))));
+    }
+
+    /**
+     * RN-07 com as classes REAIS do Adianti (sonda em processo filho), quando disponíveis.
+     */
+    private function testRealAdiantiEmitsInList(): void
+    {
+        $out = $this->runRealAdiantiProbe();
+        if ($out === null) {
+            return;
+        }
+
+        $this->assertEquals("(status IN ('A','B'))", $out['inList']['dump']);
+        $this->assertEquals("(status NOT IN ('A','B'))", $out['notInList']['dump']);
+        $this->assertEquals("(status IN ('A') OR status IS NULL)", $out['inWithNull']['dump']);
+        $this->assertEquals("(n IN (1,2,3))", $out['inIntegers']['dump']);
+        $this->assertTrue(str_contains($out['inList']['prepared'], 'status IN ('), 'modo prepared: ' . $out['inList']['prepared']);
     }
 }

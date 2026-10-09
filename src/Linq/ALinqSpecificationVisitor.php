@@ -11,6 +11,7 @@ use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
@@ -34,6 +35,8 @@ use Closure;
  * - Evaluation of PropertySpecification integrated with PropertyAccessor (dot notation, arrays, getters)
  * - Evaluation of relational and pattern leaves (=, !=, <, <=, >, >=, regex, wildcard, case-insensitive)
  * - Direct execution compatible with ALinqCollection::where() and ALinqQueryBuilder
+ * - Set membership (InSpecification, 1.5.0) compiled to `in_array($candidate, $values, true)`
+ * - Case-insensitive equality compared with `mb_strtolower(..., 'UTF-8')`, as the leaf (1.5.0)
  *
  * Parity contract: for the same candidate, the compiled predicate returns exactly what the
  * specification's own isSatisfiedBy()/evaluate() would decide, and throws the same typed
@@ -41,7 +44,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.4.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -143,7 +146,10 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
                 fn(mixed $candidate): bool => $candidate !== null,
 
             $specification instanceof EqualIgnoreCaseStringSpecification =>
-                fn(mixed $candidate): bool => is_string($candidate) && strcasecmp($candidate, $specification->getValue()) === 0,
+                $this->compileEqualIgnoreCase($specification),
+
+            $specification instanceof InSpecification =>
+                $this->compileIn($specification),
 
             $specification instanceof RegexSpecification =>
                 fn(mixed $candidate): bool => is_string($candidate) && preg_match($specification->getPattern(), $candidate) === 1,
@@ -163,6 +169,31 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
             default =>
                 fn(mixed $candidate): bool => $specification->isSatisfiedBy($candidate),
         };
+    }
+
+    /**
+     * Compile case-insensitive string equality with the leaf's Unicode lowering (RN-03): the
+     * reference value is lowered once, at compile time.
+     */
+    private function compileEqualIgnoreCase(EqualIgnoreCaseStringSpecification $specification): Closure
+    {
+        $expected = mb_strtolower($specification->getValue(), 'UTF-8');
+
+        return static fn(mixed $candidate): bool => is_string($candidate)
+            && mb_strtolower($candidate, 'UTF-8') === $expected;
+    }
+
+    /**
+     * Compile set membership as `in_array($candidate, $values, true)` (RN-07). A hit is decided
+     * here; a miss is handed to the leaf, which returns false or raises the same
+     * IncompatibleTypeException the core raises for a candidate of a type no member shares.
+     */
+    private function compileIn(InSpecification $specification): Closure
+    {
+        $values = $specification->getValues();
+
+        return static fn(mixed $candidate): bool => in_array($candidate, $values, true)
+            || $specification->isSatisfiedBy($candidate);
     }
 
     /**

@@ -19,6 +19,7 @@ use Antevemus\ASpecification\Tests\Unit\Module12_SqlVisitorAndDialectsTest;
 use Antevemus\ASpecification\Tests\Unit\Module13_TCriteriaBuilderTest;
 use Antevemus\ASpecification\Tests\Unit\Module14_ALinqSynergyTest;
 use Antevemus\ASpecification\Tests\Unit\Module15_AttributesTest;
+use Antevemus\ASpecification\Tests\Unit\Module16_PdoRuleCatalogTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -40,6 +41,7 @@ $suites = [
     'Módulo 13: TCriteria Builder & Adianti Database Bridge' => new Module13_TCriteriaBuilderTest(),
     'Módulo 14: ALinq Synergy & Coleções Fluentes LINQ' => new Module14_ALinqSynergyTest(),
     'Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])' => new Module15_AttributesTest(),
+    'Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)' => new Module16_PdoRuleCatalogTest(),
 ];
 
 $startTime = microtime(true);

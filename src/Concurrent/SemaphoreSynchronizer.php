@@ -9,7 +9,7 @@ use RuntimeException;
 use SplObjectStorage;
 
 /**
- * SemaphoreSynchronizer - Read/Write Lock Synchronizer Based on Counting Semaphores
+ * SemaphoreSynchronizer - Intra-Process Read/Write Lock Synchronizer Based on Counting Semaphores
  *
  * Modeled on the algorithm of net.sourceforge.domian.util.concurrent.locks.SemaphoreSynchronizer (Domian,
  * Copyright 2006-2010 the original author or authors, Apache License 2.0; see THIRD_PARTY_NOTICES.md).
@@ -35,8 +35,10 @@ use SplObjectStorage;
  *   can only progress when this one yields. So the two blocking situations of the Java original throw a
  *   RuntimeException naming the holder instead: a concurrent or exclusive block requested while another
  *   context runs an exclusive block, and an exclusive block requested while other contexts run concurrent
- *   blocks (or the concurrent pool is exhausted). Cross-process exclusion (SysV semaphores) is a
- *   separate feature; FileLockSynchronizer excludes between processes today.
+ *   blocks (or the concurrent pool is exhausted).
+ * - The permits live in this object: the lock is INTRA-PROCESS. To exclude between processes use
+ *   SysVSemaphoreSynchronizer (same permit model over SysV IPC semaphores, ext-sysvsem, 1.5.0) or
+ *   FileLockSynchronizer (flock); the choice is explicit, there is no silent fallback.
  * - Exceptions thrown by the block propagate as they are; the Java original wraps every Throwable of
  *   call*() in a RuntimeException because of checked exceptions, which PHP does not have.
  * - Java drains the concurrent pool when fewer than 10 permits remain after an exclusive block (an
@@ -49,7 +51,7 @@ use SplObjectStorage;
  * - Full reentrancy per execution context, in all four mode combinations
  * - State introspection methods (getAvailablePermits, isExclusiveLocked, hasAcquiredPermit)
  *
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Concurrent
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

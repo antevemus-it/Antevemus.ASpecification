@@ -15,7 +15,7 @@ use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
  * - Set membership (in)
  * - Semantic aliases (atMost, atLeast, under, over, exactly, etc.)
  *
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -102,7 +102,7 @@ trait ComparisonSpecificationOperationsTrait
     }
 
     /**
-     * Creates set membership specification (OR of equalities).
+     * Creates set membership specification (one InSpecification leaf since 1.5.0).
      *
      * Values may be passed variadically or as a single array; an empty set never matches.
      *
@@ -112,6 +112,17 @@ trait ComparisonSpecificationOperationsTrait
     public function in(mixed ...$values): ISpecification
     {
         return $this->comparisonFactory->in(...$values);
+    }
+
+    /**
+     * Creates the negated set membership specification: not(in(...)).
+     *
+     * @param mixed ...$values Set of rejected values, or a single array holding them
+     * @return ISpecification Negated set membership specification
+     */
+    public function notIn(mixed ...$values): ISpecification
+    {
+        return new \Antevemus\ASpecification\Specifications\NotSpecification($this->comparisonFactory->in(...$values));
     }
 
     /**

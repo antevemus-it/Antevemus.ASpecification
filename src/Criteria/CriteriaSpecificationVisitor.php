@@ -20,6 +20,7 @@ use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
@@ -53,9 +54,11 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - Preserves boolean operator precedence via nested TCriteria sub-instances
  * - Case-insensitive filter translation for textual specifications
  * - REGEXP for generic regular expressions, with the `i` modifier carried as an inline flag
+ * - Set membership (InSpecification, 1.5.0) as `TFilter('col', 'IN', [...])` and its negation as
+ *   `TFilter('col', 'NOT IN', [...])`
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -215,6 +218,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($col, $specification->getValue()),
 
+            $specification instanceof InSpecification =>
+                $this->translateIn($col, $specification, false),
+
             $specification instanceof NotEqualSpecification =>
                 $this->translateNotEqual($col, $specification->getValue()),
 
@@ -272,6 +278,44 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             return new TFilter($col, 'IS', null);
         }
         return new TFilter($col, '=', $val);
+    }
+
+    /**
+     * Translate set membership as TFilter('col', 'IN', [...]) (or 'NOT IN' when negated).
+     *
+     * The empty set is the contradiction `1 = 0` (its negation the tautology `1 = 1`). SQL `IN`
+     * never matches NULL, so a null member is carried by an explicit `IS NULL` (`IS NOT NULL`
+     * when negated) combined with OR (AND when negated, De Morgan).
+     *
+     * @param string $col
+     * @param InSpecification $specification
+     * @param bool $negated Whether the leaf is being inverted (NOT IN)
+     * @return TExpression
+     */
+    private function translateIn(string $col, InSpecification $specification, bool $negated): TExpression
+    {
+        $values = $specification->getValues();
+        if ($values === []) {
+            return new TFilter('1', '=', $negated ? 1 : 0);
+        }
+
+        $nonNull = array_values(array_filter($values, static fn(mixed $value): bool => $value !== null));
+        $hasNull = count($nonNull) !== count($values);
+        $nullFilter = new TFilter($col, $negated ? 'IS NOT' : 'IS', null);
+
+        if ($nonNull === []) {
+            return $nullFilter;
+        }
+
+        $inFilter = new TFilter($col, $negated ? 'NOT IN' : 'IN', $nonNull);
+        if (!$hasNull) {
+            return $inFilter;
+        }
+
+        $criteria = new TCriteria();
+        $criteria->add($inFilter);
+        $criteria->add($nullFilter, $negated ? TExpression::AND_OPERATOR : TExpression::OR_OPERATOR);
+        return $criteria;
     }
 
     /**
@@ -464,9 +508,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      * Logically invert a leaf specification bound to current property.
      *
      * @param ISpecification $inner
-     * @return TFilter
+     * @return TExpression A TFilter, or a TCriteria for a negated set holding null
      */
-    private function visitNotLeaf(ISpecification $inner): TFilter
+    private function visitNotLeaf(ISpecification $inner): TExpression
     {
         if ($inner instanceof RuleBoundSpecification) {
             return $this->visitNotLeaf($inner->getInnerSpecification());
@@ -492,6 +536,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         return match (true) {
             $inner instanceof EqualSpecification =>
                 $this->translateNotEqual($col, $inner->getValue()),
+
+            $inner instanceof InSpecification =>
+                $this->translateIn($col, $inner, true),
 
             $inner instanceof NotEqualSpecification =>
                 $this->translateEqual($col, $inner->getValue()),
@@ -553,6 +600,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $leaf instanceof WildcardSpecification,
             $leaf instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification,
             $leaf instanceof RegexSpecification => $leaf->getPattern(),
+            $leaf instanceof InSpecification => $leaf->getValues(),
             $leaf instanceof IValueBoundSpecification => $leaf->getValue(),
             method_exists($leaf, 'getValue') => $leaf->getValue(),
             default => null,

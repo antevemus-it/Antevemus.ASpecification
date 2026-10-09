@@ -20,6 +20,7 @@ use Antevemus\ASpecification\Repositories\PersistentPartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
 use Antevemus\ASpecification\Tests\Support\ChildWriterEntity;
+use Antevemus\ASpecification\Tests\Support\CountingSpecification;
 use RecursiveIteratorIterator;
 use RecursiveDirectoryIterator;
 
@@ -43,6 +44,7 @@ class Module5_FileRepositoriesTest extends TestCase
         mkdir($tmp, 0777, true);
 
         try {
+            $this->testNativeSerializerIsDeprecatedButBehavesIdentically();
             $this->testBinEnvelopeDoesNotInstantiateArbitraryClasses($tmp);
             $this->testBinRoundTripStillWorks($tmp);
             $this->testTwoInstancesOnSameFileDoNotOverwriteEachOther($tmp);
@@ -52,6 +54,9 @@ class Module5_FileRepositoriesTest extends TestCase
             $this->testPersistenceEnvelopeIsIgnoredOnRead();
             $this->testSerializedDocumentCarriesNoPersistenceEnvelope($tmp);
             $this->testFileRepositoriesRecordSessionMetadata($tmp);
+
+            // Forward 017 (v1.5.0), RN-04: iterate*() lazy nos repositórios de arquivo.
+            $this->testRn04FileRepositoriesIterateLazily($tmp);
 
             $u1 = new TestFileEntity("U1");
             $u2 = new TestFileEntity("U2");
@@ -306,6 +311,58 @@ class Module5_FileRepositoriesTest extends TestCase
     }
 
     /**
+     * Constrói o PhpNativeEntitySerializer (depreciado na 1.5.0, forward 020 RN-01) capturando o
+     * E_USER_DEPRECATED do construtor, para que a suíte rode sem o aviso vazar e prove que ele é emitido.
+     *
+     * @param class-string $entityClass
+     * @param list<string>|null $captured Recebe as mensagens capturadas
+     * @return PhpNativeEntitySerializer
+     */
+    private function nativeSerializer(string $entityClass, ?array &$captured = null): PhpNativeEntitySerializer
+    {
+        $captured = [];
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+            $captured[] = $message;
+            return true;
+        }, E_USER_DEPRECATED);
+        try {
+            $serializer = new PhpNativeEntitySerializer($entityClass);
+        } finally {
+            restore_error_handler();
+        }
+        $this->assertCount(1, $captured, 'o construtor do serializer nativo deve emitir exatamente um E_USER_DEPRECATED');
+
+        return $serializer;
+    }
+
+    /**
+     * Forward 020 RN-01 (D1 a): PhpNativeEntitySerializer depreciado na 1.5.0 (removido na 2.0.0).
+     * O construtor emite E_USER_DEPRECATED apontando o JsonEntitySerializer; o comportamento é idêntico.
+     */
+    private function testNativeSerializerIsDeprecatedButBehavesIdentically(): void
+    {
+        $serializer = $this->nativeSerializer(TestFileEntity::class, $captured);
+        $this->assertTrue(str_contains($captured[0], 'deprecated since 1.5.0'), $captured[0]);
+        $this->assertTrue(str_contains($captured[0], 'removed in 2.0.0'), $captured[0]);
+        $this->assertTrue(str_contains($captured[0], 'JsonEntitySerializer'), $captured[0]);
+
+        $docblock = (string) (new \ReflectionClass(PhpNativeEntitySerializer::class))->getDocComment();
+        $this->assertTrue(str_contains($docblock, '@deprecated 1.5.0 Removed in 2.0.0; use JsonEntitySerializer'), 'docblock @deprecated');
+
+        // Comportamento idêntico ao da 1.4.x.
+        $entity = new TestFileEntity('Nativo');
+        $payload = $serializer->serialize($entity);
+        $this->assertEquals(serialize($entity), $payload, 'serialize() continua sendo o serialize() nativo');
+        $restored = $serializer->deserialize($payload, TestFileEntity::class);
+        $this->assertInstanceOf(TestFileEntity::class, $restored);
+        $this->assertEquals($entity->getEntityId(), $restored->getEntityId());
+        $this->assertEquals('Nativo', $restored->title);
+        $this->assertEquals('bin', $serializer->getFileExtension());
+        $this->assertEquals('application/x-php-serialized', $serializer->getContentType());
+        $this->assertThrows(RepositoryException::class, fn() => $serializer->deserialize(serialize(new M5WakeupGadget()), TestFileEntity::class));
+    }
+
+    /**
      * BUG-20261007-HIJG (reprodução): objeto gravado no envelope .bin não pode ser instanciado.
      * Antes da correção o envelope era lido com allowed_classes => true e o __wakeup executava.
      */
@@ -322,7 +379,7 @@ class Module5_FileRepositoriesTest extends TestCase
             $binPath,
             TestFileEntity::class,
             PersistenceDefinition::ReadWrite,
-            new PhpNativeEntitySerializer(TestFileEntity::class)
+            $this->nativeSerializer(TestFileEntity::class)
         );
 
         $this->assertEquals(0, $repo->countAllEntities(), 'Objeto fora da whitelist não pode virar entidade');
@@ -335,7 +392,7 @@ class Module5_FileRepositoriesTest extends TestCase
     private function testBinRoundTripStillWorks(string $tmp): void
     {
         $binPath = $tmp . '/legit.bin';
-        $ser = new PhpNativeEntitySerializer(TestFileEntity::class);
+        $ser = $this->nativeSerializer(TestFileEntity::class);
 
         $repo = new SingleFileRepository($binPath, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
         $repo->put(new TestFileEntity('Bin'));
@@ -421,5 +478,83 @@ class Module5_FileRepositoriesTest extends TestCase
         $final = new SingleFileRepository($path, ChildWriterEntity::class, PersistenceDefinition::ReadWrite, $ser);
         $expected = 1 + $writers * $putsPerWriter;
         $this->assertEquals($expected, $final->countAllEntities(), "Lost update entre processos: esperado {$expected} entidades no arquivo");
+    }
+
+    /**
+     * RN-04 (forward 017, v1.5.0): os repositórios de arquivo entregam generator de verdade.
+     * SingleFileRepository: depois do load(), cada entidade é avaliada só quando puxada (antes,
+     * findAll() materializava tudo e o generator só repassava o array). FilePerEntityRepository:
+     * lê o diretório entrada a entrada (readdir), um arquivo por pull, sem scanEntityFiles()/glob.
+     * InMemoryAndFileRepository: o generator do cache L1.
+     */
+    private function testRn04FileRepositoriesIterateLazily(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $entities = [];
+        for ($i = 0; $i < 20; $i++) {
+            $entities[] = new TestFileEntity("lazy-{$i}");
+        }
+
+        // SingleFileRepository
+        $single = new SingleFileRepository($tmp . '/rn04_single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $single->putAll($entities);
+        $reloaded = new SingleFileRepository($tmp . '/rn04_single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $spec = new CountingSpecification(fn(TestFileEntity $e): bool => true);
+        $iterator = $reloaded->iterate($spec);
+        $this->assertTrue($iterator instanceof \Generator);
+        $this->assertEquals(0, $spec->evaluations, 'nada avaliado antes do primeiro pull');
+        $this->assertTrue($iterator->current() instanceof TestFileEntity);
+        $this->assertEquals(1, $spec->evaluations, 'o primeiro item custa uma avaliação (antes: 20)');
+        $this->assertCount(20, iterator_to_array($reloaded->iterate(new AllEntitiesSpecification()), false));
+
+        // FilePerEntityRepository, instrumentado: conta listagens completas e leituras de arquivo
+        $dir = new class($tmp . '/rn04_per_entity', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser) extends FilePerEntityRepository {
+            public int $fullScans = 0;
+            public int $fileReads = 0;
+            protected function scanEntityFiles(): array
+            {
+                $this->fullScans++;
+                return parent::scanEntityFiles();
+            }
+            protected function readEntityFromFile(string $filePath): ?\Antevemus\ASpecification\Contracts\Entities\IEntity
+            {
+                $this->fileReads++;
+                return parent::readEntityFromFile($filePath);
+            }
+        };
+        $dir->putAll($entities);
+        file_put_contents($tmp . '/rn04_per_entity/notes.txt', 'outro tipo de arquivo: ignorado');
+        $dir->fullScans = 0;
+        $dir->fileReads = 0;
+
+        $spec = new CountingSpecification(fn(TestFileEntity $e): bool => true);
+        $iterator = $dir->iterate($spec);
+        $this->assertEquals(0, $dir->fileReads, 'nenhum arquivo lido antes do primeiro pull');
+        $this->assertTrue($iterator->current() instanceof TestFileEntity);
+        $this->assertEquals(1, $dir->fileReads, 'um arquivo por entidade puxada');
+        $this->assertEquals(1, $spec->evaluations);
+        $iterator->next();
+        $this->assertEquals(2, $dir->fileReads);
+        $this->assertEquals(0, $dir->fullScans, 'a listagem do diretório nunca é materializada');
+
+        $titles = [];
+        foreach ($dir->iterate(new AllEntitiesSpecification()) as $entity) {
+            $titles[] = $entity->title;
+        }
+        sort($titles);
+        $expected = array_map(fn(TestFileEntity $e): string => $e->title, $entities);
+        sort($expected);
+        $this->assertEquals($expected, $titles, 'mesmo conjunto que findAll(), em ordem de diretório');
+        $this->assertEquals(0, $dir->fullScans);
+
+        // InMemoryAndFileRepository: generator do cache L1, primeiro item com uma avaliação
+        $hybrid = new InMemoryAndFileRepository($reloaded);
+        $hybrid->warmup();
+        $spec = new CountingSpecification(fn(TestFileEntity $e): bool => true);
+        $iterator = $hybrid->iterate($spec);
+        $this->assertEquals(0, $spec->evaluations);
+        $this->assertTrue($iterator->current() instanceof TestFileEntity);
+        $this->assertEquals(1, $spec->evaluations);
+        $hybrid->close();
     }
 }

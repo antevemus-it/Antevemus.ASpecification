@@ -23,7 +23,10 @@ use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 use Antevemus\ASpecification\Engine\RuleDefinition;
 use Antevemus\ASpecification\Engine\RuleEngineVerdict;
 use Antevemus\ASpecification\Engine\RuleSpecificationRegistry;
+use Antevemus\ASpecification\Results\FailureSeverity;
+use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Contracts\Engine\IDocumentPresenceEvaluator;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
@@ -95,6 +98,12 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $this->testFindRulesHonoursProductAndPlanFilters();
         $this->testFindRulesHonoursValidityWindow();
         $this->testRuleDefinitionHydratesApplicabilityColumnsIntoParametros();
+
+        // Forward 020 RN-04 (1.5.0): FailureSeverity preenchida pelo motor a partir de RuleAction.
+        $this->testFailureSeverityContract();
+        $this->testEngineStampsSeverityFromRuleAction();
+        $this->testSeverityFollowsEffectiveActionAndEvaluationErrors();
+        $this->testDocumentFailuresAreErrorSeverity();
     }
 
     /**
@@ -1095,5 +1104,148 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         $plain = RuleDefinition::fromArray(['codigo' => 'r3', 'nome' => 'n', 'tipo_regra' => 't', 'codigo_produto' => '']);
         $this->assertEquals([], $plain->getParametros(), 'coluna vazia não vira restrição');
+    }
+
+    /**
+     * Forward 020 RN-04: FailureSeverity (ERROR, WARNING, INFO); SpecificationFailure ganha
+     * `?FailureSeverity $severity = null` no fim do construtor (compatível com as chamadas posicionais
+     * da 1.4.x) e getSeverity(); RuleAction mapeia para a severidade.
+     */
+    private function testFailureSeverityContract(): void
+    {
+        $this->assertEquals(['error', 'warning', 'info'], array_map(static fn(FailureSeverity $s): string => $s->value, FailureSeverity::cases()));
+        $this->assertEquals(FailureSeverity::ERROR, RuleAction::BLOCK->toSeverity());
+        $this->assertEquals(FailureSeverity::WARNING, RuleAction::WARN->toSeverity());
+        $this->assertEquals(FailureSeverity::INFO, RuleAction::LOG->toSeverity());
+
+        // Assinatura da 1.4.x continua válida e a severidade fica nula fora do motor.
+        $legacy = new SpecificationFailure('m', 'C', 'R', 'p', ['k' => 1]);
+        $this->assertTrue($legacy->getSeverity() === null);
+        $this->assertTrue(SpecificationResult::failure('m', 'C')->failures[0]->getSeverity() === null);
+        $this->assertTrue(Spec::property('n', Spec::greaterThan(1))->evaluate((object) ['n' => 0])->failures[0]->getSeverity() === null, 'spec comum não classifica');
+
+        $classified = new SpecificationFailure('m', 'C', severity: FailureSeverity::WARNING);
+        $this->assertEquals(FailureSeverity::WARNING, $classified->getSeverity());
+        $this->assertEquals(FailureSeverity::WARNING, $classified->withProperty('campo')->getSeverity(), 'withProperty() preserva a severidade');
+        $this->assertEquals('campo', $classified->withProperty('campo')->property);
+        $this->assertEquals(FailureSeverity::INFO, $legacy->withSeverity(FailureSeverity::INFO)->getSeverity());
+        $this->assertEquals(['k' => 1], $legacy->withSeverity(FailureSeverity::INFO)->metadata, 'withSeverity() preserva o restante');
+        $this->assertEquals(FailureSeverity::ERROR, SpecificationResult::failure('m', severity: FailureSeverity::ERROR)->failures[0]->getSeverity());
+        $this->assertEquals('[C] m', (string) $classified, '__toString inalterado');
+    }
+
+    /**
+     * Cenário de aceitação do forward 020: regras bloquear, alertar e apenas_log violadas produzem falhas
+     * ERROR, WARNING e INFO; hasBlockingErrors() continua true só pela regra bloquear.
+     */
+    private function testEngineStampsSeverityFromRuleAction(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'R_BLOCK', nome: 'b', tipoRegra: 'maximo', acaoAoViolar: RuleAction::BLOCK, valorInteiro: 1, prioridade: 3, escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_WARN', nome: 'w', tipoRegra: 'maximo', acaoAoViolar: RuleAction::WARN, valorInteiro: 1, prioridade: 2, escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_LOG', nome: 'l', tipoRegra: 'maximo_codificado', acaoAoViolar: RuleAction::LOG, valorInteiro: 1, prioridade: 1, escopo: 'x'));
+
+        $registry = new RuleSpecificationRegistry();
+        // Handler cru (falha colapsada pelo motor) ...
+        $registry->registerClosure('maximo', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('n', Spec::lessThanOrEqualTo($r->getValorInteiro())));
+        // ... e handler com código próprio (falha carimbada pelo motor).
+        $registry->registerClosure('maximo_codificado', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('n', Spec::lessThanOrEqualTo($r->getValorInteiro()))->withCode('HANDLER_LOG'));
+        $engine = new DynamicSpecificationEngine($catalog, $registry);
+
+        $verdict = $engine->validate((object) ['n' => 5], 'x');
+        $severities = array_map(static fn($f): ?FailureSeverity => $f->getSeverity(), $verdict->getAllFailures());
+        $this->assertEquals([FailureSeverity::ERROR, FailureSeverity::WARNING, FailureSeverity::INFO], $severities);
+        $this->assertEquals(['R_BLOCK', 'R_WARN', 'HANDLER_LOG'], $verdict->getFailureCodes());
+        $this->assertTrue($verdict->hasBlockingErrors());
+        $this->assertEquals(FailureSeverity::ERROR, $verdict->getBlockingFailures()[0]->getSeverity());
+        $this->assertEquals(FailureSeverity::WARNING, $verdict->getWarningFailures()[0]->getSeverity());
+        $this->assertEquals(FailureSeverity::INFO, $verdict->getLogFailures()[0]->getSeverity());
+
+        // Sem a regra bloquear, alertar e apenas_log não bloqueiam (hasBlockingErrors inalterado).
+        $soft = new InMemoryRuleCatalog();
+        $soft->addRule(new RuleDefinition(codigo: 'R_WARN', nome: 'w', tipoRegra: 'maximo', acaoAoViolar: RuleAction::WARN, valorInteiro: 1, escopo: 'x'));
+        $soft->addRule(new RuleDefinition(codigo: 'R_LOG', nome: 'l', tipoRegra: 'maximo', acaoAoViolar: RuleAction::LOG, valorInteiro: 1, escopo: 'x'));
+        $softVerdict = (new DynamicSpecificationEngine($soft, $registry))->validate((object) ['n' => 5], 'x');
+        $this->assertFalse($softVerdict->hasBlockingErrors());
+        $this->assertEquals(
+            [FailureSeverity::WARNING, FailureSeverity::INFO],
+            array_map(static fn($f): ?FailureSeverity => $f->getSeverity(), $softVerdict->getAllFailures())
+        );
+    }
+
+    /**
+     * A severidade nunca discorda do balde do veredito: a ação do handler vence a da regra, erro de
+     * avaliação é ERROR mesmo em regra apenas_log, e severidade explícita do handler é preservada.
+     */
+    private function testSeverityFollowsEffectiveActionAndEvaluationErrors(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addRule(new RuleDefinition(codigo: 'R_WARN_HANDLER_BLOCK', nome: 'a', tipoRegra: 'handler_bloqueia', acaoAoViolar: RuleAction::WARN, prioridade: 4, escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_LOG_ERRO', nome: 'b', tipoRegra: 'propriedade_inexistente', acaoAoViolar: RuleAction::LOG, prioridade: 3, escopo: 'x'));
+        $catalog->addRule(new RuleDefinition(codigo: 'R_EXPLICITA', nome: 'c', tipoRegra: 'severidade_explicita', acaoAoViolar: RuleAction::BLOCK, prioridade: 2, escopo: 'x'));
+
+        $registry = new RuleSpecificationRegistry();
+        $registry->registerClosure('handler_bloqueia', fn(IRuleDefinition $r): ISpecification => new class extends AbstractSpecification {
+            public function getType(): string { return 'mixed'; }
+            public function isSatisfiedBy(mixed $c): bool { return false; }
+            public function evaluate(mixed $c): SpecificationResult {
+                return SpecificationResult::failure('handler', 'H_BLOCK', metadata: ['acao' => 'bloquear']);
+            }
+        });
+        $registry->registerClosure('propriedade_inexistente', fn(IRuleDefinition $r): ISpecification =>
+            Spec::property('naoExiste', Spec::greaterThan(1)));
+        $registry->registerClosure('severidade_explicita', fn(IRuleDefinition $r): ISpecification => new class extends AbstractSpecification {
+            public function getType(): string { return 'mixed'; }
+            public function isSatisfiedBy(mixed $c): bool { return false; }
+            public function evaluate(mixed $c): SpecificationResult {
+                return SpecificationResult::failure('explícita', 'H_INFO', severity: FailureSeverity::INFO);
+            }
+        });
+
+        $verdict = (new DynamicSpecificationEngine($catalog, $registry))->validate(new stdClass(), 'x');
+        $byCode = [];
+        foreach ($verdict->getAllFailures() as $failure) {
+            $byCode[$failure->code] = $failure->getSeverity();
+        }
+
+        $this->assertEquals(FailureSeverity::ERROR, $byCode['H_BLOCK'], 'acao do handler (bloquear) vence a da regra (alertar)');
+        $this->assertTrue(in_array($verdict->getAllFailures()[0], $verdict->getBlockingFailures(), true), 'e cai no mesmo balde');
+        $this->assertEquals(FailureSeverity::ERROR, $byCode['R_LOG_ERRO'], 'erro de avaliação é ERROR mesmo em regra apenas_log');
+        $this->assertEquals(FailureSeverity::INFO, $byCode['H_INFO'], 'severidade explícita do handler é preservada');
+        $this->assertTrue($verdict->hasEvaluationErrors());
+    }
+
+    /**
+     * Requisitos documentais sempre bloqueiam: falhas e erros de avaliação documentais são ERROR.
+     */
+    private function testDocumentFailuresAreErrorSeverity(): void
+    {
+        $catalog = new InMemoryRuleCatalog();
+        $catalog->addDocumentRule(new DocumentRuleDefinition(grupoCodigo: 'g', codigoTipoDocumento: 'rg', escopo: 'x'));
+        $catalog->addDocumentRule(new DocumentRuleDefinition(grupoCodigo: 'g', codigoTipoDocumento: 'cpf', escopo: 'x', regraObrigatoriedade: DocumentRequirementMode::ANY, codigoSetAlternativas: 'id'));
+        $catalog->addDocumentRule(new DocumentRuleDefinition(grupoCodigo: 'g', codigoTipoDocumento: 'cnh', escopo: 'x', regraObrigatoriedade: DocumentRequirementMode::ANY, codigoSetAlternativas: 'id'));
+
+        $verdict = Spec::engine($catalog)->validate((object) ['documentos' => []], 'x');
+        $this->assertEquals(['DOC_RG', 'DOC_SET_ID'], $verdict->getFailureCodes());
+        $this->assertEquals(
+            [FailureSeverity::ERROR, FailureSeverity::ERROR],
+            array_map(static fn($f): ?FailureSeverity => $f->getSeverity(), $verdict->getAllFailures())
+        );
+
+        $throwing = new class implements IDocumentPresenceEvaluator {
+            public function hasDocument(object|array $target, string $codigoTipoDocumento, array $context = []): bool
+            {
+                throw new RuntimeException('repositório de documentos indisponível');
+            }
+        };
+        $engine = new DynamicSpecificationEngine($catalog, new RuleSpecificationRegistry(), new DocumentGroupSpecificationBuilder($throwing));
+        $errorVerdict = $engine->validate((object) [], 'x');
+        $this->assertTrue($errorVerdict->hasEvaluationErrors());
+        $this->assertTrue(count($errorVerdict->getAllFailures()) > 0);
+        foreach ($errorVerdict->getAllFailures() as $failure) {
+            $this->assertEquals(FailureSeverity::ERROR, $failure->getSeverity(), 'erro de avaliação documental é ERROR');
+        }
     }
 }

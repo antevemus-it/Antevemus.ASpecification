@@ -20,7 +20,16 @@ use Antevemus\ASpecification\Repositories\PersistentEntity;
  * - High-speed native serialization
  * - Safe deserialization restricted to allowed classes whitelist
  *
- * @version    1.1.0
+ * Deprecated since 1.5.0: this class holds the only `unserialize()` of the library (attack surface
+ * of the security finding BUG-20261007-HIJG); its whitelist demands `extraClasses` for every value
+ * object or enum held by the entity, and the entity's `__wakeup` always runs. JsonEntitySerializer
+ * covers private and readonly properties, DateTime, nested objects and constructor-less hydration.
+ * Migration: load the `.bin` file with this serializer and store it again through a repository
+ * configured with JsonEntitySerializer (`.json`). Constructing it emits E_USER_DEPRECATED; behavior
+ * is otherwise unchanged until its removal.
+ *
+ * @deprecated 1.5.0 Removed in 2.0.0; use JsonEntitySerializer
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -40,6 +49,11 @@ class PhpNativeEntitySerializer implements IEntitySerializer
         array|string $allowedClassesOrEntityClass = [],
         array $extraClasses = []
     ) {
+        trigger_error(
+            self::class . ' is deprecated since 1.5.0 and will be removed in 2.0.0; use JsonEntitySerializer.',
+            E_USER_DEPRECATED
+        );
+
         $base = is_string($allowedClassesOrEntityClass)
             ? [$allowedClassesOrEntityClass]
             : $allowedClassesOrEntityClass;

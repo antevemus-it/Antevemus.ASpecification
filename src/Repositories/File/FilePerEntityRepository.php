@@ -20,12 +20,12 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * Features:
  * - Partitioned persistence via individual files
  * - O(1) optimized direct access by unique key
- * - On-demand filesystem iteration
+ * - On-demand filesystem iteration: iterate*() reads the directory entry by entry (readdir), never the whole listing
  * - Session metadata per entity (writes on put, reads on every served entity)
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -261,6 +261,11 @@ class FilePerEntityRepository extends AbstractFileRepository
 
     /**
      * {@inheritdoc}
+     *
+     * Lazy file by file (1.5.0, RN-04): the directory is read entry by entry (readdir), each file is
+     * read and deserialized only when the consumer pulls the next entity, and the directory listing
+     * is never collected into an array. The order is the directory order of the filesystem (not
+     * sorted, unlike findAllEntitiesSpecifiedBy()).
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
@@ -268,7 +273,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             return;
         }
 
-        foreach ($this->scanEntityFiles() as $filePath) {
+        foreach ($this->iterateEntityFiles() as $filePath) {
             /** @var T|null $entity */
             $entity = $this->readEntityFromFile($filePath);
             if ($entity !== null && $specification->isSatisfiedBy($entity)) {
@@ -325,6 +330,42 @@ class FilePerEntityRepository extends AbstractFileRepository
         $files = glob($pattern);
 
         return $files !== false ? $files : [];
+    }
+
+    /**
+     * Lazily yields the entity files of the storage directory, one directory entry at a time
+     * (opendir/readdir), without building the listing: the same files scanEntityFiles() returns
+     * (`*.<ext>`, hidden entries excluded), in directory order.
+     *
+     * @return \Generator<int, string>
+     */
+    protected function iterateEntityFiles(): \Generator
+    {
+        if (!is_dir($this->storagePath)) {
+            return;
+        }
+
+        $handle = @opendir($this->storagePath);
+        if ($handle === false) {
+            return;
+        }
+
+        $directory = rtrim($this->storagePath, "/\\") . DIRECTORY_SEPARATOR;
+        $suffix = '.' . $this->serializer->getFileExtension();
+
+        try {
+            while (($entry = readdir($handle)) !== false) {
+                if ($entry === '' || $entry[0] === '.' || !str_ends_with($entry, $suffix)) {
+                    continue;
+                }
+                $path = $directory . $entry;
+                if (is_file($path)) {
+                    yield $path;
+                }
+            }
+        } finally {
+            closedir($handle);
+        }
     }
 
     /**

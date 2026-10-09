@@ -9,13 +9,17 @@ declare(strict_types=1);
  * with LINQ collection processing pipelines and generator-based streaming from Antevemus.AlinqCollection.
  *
  * Features:
- * - Conversion of iterables and in-memory repositories into ALinqCollection instances
- * - Deferred streaming conversion into ALinqLazyCollection for O(1) memory overhead
- * - Direct collection filtering using ISpecification trees via ALinqSpecificationVisitor
+ * - Conversion of iterables and repositories (any IRepository) into ALinqCollection instances
+ * - Lazy conversion into ALinqLazyCollection over IRepository::iterate(): the collection is built on a
+ *   closure that asks the repository for a NEW generator on every traversal, so it stays re-iterable,
+ *   never calls getAll() and only visits the entities the pipeline actually pulls
+ * - Direct collection filtering using ISpecification trees via ALinqSpecificationVisitor; a repository
+ *   source is filtered by the repository itself (iterate($specification)), so partitions prune
+ * - Typed returns (antevemus/alinq-collection ^1.3): IALinqCollection and IALinqLazyCollection. Without
+ *   the library every method throws before returning, so the declared types never load anything
  * - Runtime detection of antevemus/alinq-collection and lazy capabilities
- * - Fluent chaining with sorting, projection, slicing, and grouping operations
  *
- * @version    1.1.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -25,8 +29,12 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Linq;
 
+use Antevemus\ALinq\Interfaces\IALinqCollection;
+use Antevemus\ALinq\Interfaces\IALinqLazyCollection;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Repositories\InMemoryRepository;
+use Antevemus\ASpecification\Contracts\Repositories\IRepository;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
+use Generator;
 use RuntimeException;
 
 final class ALinqBridge
@@ -58,16 +66,21 @@ final class ALinqBridge
     /**
      * Convert an iterable collection of items, array, or repository into an ALinqCollection instance.
      *
-     * @param iterable|InMemoryRepository $items
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqCollection
+     * A repository is read through iterate() with a tautology (every stored entity), whatever its
+     * implementation (in memory, partition, file).
+     *
+     * @param iterable<mixed>|IRepository $items
+     * @return IALinqCollection
      * @throws RuntimeException When the antevemus/alinq-collection package is not installed
      */
-    public static function toCollection(iterable|InMemoryRepository $items): object
+    public static function toCollection(iterable|IRepository $items): IALinqCollection
     {
         self::ensureAvailable();
 
-        if ($items instanceof InMemoryRepository) {
-            return \Antevemus\ALinq\ALinqCollection::from($items->getAll());
+        if ($items instanceof IRepository) {
+            return \Antevemus\ALinq\ALinqCollection::from(
+                iterator_to_array(self::iterateRepository($items, null), false)
+            );
         }
 
         $array = is_array($items) ? array_values($items) : iterator_to_array($items, false);
@@ -77,109 +90,138 @@ final class ALinqBridge
     /**
      * Filter an iterable dataset by compiling an ISpecification into an executable LINQ predicate.
      *
-     * @param iterable|InMemoryRepository $items
+     * @param iterable<mixed>|IRepository $items
      * @param ISpecification $specification
-     * @return object Returns a filtered \Antevemus\ALinq\ALinqCollection instance
+     * @return IALinqCollection Filtered collection
      */
-    public static function filter(iterable|InMemoryRepository $items, ISpecification $specification): object
+    public static function filter(iterable|IRepository $items, ISpecification $specification): IALinqCollection
     {
         $collection = self::toCollection($items);
         $predicate = ALinqSpecificationVisitor::createPredicate($specification);
 
-        /** @var \Antevemus\ALinq\ALinqCollection $collection */
         return $collection->where($predicate);
     }
 
     /**
-     * Extract all entities from an InMemoryRepository as an ALinqCollection.
+     * Extract all entities from a repository as an ALinqCollection.
      *
-     * @param InMemoryRepository $repository
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqCollection
+     * @param IRepository $repository
+     * @return IALinqCollection
      */
-    public static function fromRepository(InMemoryRepository $repository): object
+    public static function fromRepository(IRepository $repository): IALinqCollection
     {
-        return self::toCollection($repository->getAll());
+        return self::toCollection($repository);
     }
 
     /**
-     * Query an InMemoryRepository applying a specification and returning the result as ALinqCollection.
+     * Query a repository applying a specification and returning the result as ALinqCollection.
      *
-     * @param InMemoryRepository $repository
+     * @param IRepository $repository
      * @param ISpecification $specification
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqCollection
+     * @return IALinqCollection
      */
-    public static function queryRepository(InMemoryRepository $repository, ISpecification $specification): object
+    public static function queryRepository(IRepository $repository, ISpecification $specification): IALinqCollection
     {
         $entities = $repository->findAllEntitiesSpecifiedBy($specification);
         return self::toCollection($entities);
     }
 
     // ==========================================
-    // 2. Generator-Based Lazy Streaming (O(1) RAM)
+    // 2. Generator-Based Lazy Streaming
     // ==========================================
 
     /**
-     * Convert an iterable, generator factory closure, or InMemoryRepository into an ALinqLazyCollection.
+     * Convert an iterable, generator factory closure, or repository into an ALinqLazyCollection.
      *
-     * Enables constant O(1) memory overhead processing over massive or infinite data streams.
+     * A repository becomes `ALinqLazyCollection::from(fn() => $repository->iterate(...))`: the closure
+     * returns a new generator on every traversal (the collection is re-iterable) and nothing is
+     * materialized; `take(10)` on a 100,000-entity repository visits only what it needs.
      *
-     * @param iterable|callable|InMemoryRepository $source
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqLazyCollection
+     * @param iterable<mixed>|callable|IRepository $source
+     * @return IALinqLazyCollection
      * @throws RuntimeException When ALinqLazyCollection is not available
      */
-    public static function toLazyCollection(iterable|callable|InMemoryRepository $source): object
+    public static function toLazyCollection(iterable|callable|IRepository $source): IALinqLazyCollection
     {
         self::ensureLazyAvailable();
 
-        if ($source instanceof InMemoryRepository) {
-            return \Antevemus\ALinq\ALinqLazyCollection::from(static fn(): array => $source->getAll());
+        if ($source instanceof IRepository) {
+            return \Antevemus\ALinq\ALinqLazyCollection::from(
+                static fn(): iterable => self::iterateRepository($source, null)
+            );
         }
 
         return \Antevemus\ALinq\ALinqLazyCollection::from($source);
     }
 
     /**
-     * Filter a streaming or lazy dataset with constant O(1) memory by compiling an ISpecification into a LINQ predicate.
+     * Filter a streaming or lazy dataset by compiling an ISpecification into a LINQ predicate.
      *
-     * @param iterable|callable|InMemoryRepository $source
+     * A repository source is filtered by the repository itself (`iterate($specification)`, lazily,
+     * with the partition pruning of the repository), every traversal asking for a new generator.
+     *
+     * @param iterable<mixed>|callable|IRepository $source
      * @param ISpecification $specification
-     * @return object Returns a filtered \Antevemus\ALinq\ALinqLazyCollection instance
+     * @return IALinqLazyCollection Filtered lazy collection
      */
-    public static function filterLazy(iterable|callable|InMemoryRepository $source, ISpecification $specification): object
+    public static function filterLazy(iterable|callable|IRepository $source, ISpecification $specification): IALinqLazyCollection
     {
+        if ($source instanceof IRepository) {
+            self::ensureLazyAvailable();
+
+            return \Antevemus\ALinq\ALinqLazyCollection::from(
+                static fn(): iterable => self::iterateRepository($source, $specification)
+            );
+        }
+
         $lazyCollection = self::toLazyCollection($source);
         $predicate = ALinqSpecificationVisitor::createPredicate($specification);
 
-        /** @var \Antevemus\ALinq\ALinqLazyCollection $lazyCollection */
         return $lazyCollection->where($predicate);
     }
 
     /**
-     * Extract all entities from an InMemoryRepository as an ALinqLazyCollection stream.
+     * Extract all entities from a repository as an ALinqLazyCollection stream.
      *
-     * @param InMemoryRepository $repository
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqLazyCollection
+     * @param IRepository $repository
+     * @return IALinqLazyCollection
      */
-    public static function fromRepositoryLazy(InMemoryRepository $repository): object
+    public static function fromRepositoryLazy(IRepository $repository): IALinqLazyCollection
     {
         return self::toLazyCollection($repository);
     }
 
     /**
-     * Query an InMemoryRepository applying a specification lazily as an ALinqLazyCollection stream.
+     * Query a repository applying a specification lazily as an ALinqLazyCollection stream.
      *
-     * @param InMemoryRepository $repository
+     * @param IRepository $repository
      * @param ISpecification $specification
-     * @return object Returns an instance of \Antevemus\ALinq\ALinqLazyCollection
+     * @return IALinqLazyCollection
      */
-    public static function queryRepositoryLazy(InMemoryRepository $repository, ISpecification $specification): object
+    public static function queryRepositoryLazy(IRepository $repository, ISpecification $specification): IALinqLazyCollection
     {
         return self::filterLazy($repository, $specification);
     }
 
     // ==========================================
-    // 3. Validation Helpers
+    // 3. Helpers
     // ==========================================
+
+    /**
+     * One lazy pass over a repository: a generator that asks the repository for its own iterator
+     * only when the traversal starts, so a repository error surfaces on traversal like the rest of
+     * the lazy pipeline.
+     *
+     * @param IRepository $repository
+     * @param ISpecification|null $specification Null = every stored entity
+     * @return Generator<int, mixed>
+     */
+    private static function iterateRepository(IRepository $repository, ?ISpecification $specification): Generator
+    {
+        foreach ($repository->iterate($specification ?? new AlwaysTrueSpecification()) as $entity) {
+            yield $entity;
+        }
+    }
 
     /**
      * Ensure the ALinqCollection class is available or throw an exception.

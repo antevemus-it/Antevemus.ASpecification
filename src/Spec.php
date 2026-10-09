@@ -17,7 +17,7 @@ declare(strict_types=1);
  * - Declarative attribute validation runner (validateAttributes, assertAttributes)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.3.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -280,12 +280,32 @@ final class Spec
      * (`in()` or `in([])`) never matches. To match against array values, pass a
      * list of arrays (`in([[1, 2], [3]])`) or several array arguments.
      *
+     * Since 1.5.0 the result is one InSpecification leaf (strict typed equality, as
+     * equalTo()), translated as `"col" IN (:p1, :p2)` by the SQL visitor, as
+     * `TFilter('col', 'IN', [...])` by the TCriteria visitor and as `in_array(..., true)`
+     * by the ALinq visitor; before, it was a chain of equalTo() OR equalTo().
+     *
      * @param mixed ...$values Accepted values, or a single array holding them
      * @return ISpecification
      */
     public static function in(mixed ...$values): ISpecification
     {
         return self::getFactory()->in(...$values);
+    }
+
+    /**
+     * Specifies that candidate value must NOT belong to the given set: `not(in(...))`.
+     *
+     * Accepts the same variadic or single-array forms as in(). `notIn()` of the empty set is
+     * the tautology. Translated as `NOT ("col" IN (...))` by the SQL visitor and as
+     * `TFilter('col', 'NOT IN', [...])` by the TCriteria visitor.
+     *
+     * @param mixed ...$values Rejected values, or a single array holding them
+     * @return ISpecification
+     */
+    public static function notIn(mixed ...$values): ISpecification
+    {
+        return self::getFactory()->not(self::getFactory()->in(...$values));
     }
 
     // ==========================================
@@ -861,37 +881,38 @@ final class Spec
     // ==========================================
 
     /**
-     * Converts an iterable or InMemoryRepository into a fluent ALinqCollection.
+     * Converts an iterable or repository (any IRepository) into a fluent ALinqCollection.
      *
-     * @param iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items
-     * @return object Instance of \Antevemus\ALinq\ALinqCollection
+     * @param iterable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $items
+     * @return \Antevemus\ALinq\Interfaces\IALinqCollection
      */
-    public static function linq(iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items): object
+    public static function linq(iterable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $items): \Antevemus\ALinq\Interfaces\IALinqCollection
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::toCollection($items);
     }
 
     /**
-     * Filters an iterable or InMemoryRepository with a specification, returning an ALinqCollection.
+     * Filters an iterable or repository with a specification, returning an ALinqCollection.
      *
-     * @param iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items
+     * @param iterable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $items
      * @param \Antevemus\ASpecification\Contracts\ISpecification $specification
-     * @return object Filtered \Antevemus\ALinq\ALinqCollection
+     * @return \Antevemus\ALinq\Interfaces\IALinqCollection Filtered collection
      */
     public static function filterLinq(
-        iterable|\Antevemus\ASpecification\Repositories\InMemoryRepository $items,
+        iterable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $items,
         \Antevemus\ASpecification\Contracts\ISpecification $specification
-    ): object {
+    ): \Antevemus\ALinq\Interfaces\IALinqCollection {
         return \Antevemus\ASpecification\Linq\ALinqBridge::filter($items, $specification);
     }
 
     /**
-     * Converts an iterable, generator, or InMemoryRepository into a streaming ALinqLazyCollection with O(1) RAM.
+     * Converts an iterable, generator factory, or repository into a lazy ALinqLazyCollection (a repository is read
+     * through iterate(), a new generator per traversal).
      *
-     * @param iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source
-     * @return object Instance of \Antevemus\ALinq\ALinqLazyCollection
+     * @param iterable|callable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $source
+     * @return \Antevemus\ALinq\Interfaces\IALinqLazyCollection
      */
-    public static function linqLazy(iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source): object
+    public static function linqLazy(iterable|callable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $source): \Antevemus\ALinq\Interfaces\IALinqLazyCollection
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::toLazyCollection($source);
     }
@@ -899,14 +920,14 @@ final class Spec
     /**
      * Filters a stream or generator with constant O(1) RAM using a specification, returning an ALinqLazyCollection.
      *
-     * @param iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source
+     * @param iterable|callable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $source
      * @param \Antevemus\ASpecification\Contracts\ISpecification $specification
-     * @return object Filtered \Antevemus\ALinq\ALinqLazyCollection
+     * @return \Antevemus\ALinq\Interfaces\IALinqLazyCollection Filtered lazy collection
      */
     public static function filterLazy(
-        iterable|callable|\Antevemus\ASpecification\Repositories\InMemoryRepository $source,
+        iterable|callable|\Antevemus\ASpecification\Contracts\Repositories\IRepository $source,
         \Antevemus\ASpecification\Contracts\ISpecification $specification
-    ): object {
+    ): \Antevemus\ALinq\Interfaces\IALinqLazyCollection {
         return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($source, $specification);
     }
 

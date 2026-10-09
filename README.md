@@ -7,7 +7,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1612%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2305%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -44,9 +44,9 @@
 - 🗄️ **Repository Architecture & DAG Partitioning**:
   - $O(1)$ early branch pruning in query search trees through specification disjointness.
   - In-memory (`InMemoryRepository`), null (`NullRepository`), and test-double (`FakePartitionRepository`) implementations.
-  - Decoupled disk storage (`FilePerEntityRepository`, `SingleFileRepository`) with interchangeable serialization (`JsonEntitySerializer` and `PhpNativeEntitySerializer`).
+  - Decoupled disk storage (`FilePerEntityRepository`, `SingleFileRepository`) with pluggable serialization (`JsonEntitySerializer`; `PhpNativeEntitySerializer` is deprecated since v1.5.0 and removed in v2.0.0, because it is the only `unserialize()` in the library: load an existing `.bin` with it and store with the JSON serializer to migrate).
   - Hybrid $L1$ (RAM) + $L2$ (Disk) tiering via `InMemoryAndFileRepository`.
-- 🔒 **Concurrency & Atomic Locking**: `ISynchronizer` primitives wired into every repository (shared readers, exclusive writer, reentrant per execution context): the in-process `SemaphoreSynchronizer` (permit counter, Fiber-aware) and atomic file locks (`flock`) across processes for the file repositories. A SysV IPC `SysVSemaphoreSynchronizer` is scheduled for v1.5.0 (ROADMAP milestone 6).
+- 🔒 **Concurrency & Atomic Locking**: `ISynchronizer` primitives wired into every repository (shared readers, exclusive writer, reentrant per execution context): the in-process `SemaphoreSynchronizer` (permit counter, Fiber-aware) and atomic file locks (`flock`) across processes for the file repositories. `SysVSemaphoreSynchronizer` (`ext-sysvsem`) shares the same reader/writer lock between processes through SysV IPC semaphores.
 - ⏱️ **Nanosecond Benchmarking & Diagnostics**: High-resolution stopwatches (`StopWatch` via `hrtime`) and hierarchical diagnostic utilities (`InstrumentationUtils`).
 
 ---
@@ -68,7 +68,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 | **Fluent Chaining & Natural Domain DSL** | ⚠️ Basic | ⚠️ Partial | ✅ Natural English syntax (`Spec::specify()->where()->and()->or()`) + helpers (`prop()`, `is()`, `not()`) |
 | **Venn Set Subsumption & Remainder** | ✅ Complete | ❌ Absent in almost all libs | ✅ `isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`, `remainderUnsatisfiedBy` |
 | **DAG Partitioning $O(1)$** | ✅ Supported | ❌ Extremely rare | ✅ Partitioned repositories with early disjoint branch pruning |
-| **Concurrency & Locking** | ⚠️ Java Threads / Locks | ❌ Unsupported | ✅ Synchronized repositories (reentrant `SemaphoreSynchronizer`, Fiber-aware) and atomic `flock` file locks across processes; SysV IPC semaphores scheduled for v1.5.0 |
+| **Concurrency & Locking** | ⚠️ Java Threads / Locks | ❌ Unsupported | ✅ Synchronized repositories (reentrant `SemaphoreSynchronizer`, Fiber-aware) `SysVSemaphoreSynchronizer` on SysV IPC between processes, and atomic `flock` file locks |
 | **Modern Architecture** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legacy | ✅ **PHP 8.2+** native (Enums, First-class callables, Readonly, 8 segregated traits) |
 
 ---
@@ -78,9 +78,9 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 - **PHP**: `^8.2` (tested on PHP 8.2 and 8.4). PHP 8.4 is required only by the optional ALinq integration (`Antevemus.AlinqCollection`, Module 14), which the library detects at runtime.
 - **PHP Extensions**:
   - `ext-json` (for JSON entity serialization; required)
-  - `ext-mbstring` *(optional today: the Unicode-aware case-insensitive string matching planned for v1.5.0 will use it)*
-  - `ext-sysvsem` *(optional: the SysV IPC semaphores planned for v1.5.0 will use it for inter-process synchronization under Linux)*
-- **Optional package**: `antevemus/alinq-collection` `^1.1` for `ALinqBridge`, `ALinqSpecificationVisitor` and O(1) lazy streaming (requires PHP 8.4).
+  - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
+  - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
+- **Optional package**: `antevemus/alinq-collection` `^1.3` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4).
 
 ---
 
@@ -564,29 +564,30 @@ Report below as printed by the runner, with its Portuguese labels translated; th
  ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
 ====================================================================
 
-• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (71 assertions)
-• [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (8 assertions)
-• [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (17 assertions)
+• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (178 assertions)
+• [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (59 assertions)
+• [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (46 assertions)
 • [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (36 assertions)
-• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (85 assertions)
-• [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (44 assertions)
+• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (115 assertions)
+• [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (97 assertions)
 • [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (61 assertions)
 • [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (133 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (96 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (197 assertions)
-• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (239 assertions)
-• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (153 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (194 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (230 assertions)
+• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (260 assertions)
+• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (174 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (239 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (213 assertions)
+• [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (303 assertions)
 
 ====================================================================
- FINAL RESULT: 15/15 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 1612 | DURATION: ~200ms | REGRESSIONS: 0
+ FINAL RESULT: 16/16 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 2305 | DURATION: ~1.7s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (113 PHPUnit tests, 2 043 assertions; `vendor/bin/phpunit` runs 228 tests and 3 670 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (213 PHPUnit tests, 2 043 assertions; `vendor/bin/phpunit` runs 231 tests and 4 371 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
@@ -608,10 +609,10 @@ Key highlights & upcoming roadmap:
 3. **ALinq Lazy Streaming Pipeline & O(1) RAM Evaluation** (Shipped in v1.1.0)
 4. **Review-Driven Hardening: Error State, Strict Typing, Rule Binding & Document Matrix** (Shipped in v1.2.0)
 5. **README Promises I: Every Documented Example Runs** (Shipped in v1.3.0)
-5a. **Domian Parity: Subsumption Algebra, Partition DAG, Synchronized Repositories, Entities & Utilities** (v1.4.4, in progress)
-6. **README Promises II: Inter-Process, Unicode, Lazy Sources, Relational Catalog & `IN`** (v1.5.0)
-7. **Announced-but-Unshipped Backlog I: ULID / UUID v7 Identities & Failure Severity** (v1.5.0)
-8. **PHP-Native Serializer Retirement, Step 1: Deprecation** (v1.5.0)
+5a. **Domian Parity: Subsumption Algebra, Partition DAG, Synchronized Repositories, Entities & Utilities** (Shipped in v1.4.4)
+6. **README Promises II: Inter-Process, Unicode, Lazy Sources, Relational Catalog & `IN`** (Shipped in v1.5.0)
+7. **Announced-but-Unshipped Backlog I: ULID / UUID v7 Identities & Failure Severity** (Shipped in v1.5.0)
+8. **PHP-Native Serializer Retirement, Step 1: Deprecation** (Shipped in v1.5.0)
 9. **`MethodParameterizedSpecification`: Declarative Method Calls** (v1.6.0)
 10. **Tautology & Contradiction Detection** (v1.6.0)
 11. **Announced-but-Unshipped Backlog II: TTL, Partition DAG Index & Three SQL Dialects** (v1.6.0)

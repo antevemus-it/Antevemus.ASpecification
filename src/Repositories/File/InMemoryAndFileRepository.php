@@ -36,7 +36,7 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -106,7 +106,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
      * persisted entities without an explicit warmup() call.
      *
      * @param string $storagePath Single file path (e.g. storage/customers.json)
-     * @param IEntitySerializer $serializer Serializer for the L2 file (JsonEntitySerializer with the entity class, or PhpNativeEntitySerializer)
+     * @param IEntitySerializer $serializer Serializer for the L2 file (JsonEntitySerializer with the entity class; PhpNativeEntitySerializer is deprecated since 1.5.0)
      * @param IVolatileRepository<T>|null $cache Optional L1 repository (default: new InMemoryRepository)
      * @param string|null $repositoryId Optional repository identifier (default: "hybrid_" + file name)
      * @param PersistenceDefinition $persistenceDefinition Persistence mode of both tiers (default: ReadWrite, write-through)
@@ -366,6 +366,9 @@ class InMemoryAndFileRepository extends AbstractRepository implements
 
     /**
      * {@inheritdoc}
+     *
+     * Lazy (1.5.0, RN-04): served by the L1 cache's own generator (InMemoryRepository yields each
+     * entity when pulled, without copying the map); the L2 file is not read during the iteration.
      */
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {

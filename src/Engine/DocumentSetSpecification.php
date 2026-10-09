@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
@@ -18,7 +19,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * A failing set emits ONE aggregated failure (`DOC_SET_<KEY>`) listing the accepted documents,
  * instead of one failure per document, so the verdict reports one blocked requirement.
  *
- * @version    1.2.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -86,7 +87,9 @@ final class DocumentSetSpecification extends AbstractSpecification
         try {
             [$applicable, $present] = $this->tally($candidate);
         } catch (\Throwable $e) {
-            return SpecificationResult::error($e, 'DocumentRuleSet:' . $this->setKey, 'documentos_set.' . $this->setKey, $this->getFailureCode());
+            $error = SpecificationResult::error($e, 'DocumentRuleSet:' . $this->setKey, 'documentos_set.' . $this->setKey, $this->getFailureCode());
+            // A document requirement always blocks: its failures, errors included, are ERROR (1.5.0).
+            return new SpecificationResult(false, [$error->failures[0]->withSeverity(FailureSeverity::ERROR)], true, $e);
         }
 
         $satisfied = $applicable === []
@@ -118,7 +121,8 @@ final class DocumentSetSpecification extends AbstractSpecification
                 'presentes' => $presentTypes,
                 'esperado' => $this->mode === DocumentRequirementMode::ANY ? '>=1' : 1,
                 'recebido' => count($present),
-            ]
+            ],
+            severity: FailureSeverity::ERROR
         );
     }
 

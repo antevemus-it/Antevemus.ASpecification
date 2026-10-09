@@ -22,6 +22,7 @@ use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
@@ -66,7 +67,7 @@ use DateTimeInterface;
  * - Immutable constructor with static factory create()
  * - Domian SpecificationFactory names kept as aliases (allEntities, isGreaterThan, blankString, isEnum, ...)
  *
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -168,14 +169,9 @@ final class SpecificationFactory implements
                 if (count($values) === 1 && is_array(reset($values))) {
                     $values = array_values(reset($values));
                 }
-                if (empty($values)) {
-                    return new AlwaysFalseSpecification();
-                }
-                $spec = new EqualSpecification($values[0]);
-                for ($i = 1, $len = count($values); $i < $len; $i++) {
-                    $spec = $spec->or(new EqualSpecification($values[$i]));
-                }
-                return $spec;
+                // One set leaf (1.5.0, RN-07): before, a chain of equalTo() OR ...; the empty set
+                // is the contradiction in([]) (never satisfied, disjoint with everything).
+                return new InSpecification($values);
             }
         };
 

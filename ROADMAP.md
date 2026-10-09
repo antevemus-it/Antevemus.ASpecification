@@ -28,7 +28,7 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 
 ---
 
-## 🔧 v1.4.4 — Domian Parity Correction Lot (in progress)
+## ✅ v1.4.4 — Domian Parity Correction Lot (Shipped in v1.4.4)
 
 ### 5a. Domian Parity: Subsumption Algebra, Partition DAG, Synchronized Repositories, Entities & Utilities 🧭
 - **Description:** The 2026-10-09 method-by-method parity audit against the Domian trunk (r1209, 103 main sources in 6 modules; reports in `docs/paridade-domian-2026-10-09/`) found that the subsumption algebra and the partition DAG did not behave as the Java reference and as this README promise: composite `equals()` compared object identity, `OrSpecification::isGeneralizationOf` required both sides, `NotSpecification` had no algebra, date and `>=`/`<=` leaves were anonymous classes without subsumption; inserting a generalizing partition lost sub-partitions, `findPartition` matched only by equality, `repartition()` of a missing entity inserted it, iteration materialised; no repository used `ISynchronizer`; `AbstractEntity::equals` ignored the type; `StopWatch`, `updateWithDelta`, 28 factory names, `StrictReturnsNullFactory` and private-field access were missing or wrong. This lot ports the Domian rules faithfully (Reversa bugs #45 to #48), with the Java tests transcribed into `tests/Parity/`.
@@ -36,26 +36,26 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 
 ---
 
-## 🎯 v1.5.0 — README Promises II & Announced Backlog I
+## ✅ v1.5.0 — README Promises II & Announced Backlog I (Shipped in v1.5.0)
 
-### 6. README Promises II: Inter-Process, Unicode, Lazy Sources, Relational Catalog & `IN` 🧵
+### 6. README Promises II: Inter-Process, Unicode, Lazy Sources, Relational Catalog & `IN` 🧵 (Shipped in v1.5.0)
 - **Description:** The remaining README promises that change observable behaviour: a `SysVSemaphoreSynchronizer` backed by SysV IPC (`sem_get`, `ext-sysvsem`) as its own class beside the in-process `SemaphoreSynchronizer`; Unicode-aware case-insensitive string specifications via `mb_*` (`ext-mbstring` becomes required); `IRepository::iterate()` as a true lazy source for `findAsLazyCollection()` (generator, no `getAll()` materialisation); typed return types on the ALinq bridge with `antevemus/alinq-collection ^1.3` in `suggest`; `PdoRuleCatalog`, a PDO-backed `IRuleCatalog` mirroring the relational rule and document tables (configurable table names, reference ANSI DDL shipped); and an `InSpecification` leaf so that `in()` is translated as `IN (...)` by the SQL, TCriteria and ALinq visitors (today a chain of `OR` equalities).
 - **Goal:** The Requirements and Core Features sections describe what the code does. Two declared breaking changes: Unicode case folding and `in()` becoming its own leaf.
 - **Specification:** Reversa forward 017 (decisions D2 to D7, 2026-10-09).
 
-### 7. Announced-but-Unshipped Backlog I: ULID / UUID v7 Identities & Failure Severity 📋
+### 7. Announced-but-Unshipped Backlog I: ULID / UUID v7 Identities & Failure Severity 📋 (Shipped in v1.5.0)
 - **Description:** Two capabilities announced by the `1.0.0` CHANGELOG and never shipped, both additive: `AbstractUlidEntity` and `AbstractUuidV7Entity` (time-ordered identities beside `AbstractUUIDEntity`), and a `FailureSeverity` (`ERROR`, `WARNING`, `INFO`) on `SpecificationFailure`, filled by the rule engine from the rule's action (`bloquear`, `alertar`, `apenas_log`).
 - **Goal:** Promises become code or get an explicit note. The same release records the two items declined (see "Declined") and the one reserved (see "Reserved").
 - **Specification:** Reversa forward 020.
 
-### 8. PHP-Native Serializer Retirement, Step 1: Deprecation ⚠️
+### 8. PHP-Native Serializer Retirement, Step 1: Deprecation ⚠️ (Shipped in v1.5.0)
 - **Description:** `PhpNativeEntitySerializer` and the `.bin` envelope of `SingleFileRepository` are the only use of `unserialize()` in the library and were the vector of the 2026-10 security finding (object injection through the envelope). The JSON serializer covers private and readonly properties, dates, nested objects and constructor-less hydration. In v1.5.0 the class is marked `@deprecated` and emits `E_USER_DEPRECATED`; the README documents the `.bin` → `.json` migration recipe. Nothing is removed before v2.0.0.
 - **Goal:** A library with zero `unserialize()` by v2.0.0, announced one MINOR ahead.
 - **Specification:** Reversa forward 020 (decision D1).
 
 ---
 
-## 🚀 v1.6.0 — Algebra & Announced Backlog II
+## 🎯 v1.6.0 — Algebra & Announced Backlog II (next)
 
 ### 9. `MethodParameterizedSpecification`: Declarative Method Calls 🔬
 - **Description:** The README tree promises `Specifications/Reflection/` with parameterized specifications. Field access already exists as `where()` with the `PropertyAccessor`, so no field-parameterized class is built. The method-parameterized one is: `Spec::calling('isEligibleFor', [$date], $resultSpec)` calls a method of the candidate with arguments declared as data (scalars, arrays, enums, dates) and applies a specification to the result. Unlike `must(closure)`, it has structural `equals()`, its own type, and can be described in a rule catalog.

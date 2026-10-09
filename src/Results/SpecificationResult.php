@@ -22,7 +22,7 @@ use Stringable;
  * - Fast query by error code (hasError) or by target candidate property (getFailuresForProperty)
  * - Idiomatic integration via Countable and Stringable interfaces
  *
- * @version    1.2.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -95,6 +95,7 @@ final readonly class SpecificationResult implements Countable, Stringable
      * @param string|null $ruleName Name or identifier of the failing specification
      * @param string|null $property Target property name evaluated
      * @param array<string, mixed> $metadata Additional contextual diagnostics metadata
+     * @param FailureSeverity|null $severity Severity of the violation; null when not classified (1.5.0)
      * @return self
      */
     public static function failure(
@@ -102,10 +103,11 @@ final readonly class SpecificationResult implements Countable, Stringable
         ?string $code = null,
         ?string $ruleName = null,
         ?string $property = null,
-        array $metadata = []
+        array $metadata = [],
+        ?FailureSeverity $severity = null
     ): self {
         return new self(false, [
-            new SpecificationFailure($message, $code, $ruleName, $property, $metadata)
+            new SpecificationFailure($message, $code, $ruleName, $property, $metadata, $severity)
         ]);
     }
 

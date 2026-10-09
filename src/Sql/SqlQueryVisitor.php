@@ -16,6 +16,7 @@ use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
@@ -52,9 +53,11 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Support for relational comparisons, pattern matching (LIKE, ILIKE), and Regular Expressions
  * - startsWith/endsWith/contains emitted as portable LIKE with wildcard escaping; regex bodies sent
  *   without PHP delimiters (BUG-20261007-3E3F)
+ * - Set membership (InSpecification, 1.5.0) emitted as `"col" IN (:p1, :p2)`; the empty set as the
+ *   dialect's false condition (`1 = 0`), a null member as an extra `OR "col" IS NULL`
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -253,6 +256,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($specification, $col),
 
+            $specification instanceof InSpecification =>
+                $this->translateIn($specification, $col),
+
             $specification instanceof NotEqualSpecification =>
                 $this->translateNotEqual($specification, $col),
 
@@ -315,6 +321,52 @@ class SqlQueryVisitor implements ISpecificationVisitor
         }
         $param = $this->createParameter($val);
         return new SqlWhereClause("{$col} = {$param['name']}", $param['binding']);
+    }
+
+    /**
+     * Translate set membership as `col IN (:p1, :p2, ...)`.
+     *
+     * The empty set is the dialect's false condition (`1 = 0`); booleans go out as the dialect's
+     * boolean literals inside the list, like translateEqual(); a null member cannot be matched by
+     * `IN` in SQL, so it becomes `(col IN (...) OR col IS NULL)` (or just `col IS NULL` when null
+     * is the only member).
+     *
+     * @param InSpecification $specification
+     * @param string $col
+     * @return SqlWhereClause
+     */
+    private function translateIn(InSpecification $specification, string $col): SqlWhereClause
+    {
+        $values = $specification->getValues();
+        if ($values === []) {
+            return new SqlWhereClause($this->dialect->getFalseCondition());
+        }
+
+        $hasNull = false;
+        $items = [];
+        $bindings = [];
+        foreach ($values as $value) {
+            if ($value === null) {
+                $hasNull = true;
+                continue;
+            }
+            if (is_bool($value)) {
+                $items[] = $this->dialect->formatBoolean($value);
+                continue;
+            }
+            $param = $this->createParameter($value);
+            $items[] = $param['name'];
+            $bindings += $param['binding'];
+        }
+
+        $isNull = new SqlWhereClause("{$col} IS NULL");
+        if ($items === []) {
+            return $isNull;
+        }
+
+        $in = new SqlWhereClause("{$col} IN (" . implode(', ', $items) . ")", $bindings);
+
+        return $hasNull ? $in->or($isNull) : $in;
     }
 
     /**

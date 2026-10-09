@@ -28,6 +28,10 @@ use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecific
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Tests\TestCase;
+use Antevemus\ASpecification\Tests\Support\CountingSpecification;
+use Antevemus\ASpecification\Tests\Support\LazyProbeEntity;
+use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
+use Antevemus\ASpecification\Repositories\AbstractRepository;
 use stdClass;
 
 /**
@@ -80,6 +84,13 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties();
         $this->testALinqVisitorParityTableWithCoreEvaluation();
         $this->testALinqVisitorHandsCandidateAsIsToChildlessComposites();
+
+        // Forward 017 (v1.5.0): RN-07 (in_array estrito), RN-05 (ponte tipada), RN-04 (ponte sobre IRepository).
+        $this->testRn07ALinqCompilesInToStrictInArray();
+        if (ALinqBridge::isLazyAvailable()) {
+            $this->testRn05BridgeReturnsALinqInterfaces();
+            $this->testRn04BridgeStreamsAnyRepositoryLazily();
+        }
     }
 
     /**
@@ -807,5 +818,131 @@ class Module14_ALinqSynergyTest extends TestCase
                 return true;
             }
         };
+    }
+
+    /**
+     * RN-07 (forward 017, v1.5.0): a InSpecification compila para in_array($candidate, $values, true)
+     * e o predicado decide exatamente como a folha (inclusive o IncompatibleTypeException).
+     */
+    private function testRn07ALinqCompilesInToStrictInArray(): void
+    {
+        $predicate = ALinqSpecificationVisitor::createPredicate(Spec::in('A', 'B'));
+        $this->assertTrue($predicate('A'));
+        $this->assertFalse($predicate('a'), 'estrito: caixa importa');
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $predicate(1), 'mesmo erro de tipo da folha');
+
+        $numbers = ALinqSpecificationVisitor::createPredicate(Spec::in(1, 2, 3));
+        $this->assertTrue($numbers(2));
+        $this->assertFalse($numbers(4));
+        $this->assertThrows(IncompatibleTypeException::class, fn() => $numbers('2'));
+        $this->assertFalse(ALinqSpecificationVisitor::createPredicate(Spec::in())('x'), 'vazio: contradição');
+        $this->assertTrue(ALinqSpecificationVisitor::createPredicate(Spec::notIn(1, 2))(3));
+
+        // Paridade com a avaliação do núcleo, dentro de propriedade
+        $spec = Spec::property('n', Spec::in(0, 2, 4));
+        $compiled = ALinqSpecificationVisitor::createPredicate($spec);
+        foreach ([0, 1, 2, 3, 4] as $n) {
+            $candidate = (object) ['n' => $n];
+            $this->assertEquals($spec->isSatisfiedBy($candidate), $compiled($candidate), "paridade para n={$n}");
+        }
+    }
+
+    /**
+     * RN-05 (forward 017, v1.5.0): a ponte declara os tipos do ALinq 1.3 nos retornos
+     * (IALinqCollection / IALinqLazyCollection) e aceita qualquer IRepository.
+     */
+    private function testRn05BridgeReturnsALinqInterfaces(): void
+    {
+        $collection = 'Antevemus\\ALinq\\Interfaces\\IALinqCollection';
+        $lazy = 'Antevemus\\ALinq\\Interfaces\\IALinqLazyCollection';
+        $repository = 'Antevemus\\ASpecification\\Contracts\\Repositories\\IRepository';
+
+        $expected = [
+            [ALinqBridge::class, 'toCollection', $collection],
+            [ALinqBridge::class, 'filter', $collection],
+            [ALinqBridge::class, 'fromRepository', $collection],
+            [ALinqBridge::class, 'queryRepository', $collection],
+            [ALinqBridge::class, 'toLazyCollection', $lazy],
+            [ALinqBridge::class, 'filterLazy', $lazy],
+            [ALinqBridge::class, 'fromRepositoryLazy', $lazy],
+            [ALinqBridge::class, 'queryRepositoryLazy', $lazy],
+            [AbstractRepository::class, 'asLazyCollection', $lazy],
+            [AbstractRepository::class, 'findAsLazyCollection', $lazy],
+            [InMemoryRepository::class, 'asLinqCollection', $collection],
+            [InMemoryRepository::class, 'findAsLinqCollection', $collection],
+            [Spec::class, 'linq', $collection],
+            [Spec::class, 'filterLinq', $collection],
+            [Spec::class, 'linqLazy', $lazy],
+            [Spec::class, 'filterLazy', $lazy],
+        ];
+        foreach ($expected as [$class, $method, $type]) {
+            $returnType = (new \ReflectionMethod($class, $method))->getReturnType();
+            $this->assertEquals($type, $returnType instanceof \ReflectionNamedType ? $returnType->getName() : (string) $returnType, "{$class}::{$method}()");
+        }
+        foreach (['toCollection', 'filter', 'toLazyCollection', 'filterLazy'] as $method) {
+            $param = (string) (new \ReflectionMethod(ALinqBridge::class, $method))->getParameters()[0]->getType();
+            $this->assertTrue(str_contains($param, $repository), "ALinqBridge::{$method}() aceita IRepository: {$param}");
+        }
+
+        $repo = new InMemoryRepository([new LazyProbeEntity(1), new LazyProbeEntity(2)]);
+        $this->assertInstanceOf($collection, ALinqBridge::toCollection($repo));
+        $this->assertInstanceOf($collection, ALinqBridge::filter([1, 2, 3], Spec::greaterThan(1)));
+        $this->assertInstanceOf($lazy, ALinqBridge::toLazyCollection($repo));
+        $this->assertInstanceOf($lazy, $repo->findAsLazyCollection(Spec::alwaysTrue()));
+        $this->assertEquals(2, ALinqBridge::toCollection($repo)->count());
+    }
+
+    /**
+     * RN-04 (forward 017, v1.5.0): a ponte lazy vale para todo IRepository (partição, arquivo,
+     * memória), via ALinqLazyCollection::from(fn() => $repo->iterate(...)): um generator novo por
+     * travessia (re-iterável) e só as entidades puxadas são avaliadas.
+     */
+    private function testRn04BridgeStreamsAnyRepositoryLazily(): void
+    {
+        $base = new InMemoryRepository();
+        for ($i = 0; $i < 1000; $i++) {
+            $base->put(new LazyProbeEntity($i, $i % 2 === 0 ? 'par' : 'impar'));
+        }
+        $partition = $base->makePartition();
+
+        $spec = new CountingSpecification(fn(LazyProbeEntity $e): bool => $e->title === 'impar');
+        $stream = $partition->findAsLazyCollection($spec);
+        $this->assertEquals(0, $spec->evaluations, 'montar a coleção não avalia nada');
+        $firstThree = $stream->take(3)->toArray();
+        $this->assertEquals([1, 3, 5], array_map(fn($e) => $e->n, $firstThree));
+        $this->assertEquals(6, $spec->evaluations, 'seis avaliações para três acertos, não 1000');
+        $this->assertEquals(500, $stream->count(), 'a mesma coleção é re-iterável');
+
+        // Ponte explícita com pipeline do ALinq por cima
+        $sum = ALinqBridge::filterLazy($partition, Spec::property('title', Spec::in('par')))
+            ->take(5)
+            ->sum(fn($e) => $e->n);
+        $this->assertEquals(0 + 2 + 4 + 6 + 8, $sum);
+
+        // Repositório de arquivo: a mesma ponte, lendo arquivo por arquivo
+        $tmp = sys_get_temp_dir() . '/aspec_m14_rn04_' . bin2hex(random_bytes(4));
+        $ser = new \Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer(Module14LazyFileEntity::class);
+        $files = new \Antevemus\ASpecification\Repositories\File\FilePerEntityRepository($tmp, Module14LazyFileEntity::class, \Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition::ReadWrite, $ser);
+        try {
+            foreach (['a', 'b', 'c', 'd'] as $title) {
+                $files->put(new Module14LazyFileEntity($title));
+            }
+            $titles = $files->asLazyCollection()->select(fn($e) => $e->title)->toArray();
+            sort($titles);
+            $this->assertEquals(['a', 'b', 'c', 'd'], $titles);
+            $this->assertEquals(1, $files->findAsLazyCollection(Spec::property('title', Spec::in('c')))->count());
+        } finally {
+            $files->clear();
+            @rmdir($tmp);
+        }
+    }
+}
+
+/** Entidade de arquivo do teste RN-04 da ponte lazy (forward 017). */
+final class Module14LazyFileEntity extends \Antevemus\ASpecification\Entities\AbstractUUIDEntity
+{
+    public function __construct(public string $title = '')
+    {
+        parent::__construct();
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories;
 
+use Antevemus\ALinq\Interfaces\IALinqLazyCollection;
 use Antevemus\ASpecification\Concurrent\NullSynchronizer;
 use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
@@ -37,10 +38,12 @@ use RuntimeException;
  * - Structural specification validations
  * - Pluggable ISynchronizer (NullSynchronizer by default) wrapping reads and writes
  * - Virtual partition factory via makePartition
+ * - Lazy ALinq streams over iterate() for every repository: asLazyCollection(), findAsLazyCollection()
+ *   (1.5.0; antevemus/alinq-collection ^1.3)
  *
  * @template T of IEntity
  * @implements IRepository<T>
- * @version    1.4.4
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -175,6 +178,34 @@ abstract class AbstractRepository implements IRepository
     public function iterate(ISpecification $specification): iterable
     {
         return $this->iterateAllEntitiesSpecifiedBy($specification);
+    }
+
+    /**
+     * Returns every stored entity as a lazy ALinqLazyCollection over iterate() (1.5.0, RN-04).
+     *
+     * The collection asks this repository for a new generator on every traversal: it is
+     * re-iterable, getAll() is never called and only the entities the pipeline pulls are read.
+     *
+     * @return IALinqLazyCollection
+     * @throws RuntimeException When antevemus/alinq-collection is not installed
+     */
+    public function asLazyCollection(): IALinqLazyCollection
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::toLazyCollection($this);
+    }
+
+    /**
+     * Returns the entities satisfying the specification as a lazy ALinqLazyCollection over
+     * iterate($specification) (1.5.0, RN-04): `$repo->findAsLazyCollection($spec)->take(10)->toArray()`
+     * evaluates only the entities needed to collect ten matches, in any repository.
+     *
+     * @param ISpecification $specification Filter specification
+     * @return IALinqLazyCollection
+     * @throws RuntimeException When antevemus/alinq-collection is not installed
+     */
+    public function findAsLazyCollection(ISpecification $specification): IALinqLazyCollection
+    {
+        return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($this, $specification);
     }
 
     /**

@@ -32,15 +32,15 @@
     ],
     "require": {
         "php": "^8.2",
-        "ext-json": "*"
+        "ext-json": "*",
+        "ext-mbstring": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0"
     },
     "suggest": {
-        "antevemus/alinq-collection": "^1.1 — ALinqBridge, ALinqSpecificationVisitor and O(1) lazy streaming (Module 14); requires PHP 8.4",
-        "ext-mbstring": "Unicode-aware case-insensitive string specifications (planned for v1.5.0, ROADMAP milestone 6)",
-        "ext-sysvsem": "SysV IPC semaphores for SemaphoreSynchronizer across processes (planned for v1.5.0, ROADMAP milestone 6)"
+        "antevemus/alinq-collection": "^1.3 — ALinqBridge (typed IALinqCollection/IALinqLazyCollection returns), ALinqSpecificationVisitor and lazy streaming over IRepository::iterate() (Module 14); requires PHP 8.4",
+        "ext-sysvsem": "SysVSemaphoreSynchronizer: read/write lock shared between processes through SysV IPC semaphores (SemaphoreSynchronizer is intra-process)"
     },
     "autoload": {
         "psr-4": {

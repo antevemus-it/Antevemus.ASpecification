@@ -8,6 +8,7 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
+use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
@@ -31,8 +32,12 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *   and `prioridade` under the handler's own keys.
  * - Evaluation errors (`isError`) keep their `evaluation_error` marker, so the verdict blocks them
  *   regardless of the rule action.
+ * - Every reported failure carries a FailureSeverity (1.5.0) resolved exactly as the verdict
+ *   triages it: an evaluation error is ERROR; otherwise the effective action (the handler's
+ *   `acao` when it recorded one, the rule's otherwise) maps BLOCK → ERROR, WARN → WARNING,
+ *   LOG → INFO. A severity set explicitly on a customized (coded) failure is kept.
  *
- * @version    1.2.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -140,16 +145,19 @@ final class RuleBoundSpecification extends AbstractSpecification
         $ruleMessage = $this->rule->getMensagemViolacao();
         $message = ($ruleMessage !== null && trim($ruleMessage) !== '') ? $ruleMessage : $this->rule->getNome();
 
+        $metadata = array_merge(
+            $this->ruleMetadata($first->message),
+            ['mensagens_originais' => $messages, 'falhas_originais' => count($failures)],
+            $metadata
+        );
+
         return new SpecificationFailure(
             message: $message,
             code: $this->rule->getCodigo(),
             ruleName: 'Rule:' . $this->rule->getCodigo(),
             property: count($properties) === 1 ? reset($properties) : null,
-            metadata: array_merge(
-                $this->ruleMetadata($first->message),
-                ['mensagens_originais' => $messages, 'falhas_originais' => count($failures)],
-                $metadata
-            )
+            metadata: $metadata,
+            severity: self::severityOf($metadata)
         );
     }
 
@@ -185,12 +193,38 @@ final class RuleBoundSpecification extends AbstractSpecification
      */
     private function stamp(SpecificationFailure $failure): SpecificationFailure
     {
+        $metadata = array_merge($this->ruleMetadata($failure->message), $failure->metadata);
+
         return new SpecificationFailure(
             message: $failure->message,
             code: ($failure->code !== null && $failure->code !== '') ? $failure->code : $this->rule->getCodigo(),
             ruleName: $failure->ruleName ?? ('Rule:' . $this->rule->getCodigo()),
             property: $failure->property,
-            metadata: array_merge($this->ruleMetadata($failure->message), $failure->metadata)
+            metadata: $metadata,
+            severity: $failure->severity ?? self::severityOf($metadata)
         );
+    }
+
+    /**
+     * Resolves the severity of a stamped failure with the same precedence RuleEngineVerdict uses to
+     * triage it, so that severity and verdict bucket never disagree: an evaluation error is ERROR;
+     * otherwise the effective action (`acao`, `acao_ao_violar`, `action`, default `bloquear`) is
+     * mapped by RuleAction::toSeverity().
+     *
+     * @param array<string, mixed> $metadata Final metadata of the failure (rule data under handler data)
+     * @return FailureSeverity
+     */
+    private static function severityOf(array $metadata): FailureSeverity
+    {
+        if (isset($metadata['evaluation_error'])) {
+            return FailureSeverity::ERROR;
+        }
+
+        $actionRaw = $metadata['acao'] ?? $metadata['acao_ao_violar'] ?? $metadata['action'] ?? null;
+        $action = $actionRaw instanceof RuleAction
+            ? $actionRaw
+            : RuleAction::fromOrDefault(is_string($actionRaw) ? $actionRaw : null);
+
+        return $action->toSeverity();
     }
 }

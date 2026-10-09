@@ -8,6 +8,7 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentPresenceEvaluator;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Engine\Exceptions\InvalidConditionalExpressionException;
+use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationResult;
 
 /**
@@ -22,7 +23,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Anything else is rejected at construction time (InvalidConditionalExpressionException): a guard
  * that cannot be understood must never silently require or waive a document.
  *
- * @version    1.2.0
+ * @version    1.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -157,7 +158,9 @@ final class DocumentLeafSpecification extends AbstractSpecification
                 return SpecificationResult::satisfied();
             }
         } catch (\Throwable $e) {
-            return SpecificationResult::error($e, 'DocumentRule:' . $this->rule->getGrupoCodigo(), 'documentos.' . $this->getDocumentType(), $this->getFailureCode());
+            $error = SpecificationResult::error($e, 'DocumentRule:' . $this->rule->getGrupoCodigo(), 'documentos.' . $this->getDocumentType(), $this->getFailureCode());
+            // A document requirement always blocks: its failures, errors included, are ERROR (1.5.0).
+            return new SpecificationResult(false, [$error->failures[0]->withSeverity(FailureSeverity::ERROR)], true, $e);
         }
 
         return SpecificationResult::failure(
@@ -170,7 +173,8 @@ final class DocumentLeafSpecification extends AbstractSpecification
                 'tipo_documento' => $this->getDocumentType(),
                 'grupo' => $this->rule->getGrupoCodigo(),
                 'regra' => $this->rule->getRegraObrigatoriedade()->value,
-            ]
+            ],
+            severity: FailureSeverity::ERROR
         );
     }
 }
