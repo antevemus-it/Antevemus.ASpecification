@@ -7,16 +7,11 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
 use DateTimeInterface;
 
 /**
- * GreaterThanSpecification - Leaf specification for strictly greater than comparison (`>`).
+ * LessThanOrEqualSpecification - Leaf specification for less-than-or-equal comparison (`<=`).
  *
- * Validates whether the candidate is strictly greater than the configured threshold (number,
- * string or date-time instant), providing interval subsumption ($x > 10 \supseteq x > 50$)
- * and disjointness ($x > 10 \perp x <= 10$; for integers $x > 10 \perp x < 11$).
- *
- * Features:
- * - Strict magnitude comparison (`>`) on numbers, strings and DateTimeInterface
- * - Subsumption of narrower intervals and superior equalities (RF-10)
- * - Negation resolved to `<=` by the algebra
+ * Named value-bound leaf behind `lessThanOrEqualTo()`, `atMost()`, `beforeOrAt()` and
+ * `isBeforeOrAtTheSameTimeAs()`. Being a leaf (instead of the former `x < v OR x = v` composite)
+ * gives it the full interval algebra: `x <= 5 ⊇ x < 5`, `x <= 5 ⟂ x > 5`, `¬(x <= 5) ≡ x > 5`.
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
@@ -27,10 +22,10 @@ use DateTimeInterface;
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class GreaterThanSpecification extends AbstractComparableValueBoundSpecification
+class LessThanOrEqualSpecification extends AbstractComparableValueBoundSpecification
 {
     /**
-     * @param int|float|string|DateTimeInterface $value Strict lower bound threshold
+     * @param int|float|string|DateTimeInterface $value Inclusive upper bound threshold
      */
     public function __construct(int|float|string|DateTimeInterface $value)
     {
@@ -38,7 +33,7 @@ class GreaterThanSpecification extends AbstractComparableValueBoundSpecification
     }
 
     /**
-     * Returns the configured lower bound threshold.
+     * Returns the configured inclusive upper bound.
      */
     public function getValue(): int|float|string|DateTimeInterface
     {
@@ -50,7 +45,7 @@ class GreaterThanSpecification extends AbstractComparableValueBoundSpecification
      */
     public function getRelationalOperator(): RelationalOperator
     {
-        return RelationalOperator::GREATER_THAN;
+        return RelationalOperator::LESS_THAN_OR_EQUAL;
     }
 
     /**
@@ -61,7 +56,7 @@ class GreaterThanSpecification extends AbstractComparableValueBoundSpecification
         if ($candidate === null) {
             return false;
         }
-        TypeCompatibility::assertOrderable($candidate, $this->value, 'GreaterThanSpecification');
-        return $candidate > $this->value;
+        TypeCompatibility::assertOrderable($candidate, $this->value, 'LessThanOrEqualSpecification');
+        return $candidate <= $this->value;
     }
 }

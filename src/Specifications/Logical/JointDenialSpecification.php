@@ -7,22 +7,28 @@ namespace Antevemus\ASpecification\Specifications\Logical;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\OrSpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
  * JointDenialSpecification - Composite specification representing logical NOR (Joint Denial).
  *
  * Satisifed if and only if BOTH operand specifications evaluate to false:
- * candidate satisfies NEITHER left NOR right specification.
+ * candidate satisfies NEITHER left NOR right specification. A null candidate never
+ * satisfies it (Domian: a composite of any kind rejects null).
  *
  * Features:
  * - Binary joint denial logic: NOT (left OR right)
  * - Composite operand inspection (left, right, specifications list)
+ * - Set algebra by equivalence with ¬(A ∨ B): subsumption, disjointness and structural
+ *   equality (same unordered pair of operands) delegate to that form
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.1.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -51,6 +57,10 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {
+        if ($candidate === null) {
+            return false;
+        }
+
         return !$this->left->isSatisfiedBy($candidate) && !$this->right->isSatisfiedBy($candidate);
     }
 
@@ -106,32 +116,60 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
     }
 
     /**
+     * The equivalent negated disjunction ¬(A ∨ B) that carries the algebra.
+     *
+     * @return NotSpecification<T>
+     */
+    private function asNegation(): NotSpecification
+    {
+        return new NotSpecification(new OrSpecification($this->left, $this->right));
+    }
+
+    /**
      * {@inheritdoc}
      *
-     * @param ISpecification $otherSpecification
-     * @return bool
+     * Two joint denials are equal when they deny the same pair of operands, in any order.
+     */
+    public function equals(mixed $other): bool
+    {
+        if ($this === $other) {
+            return true;
+        }
+        if (!$other instanceof self || $other::class !== static::class) {
+            return false;
+        }
+
+        return $this->customReason === $other->customReason
+            && $this->customCode === $other->customCode
+            && SpecificationAlgebra::unorderedPairsEqual($this->left, $this->right, $other->left, $other->right);
+    }
+
+    /**
+     * {@inheritdoc}
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
-        return false;
+        if ($this === $otherSpecification || $this->equals($otherSpecification)) {
+            return true;
+        }
+
+        return $this->asNegation()->isGeneralizationOf($otherSpecification);
     }
 
     /**
      * {@inheritdoc}
-     *
-     * @param ISpecification $otherSpecification
-     * @return bool
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        return false;
+        if ($this === $otherSpecification || $this->equals($otherSpecification)) {
+            return false;
+        }
+
+        return $this->asNegation()->isDisjointWith($otherSpecification);
     }
 
     /**
      * {@inheritdoc}
-     *
-     * @param ISpecification $otherSpecification
-     * @return bool
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
@@ -140,12 +178,9 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
 
     /**
      * {@inheritdoc}
-     *
-     * @param ISpecification $otherSpecification
-     * @return bool
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
-        return false;
+        return !$this->isDisjointWith($otherSpecification);
     }
 }

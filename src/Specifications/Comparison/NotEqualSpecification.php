@@ -4,11 +4,6 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Specifications\Comparison;
 
-use Antevemus\ASpecification\AbstractSpecification;
-use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
-use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
-
 /**
  * NotEqualSpecification - Leaf specification for strict inequality (`!==`).
  *
@@ -16,36 +11,34 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  *
  * Features:
  * - Strict inequality validation (`!==`)
- * - Generalization of equality specifications with distinct values (RF-10)
+ * - Generalization of equality and range specifications that exclude the value (RF-10):
+ *   `x <> 5 ⊇ x = 3`, `x <> 5 ⊇ x < 5`; `x <> 5 ⟂ x = 5`; `¬(x <> 5) ≡ x = 5`
  *
  * @template T
- * @extends AbstractSpecification<T>
- * @implements IValueBoundSpecification<T>
- * @version    1.2.0
+ * @extends AbstractComparableValueBoundSpecification<T>
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class NotEqualSpecification extends AbstractSpecification implements IValueBoundSpecification
+class NotEqualSpecification extends AbstractComparableValueBoundSpecification
 {
-    use SubsumptionAndEqualityTrait;
-
     /**
      * @param mixed $value Forbidden reference value
      */
-    public function __construct(
-        private readonly mixed $value
-    ) {
+    public function __construct(mixed $value)
+    {
+        parent::__construct($value);
     }
 
     /**
-     * Returns the bound reference value.
+     * {@inheritdoc}
      */
-    public function getValue(): mixed
+    public function getRelationalOperator(): RelationalOperator
     {
-        return $this->value;
+        return RelationalOperator::NOT_EQUAL;
     }
 
     /**
@@ -62,37 +55,11 @@ class NotEqualSpecification extends AbstractSpecification implements IValueBound
 
     /**
      * {@inheritdoc}
+     *
+     * Identity semantics: the reference object is never copied.
      */
-    public function getType(): string
+    protected static function copyOf(mixed $value): mixed
     {
-        return "mixed";
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isGeneralizationOf(ISpecification $otherSpecification): bool
-    {
-        if ($this->checkBaseGeneralization($otherSpecification)) {
-            return true;
-        }
-        if ($otherSpecification instanceof EqualSpecification) {
-            return $this->value !== $otherSpecification->getValue();
-        }
-        return false;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isDisjointWith(ISpecification $otherSpecification): bool
-    {
-        if ($this->checkBaseDisjointness($otherSpecification)) {
-            return true;
-        }
-        if ($otherSpecification instanceof EqualSpecification) {
-            return $this->value === $otherSpecification->getValue();
-        }
-        return false;
+        return $value;
     }
 }

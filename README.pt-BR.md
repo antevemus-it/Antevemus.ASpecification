@@ -7,7 +7,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1606%20Assertions)-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-15%2F15%20Suites%20Pass%20(1612%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -46,7 +46,7 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
   - Implementações em memória (`InMemoryRepository`), nulas (`NullRepository`) e fake (`FakePartitionRepository`).
   - Persistência desacoplada em disco (`FilePerEntityRepository`, `SingleFileRepository`) com serialização intercambiável (`JsonEntitySerializer` e `PhpNativeEntitySerializer`).
   - Cache híbrido $L1$ (RAM) + $L2$ (Disco) via `InMemoryAndFileRepository`.
-- 🔒 **Controle de Concorrência & Locks Atômicos**: Primitivas `ISynchronizer` prontas para ambientes multithread e multiprocesso com semáforos SysV IPC (`SemaphoreSynchronizer`) e locks de arquivo (`flock`).
+- 🔒 **Controle de Concorrência & Locks Atômicos**: Primitivas `ISynchronizer` ligadas a todo repositório (leitores compartilhados, escritor exclusivo, reentrante por contexto de execução): o `SemaphoreSynchronizer` em processo (contador de permissões, ciente de Fibers) e locks atômicos de arquivo (`flock`) entre processos nos repositórios de arquivo. O `SysVSemaphoreSynchronizer` (SysV IPC) está previsto para a v1.5.0 (ROADMAP marco 6).
 - ⏱️ **Telemetria de Alta Precisão & Benchmarking**: Cronômetro em nanossegundos (`StopWatch` via `hrtime`) e utilitários de diagnóstico hierárquico e consumo de memória (`InstrumentationUtils`).
 
 ---
@@ -68,7 +68,7 @@ Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limi
 | **Fluent Chaining & DSL de Domínio** | ⚠️ Básico | ⚠️ Parcial | ✅ Sintaxe em prosa inglesa (`Spec::specify()->where()->and()->or()`) + helpers funcionais (`prop()`, `is()`, `not()`) |
 | **Álgebra Booleana de Venn & Remainder** | ✅ Completo | ❌ Inexistente na maioria | ✅ `isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith` e `remainderUnsatisfiedBy` |
 | **Particionamento DAG $O(1)$** | ✅ Presente | ❌ Raro | ✅ Repositórios com descarte antecipado de ramos disjuntos |
-| **Concorrência Multiprocesso & IPC** | ⚠️ Java Threads / Locks | ❌ Não suportado | ✅ Semáforos SysV IPC (`SemaphoreSynchronizer`) e locks atômicos de arquivo |
+| **Concorrência & Locks** | ⚠️ Java Threads / Locks | ❌ Não suportado | ✅ Repositórios sincronizados (`SemaphoreSynchronizer` reentrante, ciente de Fibers) e locks `flock` atômicos entre processos; semáforos SysV IPC previstos para a v1.5.0 |
 | **Tipagem Estrita e Recursos Modernos** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legado | ✅ **PHP 8.2+** nativo (Enums, First-class callables, Readonly, 8 Traits segregados) |
 
 ---
@@ -581,7 +581,7 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 • [SUITE] Módulo 3: Repositórios em Memória e Base... ✅ PASS (17 asserções)
 • [SUITE] Módulo 4: Arquitetura de Particionamento DAG... ✅ PASS (36 asserções)
 • [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (85 asserções)
-• [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (38 asserções)
+• [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (44 asserções)
 • [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (61 asserções)
 • [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (133 asserções)
 • [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (96 asserções)
@@ -594,10 +594,11 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 
 ====================================================================
  RESULTADO FINAL: 15/15 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 1606 | TEMPO: ~200ms | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 1612 | TEMPO: ~200ms | REGRESSÕES: 0
 ====================================================================
 ```
 
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (213 testes PHPUnit, 2.043 asserções; `vendor/bin/phpunit` roda 228 testes e 3.670 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
@@ -619,14 +620,23 @@ Principais destaques:
 3. **Pipeline de Streaming Lazy com ALinq e O(1) de RAM** (entregue na v1.1.0)
 4. **Endurecimento pós-revisão: estado de erro, tipagem estrita, vínculo de regra e matriz documental** (entregue na v1.2.0)
 5. **Promessas do README I: todo exemplo documentado roda** (entregue na v1.3.0)
-6. **Promessas do README II: IPC entre processos, Unicode, fontes lazy e catálogo relacional** (v1.5.0)
-7. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis)
-8. **Compiladores AST para GraphQL & OpenAPI 3.1**
-9. **Especificações Parametrizadas por Reflexão & Detecção de Tautologia/Contradição**
-10. **Doctrine ORM & Laravel Eloquent Query Visitors**
-11. **Disparo Reativo de Domain Events**
-12. **Sintetizador de Especificações Assistido por IA**
-13. **PHP Fibers & Runner de Especificações Assíncronas Não-Bloqueantes**
+5a. **Paridade Domian: álgebra de subsunção, DAG de partições, repositórios sincronizados, entidades e utilitários** (v1.4.4, em andamento)
+6. **Promessas do README II: IPC entre processos, Unicode, fontes lazy, catálogo relacional e `IN`** (v1.5.0)
+7. **Backlog anunciado e não entregue I: identidades ULID / UUID v7 e severidade da falha** (v1.5.0)
+8. **Aposentadoria do serializer PHP nativo, etapa 1: depreciação** (v1.5.0)
+9. **`MethodParameterizedSpecification`: chamadas de método declarativas** (v1.6.0)
+10. **Detecção de tautologia e contradição** (v1.6.0)
+11. **Backlog anunciado e não entregue II: TTL, índice do DAG de partições e três dialetos SQL** (v1.6.0)
+12. **`simplify()` de especificações** (v1.6.x)
+13. **Aposentadoria do serializer PHP nativo, etapa 2: remoção e envelope só JSON** (v2.0.0)
+14. **Accessor de propriedades compartilhado com o ALinq** (v2.0.0)
+15. **PHP Fibers & Runner de Especificações Assíncronas Não-Bloqueantes** (v2.0.0)
+16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis)
+17. **Compiladores AST para GraphQL & OpenAPI 3.1**
+18. **Doctrine ORM & Laravel Eloquent Query Visitors**
+19. **Disparo Reativo de Domain Events**
+20. **Sintetizador de Especificações Assistido por IA**
+21. **Repositório sobre PDO** (o `HibernateRepository` do Domian)
 
 ---
 

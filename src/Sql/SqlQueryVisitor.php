@@ -14,7 +14,10 @@ use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
@@ -51,7 +54,7 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   without PHP delimiters (BUG-20261007-3E3F)
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.4.1
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -259,8 +262,17 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof LessThanSpecification =>
                 $this->translateComparison($col, '<', $specification->getValue()),
 
+            $specification instanceof GreaterThanOrEqualSpecification =>
+                $this->translateComparison($col, '>=', $specification->getValue()),
+
+            $specification instanceof LessThanOrEqualSpecification =>
+                $this->translateComparison($col, '<=', $specification->getValue()),
+
             $specification instanceof NotNullSpecification =>
                 new SqlWhereClause("{$col} IS NOT NULL"),
+
+            $specification instanceof IsNullSpecification =>
+                new SqlWhereClause("{$col} IS NULL"),
 
             $specification instanceof WildcardSpecification =>
                 $this->translateWildcard($col, $specification->getPattern(), true),

@@ -7,7 +7,10 @@ namespace Antevemus\ASpecification\Helpers;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
+use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\SpecificationPredicate;
 use Closure;
 use InvalidArgumentException;
@@ -29,7 +32,7 @@ use TypeError;
  * - Optimized iterable filtering with type-safety checks and key preservation
  * - Idiomatic Closure conversion and structural specification introspection
  *
- * @version    1.1.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -127,6 +130,93 @@ class SpecificationHelper extends AbstractSpecificationHelper
                 $entityClass
             )
         );
+    }
+
+    /**
+     * Applies a delta specification to an entity: port of Domian SpecificationUtils.updateEntityState()
+     * (domian-core; Copyright 2006-2010 the original author or authors, Apache License 2.0; see
+     * THIRD_PARTY_NOTICES.md), the routine behind Repository.update(entity, deltaSpecification).
+     *
+     * The delta is walked whole (conjunctions, nested composites); every property clause
+     * (PropertySpecification) whose inner specification is bound to a value (IValueBoundSpecification:
+     * equalTo/is, looselyEqualTo, ...) sets that property on the entity to the bound value, by public
+     * setter when one exists, otherwise directly on the property, private or inherited included, as the
+     * Java original sets the Field. A property clause whose inner specification is a joint denial
+     * (Java "extra support for 'notNull'") sets the property to null. Any other clause carries no value
+     * and is ignored, as in Java. A null delta does nothing.
+     *
+     * @param IEntity $entity The entity to update in place
+     * @param ISpecification|null $deltaSpecification Conjunction of property clauses bound to the new values, or null
+     * @return void
+     * @throws InvalidArgumentException When a property clause is bound to a class the entity is not an
+     *                                  instance of, or names a property the entity does not have
+     */
+    public static function updateEntityState(IEntity $entity, ?ISpecification $deltaSpecification): void
+    {
+        if ($deltaSpecification === null) {
+            return;
+        }
+
+        foreach (self::collectPropertyClauses($deltaSpecification) as $clause) {
+            $declaringType = $clause->getType();
+            if (self::isConcreteTypeName($declaringType) && !$entity instanceof $declaringType) {
+                throw new InvalidArgumentException(sprintf(
+                    'entity type (%s) must be of same type as parameterized type declaring class (%s)',
+                    get_class($entity),
+                    $declaringType
+                ));
+            }
+
+            $inner = $clause->getPropertySpecification();
+            if ($inner instanceof IValueBoundSpecification) {
+                self::writeProperty($entity, $clause->getPropertyName(), $inner->getValue());
+            } elseif ($inner instanceof JointDenialSpecification) {
+                self::writeProperty($entity, $clause->getPropertyName(), null);
+            }
+        }
+    }
+
+    /**
+     * Every PropertySpecification reachable in the tree, outermost first; a property clause's own
+     * children (its base and its inner specification) are not descended into.
+     *
+     * @param ISpecification $specification
+     * @return array<int, PropertySpecification>
+     */
+    private static function collectPropertyClauses(ISpecification $specification): array
+    {
+        if ($specification instanceof PropertySpecification) {
+            return [$specification];
+        }
+
+        $clauses = [];
+        if ($specification instanceof ICompositeSpecification) {
+            foreach ($specification->getSpecifications() as $child) {
+                if ($child instanceof ISpecification) {
+                    foreach (self::collectPropertyClauses($child) as $clause) {
+                        $clauses[] = $clause;
+                    }
+                }
+            }
+        }
+        return $clauses;
+    }
+
+    private static function isConcreteTypeName(string $type): bool
+    {
+        return $type !== '' && $type !== 'mixed' && $type !== 'object'
+            && (class_exists($type) || interface_exists($type));
+    }
+
+    private static function writeProperty(IEntity $entity, string $property, mixed $value): void
+    {
+        $setter = 'set' . ucfirst($property);
+        if (method_exists($entity, $setter) && is_callable([$entity, $setter])) {
+            $entity->$setter($value);
+            return;
+        }
+
+        ReflectionUtils::setFieldValue($entity, $property, $value);
     }
 
     /**

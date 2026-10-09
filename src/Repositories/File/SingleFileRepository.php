@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
+use Antevemus\ASpecification\Helpers\SpecificationHelper;
 
 /**
  * SingleFileRepository - Entity repository persisting all entities in a single central document
@@ -24,7 +25,7 @@ use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySeriali
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -271,6 +272,9 @@ class SingleFileRepository extends AbstractFileRepository
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
     {
+        // Applies the delta (value-bound clauses become property writes) before persisting,
+        // like the in-memory repositories (Domian SpecificationUtils.updateEntityState).
+        SpecificationHelper::updateEntityState($entity, $deltaSpecification);
         $this->put($entity);
     }
 

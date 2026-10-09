@@ -22,6 +22,9 @@
         <testsuite name="Module Suites">
             <directory>tests/PhpUnit</directory>
         </testsuite>
+        <testsuite name="Domian Parity">
+            <directory>tests/Parity</directory>
+        </testsuite>
     </testsuites>
 
     <source>

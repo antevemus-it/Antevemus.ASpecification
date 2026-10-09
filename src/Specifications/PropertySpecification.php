@@ -34,7 +34,7 @@ use Throwable;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -300,6 +300,9 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
 
     /**
      * {@inheritdoc}
+     *
+     * A property restriction generalizes another restriction on the same property when its
+     * base (candidate type) and its inner specification both generalize the other's.
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
@@ -307,14 +310,46 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             return true;
         }
 
-        if ($otherSpecification instanceof self) {
-            if ($this->propertyName !== $otherSpecification->getPropertyName()) {
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+        if ($other instanceof self) {
+            if ($this->propertyName !== $other->getPropertyName()) {
                 return false;
             }
-            $baseGeneralizes = $this->baseSpecification->isGeneralizationOf($otherSpecification->getBaseSpecification())
-                || $this->baseSpecification->getType() === $otherSpecification->getBaseSpecification()->getType();
+            $baseGeneralizes = $this->baseSpecification->isGeneralizationOf($other->getBaseSpecification())
+                || $this->baseSpecification->getType() === $other->getBaseSpecification()->getType();
             return $baseGeneralizes
-                && $this->propertySpecification->isGeneralizationOf($otherSpecification->getPropertySpecification());
+                && $this->propertySpecification->isGeneralizationOf($other->getPropertySpecification());
+        }
+
+        return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Two restrictions on the same property are disjoint when their inner specifications are;
+     * restrictions on unrelated candidate types are disjoint whatever the property.
+     */
+    public function isDisjointWith(ISpecification $otherSpecification): bool
+    {
+        if ($this->checkBaseDisjointness($otherSpecification)) {
+            return true;
+        }
+
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+        if ($other instanceof self) {
+            $thisType = $this->getType();
+            $otherType = $other->getType();
+            if (
+                SpecificationAlgebra::isClassLike($thisType)
+                && SpecificationAlgebra::isClassLike($otherType)
+                && !SpecificationAlgebra::canCastAtLeastOneWay($thisType, $otherType)
+            ) {
+                return true;
+            }
+            if ($this->propertyName === $other->getPropertyName()) {
+                return $this->propertySpecification->isDisjointWith($other->getPropertySpecification());
+            }
         }
 
         return false;
@@ -323,16 +358,8 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
     /**
      * {@inheritdoc}
      */
-    public function isDisjointWith(ISpecification $otherSpecification): bool
+    public function intersectsWith(ISpecification $otherSpecification): bool
     {
-        if ($this->checkBaseDisjointness($otherSpecification)) {
-            return true;
-        }
-
-        if ($otherSpecification instanceof self && $this->propertyName === $otherSpecification->getPropertyName()) {
-            return $this->propertySpecification->isDisjointWith($otherSpecification->getPropertySpecification());
-        }
-
-        return false;
+        return !$this->isDisjointWith($otherSpecification);
     }
 }

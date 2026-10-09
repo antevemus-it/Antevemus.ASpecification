@@ -20,10 +20,14 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LooseEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\SameInstantSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\TypeCompatibility;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
@@ -60,8 +64,9 @@ use DateTimeInterface;
  * - Unified direct implementation of all 8 factory families via specialized traits
  * - Transparent contravariant/covariant resolution of idiomatic method overloads
  * - Immutable constructor with static factory create()
+ * - Domian SpecificationFactory names kept as aliases (allEntities, isGreaterThan, blankString, isEnum, ...)
  *
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -106,11 +111,13 @@ final class SpecificationFactory implements
             public function createSpecificationFor(string $type): ICompositeSpecification
             {
                 $this->validateType($type);
+                // The type specification Spec<T>: all instances of T (Domian all(T)); clauses are
+                // attached through AndSpecification/PropertySpecification, never stored here.
                 return new class($type) extends AbstractCompositeSpecification {
                     /** {@inheritdoc} */
                     protected function isSpecifyingAllInstancesOfItsType(): bool
                     {
-                        return false;
+                        return true;
                     }
                 };
             }
@@ -138,7 +145,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function lessThanOrEqualTo(mixed $value): ISpecification
             {
-                return (new LessThanSpecification($value))->or(new EqualSpecification($value));
+                return new LessThanOrEqualSpecification($value);
             }
 
             /** {@inheritdoc} */
@@ -150,7 +157,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function greaterThanOrEqualTo(mixed $value): ISpecification
             {
-                return (new GreaterThanSpecification($value))->or(new EqualSpecification($value));
+                return new GreaterThanOrEqualSpecification($value);
             }
 
             /** {@inheritdoc} */
@@ -222,18 +229,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function isNull(): ISpecification
             {
-                return new class extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return $candidate === null;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string
-                    {
-                        return 'mixed';
-                    }
-                };
+                return new IsNullSpecification();
             }
 
             /** {@inheritdoc} */
@@ -330,103 +326,53 @@ final class SpecificationFactory implements
         };
 
         $this->dateFactory = new class extends AbstractDateSpecificationFactory {
+            /*
+             * Temporal comparisons are the relational leaves bound to a DateTimeInterface value
+             * (Domian: isBefore(Date) IS a LessThanSpecification<Date>), so they take part in the
+             * subsumption algebra: isBefore(2020) ⊇ isBefore(2010), after(d) ⟂ before(d).
+             * A mutable DateTime is cloned by the leaf.
+             */
+
             /** {@inheritdoc} */
             public function before(DateTimeInterface $date): ISpecification
             {
-                return new class($date) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(private readonly DateTimeInterface $target) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateBeforeSpecification', $this->target) && $candidate < $this->target;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                return new LessThanSpecification($date);
             }
 
             /** {@inheritdoc} */
             public function after(DateTimeInterface $date): ISpecification
             {
-                return new class($date) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(private readonly DateTimeInterface $target) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateAfterSpecification', $this->target) && $candidate > $this->target;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                return new GreaterThanSpecification($date);
             }
 
             /** {@inheritdoc} */
             public function at(DateTimeInterface $date): ISpecification
             {
-                return new class($date) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(private readonly DateTimeInterface $target) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateAtSpecification', $this->target) && $candidate == $this->target;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                return new SameInstantSpecification($date);
             }
 
             /** {@inheritdoc} */
             public function beforeOrAt(DateTimeInterface $date): ISpecification
             {
-                return new class($date) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(private readonly DateTimeInterface $target) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateBeforeOrAtSpecification', $this->target) && $candidate <= $this->target;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                return new LessThanOrEqualSpecification($date);
             }
 
             /** {@inheritdoc} */
             public function afterOrAt(DateTimeInterface $date): ISpecification
             {
-                return new class($date) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(private readonly DateTimeInterface $target) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateAfterOrAtSpecification', $this->target) && $candidate >= $this->target;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                return new GreaterThanOrEqualSpecification($date);
             }
 
             /** {@inheritdoc} */
             public function between(DateTimeInterface $start, DateTimeInterface $end): ISpecification
             {
-                return new class($start, $end) extends AbstractSpecification {
-                    /** {@inheritdoc} */
-                    public function __construct(
-                        private readonly DateTimeInterface $start,
-                        private readonly DateTimeInterface $end
-                    ) {}
-                    /** {@inheritdoc} */
-                    public function isSatisfiedBy(mixed $candidate): bool
-                    {
-                        return TypeCompatibility::isDateCandidate($candidate, 'DateBetweenSpecification', $this->start) && $candidate >= $this->start && $candidate <= $this->end;
-                    }
-                    /** {@inheritdoc} */
-                    public function getType(): string { return DateTimeInterface::class; }
-                };
+                // Closed interval [start, end] as a conjunction of two relational leaves, so that
+                // between(a, b) ⊂ afterOrAt(a), between(a, b) ⊂ beforeOrAt(b) and
+                // between(a, b) ⟂ after(b) follow from the leaf algebra.
+                return new AndSpecification(
+                    new GreaterThanOrEqualSpecification($start),
+                    new LessThanOrEqualSpecification($end)
+                );
             }
 
             /** {@inheritdoc} */
@@ -726,6 +672,30 @@ final class SpecificationFactory implements
             protected function isSpecifyingAllInstancesOfItsType(): bool
             {
                 return false;
+            }
+
+            /** The wrapper denotes exactly the wrapped predicate: equality and algebra delegate to it. */
+            public function equals(mixed $other): bool
+            {
+                if ($this === $other) {
+                    return true;
+                }
+                if ($other instanceof self) {
+                    return $this->inner->equals($other->inner);
+                }
+                return $this->inner->equals($other);
+            }
+
+            /** {@inheritdoc} */
+            public function isGeneralizationOf(ISpecification $specification): bool
+            {
+                return $this->inner->isGeneralizationOf($specification);
+            }
+
+            /** {@inheritdoc} */
+            public function isDisjointWith(ISpecification $specification): bool
+            {
+                return $this->inner->isDisjointWith($specification);
             }
         };
     }

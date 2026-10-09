@@ -15,7 +15,7 @@ use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
  * - Set membership (in)
  * - Semantic aliases (atMost, atLeast, under, over, exactly, etc.)
  *
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -375,4 +375,84 @@ trait ComparisonSpecificationOperationsTrait
         return $this->comparisonFactory->exactly($value);
     }
 
+    // ==========================================
+    // Domian SpecificationFactory aliases (1.4.4)
+    // ==========================================
+
+    /**
+     * Domian alias for equalTo().
+     *
+     * @param mixed $value Comparison target value
+     * @return ISpecification
+     */
+    public function createEqualSpecification(mixed $value): ISpecification
+    {
+        return $this->equalTo($value);
+    }
+
+    /**
+     * Domian alias for equalTo().
+     *
+     * @param mixed $value Comparison target value
+     * @return ISpecification
+     */
+    public function anObjectEqualTo(mixed $value): ISpecification
+    {
+        return $this->equalTo($value);
+    }
+
+    /**
+     * Domian alias for equalTo().
+     *
+     * @param mixed $value Comparison target value
+     * @return ISpecification
+     */
+    public function objectEqualTo(mixed $value): ISpecification
+    {
+        return $this->equalTo($value);
+    }
+
+    /**
+     * Domian alias for lessThan().
+     *
+     * @param mixed $value Upper bound value (exclusive)
+     * @return ISpecification
+     */
+    public function isLessThan(mixed $value): ISpecification
+    {
+        return $this->lessThan($value);
+    }
+
+    /**
+     * Domian alias for lessThanOrEqualTo().
+     *
+     * @param mixed $value Upper bound value (inclusive)
+     * @return ISpecification
+     */
+    public function isLessThanOrEqualTo(mixed $value): ISpecification
+    {
+        return $this->lessThanOrEqualTo($value);
+    }
+
+    /**
+     * Domian alias for greaterThan().
+     *
+     * @param mixed $value Lower bound value (exclusive)
+     * @return ISpecification
+     */
+    public function isGreaterThan(mixed $value): ISpecification
+    {
+        return $this->greaterThan($value);
+    }
+
+    /**
+     * Domian alias for greaterThanOrEqualTo().
+     *
+     * @param mixed $value Lower bound value (inclusive)
+     * @return ISpecification
+     */
+    public function isGreaterThanOrEqualTo(mixed $value): ISpecification
+    {
+        return $this->greaterThanOrEqualTo($value);
+    }
 }

@@ -157,17 +157,36 @@ class Module6_ConcurrencyTest extends TestCase
         $this->assertEquals('nested_concurrent_ok', $nestedConcurrent);
         $this->assertEquals(500, $sync->getAvailablePermits());
 
-        // Proibição de lock exclusivo enquanto lock concorrente estiver ativo
-        $illegalPromotionThrew = false;
-        $sync->callConcurrently(function () use ($sync, &$illegalPromotionThrew): void {
-            try {
-                $sync->callExclusively(fn(): bool => true);
-            } catch (RuntimeException $e) {
-                $illegalPromotionThrew = true;
-            }
+        // Exclusivo dentro de concorrente e reentrante (Domian SemaphoreSynchronizerTest
+        // .shouldNotDeadlockWhenInvokingAnExclusiveMethodFromAConcurrentMethod): o mesmo contexto ja
+        // detem a permissao, entao o bloco exclusivo roda direto, sem drenar nem lancar.
+        // Ate a 1.4.3 esta suite fixava o contrario (RuntimeException), invertendo o Java.
+        $promotedResult = null;
+        $permitsSeenInsideExclusive = null;
+        $sync->callConcurrently(function () use ($sync, &$promotedResult, &$permitsSeenInsideExclusive): void {
+            $promotedResult = $sync->callExclusively(function () use ($sync, &$permitsSeenInsideExclusive): int {
+                $permitsSeenInsideExclusive = $sync->getAvailablePermits();
+                return 123;
+            });
         });
-        $this->assertTrue($illegalPromotionThrew);
+        $this->assertEquals(123, $promotedResult);
+        $this->assertEquals(499, $permitsSeenInsideExclusive, 'bloco aninhado nao toca nas permissoes');
         $this->assertEquals(500, $sync->getAvailablePermits());
         $this->assertFalse($sync->isExclusiveLocked());
+
+        // Outro contexto de execucao (Fiber) nao pode ser esperado num processo unico: a disputa real
+        // continua lancando, agora explicando o limite.
+        $fiber = new \Fiber(function () use ($sync): void {
+            $sync->callConcurrently(function (): void {
+                \Fiber::suspend();
+            });
+        });
+        $fiber->start();
+        $this->assertEquals(499, $sync->getAvailablePermits(), 'fiber suspensa segura a permissao');
+        $crossContext = $this->assertThrows(RuntimeException::class, fn() => $sync->callExclusively(fn(): bool => true));
+        $this->assertTrue(str_contains($crossContext->getMessage(), 'Java would wait'));
+        $fiber->resume();
+        $this->assertEquals(500, $sync->getAvailablePermits());
+        $this->assertFalse($sync->hasAcquiredPermit());
     }
 }

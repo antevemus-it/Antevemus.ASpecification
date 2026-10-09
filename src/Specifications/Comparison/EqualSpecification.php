@@ -4,49 +4,44 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Specifications\Comparison;
 
-use Antevemus\ASpecification\AbstractSpecification;
-use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
-use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
-
 /**
  * EqualSpecification - Leaf specification for strict equality (`===`).
  *
  * Validates whether the candidate value and type are strictly identical to the expected value,
- * with full support for algebraic subsumption and disjointness (RF-10).
+ * with full support for algebraic subsumption and disjointness (RF-10): `x = 5 ⟂ x = 6`,
+ * `x = 5 ⟂ x <> 5`, `x = 5 ⟂ x > 5`, `x = 5 ⊂ x > 3`, `¬(x = 5) ≡ x <> 5`.
  *
  * Features:
- * - Strict equality validation (`===`)
+ * - Strict equality validation (`===`); objects by identity (use SameInstantSpecification for dates)
  * - Disjointness detection against other constants and inequalities (`>`, `<`, `!==`)
  *
+ * The reference value is kept by reference (identity semantics), never cloned.
+ *
  * @template T
- * @extends AbstractSpecification<T>
- * @implements IValueBoundSpecification<T>
- * @version    1.2.0
+ * @extends AbstractComparableValueBoundSpecification<T>
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class EqualSpecification extends AbstractSpecification implements IValueBoundSpecification
+class EqualSpecification extends AbstractComparableValueBoundSpecification
 {
-    use SubsumptionAndEqualityTrait;
-
     /**
      * @param mixed $value Expected reference value
      */
-    public function __construct(
-        private readonly mixed $value
-    ) {
+    public function __construct(mixed $value)
+    {
+        parent::__construct($value);
     }
 
     /**
-     * Returns the reference value bound to this specification.
+     * {@inheritdoc}
      */
-    public function getValue(): mixed
+    public function getRelationalOperator(): RelationalOperator
     {
-        return $this->value;
+        return RelationalOperator::EQUAL;
     }
 
     /**
@@ -63,42 +58,11 @@ class EqualSpecification extends AbstractSpecification implements IValueBoundSpe
 
     /**
      * {@inheritdoc}
+     *
+     * Identity semantics: the reference object is never copied.
      */
-    public function getType(): string
+    protected static function copyOf(mixed $value): mixed
     {
-        return "mixed";
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isGeneralizationOf(ISpecification $otherSpecification): bool
-    {
-        return $this->checkBaseGeneralization($otherSpecification);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isDisjointWith(ISpecification $otherSpecification): bool
-    {
-        if ($this->checkBaseDisjointness($otherSpecification)) {
-            return true;
-        }
-        if ($otherSpecification instanceof self) {
-            return $this->value !== $otherSpecification->getValue();
-        }
-        if ($otherSpecification instanceof NotEqualSpecification) {
-            return $this->value === $otherSpecification->getValue();
-        }
-        if ($otherSpecification instanceof GreaterThanSpecification) {
-            $other = $otherSpecification->getValue();
-            return TypeCompatibility::isOrderable($this->value, $other) && $this->value <= $other;
-        }
-        if ($otherSpecification instanceof LessThanSpecification) {
-            $other = $otherSpecification->getValue();
-            return TypeCompatibility::isOrderable($this->value, $other) && $this->value >= $other;
-        }
-        return false;
+        return $value;
     }
 }

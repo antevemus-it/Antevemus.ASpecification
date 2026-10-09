@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Repositories;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\Repositories\IFakeRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
 
 /**
@@ -16,6 +17,10 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
  * Designed purely for fast structural test mocks or innocuous services
  * that strictly require dependency injection of an IRepository.
  *
+ * Marked IFakeRepository, as net.sourceforge.domian.repository.NullRepository is (FakeRepository), so
+ * that makePartition() yields a FakePartitionRepository; the IVolatileRepository marker of earlier
+ * versions is kept so that existing type checks keep passing.
+ *
  * Features:
  * - Harmless no-op implementation of all persistence and query operations
  * - Safe neutral return values (0, empty array, null, false)
@@ -23,15 +28,16 @@ use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
+ * @implements IFakeRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class NullRepository extends AbstractRepository implements IVolatileRepository
+class NullRepository extends AbstractRepository implements IFakeRepository, IVolatileRepository
 {
     /**
      * Always returns zero (Null Object).

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Factory\Traits;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
 
 /**
  * StringSpecificationOperationsTrait - Trait aggregating string and textual expression operations (IStringSpecificationFactory).
@@ -16,7 +17,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Case-insensitive comparisons and regex matching
  * - Wildcard pattern matching and substring containment (contains, startsWith, endsWith)
  *
- * @version    1.1.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -268,5 +269,106 @@ trait StringSpecificationOperationsTrait
     public function enumCase(string $enumClass): ISpecification
     {
         return $this->stringFactory->enumCase($enumClass);
+    }
+
+    // ==========================================
+    // Domian SpecificationFactory aliases (1.4.4)
+    // ==========================================
+
+    /**
+     * Domian `blankString()`: null or a blank string (DefaultValueSpecification<String>).
+     * Unlike isBlank() (a regular expression that rejects null), null IS blank here.
+     *
+     * @return ISpecification
+     */
+    public function blankString(): ISpecification
+    {
+        return new DefaultValueSpecification('string');
+    }
+
+    /**
+     * Domian alias for blankString().
+     *
+     * @return ISpecification
+     */
+    public function isBlankString(): ISpecification
+    {
+        return $this->blankString();
+    }
+
+    /**
+     * Domian alias for blankString().
+     *
+     * @return ISpecification
+     */
+    public function createBlankStringSpecification(): ISpecification
+    {
+        return $this->blankString();
+    }
+
+    /**
+     * Domian alias for equalIgnoringCase().
+     *
+     * @param string $value Expected string
+     * @return ISpecification
+     */
+    public function createEqualIgnoreCaseStringSpecification(string $value): ISpecification
+    {
+        return $this->equalIgnoringCase($value);
+    }
+
+    /**
+     * Domian alias for isDate(): the pattern uses the PHP date format ('Y-m-d'), not SimpleDateFormat.
+     *
+     * @param string $format PHP date format
+     * @return ISpecification
+     */
+    public function createDateStringSpecification(string $format): ISpecification
+    {
+        return $this->isDate($format);
+    }
+
+    /**
+     * Domian alias for enumCase().
+     *
+     * @param class-string $enumClass Enum class name
+     * @return ISpecification
+     */
+    public function createEnumNameStringSpecification(string $enumClass): ISpecification
+    {
+        return $this->enumCase($enumClass);
+    }
+
+    /**
+     * Domian alias for enumCase().
+     *
+     * @param class-string $enumClass Enum class name
+     * @return ISpecification
+     */
+    public function isEnum(string $enumClass): ISpecification
+    {
+        return $this->enumCase($enumClass);
+    }
+
+    /**
+     * Domian alias for matchesWildcard().
+     *
+     * @param string $wildcardExpression Wildcard expression (* and ?)
+     * @return ISpecification
+     */
+    public function matchesWildcardExpression(string $wildcardExpression): ISpecification
+    {
+        return $this->matchesWildcard($wildcardExpression);
+    }
+
+    /**
+     * Domian alias for matchesWildcardIgnoringCase().
+     *
+     * @param string $wildcardExpression Wildcard expression (* and ?)
+     * @return ISpecification
+     */
+    public function matchesWildcardExpressionIgnoringCase(string $wildcardExpression): ISpecification
+    {
+        return $this->matchesWildcardIgnoringCase($wildcardExpression);
     }
 }

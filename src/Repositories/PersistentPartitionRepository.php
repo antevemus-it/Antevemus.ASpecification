@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
  * @template T of IEntity
  * @extends PartitionRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -97,57 +97,65 @@ class PersistentPartitionRepository extends PartitionRepository implements IPers
     }
 
     /**
-     * Loads persistent data, propagating across all sub-partitions in the DAG.
+     * Loads persistent data, propagating to every persistent repository of the DAG below this
+     * node (RN-14), each exactly once.
      *
      * @return void
      */
     public function load(): void
     {
-        if ($this->underlyingRepository instanceof IPersistentRepository) {
-            $this->underlyingRepository->load();
-        }
-
-        foreach ($this->subPartitions as $partition) {
-            if ($partition instanceof IPersistentRepository) {
-                $partition->load();
-            }
+        foreach ($this->persistentRepositoriesInGraph() as $repository) {
+            $repository->load();
         }
     }
 
     /**
-     * Persists repository state, propagating store operations across the DAG.
+     * Persists repository state, propagating to every persistent repository of the DAG below this
+     * node (RN-14), each exactly once.
      *
      * @return void
      */
     public function store(): void
     {
-        if ($this->underlyingRepository instanceof IPersistentRepository) {
-            $this->underlyingRepository->store();
-        }
-
-        foreach ($this->subPartitions as $partition) {
-            if ($partition instanceof IPersistentRepository) {
-                $partition->store();
-            }
+        foreach ($this->persistentRepositoriesInGraph() as $repository) {
+            $repository->store();
         }
     }
 
     /**
-     * Closes the repository, releasing resources and propagating to sub-partitions.
+     * Closes the repository, releasing resources of every persistent repository of the DAG below
+     * this node (RN-14), each exactly once.
      *
      * @return void
      */
     public function close(): void
     {
-        if ($this->underlyingRepository instanceof IPersistentRepository) {
-            $this->underlyingRepository->close();
+        foreach ($this->persistentRepositoriesInGraph() as $repository) {
+            $repository->close();
         }
+    }
 
-        foreach ($this->subPartitions as $partition) {
-            if ($partition instanceof IPersistentRepository) {
-                $partition->close();
+    /**
+     * Collects this node's repository and the repository of every descendant partition that is
+     * persistent, each once. As in Domian (load/persist/close over getAllPartitions()), a
+     * persistent partition below a volatile one is reached, and a partition shared by several
+     * parents (diamond) is visited a single time; volatile repositories are ignored.
+     *
+     * @return array<IPersistentRepository<T>>
+     */
+    private function persistentRepositoriesInGraph(): array
+    {
+        $result = [];
+        if ($this->underlyingRepository instanceof IPersistentRepository) {
+            $result[] = $this->underlyingRepository;
+        }
+        foreach ($this->getAllPartitions() as $partition) {
+            $repository = $partition->getUnderlyingRepository();
+            if ($repository instanceof IPersistentRepository && !in_array($repository, $result, true)) {
+                $result[] = $repository;
             }
         }
+        return $result;
     }
 
     /**

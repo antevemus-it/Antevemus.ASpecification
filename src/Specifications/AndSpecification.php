@@ -8,6 +8,7 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 
 /**
  * AndSpecification - Composite specification representing logical conjunction (AND).
@@ -18,12 +19,14 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Features:
  * - Short-circuit candidate evaluation
  * - Aggregated failure diagnostics via Notification Pattern
- * - Complete subsumption and set algebra
+ * - Complete subsumption and set algebra (Domian lemma 1): (A ∧ B) ⊇ X ⇔ A ⊇ X ∧ B ⊇ X;
+ *   X ⊇ (A ∧ B) if X ⊇ A ∨ X ⊇ B; (A ∧ B) ⟂ X if A ⟂ X ∨ B ⟂ X
+ * - Structural equality: same class and the same unordered pair of operands
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -159,33 +162,53 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     /**
      * {@inheritdoc}
      *
-     * Conjunction (A AND B) is a generalization of X if both A and B generalize X.
+     * Two conjunctions are equal when they hold the same pair of operands, in any order.
      */
-    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    public function equals(mixed $other): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        if ($this->checkBaseGeneralization($otherSpecification)) {
+        if ($this === $other) {
             return true;
         }
+        if (!$other instanceof self || $other::class !== static::class) {
+            return false;
+        }
 
-        return $this->left->isGeneralizationOf($otherSpecification)
-            && $this->right->isGeneralizationOf($otherSpecification);
+        return $this->customReason === $other->customReason
+            && $this->customCode === $other->customCode
+            && SpecificationAlgebra::unorderedPairsEqual($this->left, $this->right, $other->left, $other->right);
     }
 
     /**
      * {@inheritdoc}
+     *
+     * Conjunction (A AND B) is a generalization of X if and only if both A and B generalize X.
+     */
+    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    {
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+
+        if ($this === $other || $this->equals($other) || $other instanceof AlwaysFalseSpecification) {
+            return true;
+        }
+
+        return $this->left->isGeneralizationOf($other)
+            && $this->right->isGeneralizationOf($other);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Conjunction (A AND B) is disjoint with X if either operand is disjoint with X.
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        if ($this->checkBaseDisjointness($otherSpecification)) {
+            return true;
         }
+        $other = SpecificationAlgebra::resolve($otherSpecification);
 
-        return $this->left->isDisjointWith($otherSpecification)
-            || $this->right->isDisjointWith($otherSpecification);
+        return $this->left->isDisjointWith($other)
+            || $this->right->isDisjointWith($other);
     }
 
     /**
@@ -193,13 +216,13 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
         if ($otherSpecification instanceof AndSpecification) {
-            return ($this->left === $otherSpecification->getLeftSide() && $this->right === $otherSpecification->getRightSide())
-                || ($this->left === $otherSpecification->getRightSide() && $this->right === $otherSpecification->getLeftSide());
+            return SpecificationAlgebra::unorderedPairsEqual(
+                $this->left,
+                $this->right,
+                $otherSpecification->getLeftSide(),
+                $otherSpecification->getRightSide()
+            );
         }
 
         return false;
@@ -210,11 +233,6 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        return $this->left->intersectsWith($otherSpecification)
-            && $this->right->intersectsWith($otherSpecification);
+        return !$this->isDisjointWith($otherSpecification);
     }
 }

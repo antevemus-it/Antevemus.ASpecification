@@ -18,7 +18,10 @@ use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
@@ -52,7 +55,7 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  * - REGEXP for generic regular expressions, with the `i` modifier carried as an inline flag
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.4.2
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -221,8 +224,17 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $specification instanceof LessThanSpecification =>
                 new TFilter($col, '<', $specification->getValue()),
 
+            $specification instanceof GreaterThanOrEqualSpecification =>
+                new TFilter($col, '>=', $specification->getValue()),
+
+            $specification instanceof LessThanOrEqualSpecification =>
+                new TFilter($col, '<=', $specification->getValue()),
+
             $specification instanceof NotNullSpecification =>
                 new TFilter($col, 'IS NOT', null),
+
+            $specification instanceof IsNullSpecification =>
+                new TFilter($col, 'IS', null),
 
             $specification instanceof WildcardSpecification =>
                 $this->translateWildcard($col, $specification->getPattern(), false),
@@ -490,8 +502,17 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $inner instanceof LessThanSpecification =>
                 new TFilter($col, '>=', $inner->getValue()),
 
+            $inner instanceof GreaterThanOrEqualSpecification =>
+                new TFilter($col, '<', $inner->getValue()),
+
+            $inner instanceof LessThanOrEqualSpecification =>
+                new TFilter($col, '>', $inner->getValue()),
+
             $inner instanceof NotNullSpecification =>
                 new TFilter($col, 'IS', null),
+
+            $inner instanceof IsNullSpecification =>
+                new TFilter($col, 'IS NOT', null),
 
             $inner instanceof WildcardSpecification =>
                 $this->translateNotWildcard($col, $inner->getPattern(), false),

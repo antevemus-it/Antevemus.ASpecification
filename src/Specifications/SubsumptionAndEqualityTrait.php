@@ -6,24 +6,25 @@ namespace Antevemus\ASpecification\Specifications;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
-use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 
 /**
- * SubsumptionAndEqualityTrait - Trait providing structural equality and subsumption axioms (RF-10).
+ * SubsumptionAndEqualityTrait - Trait providing the shared subsumption axioms (RF-10).
  *
- * Implements deep structural equality (`equals`) via reflection and fundamental algebraic axioms
- * for specification subsumption (`isGeneralizationOf`) and disjointness (`isDisjointWith`).
+ * The axioms themselves live in SpecificationAlgebra (one implementation for every class,
+ * including the composites that cannot use this trait); the trait keeps the two hooks the leaf
+ * and composite classes call before applying their own rules, the fluent property chaining
+ * (`andWhere`, `orWhere`) and the partial remainder resolution (`remainderUnsatisfiedBy`).
  *
  * Features:
- * - Deep structural equality (`equals`) across composite trees and leaf specifications
  * - Reflexivity ($A \supseteq A$) and universality ($AlwaysTrue \supseteq A$) axioms
  * - Conjunction subsumption ($S \supseteq (A \land B)$ if $S \supseteq A$ or $S \supseteq B$)
- * - Disjunction subsumption ($S \supseteq (A \lor B)$ if $S \supseteq A$ and $S \supseteq B$)
+ * - Disjunction subsumption ($S \supseteq (A \lor B)$ iff $S \supseteq A$ and $S \supseteq B$)
+ * - Negation ($A \perp \lnot B$ iff $B \supseteq A$; $\lnot\lnot A \equiv A$)
  * - Fluent property composition (`andWhere`, `orWhere`)
  * - Partial remainder resolution (`remainderUnsatisfiedBy`)
  *
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -33,10 +34,8 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 trait SubsumptionAndEqualityTrait
 {
     /*
-     * equals() is no longer defined here: ISpecification declares it and
-     * AbstractSpecification provides the structural default for every
-     * specification (BUG-20261007-C5YG). Keeping a second copy in this trait
-     * diverged from the base (identity comparison of DateTime and arrays).
+     * equals() is not defined here: ISpecification declares it and AbstractSpecification
+     * provides the structural default for every specification (BUG-20261007-C5YG).
      */
 
     /**
@@ -47,51 +46,18 @@ trait SubsumptionAndEqualityTrait
      */
     protected function checkBaseGeneralization(ISpecification $otherSpecification): bool
     {
-        // Axiom 1: Reflexivity and Structural Equality ($A \supseteq A$)
-        if ($this === $otherSpecification || $this->equals($otherSpecification)) {
+        if (SpecificationAlgebra::baseGeneralizes($this, $otherSpecification)) {
             return true;
         }
 
-        // Axiom 2: Any specification generalizes AlwaysFalseSpecification (empty set)
-        if ($otherSpecification instanceof AlwaysFalseSpecification) {
-            return true;
-        }
-
-        // Axiom 3: AlwaysTrueSpecification / AllEntitiesSpecification with compatible supertype
+        // Universality: AlwaysTrue / AllEntities with a compatible supertype generalize anything
+        // bounded by their type.
         if ($this instanceof AlwaysTrueSpecification || $this instanceof AllEntitiesSpecification) {
-            $myType = $this->getType();
-            $otherType = $otherSpecification->getType();
-            if ($myType === "mixed" || $myType === "object" || $myType === $otherType) {
-                return true;
+            $other = SpecificationAlgebra::resolve($otherSpecification);
+            if ($other instanceof NotSpecification && !SpecificationAlgebra::isTopType($this->getType())) {
+                return false;
             }
-            if (
-                (class_exists($myType) || interface_exists($myType)) &&
-                (class_exists($otherType) || interface_exists($otherType)) &&
-                is_a($otherType, $myType, true)
-            ) {
-                return true;
-            }
-        }
-
-        // Axiom 4: A specification $S$ generalizes conjunction $(A \land B)$ if $S \supseteq A$ or $S \supseteq B$
-        if ($otherSpecification instanceof AndSpecification && !($this instanceof AndSpecification)) {
-            $left = $otherSpecification->getLeftSide();
-            $right = $otherSpecification->getRightSide();
-            if ($left !== null && $this->isGeneralizationOf($left)) {
-                return true;
-            }
-            if ($right !== null && $this->isGeneralizationOf($right)) {
-                return true;
-            }
-        }
-
-        // Axiom 5: A specification $S$ generalizes disjunction $(A \lor B)$ if $S \supseteq A$ AND $S \supseteq B$
-        if ($otherSpecification instanceof OrSpecification) {
-            $left = $otherSpecification->getLeftSide();
-            $right = $otherSpecification->getRightSide();
-            if ($left !== null && $right !== null) {
-                return $this->isGeneralizationOf($left) && $this->isGeneralizationOf($right);
-            }
+            return SpecificationAlgebra::isBoundedByType($other, $this->getType());
         }
 
         return false;
@@ -105,26 +71,7 @@ trait SubsumptionAndEqualityTrait
      */
     protected function checkBaseDisjointness(ISpecification $otherSpecification): bool
     {
-        if ($this instanceof AlwaysFalseSpecification || $otherSpecification instanceof AlwaysFalseSpecification) {
-            return true;
-        }
-
-        if ($otherSpecification instanceof NotSpecification) {
-            $negated = $otherSpecification->getLeftSide();
-            if ($negated !== null && $negated->isGeneralizationOf($this)) {
-                return true;
-            }
-        }
-
-        if ($otherSpecification instanceof AndSpecification) {
-            $left = $otherSpecification->getLeftSide();
-            $right = $otherSpecification->getRightSide();
-            if (($left !== null && $this->isDisjointWith($left)) || ($right !== null && $this->isDisjointWith($right))) {
-                return true;
-            }
-        }
-
-        return false;
+        return SpecificationAlgebra::baseDisjoint($this, $otherSpecification);
     }
 
     /**

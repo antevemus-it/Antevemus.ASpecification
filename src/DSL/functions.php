@@ -16,7 +16,7 @@ declare(strict_types=1);
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
  *
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -574,4 +574,218 @@ function hasSize(ISpecification $sizeSpecification): ISpecification
 function hasLength(ISpecification $lengthSpecification): ISpecification
 {
     return Spec::hasLength($lengthSpecification);
+}
+
+// ==========================================
+// Domian SpecificationFactory aliases (1.4.4)
+// ==========================================
+
+/**
+ * Domian `allEntities()`: every entity (AllEntitiesSpecification).
+ *
+ * @return ISpecification
+ */
+function allEntities(): ISpecification
+{
+    return Spec::allEntities();
+}
+
+/**
+ * Domian alias for allEntities().
+ *
+ * @return ISpecification
+ */
+function entities(): ISpecification
+{
+    return Spec::entities();
+}
+
+/**
+ * Domian alias for allEntities().
+ *
+ * @return ISpecification
+ */
+function entity(): ISpecification
+{
+    return Spec::entity();
+}
+
+/**
+ * Domian `allObjects()`: every non-null candidate (NotNull on top of everything).
+ *
+ * @return ISpecification
+ */
+function allObjects(): ISpecification
+{
+    return Spec::allObjects();
+}
+
+/**
+ * Domian alias for alwaysTrue().
+ *
+ * @return ISpecification
+ */
+function createTautology(): ISpecification
+{
+    return Spec::alwaysTrue();
+}
+
+/**
+ * Domian alias for alwaysFalse().
+ *
+ * @return ISpecification
+ */
+function createContradiction(): ISpecification
+{
+    return Spec::alwaysFalse();
+}
+
+/**
+ * Domian alias for greaterThan().
+ *
+ * @param mixed $value Exclusive lower bound
+ * @return ISpecification
+ */
+function isGreaterThan(mixed $value): ISpecification
+{
+    return Spec::greaterThan($value);
+}
+
+/**
+ * Domian alias for greaterThanOrEqualTo().
+ *
+ * @param mixed $value Inclusive lower bound
+ * @return ISpecification
+ */
+function isGreaterThanOrEqualTo(mixed $value): ISpecification
+{
+    return Spec::greaterThanOrEqualTo($value);
+}
+
+/**
+ * Domian alias for lessThan().
+ *
+ * @param mixed $value Exclusive upper bound
+ * @return ISpecification
+ */
+function isLessThan(mixed $value): ISpecification
+{
+    return Spec::lessThan($value);
+}
+
+/**
+ * Domian alias for lessThanOrEqualTo().
+ *
+ * @param mixed $value Inclusive upper bound
+ * @return ISpecification
+ */
+function isLessThanOrEqualTo(mixed $value): ISpecification
+{
+    return Spec::lessThanOrEqualTo($value);
+}
+
+/**
+ * Domian alias for equalTo().
+ *
+ * @param mixed $value Expected value
+ * @return ISpecification
+ */
+function objectEqualTo(mixed $value): ISpecification
+{
+    return Spec::equalTo($value);
+}
+
+/**
+ * Domian alias for equalTo().
+ *
+ * @param mixed $value Expected value
+ * @return ISpecification
+ */
+function anObjectEqualTo(mixed $value): ISpecification
+{
+    return Spec::equalTo($value);
+}
+
+/**
+ * Domian `blankString()`: null or a blank string (null IS blank, unlike isBlank()).
+ *
+ * @return ISpecification
+ */
+function blankString(): ISpecification
+{
+    return Spec::blankString();
+}
+
+/**
+ * Domian alias for blankString().
+ *
+ * @return ISpecification
+ */
+function isBlankString(): ISpecification
+{
+    return Spec::blankString();
+}
+
+/**
+ * Domian `defaultNumber()`: null or zero.
+ *
+ * @return ISpecification
+ */
+function defaultNumber(): ISpecification
+{
+    return Spec::defaultNumber();
+}
+
+/**
+ * Domian alias for defaultNumber().
+ *
+ * @return ISpecification
+ */
+function isDefaultNumber(): ISpecification
+{
+    return Spec::defaultNumber();
+}
+
+/**
+ * Domian `defaultValueOfType(T)`: null or the default value of the given type only.
+ *
+ * @param string $type Restricting type (string, number, bool, array)
+ * @return ISpecification
+ */
+function defaultValueOfType(string $type): ISpecification
+{
+    return Spec::defaultValueOfType($type);
+}
+
+/**
+ * Domian alias for enumCase().
+ *
+ * @param class-string $enumClass Enum class name
+ * @return ISpecification
+ */
+function isEnum(string $enumClass): ISpecification
+{
+    return Spec::enumCase($enumClass);
+}
+
+/**
+ * Domian alias for matchesWildcard() / wildcard().
+ *
+ * @param string $wildcardExpression Wildcard expression (* and ?)
+ * @return ISpecification
+ */
+function matchesWildcardExpression(string $wildcardExpression): ISpecification
+{
+    return Spec::wildcard($wildcardExpression);
+}
+
+/**
+ * Domian alias for matchesWildcardIgnoringCase() / wildcardIgnoreCase().
+ *
+ * @param string $wildcardExpression Wildcard expression (* and ?)
+ * @return ISpecification
+ */
+function matchesWildcardExpressionIgnoringCase(string $wildcardExpression): ISpecification
+{
+    return Spec::wildcardIgnoreCase($wildcardExpression);
 }

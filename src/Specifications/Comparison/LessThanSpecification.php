@@ -4,49 +4,53 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Specifications\Comparison;
 
-use Antevemus\ASpecification\AbstractSpecification;
-use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
-use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
+use DateTimeInterface;
 
 /**
  * LessThanSpecification - Leaf specification for strictly less than comparison (`<`).
  *
- * Validates whether the candidate is strictly less than the configured threshold,
- * providing interval subsumption ($x < 100 \supseteq x < 50$) and disjointness.
+ * Validates whether the candidate is strictly less than the configured threshold (number,
+ * string or date-time instant), providing interval subsumption ($x < 100 \supseteq x < 50$)
+ * and disjointness ($x < 10 \perp x >= 10$; for integers $x < 11 \perp x > 10$).
  *
  * Features:
- * - Strict magnitude comparison (`<`)
+ * - Strict magnitude comparison (`<`) on numbers, strings and DateTimeInterface
  * - Subsumption of narrower intervals and inferior equalities (RF-10)
+ * - Negation resolved to `>=` by the algebra
  *
  * @template T
- * @extends AbstractSpecification<T>
- * @implements IValueBoundSpecification<T>
- * @version    1.2.0
+ * @extends AbstractComparableValueBoundSpecification<T>
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class LessThanSpecification extends AbstractSpecification implements IValueBoundSpecification
+class LessThanSpecification extends AbstractComparableValueBoundSpecification
 {
-    use SubsumptionAndEqualityTrait;
-
     /**
-     * @param int|float|string $value Strict upper bound threshold
+     * @param int|float|string|DateTimeInterface $value Strict upper bound threshold
      */
-    public function __construct(
-        private readonly int|float|string $value
-    ) {
+    public function __construct(int|float|string|DateTimeInterface $value)
+    {
+        parent::__construct($value);
     }
 
     /**
      * Returns the configured upper bound threshold.
      */
-    public function getValue(): int|float|string
+    public function getValue(): int|float|string|DateTimeInterface
     {
         return $this->value;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRelationalOperator(): RelationalOperator
+    {
+        return RelationalOperator::LESS_THAN;
     }
 
     /**
@@ -59,47 +63,5 @@ class LessThanSpecification extends AbstractSpecification implements IValueBound
         }
         TypeCompatibility::assertOrderable($candidate, $this->value, 'LessThanSpecification');
         return $candidate < $this->value;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getType(): string
-    {
-        return "mixed";
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isGeneralizationOf(ISpecification $otherSpecification): bool
-    {
-        if ($this->checkBaseGeneralization($otherSpecification)) {
-            return true;
-        }
-        if ($otherSpecification instanceof self) {
-            $other = $otherSpecification->getValue();
-            return TypeCompatibility::isOrderable($other, $this->value) && $other <= $this->value;
-        }
-        if ($otherSpecification instanceof EqualSpecification) {
-            $other = $otherSpecification->getValue();
-            return TypeCompatibility::isOrderable($other, $this->value) && $other < $this->value;
-        }
-        return false;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function isDisjointWith(ISpecification $otherSpecification): bool
-    {
-        if ($this->checkBaseDisjointness($otherSpecification)) {
-            return true;
-        }
-        if ($otherSpecification instanceof GreaterThanSpecification || $otherSpecification instanceof EqualSpecification) {
-            $other = $otherSpecification->getValue();
-            return TypeCompatibility::isOrderable($other, $this->value) && $other >= $this->value;
-        }
-        return false;
     }
 }

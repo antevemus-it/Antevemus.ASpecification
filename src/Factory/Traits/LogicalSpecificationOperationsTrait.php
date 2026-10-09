@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Factory\Traits;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
 
 /**
  * LogicalSpecificationOperationsTrait - Trait aggregating boolean logical operations (ILogicalSpecificationFactory).
@@ -15,7 +16,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Boolean algebra (allOf, anyOf, not, neitherOf)
  * - Expressive DSL aliases (shouldBeAllOf, isBoth, shouldBeOneOf, either, etc.)
  *
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -307,5 +308,72 @@ trait LogicalSpecificationOperationsTrait
     public function defaultValue(): ISpecification
     {
         return $this->logicalFactory->defaultValue();
+    }
+
+    // ==========================================
+    // Domian SpecificationFactory aliases (1.4.4)
+    // ==========================================
+
+    /**
+     * Domian `defaultValueOfType(T)`: null or the default value of the given type only.
+     *
+     * @param string $type 'string', 'number', 'int', 'float', 'bool' or 'array'
+     * @return ISpecification
+     */
+    public function defaultValueOfType(string $type): ISpecification
+    {
+        return new DefaultValueSpecification($type);
+    }
+
+    /**
+     * Domian alias for defaultValueOfType().
+     *
+     * @param string $type Restricting type
+     * @return ISpecification
+     */
+    public function isDefaultValueOfType(string $type): ISpecification
+    {
+        return $this->defaultValueOfType($type);
+    }
+
+    /**
+     * Domian alias for defaultValueOfType().
+     *
+     * @param string $type Restricting type
+     * @return ISpecification
+     */
+    public function createDefaultValueOfTypeSpecification(string $type): ISpecification
+    {
+        return $this->defaultValueOfType($type);
+    }
+
+    /**
+     * Domian `defaultNumber()`: null or zero.
+     *
+     * @return ISpecification
+     */
+    public function defaultNumber(): ISpecification
+    {
+        return $this->defaultValueOfType('number');
+    }
+
+    /**
+     * Domian alias for defaultNumber().
+     *
+     * @return ISpecification
+     */
+    public function isDefaultNumber(): ISpecification
+    {
+        return $this->defaultNumber();
+    }
+
+    /**
+     * Domian alias for defaultNumber().
+     *
+     * @return ISpecification
+     */
+    public function createDefaultNumberSpecification(): ISpecification
+    {
+        return $this->defaultNumber();
     }
 }

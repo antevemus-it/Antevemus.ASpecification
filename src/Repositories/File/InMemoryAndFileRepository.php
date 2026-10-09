@@ -20,6 +20,7 @@ use Antevemus\ASpecification\Repositories\PartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Repositories\PersistentPartitionRepository;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
+use Antevemus\ASpecification\Helpers\SpecificationHelper;
 
 /**
  * InMemoryAndFileRepository - Hybrid decorator combining in-memory caching and persistent file storage
@@ -35,7 +36,7 @@ use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -302,6 +303,9 @@ class InMemoryAndFileRepository extends AbstractRepository implements
      */
     public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
     {
+        // Applies the delta (value-bound clauses become property writes) before persisting,
+        // like the in-memory repositories (Domian SpecificationUtils.updateEntityState).
+        SpecificationHelper::updateEntityState($entity, $deltaSpecification);
         $this->put($entity);
     }
 

@@ -16,7 +16,7 @@ declare(strict_types=1);
  *
  * @template T
  * @implements ISpecification<T>
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +35,7 @@ use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use ReflectionClass;
 
 abstract class AbstractSpecification implements ISpecification
@@ -209,8 +210,9 @@ abstract class AbstractSpecification implements ISpecification
             return $this->and(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        if ($this instanceof ICompositeSpecification && ($otherSpecification === $this || $this->equals($otherSpecification))) {
+            // A ∧ A ≡ A (Domian CompositeSpecificationTest.testCombinedByItself)
+            return $this;
         }
 
         return new AndSpecification($this, $otherSpecification);
@@ -228,8 +230,9 @@ abstract class AbstractSpecification implements ISpecification
             return $this->or(new PropertySpecification($this->resolveRootTypeSpecification(), $otherSpecification, $propertySpecification));
         }
 
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        if ($this instanceof ICompositeSpecification && ($otherSpecification === $this || $this->equals($otherSpecification))) {
+            // A ∨ A ≡ A (Domian CompositeSpecificationTest.testCombinedByItself)
+            return $this;
         }
 
         return new OrSpecification($this, $otherSpecification);
@@ -282,14 +285,14 @@ abstract class AbstractSpecification implements ISpecification
 
     /**
      * {@inheritdoc}
+     *
+     * Default: reflexivity (structural equality) plus the shared axioms (A ⊇ ∅, A ⊇ (B ∧ C) if
+     * A ⊇ B or A ⊇ C, A ⊇ (B ∨ C) iff A ⊇ B and A ⊇ C, ¬¬B ≡ B). Domian's default is the
+     * reflexivity alone; the axioms are sound for every specification, so they apply here too.
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        return false;
+        return SpecificationAlgebra::baseGeneralizes($this, $otherSpecification);
     }
 
     /**
@@ -297,23 +300,21 @@ abstract class AbstractSpecification implements ISpecification
      */
     public function isSpecialCaseOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
         return $otherSpecification->isGeneralizationOf($this);
     }
 
     /**
      * {@inheritdoc}
+     *
+     * Default: never disjoint with itself; disjoint with the contradiction, with the negation of
+     * a generalization (A ⟂ ¬B iff B ⊇ A), with a conjunction one of whose sides is disjoint and
+     * with a disjunction both of whose sides are disjoint. Anything else is "not proven"
+     * (false). Domian's default answers true for every non-equal pair, which is unsound for
+     * leaves such as regular expressions; the safe answer is kept here.
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        return false;
+        return SpecificationAlgebra::baseDisjoint($this, $otherSpecification);
     }
 
     /**

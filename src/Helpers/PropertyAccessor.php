@@ -18,9 +18,19 @@ use Closure;
  * - Getter method (getProperty, property) and boolean predicate (isProperty, hasProperty) resolution
  * - Array and ArrayAccess interface support
  * - Nested dot notation path traversal (e.g. 'user.address.city')
+ * - Private and protected properties, declared anywhere in the class hierarchy, as the LAST resort
+ *   (Domian ReflectionUtils.getFieldByName(): a specification may be bound to a field without a getter)
  * - Generates optimized Closures for functional pipelines and LINQ queries
  *
- * @version    1.1.0
+ * Resolution order of a single segment, first match wins:
+ *   1. array / ArrayAccess key;
+ *   2. public method getX(), x(), isX(), hasX();
+ *   3. isset($object->x): public initialized property, or __get guarded by __isset;
+ *   4. public property (reflection; an uninitialized typed property yields null);
+ *   5. non-public property declared by the class or a superclass (reflection; since 1.4.4);
+ *   6. null.
+ *
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -118,6 +128,20 @@ final class PropertyAccessor
                     // Ignore
                 }
             }
+
+            // Last resort: a private/protected property declared by the class or a superclass
+            // (Domian reads the field itself when no accessor exists).
+            $field = ReflectionUtils::getFieldByName($property, $target);
+            if ($field !== null) {
+                try {
+                    if ($field->isStatic()) {
+                        return $field->getValue();
+                    }
+                    return $field->isInitialized($target) ? $field->getValue($target) : null;
+                } catch (\Throwable) {
+                    // Ignore
+                }
+            }
         }
 
         return null;
@@ -157,11 +181,16 @@ final class PropertyAccessor
             if (property_exists($target, $property)) {
                 try {
                     $ref = new \ReflectionProperty($target, $property);
-                    return $ref->isPublic();
+                    if ($ref->isPublic()) {
+                        return true;
+                    }
                 } catch (\Throwable) {
                     return false;
                 }
             }
+
+            // Last resort: a private/protected property declared by the class or a superclass
+            return ReflectionUtils::hasField($target, $property);
         }
 
         return false;

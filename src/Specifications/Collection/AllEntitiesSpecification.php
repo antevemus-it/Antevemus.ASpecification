@@ -8,6 +8,8 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 
 /**
  * AllEntitiesSpecification - Universal leaf specification for entities.
@@ -24,7 +26,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -66,20 +68,17 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('The specification cannot be null');
-        }
-
-        if ($this->equals($otherSpecification)) {
+        if (SpecificationAlgebra::baseGeneralizes($this, $otherSpecification)) {
             return true;
         }
 
-        $otherType = $otherSpecification->getType();
-        if ($otherType === $this->targetType || is_subclass_of($otherType, $this->targetType)) {
-            return true;
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+        if ($other instanceof NotSpecification) {
+            // ¬A accepts candidates outside the entity type.
+            return false;
         }
 
-        return false;
+        return SpecificationAlgebra::isBoundedByType($other, $this->targetType);
     }
 
     /**
@@ -87,12 +86,15 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('The specification cannot be null');
+        if (SpecificationAlgebra::baseDisjoint($this, $otherSpecification)) {
+            return true;
         }
 
-        $otherType = $otherSpecification->getType();
-        if ($otherType !== 'mixed' && !is_a($otherType, $this->targetType, true) && !is_a($this->targetType, $otherType, true)) {
+        $otherType = SpecificationAlgebra::resolve($otherSpecification)->getType();
+        if (
+            SpecificationAlgebra::isClassLike($otherType)
+            && !SpecificationAlgebra::canCastAtLeastOneWay($otherType, $this->targetType)
+        ) {
             return true;
         }
 

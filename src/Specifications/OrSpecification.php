@@ -18,12 +18,14 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Features:
  * - Short-circuit candidate evaluation
  * - Notification pattern diagnostics when both branches fail
- * - Complete subsumption and set algebra
+ * - Complete subsumption and set algebra (Domian lemma 1): (A ∨ B) ⊇ X if A ⊇ X ∨ B ⊇ X;
+ *   X ⊇ (A ∨ B) ⇔ X ⊇ A ∧ X ⊇ B; (A ∨ B) ⟂ X ⇔ A ⟂ X ∧ B ⟂ X
+ * - Structural equality: same class and the same unordered pair of operands
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -172,29 +174,62 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
     /**
      * {@inheritdoc}
      *
-     * A disjunction OR is a generalization of another specification if both branches generalize it.
+     * Two disjunctions are equal when they hold the same pair of operands, in any order.
      */
-    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    public function equals(mixed $other): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        if ($this === $other) {
+            return true;
+        }
+        if (!$other instanceof self || $other::class !== static::class) {
+            return false;
         }
 
-        return $this->left->isGeneralizationOf($otherSpecification)
-            && $this->right->isGeneralizationOf($otherSpecification);
+        return $this->customReason === $other->customReason
+            && $this->customCode === $other->customCode
+            && SpecificationAlgebra::unorderedPairsEqual($this->left, $this->right, $other->left, $other->right);
     }
 
     /**
      * {@inheritdoc}
+     *
+     * A disjunction (A OR B) generalizes X when either alternative generalizes X (X ⊆ A ⇒ X ⊆ A ∪ B).
+     * When X is itself a disjunction, X ⊆ (A ∨ B) iff both alternatives of X are generalized.
+     */
+    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    {
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+
+        if ($this === $other || $this->equals($other)) {
+            return true;
+        }
+        if ($other instanceof OrSpecification) {
+            return $this->isGeneralizationOf($other->getLeftSide())
+                && $this->isGeneralizationOf($other->getRightSide());
+        }
+        if ($this->checkBaseGeneralization($other)) {
+            return true;
+        }
+
+        return $this->left->isGeneralizationOf($other)
+            || $this->right->isGeneralizationOf($other);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * A disjunction is disjoint with X if and only if both alternatives are.
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+
+        if ($this === $other || $this->equals($other)) {
+            return false;
         }
 
-        return $this->left->isDisjointWith($otherSpecification)
-            && $this->right->isDisjointWith($otherSpecification);
+        return $this->left->isDisjointWith($other)
+            && $this->right->isDisjointWith($other);
     }
 
     /**
@@ -202,10 +237,6 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
         return false;
     }
 
@@ -214,12 +245,7 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        return $this->left->intersectsWith($otherSpecification)
-            || $this->right->intersectsWith($otherSpecification);
+        return !$this->isDisjointWith($otherSpecification);
     }
 
     /**

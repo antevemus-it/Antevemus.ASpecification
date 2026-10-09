@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Specifications\Logical;
 
 use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 
 /**
@@ -17,17 +19,19 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * Features:
  * - Constant `false` evaluation for any candidate
  * - Universal disjointness in relation to all specifications (RF-10)
+ * - Generalizes only the empty set itself (and whatever resolves to it, e.g. not(alwaysTrue()))
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @implements ILeafSpecification<T>
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class AlwaysFalseSpecification extends AbstractSpecification
+class AlwaysFalseSpecification extends AbstractSpecification implements ILeafSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -60,7 +64,7 @@ class AlwaysFalseSpecification extends AbstractSpecification
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
-        return $otherSpecification instanceof self;
+        return SpecificationAlgebra::resolve($otherSpecification) instanceof self;
     }
 
     /**

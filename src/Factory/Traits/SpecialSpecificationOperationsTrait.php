@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Factory\Traits;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 
 /**
  * SpecialSpecificationOperationsTrait - Trait aggregating special specifications and sentinel values (ISpecialSpecificationFactory).
@@ -16,7 +17,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Nullity checks (isNull, isNotNull)
  * - Boolean predicates (isTrue, isFalse)
  *
- * @version    1.1.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -87,5 +88,99 @@ trait SpecialSpecificationOperationsTrait
     public function isFalse(): ISpecification
     {
         return $this->specialFactory->isFalse();
+    }
+
+    // ==========================================
+    // Domian SpecificationFactory aliases (1.4.4)
+    // ==========================================
+
+    /**
+     * Domian alias for alwaysFalse().
+     *
+     * @return ISpecification
+     */
+    public function createAlwaysFalseSpecification(): ISpecification
+    {
+        return $this->alwaysFalse();
+    }
+
+    /**
+     * Domian alias for alwaysFalse().
+     *
+     * @return ISpecification
+     */
+    public function createContradiction(): ISpecification
+    {
+        return $this->alwaysFalse();
+    }
+
+    /**
+     * Domian alias for alwaysTrue().
+     *
+     * @return ISpecification
+     */
+    public function createAlwaysTrueSpecification(): ISpecification
+    {
+        return $this->alwaysTrue();
+    }
+
+    /**
+     * Domian alias for alwaysTrue().
+     *
+     * @return ISpecification
+     */
+    public function createTautology(): ISpecification
+    {
+        return $this->alwaysTrue();
+    }
+
+    /**
+     * Domian alias for isNotNull().
+     *
+     * @return ISpecification
+     */
+    public function createNotNullSpecification(): ISpecification
+    {
+        return $this->isNotNull();
+    }
+
+    /**
+     * Domian `allObjects()`: every non-null candidate (NotNull on top of everything).
+     *
+     * @return ISpecification
+     */
+    public function allObjects(): ISpecification
+    {
+        return $this->isNotNull();
+    }
+
+    /**
+     * Domian `allEntities()`: every entity (AllEntitiesSpecification, generalization of any entity specification).
+     *
+     * @return ISpecification
+     */
+    public function allEntities(): ISpecification
+    {
+        return new AllEntitiesSpecification();
+    }
+
+    /**
+     * Domian alias for allEntities().
+     *
+     * @return ISpecification
+     */
+    public function entities(): ISpecification
+    {
+        return $this->allEntities();
+    }
+
+    /**
+     * Domian alias for allEntities().
+     *
+     * @return ISpecification
+     */
+    public function entity(): ISpecification
+    {
+        return $this->allEntities();
     }
 }

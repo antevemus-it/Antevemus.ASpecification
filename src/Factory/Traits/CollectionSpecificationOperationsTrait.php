@@ -14,7 +14,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Universal and existential quantifiers (all, any, none)
  * - Element and percentage matching (include, includePercentageOf)
  *
- * @version    1.1.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -191,4 +191,27 @@ trait CollectionSpecificationOperationsTrait
         return $this->collectionFactory->includesPercentageOf($percentageSpecification, $elementSpecification);
     }
 
+    /**
+     * Domian alias for includePercentageOf().
+     *
+     * @param ISpecification<int> $percentageSpecification Specification for percentage
+     * @param ISpecification $elementSpecification Specification for elements
+     * @return ISpecification
+     */
+    public function includeAPercentageOf(ISpecification $percentageSpecification, ISpecification $elementSpecification): ISpecification
+    {
+        return $this->includePercentageOf($percentageSpecification, $elementSpecification);
+    }
+
+    /**
+     * Domian alias for includePercentageOf().
+     *
+     * @param ISpecification<int> $percentageSpecification Specification for percentage
+     * @param ISpecification $elementSpecification Specification for elements
+     * @return ISpecification
+     */
+    public function includesAPercentageOf(ISpecification $percentageSpecification, ISpecification $elementSpecification): ISpecification
+    {
+        return $this->includePercentageOf($percentageSpecification, $elementSpecification);
+    }
 }

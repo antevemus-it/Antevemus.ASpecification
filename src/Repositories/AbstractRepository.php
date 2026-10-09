@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories;
 
+use Antevemus\ASpecification\Concurrent\NullSynchronizer;
+use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IPartitionRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
+use Antevemus\ASpecification\Helpers\SpecificationHelper;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use InvalidArgumentException;
 use RuntimeException;
@@ -18,16 +21,26 @@ use RuntimeException;
  * Base abstract class implementing repository aliases and safeguard
  * routines for the master repository contract (IRepository).
  *
+ * Every repository carries an ISynchronizer, as net.sourceforge.domian.repository.AbstractDomianCoreRepository
+ * does (Domian, Copyright 2006-2010 the original author or authors, Apache License 2.0; see
+ * THIRD_PARTY_NOTICES.md): NullSynchronizer by default, replaced with withSynchronizer()/setSynchronizer()
+ * or by the trailing constructor parameter of the concrete repositories. Reads run in
+ * callConcurrently() and writes in callExclusively(); subclasses reach it through synchronizer(),
+ * readConcurrently() and writeExclusively(), and a partition repository wraps the operations of its
+ * underlying repository with getSynchronizer().
+ *
  * Features:
  * - Provides fluent convenience shortcuts (count, iterate, find, findSingle, removeBy) mapped to canonical contracts
  * - Implements findSingleEntitySpecifiedBy with strict unitary cardinality verification
  * - Default contains() by entity identity (getEntityId) with equals() fallback
+ * - Default updateWithDelta() applying the delta specification to the entity before update()
  * - Structural specification validations
+ * - Pluggable ISynchronizer (NullSynchronizer by default) wrapping reads and writes
  * - Virtual partition factory via makePartition
  *
  * @template T of IEntity
  * @implements IRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,6 +49,90 @@ use RuntimeException;
  */
 abstract class AbstractRepository implements IRepository
 {
+    /**
+     * Synchronizer controlling concurrent and exclusive access to the repository operations
+     * (Java AbstractDomianCoreRepository.synchronizer). Created lazily so that subclasses need not call a constructor.
+     *
+     * @var ISynchronizer|null
+     */
+    private ?ISynchronizer $synchronizer = null;
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Synchronizer
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Replaces the synchronizer (Java setSynchronizer()), fluently.
+     *
+     * @param ISynchronizer $synchronizer
+     * @return static
+     */
+    public function withSynchronizer(ISynchronizer $synchronizer): static
+    {
+        $this->synchronizer = $synchronizer;
+        return $this;
+    }
+
+    /**
+     * Replaces the synchronizer (Java name).
+     *
+     * @param ISynchronizer $synchronizer
+     * @return void
+     */
+    public function setSynchronizer(ISynchronizer $synchronizer): void
+    {
+        $this->synchronizer = $synchronizer;
+    }
+
+    /**
+     * Returns the synchronizer in use (NullSynchronizer until one is set). Public so that a partition
+     * repository can synchronize the operations of its underlying repository with the same instance.
+     *
+     * @return ISynchronizer
+     */
+    public function getSynchronizer(): ISynchronizer
+    {
+        return $this->synchronizer();
+    }
+
+    /**
+     * Hook for subclasses: the synchronizer in use, NullSynchronizer until one is set.
+     *
+     * @return ISynchronizer
+     */
+    protected function synchronizer(): ISynchronizer
+    {
+        return $this->synchronizer ??= new NullSynchronizer();
+    }
+
+    /**
+     * Runs a read operation under the synchronizer's concurrent (shared) mode.
+     *
+     * @template R
+     * @param callable(): R $read
+     * @return R
+     */
+    protected function readConcurrently(callable $read): mixed
+    {
+        return $this->synchronizer()->callConcurrently($read);
+    }
+
+    /**
+     * Runs a write operation under the synchronizer's exclusive mode.
+     *
+     * @template R
+     * @param callable(): R $write
+     * @return R
+     */
+    protected function writeExclusively(callable $write): mixed
+    {
+        return $this->synchronizer()->callExclusively($write);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Aliases
+    ///////////////////////////////////////////////////////////////////////////
+
     /**
      * Fluent alias for countAllEntitiesSpecifiedBy().
      *
@@ -123,19 +220,21 @@ abstract class AbstractRepository implements IRepository
      */
     public function findSingleEntitySpecifiedBy(ISpecification $specification): ?IEntity
     {
-        $allFound = $this->findAllEntitiesSpecifiedBy($specification);
-        $count = count($allFound);
+        return $this->readConcurrently(function () use ($specification): ?IEntity {
+            $allFound = $this->findAllEntitiesSpecifiedBy($specification);
+            $count = count($allFound);
 
-        if ($count > 1) {
-            throw new RuntimeException("Expected a single entity result, but found " . $count);
-        }
+            if ($count > 1) {
+                throw new RuntimeException("Expected a single entity result, but found " . $count);
+            }
 
-        if ($count === 0) {
-            return null;
-        }
+            if ($count === 0) {
+                return null;
+            }
 
-        // Return first and only item
-        return reset($allFound);
+            // Return first and only item
+            return reset($allFound);
+        });
     }
 
     /**
@@ -148,19 +247,41 @@ abstract class AbstractRepository implements IRepository
      */
     public function contains(IEntity $entity): bool
     {
-        $id = $entity->getEntityId();
-        $scalarId = is_scalar($id) ? (string) $id : null;
+        return $this->readConcurrently(function () use ($entity): bool {
+            $id = $entity->getEntityId();
+            $scalarId = is_scalar($id) ? (string) $id : null;
 
-        foreach ($this->iterateAllEntitiesSpecifiedBy(new AlwaysTrueSpecification()) as $stored) {
-            if ($scalarId !== null && is_scalar($stored->getEntityId()) && (string) $stored->getEntityId() === $scalarId) {
-                return true;
+            foreach ($this->iterateAllEntitiesSpecifiedBy(new AlwaysTrueSpecification()) as $stored) {
+                if ($scalarId !== null && is_scalar($stored->getEntityId()) && (string) $stored->getEntityId() === $scalarId) {
+                    return true;
+                }
+                if ($stored->equals($entity)) {
+                    return true;
+                }
             }
-            if ($stored->equals($entity)) {
-                return true;
-            }
-        }
 
-        return false;
+            return false;
+        });
+    }
+
+    /**
+     * Default implementation of the update with a delta specification: applies the delta to the entity
+     * (every property clause bound to a value sets that property: port of Domian
+     * SpecificationUtils.updateEntityState(), see SpecificationHelper::updateEntityState()) and then
+     * updates the entity. A null delta is a plain update(), as in Java AbstractRepository.
+     *
+     * @param T $entity Entity to update
+     * @param ISpecification|null $deltaSpecification Conjunction of property clauses bound to the new values, or null
+     * @return void
+     * @throws InvalidArgumentException When the delta targets a type the entity is not an instance of,
+     *                                  or a property the entity does not have
+     */
+    public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
+    {
+        $this->writeExclusively(function () use ($entity, $deltaSpecification): void {
+            SpecificationHelper::updateEntityState($entity, $deltaSpecification);
+            $this->update($entity);
+        });
     }
 
     /**

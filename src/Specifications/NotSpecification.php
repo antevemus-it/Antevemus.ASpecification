@@ -7,8 +7,8 @@ namespace Antevemus\ASpecification\Specifications;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use ReflectionClass;
 
 /**
@@ -20,12 +20,15 @@ use ReflectionClass;
  * Features:
  * - Unary negation composition
  * - Diagnostic message inversion via Notification Pattern
- * - Disjoint verification with the inner specification
+ * - Negation algebra (Domian JointDenialSpecification): ¬¬A ≡ A; ¬(x < v) ≡ x >= v (comparison
+ *   leaves are inverted, De Morgan on their composites); ¬A ⊇ ¬B ⇔ B ⊇ A; ¬A ⊇ X ⇔ X ⟂ A;
+ *   ¬A ⟂ X ⇔ A ⊇ X
+ * - Structural equality: same class and equal negated specification
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.2.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -175,19 +178,90 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
 
     /**
      * {@inheritdoc}
+     *
+     * Two negations are equal when they negate equal specifications.
+     */
+    public function equals(mixed $other): bool
+    {
+        if ($this === $other) {
+            return true;
+        }
+        if (!$other instanceof self || $other::class !== static::class) {
+            return false;
+        }
+
+        return $this->customReason === $other->customReason
+            && $this->customCode === $other->customCode
+            && $this->specification->equals($other->specification);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * ¬A ⊇ X: when the negation resolves to a positive form (¬(x < 10) is x >= 10) that form
+     * decides; otherwise ¬A ⊇ ¬B ⇔ B ⊇ A, and ¬A ⊇ X ⇔ X ⟂ A.
+     */
+    public function isGeneralizationOf(ISpecification $otherSpecification): bool
+    {
+        $self = SpecificationAlgebra::resolve($this);
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+
+        if (!$self instanceof self) {
+            return $self->isGeneralizationOf($other);
+        }
+        if ($self === $other || $self->equals($other) || $other instanceof AlwaysFalseSpecification) {
+            return true;
+        }
+        if ($other instanceof OrSpecification) {
+            return $self->isGeneralizationOf($other->getLeftSide())
+                && $self->isGeneralizationOf($other->getRightSide());
+        }
+        if ($other instanceof self) {
+            return $other->getSpecification()->isGeneralizationOf($self->getSpecification());
+        }
+        if ($other instanceof AndSpecification) {
+            if ($self->isGeneralizationOf($other->getLeftSide()) || $self->isGeneralizationOf($other->getRightSide())) {
+                return true;
+            }
+        }
+
+        return $self->getSpecification()->isDisjointWith($other);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * ¬A ⟂ X: when the negation resolves to a positive form that form decides; otherwise
+     * ¬A ⟂ X ⇔ A ⊇ X. Two irreducible negations are never proven disjoint.
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
+        $self = SpecificationAlgebra::resolve($this);
+        $other = SpecificationAlgebra::resolve($otherSpecification);
 
-        // A negated specification is disjoint with its own original specification
-        if ($this->specification === $otherSpecification) {
+        if (!$self instanceof self) {
+            return $self->isDisjointWith($other);
+        }
+        if ($self === $other || $self->equals($other)) {
+            return false;
+        }
+        if ($other instanceof AlwaysFalseSpecification) {
             return true;
         }
+        if ($other instanceof self) {
+            return false;
+        }
+        if ($other instanceof AndSpecification) {
+            if ($self->isDisjointWith($other->getLeftSide()) || $self->isDisjointWith($other->getRightSide())) {
+                return true;
+            }
+        }
+        if ($other instanceof OrSpecification) {
+            return $self->isDisjointWith($other->getLeftSide())
+                && $self->isDisjointWith($other->getRightSide());
+        }
 
-        return parent::isDisjointWith($otherSpecification);
+        return $self->getSpecification()->isGeneralizationOf($other);
     }
 
     /**
@@ -195,10 +269,6 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
      */
     public function isIntersectionOf(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
         return false;
     }
 
@@ -207,10 +277,6 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
      */
     public function intersectsWith(ISpecification $otherSpecification): bool
     {
-        if ($otherSpecification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
-
-        return parent::intersectsWith($otherSpecification);
+        return !$this->isDisjointWith($otherSpecification);
     }
 }

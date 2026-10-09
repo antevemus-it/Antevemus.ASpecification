@@ -22,7 +22,7 @@ declare(strict_types=1);
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.3.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,9 +35,14 @@ namespace Antevemus\ASpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
+use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 
 abstract class AbstractCompositeSpecification extends AbstractSpecification implements ICompositeSpecification
 {
@@ -264,15 +269,35 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
 
     /**
      * {@inheritdoc}
+     *
+     * A composite that specifies all instances of its type (Spec::specify(T)) generalizes every
+     * specification whose candidates are bounded by T or a subtype of T: all(Customer) ⊇
+     * all(VipCustomer), all(Customer) ⊇ all(Customer).where(...). It never generalizes a
+     * negation (¬A accepts candidates outside T) nor the universal NotNull.
      */
     public function isGeneralizationOf(ISpecification $specification): bool
     {
-        if ($specification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
-        }
+        $other = SpecificationAlgebra::resolve($specification);
 
-        if ($this->equals($specification)) {
+        if ($this === $other || $this->equals($other)) {
             return true;
+        }
+        if ($other instanceof AlwaysFalseSpecification) {
+            return true;
+        }
+        if ($other instanceof OrSpecification) {
+            return $this->isGeneralizationOf($other->getLeftSide())
+                && $this->isGeneralizationOf($other->getRightSide());
+        }
+        if ($other instanceof NotNullSpecification || $other instanceof NotSpecification) {
+            return false;
+        }
+        if ($this->isSpecifyingAllInstancesOfItsType()) {
+            return SpecificationAlgebra::isBoundedByType($other, $this->type);
+        }
+        if ($other instanceof AndSpecification) {
+            return $this->isGeneralizationOf($other->getLeftSide())
+                || $this->isGeneralizationOf($other->getRightSide());
         }
 
         return false;
@@ -283,12 +308,45 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     public function isSpecialCaseOf(ISpecification $specification): bool
     {
-        if ($specification === null) {
-            throw new \InvalidArgumentException('Specification cannot be null');
+        // Domian guards this with canCastAtLeastOneWay(types); the guard is only a shortcut and
+        // is wrong for negations (all(Order) ⊂ not(all(Customer)) although Order and Customer
+        // are unrelated), so the generalization rule decides alone.
+        return $specification->isGeneralizationOf($this);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * A type specification is disjoint with the contradiction, with the negation of one of its
+     * generalizations, with specifications of unrelated types and with value-bound leaves whose
+     * value cannot be an instance of its type.
+     */
+    public function isDisjointWith(ISpecification $specification): bool
+    {
+        if (SpecificationAlgebra::baseDisjoint($this, $specification)) {
+            return true;
         }
 
-        return $this->canCastAtLeastOneWay($this->getType(), $specification->getType())
-            && $specification->isGeneralizationOf($this);
+        $other = SpecificationAlgebra::resolve($specification);
+        if ($other instanceof IValueBoundSpecification && !SpecificationAlgebra::isTopType($this->type)) {
+            $value = $other->getValue();
+            return !is_object($value) || !($value instanceof $this->type);
+        }
+
+        $otherType = $other->getType();
+        if (SpecificationAlgebra::isClassLike($otherType) && !$this->canCastAtLeastOneWay($this->type, $otherType)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function intersectsWith(ISpecification $specification): bool
+    {
+        return !$this->isDisjointWith($specification);
     }
 
     /**
@@ -488,11 +546,12 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     protected function canCastAtLeastOneWay(string $type1, string $type2): bool
     {
-        return $this->canCastFromTo($type1, $type2) || $this->canCastFromTo($type2, $type1);
+        return SpecificationAlgebra::canCastAtLeastOneWay($type1, $type2);
     }
 
     /**
-     * Verifies if a source type can be cast to a destination type.
+     * Verifies if a source type can be cast to a destination type ('mixed'/'object' are top types
+     * on the destination side, as java.lang.Object is in Domian).
      *
      * @param string $fromType Source type
      * @param string $toType Destination type
@@ -500,19 +559,7 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      */
     protected function canCastFromTo(string $fromType, string $toType): bool
     {
-        if ($fromType === $toType) {
-            return true;
-        }
-
-        if (!class_exists($fromType) && !interface_exists($fromType)) {
-            return false;
-        }
-
-        if (!class_exists($toType) && !interface_exists($toType)) {
-            return false;
-        }
-
-        return is_subclass_of($fromType, $toType);
+        return SpecificationAlgebra::canCastFromTo($fromType, $toType);
     }
 
     /**
@@ -570,19 +617,30 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Verifies structural equality with another composite specification.
+     * Verifies structural equality with another composite specification: same concrete class,
+     * same candidate type and the same set of encapsulated specifications (order is
+     * irrelevant), compared through their own equals(). Two Spec::specify(Customer::class)
+     * are therefore equal (Domian CompositeSpecificationTest.testEquality).
      *
      * @param mixed $other Another object
      * @return bool
      */
     public function equals(mixed $other): bool
     {
-        if (!($other instanceof AbstractCompositeSpecification)) {
+        if ($this === $other) {
+            return true;
+        }
+        if (!($other instanceof AbstractCompositeSpecification) || $other::class !== static::class) {
             return false;
         }
 
         return $this->type === $other->type
-            && $this->specifications === $other->specifications;
+            && $this->customReason === $other->customReason
+            && $this->customCode === $other->customCode
+            && SpecificationAlgebra::unorderedListsEqual(
+                iterator_to_array($this->specifications, false),
+                iterator_to_array($other->specifications, false)
+            );
     }
 
     /**

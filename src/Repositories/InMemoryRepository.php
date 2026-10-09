@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories;
 
+use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
+use Generator;
 use InvalidArgumentException;
 
 /**
@@ -16,19 +18,27 @@ use InvalidArgumentException;
  * Queries operate with O(N) linear scan cost; process-local concurrency.
  * Ideal for temporary storage, local transactional caching, or intensive unit test suites.
  *
+ * Every operation runs under the repository's ISynchronizer (NullSynchronizer by default; pass one as the
+ * trailing constructor parameter or with withSynchronizer()): reads in concurrent mode, writes
+ * (put, putAll, update, updateWithDelta, remove, removeAll, clear) in exclusive mode. As in the Java
+ * original, the lazy iterator of iterateAllEntitiesSpecifiedBy() is CREATED under the permit; the
+ * iteration itself runs outside it, over a snapshot of the storage taken when the generator starts.
+ *
  * Features:
  * - High-speed volatile memory storage indexed by hash/ID
  * - Synchronous Specification filtering with lazy iteration (yield) and O(N) counting
  * - Idempotent insertions and removals
  * - O(1) membership test via contains()
  * - Fast O(1) atomic repository clearance via clear()
+ * - updateWithDelta() applying the delta specification (property clauses bound to values) before storing
  * - Optional repository identifier, preserved by partitions created with addPartitionWithId()
+ * - Optional ISynchronizer (NullSynchronizer by default) wrapping every operation
  * - ALinq fluent collection integration
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IVolatileRepository<T>
- * @version    1.4.0
+ * @version    1.4.4
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -46,11 +56,16 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      * @param array<T> $initialEntities Initial entity collection to pre-populate repository
      * @param string|null $repositoryId Optional identifier (a volatile repository has none by default);
      *                                  PartitionRepository::addPartitionWithId() passes the partition id here
+     * @param ISynchronizer|null $synchronizer Synchronizer wrapping every operation (NullSynchronizer when null)
      */
     public function __construct(
         array $initialEntities = [],
-        protected readonly ?string $repositoryId = null
+        protected readonly ?string $repositoryId = null,
+        ?ISynchronizer $synchronizer = null
     ) {
+        if ($synchronizer !== null) {
+            $this->setSynchronizer($synchronizer);
+        }
         if (!empty($initialEntities)) {
             $this->putAll($initialEntities);
         }
@@ -75,20 +90,19 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function contains(IEntity $entity): bool
     {
-        $id = $entity->getEntityId();
-        $key = (is_scalar($id)) ? (string) $id : spl_object_hash($entity);
-
-        if (array_key_exists($key, $this->db)) {
-            return true;
-        }
-
-        foreach ($this->db as $stored) {
-            if ($stored->equals($entity)) {
+        return $this->readConcurrently(function () use ($entity): bool {
+            if (array_key_exists($this->keyOf($entity), $this->db)) {
                 return true;
             }
-        }
 
-        return false;
+            foreach ($this->db as $stored) {
+                if ($stored->equals($entity)) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 
     /**
@@ -100,13 +114,15 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function countAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
         $this->validateSpecification($specification);
-        $count = 0;
-        foreach ($this->db as $entity) {
-            if ($specification->isSatisfiedBy($entity)) {
-                $count++;
+        return $this->readConcurrently(function () use ($specification): int {
+            $count = 0;
+            foreach ($this->db as $entity) {
+                if ($specification->isSatisfiedBy($entity)) {
+                    $count++;
+                }
             }
-        }
-        return $count;
+            return $count;
+        });
     }
 
     /**
@@ -118,11 +134,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function iterateAllEntitiesSpecifiedBy(ISpecification $specification): iterable
     {
         $this->validateSpecification($specification);
-        foreach ($this->db as $entity) {
-            if ($specification->isSatisfiedBy($entity)) {
-                yield $entity;
-            }
-        }
+        return $this->readConcurrently(fn(): Generator => $this->iterateMatching($specification));
     }
 
     /**
@@ -134,13 +146,15 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function findAllEntitiesSpecifiedBy(ISpecification $specification): array
     {
         $this->validateSpecification($specification);
-        $results = [];
-        foreach ($this->db as $entity) {
-            if ($specification->isSatisfiedBy($entity)) {
-                $results[] = $entity;
+        return $this->readConcurrently(function () use ($specification): array {
+            $results = [];
+            foreach ($this->db as $entity) {
+                if ($specification->isSatisfiedBy($entity)) {
+                    $results[] = $entity;
+                }
             }
-        }
-        return $results;
+            return $results;
+        });
     }
 
     /**
@@ -151,12 +165,10 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function put(IEntity $entity): void
     {
-        if ($entity !== null) {
+        $this->writeExclusively(function () use ($entity): void {
             // Uses entity ID (if scalar/string) or spl_object_hash as storage key
-            $id = $entity->getEntityId();
-            $key = (is_scalar($id)) ? (string) $id : spl_object_hash($entity);
-            $this->db[$key] = $entity;
-        }
+            $this->db[$this->keyOf($entity)] = $entity;
+        });
     }
 
     /**
@@ -168,12 +180,14 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function putAll(array $collectionOfEntities): void
     {
-        foreach ($collectionOfEntities as $entity) {
-            if (!$entity instanceof IEntity) {
-                throw new InvalidArgumentException("All items must implement IEntity.");
+        $this->writeExclusively(function () use ($collectionOfEntities): void {
+            foreach ($collectionOfEntities as $entity) {
+                if (!$entity instanceof IEntity) {
+                    throw new InvalidArgumentException("All items must implement IEntity.");
+                }
+                $this->put($entity);
             }
-            $this->put($entity);
-        }
+        });
     }
 
     /**
@@ -190,18 +204,6 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     }
 
     /**
-     * Updates an entity considering an optional delta specification.
-     *
-     * @param IEntity $entity Updated entity
-     * @param ISpecification|null $deltaSpecification Optional conditional delta specification
-     * @return void
-     */
-    public function updateWithDelta(IEntity $entity, ?ISpecification $deltaSpecification = null): void
-    {
-        $this->put($entity);
-    }
-
-    /**
      * Removes all entities satisfying the given specification.
      *
      * @param ISpecification $specification Removal rule
@@ -210,14 +212,16 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
         $this->validateSpecification($specification);
-        $removed = 0;
-        foreach ($this->db as $key => $entity) {
-            if ($specification->isSatisfiedBy($entity)) {
-                unset($this->db[$key]);
-                $removed++;
+        return $this->writeExclusively(function () use ($specification): int {
+            $removed = 0;
+            foreach ($this->db as $key => $entity) {
+                if ($specification->isSatisfiedBy($entity)) {
+                    unset($this->db[$key]);
+                    $removed++;
+                }
             }
-        }
-        return $removed;
+            return $removed;
+        });
     }
 
     /**
@@ -228,27 +232,24 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function remove(IEntity $entity): bool
     {
-        if ($entity === null) {
-            return false;
-        }
-        
-        $id = $entity->getEntityId();
-        $key = (is_scalar($id)) ? (string) $id : spl_object_hash($entity);
+        return $this->writeExclusively(function () use ($entity): bool {
+            $key = $this->keyOf($entity);
 
-        if (array_key_exists($key, $this->db)) {
-            unset($this->db[$key]);
-            return true;
-        }
-        
-        // Proactive fallback comparing entity equality
-        foreach ($this->db as $k => $e) {
-            if ($e->equals($entity)) {
-                unset($this->db[$k]);
+            if (array_key_exists($key, $this->db)) {
+                unset($this->db[$key]);
                 return true;
             }
-        }
-        
-        return false;
+
+            // Proactive fallback comparing entity equality
+            foreach ($this->db as $k => $e) {
+                if ($e->equals($entity)) {
+                    unset($this->db[$k]);
+                    return true;
+                }
+            }
+
+            return false;
+        });
     }
 
     /**
@@ -258,7 +259,9 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function clear(): void
     {
-        $this->db = [];
+        $this->writeExclusively(function (): void {
+            $this->db = [];
+        });
     }
 
     /**
@@ -268,7 +271,7 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
      */
     public function getAll(): array
     {
-        return array_values($this->db);
+        return $this->readConcurrently(fn(): array => array_values($this->db));
     }
 
     /**
@@ -311,5 +314,33 @@ class InMemoryRepository extends AbstractRepository implements IVolatileReposito
     public function findAsLazyCollection(ISpecification $specification): object
     {
         return \Antevemus\ASpecification\Linq\ALinqBridge::filterLazy($this, $specification);
+    }
+
+    /**
+     * Storage key of an entity: its scalar identifier, or the object hash when the identifier is not scalar.
+     *
+     * @param IEntity $entity
+     * @return string
+     */
+    private function keyOf(IEntity $entity): string
+    {
+        $id = $entity->getEntityId();
+        return is_scalar($id) ? (string) $id : spl_object_hash($entity);
+    }
+
+    /**
+     * Lazy generator over the storage; foreach iterates a snapshot of the map, so entities put or removed
+     * while iterating do not disturb the iteration.
+     *
+     * @param ISpecification $specification
+     * @return Generator<int, T>
+     */
+    private function iterateMatching(ISpecification $specification): Generator
+    {
+        foreach ($this->db as $entity) {
+            if ($specification->isSatisfiedBy($entity)) {
+                yield $entity;
+            }
+        }
     }
 }
