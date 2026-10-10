@@ -20,6 +20,9 @@ use Antevemus\ASpecification\Tests\Unit\Module13_TCriteriaBuilderTest;
 use Antevemus\ASpecification\Tests\Unit\Module14_ALinqSynergyTest;
 use Antevemus\ASpecification\Tests\Unit\Module15_AttributesTest;
 use Antevemus\ASpecification\Tests\Unit\Module16_PdoRuleCatalogTest;
+use Antevemus\ASpecification\Tests\Unit\Module17_StateMachineTest;
+use Antevemus\ASpecification\Tests\Unit\Module18_StateMachineRunnerTest;
+use Antevemus\ASpecification\Tests\Unit\Module19_UseCaseTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -42,6 +45,9 @@ $suites = [
     'Módulo 14: ALinq Synergy & Coleções Fluentes LINQ' => new Module14_ALinqSynergyTest(),
     'Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])' => new Module15_AttributesTest(),
     'Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)' => new Module16_PdoRuleCatalogTest(),
+    'Módulo 17: Máquina de Estados Dirigida por Especificações' => new Module17_StateMachineTest(),
+    'Módulo 18: Runner e Persistência da Máquina de Estados' => new Module18_StateMachineRunnerTest(),
+    'Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)' => new Module19_UseCaseTest(),
 ];
 
 $startTime = microtime(true);

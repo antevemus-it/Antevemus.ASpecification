@@ -31,7 +31,7 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 ## ✅ v1.4.4 — Domian Parity Correction Lot (Shipped in v1.4.4)
 
 ### 5a. Domian Parity: Subsumption Algebra, Partition DAG, Synchronized Repositories, Entities & Utilities 🧭
-- **Description:** The 2026-10-09 method-by-method parity audit against the Domian trunk (r1209, 103 main sources in 6 modules; reports in `docs/paridade-domian-2026-10-09/`) found that the subsumption algebra and the partition DAG did not behave as the Java reference and as this README promise: composite `equals()` compared object identity, `OrSpecification::isGeneralizationOf` required both sides, `NotSpecification` had no algebra, date and `>=`/`<=` leaves were anonymous classes without subsumption; inserting a generalizing partition lost sub-partitions, `findPartition` matched only by equality, `repartition()` of a missing entity inserted it, iteration materialised; no repository used `ISynchronizer`; `AbstractEntity::equals` ignored the type; `StopWatch`, `updateWithDelta`, 28 factory names, `StrictReturnsNullFactory` and private-field access were missing or wrong. This lot ports the Domian rules faithfully (Reversa bugs #45 to #48), with the Java tests transcribed into `tests/Parity/`.
+- **Description:** The 2026-10-09 method-by-method parity audit against the Domian trunk (r1209, 103 main sources in 6 modules; reports in `docs/paridade-domian-2026-10-09/`) found that the subsumption algebra and the partition DAG did not behave as the Java reference and as this README promise: composite `equals()` compared object identity, `OrSpecification::isGeneralizationOf` required both sides, `NotSpecification` had no algebra, date and `>=`/`<=` leaves were anonymous classes without subsumption; inserting a generalizing partition lost sub-partitions, `findPartition` matched only by equality, `repartition()` of a missing entity inserted it, iteration materialised; no repository used `ISynchronizer`; `AbstractEntity::equals` ignored the type; `StopWatch`, `updateWithDelta`, 28 factory names, `StrictReturnsNullFactory` and private-field access were missing or wrong. This lot ports the Domian rules faithfully, with the Java tests transcribed into `tests/Parity/`.
 - **Goal:** "Venn Set Subsumption" and "DAG partitioning" mean what the README says. No public signature changes (PATCH).
 
 ---
@@ -41,17 +41,14 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 ### 6. README Promises II: Inter-Process, Unicode, Lazy Sources, Relational Catalog & `IN` 🧵 (Shipped in v1.5.0)
 - **Description:** The remaining README promises that change observable behaviour: a `SysVSemaphoreSynchronizer` backed by SysV IPC (`sem_get`, `ext-sysvsem`) as its own class beside the in-process `SemaphoreSynchronizer`; Unicode-aware case-insensitive string specifications via `mb_*` (`ext-mbstring` becomes required); `IRepository::iterate()` as a true lazy source for `findAsLazyCollection()` (generator, no `getAll()` materialisation); typed return types on the ALinq bridge with `antevemus/alinq-collection ^1.3` in `suggest`; `PdoRuleCatalog`, a PDO-backed `IRuleCatalog` mirroring the relational rule and document tables (configurable table names, reference ANSI DDL shipped); and an `InSpecification` leaf so that `in()` is translated as `IN (...)` by the SQL, TCriteria and ALinq visitors (today a chain of `OR` equalities).
 - **Goal:** The Requirements and Core Features sections describe what the code does. Two declared breaking changes: Unicode case folding and `in()` becoming its own leaf.
-- **Specification:** Reversa forward 017 (decisions D2 to D7, 2026-10-09).
 
 ### 7. Announced-but-Unshipped Backlog I: ULID / UUID v7 Identities & Failure Severity 📋 (Shipped in v1.5.0)
 - **Description:** Two capabilities announced by the `1.0.0` CHANGELOG and never shipped, both additive: `AbstractUlidEntity` and `AbstractUuidV7Entity` (time-ordered identities beside `AbstractUUIDEntity`), and a `FailureSeverity` (`ERROR`, `WARNING`, `INFO`) on `SpecificationFailure`, filled by the rule engine from the rule's action (`bloquear`, `alertar`, `apenas_log`).
 - **Goal:** Promises become code or get an explicit note. The same release records the two items declined (see "Declined") and the one reserved (see "Reserved").
-- **Specification:** Reversa forward 020.
 
 ### 8. PHP-Native Serializer Retirement, Step 1: Deprecation ⚠️ (Shipped in v1.5.0)
 - **Description:** `PhpNativeEntitySerializer` and the `.bin` envelope of `SingleFileRepository` are the only use of `unserialize()` in the library and were the vector of the 2026-10 security finding (object injection through the envelope). The JSON serializer covers private and readonly properties, dates, nested objects and constructor-less hydration. In v1.5.0 the class is marked `@deprecated` and emits `E_USER_DEPRECATED`; the README documents the `.bin` → `.json` migration recipe. Nothing is removed before v2.0.0.
 - **Goal:** A library with zero `unserialize()` by v2.0.0, announced one MINOR ahead.
-- **Specification:** Reversa forward 020 (decision D1).
 
 ---
 
@@ -60,22 +57,32 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 ### 9. `MethodParameterizedSpecification`: Declarative Method Calls 🔬 (Shipped in v1.6.0)
 - **Description:** The README tree promises `Specifications/Reflection/` with parameterized specifications. Field access already exists as `where()` with the `PropertyAccessor`, so no field-parameterized class is built. The method-parameterized one is: `Spec::calling('isEligibleFor', [$date], $resultSpec)` calls a method of the candidate with arguments declared as data (scalars, arrays, enums, dates) and applies a specification to the result. Unlike `must(closure)`, it has structural `equals()`, its own type, and can be described in a rule catalog.
 - **Goal:** Close the README promise with the half that adds value, and state plainly that `where()` is the field half.
-- **Specification:** Reversa forward 018 (decision D8).
 
 ### 10. Tautology & Contradiction Detection 📐 (Shipped in v1.6.0)
 - **Description:** `isTautology()` and `isContradiction()` on every specification, structural and conservative (`true` only when the shape of the tree proves it): `AlwaysTrue`/`AlwaysFalse`, `not`, flattened `and`/`or` with `A ∧ ¬A` and `A ∨ ¬A`, disjoint leaves through `isDisjointWith`, `in([])`, inverted `between`. A truth-table test guards soundness. The rule engine reports a `RuleCompilationWarning` for catalog rules that can never fail or never pass.
 - **Goal:** Close the last README promise of the 2026-10 audit without a SAT solver and without touching `evaluate()`.
-- **Specification:** Reversa forward 019 (decision D9).
 
 ### 11. Announced-but-Unshipped Backlog II: TTL, Partition DAG Index & Three SQL Dialects 📋 (Shipped in v1.6.0)
 - **Description:** TTL and auto-pruning on volatile repositories (`withTtl()`, `prune()`); a materialised index on the partition DAG (topological order and clusters of mutually disjoint sibling partitions) so that routing and traversal stop testing every sibling in large DAGs, shipped only if a reproducible benchmark proves the gain at 100+ partitions; and the DB2, Informix and DuckDB SQL dialects.
 - **Goal:** Each item is either code with a benchmark or a measured number explaining why it is not. **Outcome:** the traversal index ships on by default (`findAll` 45 % to 77 % faster); the routing clusters ship off by default because building them (one `isDisjointWith()` per sibling pair, 88 ms for two `in()` sets of 162 values) made `put()` 3 to 6 times slower with library specifications (`tests/Benchmark/REPORT-dag-index.md`); `paginate()` added to every dialect on the way.
-- **Specification:** Reversa forward 020.
 
 ### 12. Specification `simplify()` 🧮 (next)
 - **Description:** Structural simplification built on milestone 10: absorbing identities, double negation, idempotent duplicates, contradictory conjunctions collapsed to `alwaysFalse()`, tautological disjunctions to `alwaysTrue()`.
 - **Goal:** Smaller trees for the visitors and for the catalog.
 - **Target Release:** v1.6.x (after milestone 10; own forward specification).
+
+---
+
+## ✅ v1.8.0 — Spec-Driven State Machine & Use Cases (Shipped in v1.8.0)
+
+### 11a. Specification-Driven State Machine 🚦 (Shipped in v1.8.0)
+- **Description:** `Antevemus\ASpecification\StateMachine`: a state machine in which every guard is an `ISpecification`, so a denied transition returns the reason (code, message, property, severity) instead of a bare `false`. Event first (`send(event)`, the first candidate whose guard passes wins); one or more parallel regions, `inState('region.state')` across regions, region-level transitions, all-or-nothing events; named actions turned into effects in `exit` → transition → `entry` order; final states are inert and a region without final states (an orthogonal flag) does not hold the machine open; persisted deadlines (ISO-8601 duration, internal deadline event). The definition is data (fluent builder or JSON, stable key and version, lossless round trip, fingerprint) checked at load time by a validator that refuses structural errors and warns about unreachable states, dead ends, overlapping or shadowed guards and guards that always pass. A pure core (`transition()`, `can()`, `nextEvents()`) and a single write port, `MachineRunner`: snapshot (compare-and-set), append-only history and transactional outbox in one transaction, idempotency key per instance, effects delivered after the commit by `EffectDispatcher`, synchronous effects that may veto, instances pinned to their definition version with explicit migrations, `findDue()`/`deliverDue()` for deadlines. InMemory and PDO stores share one test battery over the reference DDL `resources/sql/state_machine.ansi.sql`.
+- **Goal:** Delivers the reserved `RequirementState`: the document requirement lifecycle (pending → delivered → validated, or expired by deadline) is now a machine definition (README example 14.4), so it needs no class of its own. Acceptance was a real production quote workflow (20 progress states) rewritten with the pending flag as a parallel region, which removes the "back to where it was" bookkeeping the original needed.
+- **Out of scope (deliberate):** actors, `invoke`/`spawn`, eventless (`always`) transitions and `raise`, nested states inside a region, history states, a machine-owned context, event sourcing as the source of truth.
+
+### 11b. Use Cases With a Result Shared With the State Machine 🧭 (Shipped in v1.8.0)
+- **Description:** `Antevemus\ASpecification\UseCase`: `IUseCase` (one method, `execute()`), `UseCaseRunner` (middlewares, request validation by attributes and by specifications registered per request class, where only `ERROR` blocks and warnings come back with the success, unhandled exceptions turned into `FAILED` without leaking anything to the result), `TransactionMiddleware`, `UseCaseResult` with a closed domain status (`UseCaseStatus`, HTTP only in `toHttpStatus()`), and `StateMachineEventUseCase`, which exposes a machine event as a use case. `Results\IOutcome` is the shape shared by `UseCaseResult` and the machine's `TransitionResult`.
+- **Goal:** The layer that orchestrates entities, repositories and specifications, with one outcome type from the state machine to the edge of the application. No mediator, container or handler discovery.
 
 ---
 
@@ -107,8 +114,8 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 ### 18. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`, beside the 12 database drivers over 7 SQL dialects and Adianti TCriteria.
 
-### 19. Reactive Domain Event Sourcing Triggers 📡
-- **Description:** Domain event emitter that triggers events whenever an entity transitions into or out of satisfying critical domain specifications (Event Sourcing, Outbox, CQRS).
+### 19. Specification-Driven Domain Event Triggers 📡
+- **Description:** Domain event emitter that triggers events whenever an entity transitions into or out of satisfying critical domain specifications (Outbox, CQRS). Renamed in 1.8.0 from "Reactive Domain Event Sourcing Triggers": the milestone never meant event sourcing (rebuilding state by replaying events), and the 1.8.0 state machine keeps the snapshot as the source of truth. It builds on the transactional outbox shipped with the 1.8.0 state machine, and an emitted event can be sent to a machine as a transition trigger.
 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.
@@ -121,7 +128,7 @@ This document outlines the engineering roadmap of the **Antevemus ASpecification
 
 ## 🔒 Reserved (design in progress)
 
-- **`RequirementState`, the document requirement state machine.** Announced by the `1.0.0` CHANGELOG ("modeling document states, preconditions and transition validations") and never shipped. It is neither scheduled nor declined: it is the seed of a specification-driven state machine feature being designed for one of the Antevemus modules, and will get its own milestone when that design lands.
+Nothing is reserved at the moment. `RequirementState`, the document requirement state machine announced by the `1.0.0` CHANGELOG and reserved since 1.5.0, shipped in v1.8.0 as the specification-driven state machine (milestone 11a): a document requirement is now a machine definition, not a class of its own.
 
 ## 🚫 Declined (with a note in the CHANGELOG)
 

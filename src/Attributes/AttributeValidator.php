@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException;
 use Antevemus\ASpecification\Attributes\Exceptions\UnknownRuleOperatorException;
 use Antevemus\ASpecification\Attributes\Exceptions\UnknownSpecificationClassException;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use ReflectionClass;
@@ -29,14 +30,15 @@ use ReflectionProperty;
  *   through evaluate(): an exception thrown by a specification is an evaluation error of the
  *   Notification Pattern (isError, exception) aggregated into the result, never a raw exception
  * - An annotated getter that throws when invoked is the same kind of evaluation error (the value
- *   could not be produced): error failure with the exception message, the attribute code and the
+ *   could not be produced): error failure with the generic evaluation-error message (never the
+ *   exception, which stays on the result for the caller to log), the attribute code and the
  *   method name; the remaining attributes are still evaluated
  * - Inline operator evaluation (relational, range, regex, email, nullability) over the closed
  *   catalog ValidateRule::OPERATORS; an unknown operator raises UnknownRuleOperatorException
  *   (configuration error) instead of being reported as a violation of the candidate
  * - Result aggregation into rich, notification-pattern SpecificationResult instances
  *
- * @version    1.4.1
+ * @version    1.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Attributes
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -123,7 +125,8 @@ final class AttributeValidator
                         code: $rule->code,
                         ruleName: sprintf('ValidateRule(%s)', $rule->operator),
                         property: $propName,
-                        metadata: ['actual' => $value, 'expected' => $rule->expected, 'severity' => $rule->severity]
+                        metadata: ['actual' => $value, 'expected' => $rule->expected, 'severity' => $rule->severity],
+                        severity: self::toSeverity($rule->severity)
                     );
                 }
             }
@@ -184,7 +187,8 @@ final class AttributeValidator
                         code: $rule->code,
                         ruleName: sprintf('ValidateRule(%s)', $rule->operator),
                         property: $methodName,
-                        metadata: ['actual' => $value, 'expected' => $rule->expected, 'severity' => $rule->severity]
+                        metadata: ['actual' => $value, 'expected' => $rule->expected, 'severity' => $rule->severity],
+                        severity: self::toSeverity($rule->severity)
                     );
                 }
             }
@@ -223,9 +227,10 @@ final class AttributeValidator
      * Build the failure recorded for an unsatisfied #[AssertSpec] evaluation.
      *
      * A plain violation carries the attribute's business message (or the default one). An evaluation
-     * error carries the exception message instead, because the business message would claim a
-     * verdict that was never reached; the attribute code, rule name and target are kept, and the
-     * exception class is recorded under metadata['evaluation_error'], as SpecificationResult::error() does.
+     * error carries SpecificationResult::EVALUATION_ERROR_MESSAGE instead (the business message would
+     * claim a verdict that was never reached, and the exception message must not reach the user);
+     * the attribute code, rule name and target are kept and metadata['evaluation_error'] is `true`,
+     * as SpecificationResult::error() does. The exception stays on the result, for the log.
      *
      * @param AssertSpec $attr The attribute being evaluated
      * @param SpecificationResult $result The unsatisfied evaluation result
@@ -242,17 +247,13 @@ final class AttributeValidator
         array $metadata
     ): SpecificationFailure {
         if ($result->isError) {
-            $exception = $result->exception;
-            $message = $exception !== null && $exception->getMessage() !== ''
-                ? $exception->getMessage()
-                : ($exception !== null ? get_class($exception) : 'Specification evaluation error');
-
             return new SpecificationFailure(
-                message: $message,
+                message: SpecificationResult::EVALUATION_ERROR_MESSAGE,
                 code: $attr->code,
                 ruleName: $attr->specificationClass,
                 property: $property,
-                metadata: $metadata + ['evaluation_error' => $exception !== null ? get_class($exception) : null]
+                metadata: $metadata + ['evaluation_error' => true],
+                severity: FailureSeverity::ERROR
             );
         }
 
@@ -261,7 +262,8 @@ final class AttributeValidator
             code: $attr->code,
             ruleName: $attr->specificationClass,
             property: $property,
-            metadata: $metadata
+            metadata: $metadata,
+            severity: self::toSeverity($attr->severity)
         );
     }
 
@@ -281,10 +283,10 @@ final class AttributeValidator
     /**
      * Build the error failure recorded when an annotated getter throws while being invoked.
      *
-     * The value could not be produced, so no verdict was reached: the failure carries the exception
-     * message (or its class when the message is empty), the attribute code, the rule name
+     * The value could not be produced, so no verdict was reached: the failure carries the generic
+     * evaluation-error message (never the exception), the attribute code, the rule name
      * (specification class or ValidateRule(<operator>)), the method name and
-     * metadata['evaluation_error'], as an evaluation error does (BUG-20261007-MXUG).
+     * metadata['evaluation_error'] = true, as an evaluation error does (BUG-20261007-MXUG).
      *
      * @param \Throwable $exception Exception thrown by the getter
      * @param string|null $code Attribute code
@@ -301,12 +303,26 @@ final class AttributeValidator
         string $severity
     ): SpecificationFailure {
         return new SpecificationFailure(
-            message: $exception->getMessage() !== '' ? $exception->getMessage() : get_class($exception),
+            message: SpecificationResult::EVALUATION_ERROR_MESSAGE,
             code: $code,
             ruleName: $ruleName,
             property: $methodName,
-            metadata: ['severity' => $severity, 'evaluation_error' => get_class($exception)]
+            metadata: ['severity' => $severity, 'evaluation_error' => true],
+            severity: FailureSeverity::ERROR
         );
+    }
+
+    /**
+     * Maps the attribute severity string ('ERROR', 'WARNING', 'INFO', any case) to FailureSeverity.
+     * An unknown value is ERROR, so a typo never turns a blocking rule into a warning
+     * (before 1.8.0 the field was never filled; only metadata['severity'] carried it).
+     *
+     * @param string $severity Attribute severity
+     * @return FailureSeverity
+     */
+    private static function toSeverity(string $severity): FailureSeverity
+    {
+        return FailureSeverity::tryFrom(strtolower(trim($severity))) ?? FailureSeverity::ERROR;
     }
 
     /**

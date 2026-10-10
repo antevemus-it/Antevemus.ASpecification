@@ -368,7 +368,8 @@ class Module9_FluentDslTest extends TestCase
         $this->assertThrows(InvalidArgumentException::class, fn() => $specInexistente->isSatisfiedBy($candidato));
         $res = $specInexistente->evaluate($candidato);
         $this->assertFalse($res->isSatisfied);
-        $this->assertTrue(str_contains($res->failures[0]->message, "propriedadeInexistente"));
+        $this->assertTrue(str_contains($res->exception->getMessage(), "propriedadeInexistente"), 'the exception keeps the detail, for the log');
+        $this->assertEquals(\Antevemus\ASpecification\Results\SpecificationResult::EVALUATION_ERROR_MESSAGE, $res->failures[0]->message, 'the failure never repeats the exception (1.8.0)');
     }
 
     /**

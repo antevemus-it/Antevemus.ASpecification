@@ -17,9 +17,11 @@ declare(strict_types=1);
  * - Declarative attribute validation runner (validateAttributes, assertAttributes)
  * - Declarative method-call restriction (calling, 1.6.0)
  * - Structural tautology/contradiction detection (isTautology, isContradiction, 1.6.0)
+ * - Spec-driven state machine entry points (machine, guardRegistry, stateMachine, validateMachine, 1.8.0)
+ * - Use case entry points (useCaseRunner, machineEventUseCase, 1.8.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.6.0
+ * @version    1.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -983,7 +985,124 @@ final class Spec
     }
 
     // ==========================================
-    // 12. Dynamic Factory Fallback
+    // 12. Spec-Driven State Machine (1.8.0)
+    // ==========================================
+
+    /**
+     * Starts the fluent builder of a state machine definition (1.8.0, forward 023): regions,
+     * states, event-driven transitions whose guards are specifications, named actions, deadlines.
+     *
+     * <code>
+     * $definition = Spec::machine('document', 1)
+     *     ->region('lifecycle', 'pending')
+     *         ->state('pending')->on('DELIVER', 'delivered')->guard('payloadHas', ['field' => 'file'])
+     *         ->finalState('delivered')
+     *     ->build();
+     * </code>
+     *
+     * @param string $key Stable machine key
+     * @param int $version Definition version (>= 1)
+     * @return \Antevemus\ASpecification\StateMachine\MachineBuilder
+     */
+    public static function machine(string $key, int $version = 1): \Antevemus\ASpecification\StateMachine\MachineBuilder
+    {
+        return new \Antevemus\ASpecification\StateMachine\MachineBuilder($key, $version);
+    }
+
+    /**
+     * Creates a guard registry (name → factory of ISpecification) with the built-in guards
+     * `inState`, `payloadHas` and `eventOrigin` (1.8.0, forward 023).
+     *
+     * @return \Antevemus\ASpecification\StateMachine\GuardRegistry
+     */
+    public static function guardRegistry(): \Antevemus\ASpecification\StateMachine\GuardRegistry
+    {
+        return new \Antevemus\ASpecification\StateMachine\GuardRegistry();
+    }
+
+    /**
+     * Creates the pure state machine interpreter (transition, can, nextEvents, initialSnapshot)
+     * over the given guard registry (default: built-in guards only) (1.8.0, forward 023).
+     *
+     * @param \Antevemus\ASpecification\StateMachine\GuardRegistry|null $guards Guard factories
+     * @return \Antevemus\ASpecification\StateMachine\StateMachine
+     */
+    public static function stateMachine(
+        ?\Antevemus\ASpecification\StateMachine\GuardRegistry $guards = null
+    ): \Antevemus\ASpecification\StateMachine\StateMachine {
+        return new \Antevemus\ASpecification\StateMachine\StateMachine($guards);
+    }
+
+    /**
+     * Validates a state machine definition at load time (1.8.0, forward 023, D17): throws with
+     * every error, returns the warnings otherwise.
+     *
+     * @param \Antevemus\ASpecification\StateMachine\MachineDefinition $definition Definition to validate
+     * @param \Antevemus\ASpecification\StateMachine\GuardRegistry|null $guards Guard factories (default: built-ins)
+     * @param list<string>|null $knownActions Action names with an implementation; null skips the check
+     * @return list<\Antevemus\ASpecification\StateMachine\MachineDefinitionWarning>
+     * @throws \Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException
+     */
+    public static function validateMachine(
+        \Antevemus\ASpecification\StateMachine\MachineDefinition $definition,
+        ?\Antevemus\ASpecification\StateMachine\GuardRegistry $guards = null,
+        ?array $knownActions = null
+    ): array {
+        return \Antevemus\ASpecification\StateMachine\MachineDefinitionValidator::validate(
+            $definition,
+            $guards ?? new \Antevemus\ASpecification\StateMachine\GuardRegistry(),
+            $knownActions
+        );
+    }
+
+    // ==========================================
+    // 13. Use Case (1.8.0)
+    // ==========================================
+
+    /**
+     * Creates the thin use case executor (1.8.0, forward 024): middlewares, request validation by
+     * attributes and registered specifications, warnings attached to the result, any unhandled
+     * exception turned into failed('UNHANDLED_EXCEPTION', ...) and sent to the reporter only.
+     *
+     * <code>
+     * $result = Spec::useCaseRunner()->run(new ApproveQuote($repository), $request);
+     * if (!$result->isSuccess()) {
+     *     http_response_code($result->getStatus()->toHttpStatus());
+     * }
+     * </code>
+     *
+     * @param \Antevemus\ASpecification\UseCase\IUseCaseErrorReporter|null $reporter Where unhandled exceptions go (default: discarded)
+     * @param iterable<\Antevemus\ASpecification\UseCase\IUseCaseMiddleware|callable> $middlewares Pipeline, outermost first
+     * @return \Antevemus\ASpecification\UseCase\UseCaseRunner
+     */
+    public static function useCaseRunner(
+        ?\Antevemus\ASpecification\UseCase\IUseCaseErrorReporter $reporter = null,
+        iterable $middlewares = []
+    ): \Antevemus\ASpecification\UseCase\UseCaseRunner {
+        return new \Antevemus\ASpecification\UseCase\UseCaseRunner($reporter, $middlewares);
+    }
+
+    /**
+     * Exposes one event of a state machine as a use case (1.8.0, forward 024, D8): the request is a
+     * MachineEventRequest and the outcome is UseCaseResult::fromTransition() of the runner's send().
+     *
+     * @param \Antevemus\ASpecification\StateMachine\Runner\MachineRunner $runner The machine's write port
+     * @param string $eventType Event type sent
+     * @param callable|null $contextFactory fn(MachineEventRequest): domain context read by the guards
+     * @param \Antevemus\ASpecification\UseCase\IUseCaseErrorReporter|null $reporter Receives the exception of a guard that threw
+     * @return \Antevemus\ASpecification\UseCase\StateMachineEventUseCase
+     */
+    public static function machineEventUseCase(
+        \Antevemus\ASpecification\StateMachine\Runner\MachineRunner $runner,
+        string $eventType,
+        ?callable $contextFactory = null,
+        ?\Antevemus\ASpecification\UseCase\IUseCaseErrorReporter $reporter = null
+    ): \Antevemus\ASpecification\UseCase\StateMachineEventUseCase {
+        return new \Antevemus\ASpecification\UseCase\StateMachineEventUseCase($runner, $eventType, $contextFactory, $reporter);
+    }
+
+    // ==========================================
+    // 14. Dynamic Factory Fallback
     // ==========================================
 
     /**

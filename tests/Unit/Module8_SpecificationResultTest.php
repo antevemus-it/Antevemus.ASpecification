@@ -20,6 +20,7 @@ class Module8_SpecificationResultTest extends TestCase
     public function run(): void
     {
         $this->testEvaluationErrorIsNotRuleFailure();
+        $this->testEvaluationErrorNeverExposesTheException();
         $this->testSpecificationFailureObject();
         $this->testSpecificationResultObject();
         $this->testBasicEvaluateAndDefaultMessage();
@@ -343,6 +344,42 @@ class Module8_SpecificationResultTest extends TestCase
      * vira SpecificationResult::error(), que NOT não inverte e que AND/OR propagam.
      * Reprodução da revisão 2026-10-07 §2.1.
      */
+    /**
+     * 1.8.0 security: an exception message (SQL, paths, values) never reaches a failure, on any
+     * path that captures it; it stays on SpecificationResult::$exception, for the caller to log.
+     */
+    private function testEvaluationErrorNeverExposesTheException(): void
+    {
+        $secret = 'SQLSTATE[28P01] password=hunter2 at /srv/app/db.php';
+        $throwing = new class($secret) extends AbstractSpecification {
+            public function __construct(private string $secret) {}
+            public function getType(): string { return 'mixed'; }
+            public function isSatisfiedBy(mixed $candidate): bool { throw new \RuntimeException($this->secret); }
+        };
+        $leaks = static function (SpecificationResult $r) use ($secret): bool {
+            foreach ($r->failures as $f) {
+                $dump = json_encode([$f->message, $f->code, $f->ruleName, $f->property, $f->metadata]);
+                if (str_contains((string) $dump, 'hunter2') || str_contains((string) $dump, 'RuntimeException')) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        $direct = SpecificationResult::error(new \RuntimeException($secret), 'R', 'p', 'C');
+        $this->assertFalse($leaks($direct), 'SpecificationResult::error()');
+        $this->assertEquals(SpecificationResult::EVALUATION_ERROR_MESSAGE, $direct->failures[0]->message);
+        $this->assertEquals('C', $direct->failures[0]->code, 'the given code is kept');
+        $this->assertTrue($direct->failures[0]->metadata['evaluation_error'] === true);
+        $this->assertEquals($secret, $direct->exception->getMessage(), 'the exception stays on the result, for the log');
+        $this->assertFalse(str_contains((string) $direct, 'hunter2'), '__toString');
+
+        $this->assertFalse($leaks($throwing->evaluate(1)), 'AbstractSpecification::evaluate()');
+        $this->assertFalse($leaks(\Antevemus\ASpecification\Spec::property('x', $throwing)->evaluate((object) ['x' => 1])), 'PropertySpecification');
+        $this->assertFalse($leaks(\Antevemus\ASpecification\Spec::not($throwing)->evaluate(1)), 'composite');
+        $this->assertTrue($throwing->evaluate(1)->exception instanceof \RuntimeException);
+    }
+
     private function testEvaluationErrorIsNotRuleFailure(): void
     {
         $base = new AlwaysTrueSpecification();

@@ -74,7 +74,9 @@ Provenance, at package level (PHP namespace <- Domian package, net.sourceforge.d
     PropertySpecification, PredicateSpecification, SubsumptionAndEqualityTrait,
     the affix/LIKE leaves (StartsWith, EndsWith, Contains, LiteralPattern),
     LooseEqualSpecification, TypeCompatibility, AllEntities and UniqueEntity
-    collection specifications; Helpers\PropertyAccessor; Sql\LikePattern.
+    collection specifications; Helpers\PropertyAccessor; Sql\LikePattern;
+    StateMachine\* and UseCase\* (1.8.0; conceptual references in section 4);
+    Results\IOutcome.
 
     Three DocBlocks (Contracts\ILeafSpecification, ICompositeSpecification and
     IValueBoundSpecification) reuse the Domian javadoc sentence "Part of the
@@ -101,7 +103,31 @@ on top of the user's licensed Adianti installation obtained directly from Adiant
 Solutions Ltd.
 
 -------------------------------------------------------------------------------
-4. THIRD-PARTY COMPONENTS & LICENSES
+4. CONCEPTUAL REFERENCES (NO CODE PORTED)
+-------------------------------------------------------------------------------
+
+The parts below were designed with the following projects and patterns as
+conceptual references only: their vocabulary and ideas were studied, and no
+source code, test or documentation text was ported, translated or copied. They
+are not dependencies and nothing of them is redistributed.
+
+    StateMachine\* (1.8.0)  <- Stately / XState (https://stately.ai/docs,
+                                 https://github.com/statelyai/xstate), MIT License:
+                                 statecharts vocabulary (events, guards, parallel
+                                 regions, entry/exit actions, final states) and
+                                 the SCXML ordering of actions
+                            <- TheFlow by Elemar Jr. (C#), Apache License 2.0:
+                                 a definition pinned to the instance (here
+                                 with a stable key and version), load-process-save per
+                                 call, validation of the definition when it is
+                                 registered, a human task as a waiting state
+                                 plus an external event
+    UseCase\* (1.8.0)       <- the Use Case Interactor pattern of Clean
+                                 Architecture (Robert C. Martin): one request,
+                                 one interactor, one response
+
+-------------------------------------------------------------------------------
+5. THIRD-PARTY COMPONENTS & LICENSES
 -------------------------------------------------------------------------------
 
 See the THIRD_PARTY_NOTICES.md file for the complete list and full texts of

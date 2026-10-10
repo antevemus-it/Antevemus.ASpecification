@@ -11,6 +11,8 @@ use Antevemus\ASpecification\Attributes\Exceptions\AttributeValidationException;
 use Antevemus\ASpecification\Attributes\Exceptions\UnknownRuleOperatorException;
 use Antevemus\ASpecification\Attributes\Exceptions\UnknownSpecificationClassException;
 use Antevemus\ASpecification\Attributes\ValidateRule;
+use Antevemus\ASpecification\Results\FailureSeverity;
+use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Tests\TestCase;
 
@@ -241,6 +243,24 @@ class ThrowingAssertSpecGetterDto
     }
 }
 
+class SeverityLevelsDto
+{
+    #[ValidateRule('>=', 18, code: 'AGE_WARN', severity: 'WARNING')]
+    public int $age = 16;
+
+    #[ValidateRule('notNull', code: 'NICK_INFO', severity: 'info')]
+    public ?string $nickname = null;
+
+    #[ValidateRule('>', 0, code: 'TOTAL_ERR')]
+    public int $total = 0;
+
+    #[ValidateRule('>', 0, code: 'TYPO', severity: 'WARNNG')]
+    public int $typo = 0;
+
+    #[AssertSpec(IsAdultSpecification::class, code: 'ADULT_WARN', severity: 'WARNING')]
+    public int $guardianAge = 10;
+}
+
 class ThrowingValidateRuleGetterDto
 {
     #[ValidateRule('>', 0, code: 'TOTAL_ERR', message: 'Total must be positive')]
@@ -310,6 +330,7 @@ class Module15_AttributesTest extends TestCase
         $this->testAssertSpecEvaluationErrorBecomesErrorResult();
         $this->testPlainAttributeViolationsAreNotErrors();
         $this->testThrowingAnnotatedGetterBecomesErrorResult();
+        $this->testAttributeSeverityFillsTheFailureField();
         $this->testHealthyAnnotatedGettersAreUnchanged();
     }
 
@@ -329,11 +350,11 @@ class Module15_AttributesTest extends TestCase
 
         $failures = $result->getFailuresForProperty('getAge');
         $this->assertCount(1, $failures);
-        $this->assertEquals('boom', $failures[0]->message, 'The error failure carries the exception message, not the business message');
+        $this->assertEquals(SpecificationResult::EVALUATION_ERROR_MESSAGE, $failures[0]->message, 'The error failure carries the generic message, never the exception (1.8.0)');
         $this->assertEquals('AGE_ERR', $failures[0]->code, 'The attribute code is kept');
         $this->assertEquals(IsAdultSpecification::class, $failures[0]->ruleName);
         $this->assertEquals('getAge', $failures[0]->property);
-        $this->assertEquals(\RuntimeException::class, $failures[0]->metadata['evaluation_error']);
+        $this->assertTrue($failures[0]->metadata['evaluation_error'] === true, 'marker, not the class (1.8.0)');
         $this->assertEquals('ERROR', $failures[0]->metadata['severity']);
         $this->assertCount(1, $result, 'The healthy getter on the same object is still evaluated and satisfied');
 
@@ -354,11 +375,11 @@ class Module15_AttributesTest extends TestCase
 
         $failures = $result->getFailuresForProperty('total');
         $this->assertCount(1, $failures);
-        $this->assertEquals('ledger not loaded', $failures[0]->message);
+        $this->assertEquals(SpecificationResult::EVALUATION_ERROR_MESSAGE, $failures[0]->message);
         $this->assertEquals('TOTAL_ERR', $failures[0]->code);
         $this->assertEquals('ValidateRule(>)', $failures[0]->ruleName);
         $this->assertEquals('total', $failures[0]->property);
-        $this->assertEquals(\LogicException::class, $failures[0]->metadata['evaluation_error']);
+        $this->assertTrue($failures[0]->metadata['evaluation_error'] === true);
 
         $e = $this->assertThrows(
             AttributeValidationException::class,
@@ -366,10 +387,11 @@ class Module15_AttributesTest extends TestCase
         );
         $this->assertInstanceOf(\LogicException::class, $e->getPrevious());
 
-        // 3. Exception without message: the failure message falls back to the exception class
+        // 3. Exception without message: same generic failure message, never the class name (1.8.0)
         $result = Spec::validateAttributes(new ThrowingGetterWithEmptyMessageDto());
         $this->assertTrue($result->isError);
-        $this->assertEquals(\DomainException::class, $result->getFailuresForProperty('value')[0]->message);
+        $this->assertEquals(SpecificationResult::EVALUATION_ERROR_MESSAGE, $result->getFailuresForProperty('value')[0]->message);
+        $this->assertInstanceOf(\DomainException::class, $result->exception);
         $this->assertEquals('EMPTY_MSG', $result->getFailuresForProperty('value')[0]->code);
     }
 
@@ -505,8 +527,8 @@ class Module15_AttributesTest extends TestCase
         $this->assertCount(1, $errorFailures);
         $this->assertEquals('TARIFF', $errorFailures[0]->code, 'The attribute code is kept on the error failure');
         $this->assertEquals(UnavailableServiceSpec::class, $errorFailures[0]->ruleName);
-        $this->assertEquals('tariff service unavailable', $errorFailures[0]->message, 'The error failure carries the exception message, not the business message');
-        $this->assertEquals(\RuntimeException::class, $errorFailures[0]->metadata['evaluation_error']);
+        $this->assertEquals(SpecificationResult::EVALUATION_ERROR_MESSAGE, $errorFailures[0]->message, 'The error failure carries the generic message, never the exception (1.8.0)');
+        $this->assertTrue($errorFailures[0]->metadata['evaluation_error'] === true, 'evaluation_error is a marker, not the exception class (1.8.0)');
 
         // The plain violation on the same object is still reported, unchanged
         $this->assertTrue($result->hasError('CUST_AGE'));
@@ -897,6 +919,28 @@ class Module15_AttributesTest extends TestCase
                 Spec::assertAttributes($invalidDto);
             }
         );
+    }
+
+    /**
+     * BUG-20261010-SVTY: the attribute severity reaches SpecificationFailure::$severity, not only
+     * metadata['severity']; an unknown value and an evaluation error are ERROR.
+     */
+    private function testAttributeSeverityFillsTheFailureField(): void
+    {
+        $result = Spec::validateAttributes(new SeverityLevelsDto());
+        $byCode = [];
+        foreach ($result->failures as $failure) {
+            $byCode[$failure->code] = $failure->severity;
+        }
+        $this->assertEquals(FailureSeverity::WARNING, $byCode['AGE_WARN'] ?? null, 'ValidateRule severity WARNING');
+        $this->assertEquals(FailureSeverity::INFO, $byCode['NICK_INFO'] ?? null, 'severity is case-insensitive');
+        $this->assertEquals(FailureSeverity::ERROR, $byCode['TOTAL_ERR'] ?? null, 'default ERROR');
+        $this->assertEquals(FailureSeverity::ERROR, $byCode['TYPO'] ?? null, 'unknown severity is ERROR, never a silent warning');
+        $this->assertEquals(FailureSeverity::WARNING, $byCode['ADULT_WARN'] ?? null, 'AssertSpec severity WARNING');
+        $this->assertEquals('WARNING', $result->failures[0]->metadata['severity'] ?? null, 'metadata keeps the declared string');
+
+        $thrown = Spec::validateAttributes(new ThrowingAssertSpecGetterDto());
+        $this->assertEquals(FailureSeverity::ERROR, $thrown->getFailuresForProperty('getAge')[0]->severity, 'evaluation error is ERROR');
     }
 
     private function testValidateRuleOperators(): void

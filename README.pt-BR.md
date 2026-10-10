@@ -5,15 +5,15 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.7.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.7.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.8.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.8.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(3281%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-19%2F19%20Suites%20Pass%20(4760%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Framework Corporativo do Padrão Specification para PHP 8.2+** (PHP 8.4 só para a integração opcional com o ALinq)  
-> Reimplementação PHP independente e não oficial, com evolução moderna, do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (15 drivers, 10 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida e primitivas avançadas de concorrência.
+> Reimplementação PHP independente e não oficial, com evolução moderna, do renomado framework Java [Domian](https://domian.sourceforge.net/index.html), fundamentado no paper seminal [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) de Eric Evans e Martin Fowler. Enriquecido com Fluent Chaining em linguagem natural, Notification Pattern com diagnóstico rico de falhas, Dynamic Rule Engine para catálogos relacionais, SQL Query Visitor multi-SGBD (15 drivers, 10 dialetos SQL), TCriteria Builder para Adianti Framework, repositórios particionados em Grafo Acíclico Dirigido (DAG), persistência híbrida, primitivas avançadas de concorrência, máquina de estados dirigida por especificações e casos de uso com resultado comum aos dois.
 
 ---
 
@@ -49,6 +49,8 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
   - Cache híbrido $L1$ (RAM) + $L2$ (Disco) via `InMemoryAndFileRepository`.
 - 🔒 **Controle de Concorrência & Locks Atômicos**: Primitivas `ISynchronizer` ligadas a todo repositório (leitores compartilhados, escritor exclusivo, reentrante por contexto de execução): o `SemaphoreSynchronizer` em processo (contador de permissões, ciente de Fibers) e locks atômicos de arquivo (`flock`) entre processos nos repositórios de arquivo. O `SysVSemaphoreSynchronizer` (`ext-sysvsem`) compartilha o mesmo lock leitores/escritor entre processos por semáforos SysV IPC.
 - ⏱️ **Telemetria de Alta Precisão & Benchmarking**: Cronômetro em nanossegundos (`StopWatch` via `hrtime`) e utilitários de diagnóstico hierárquico e consumo de memória (`InstrumentationUtils`).
+- 🚦 **Máquina de Estados Dirigida por Especificações (Módulos 17 e 18)**: todo guard é uma `ISpecification`, então a transição negada diz por quê (código, mensagem, propriedade, severidade); regiões paralelas, transições de região, ações nomeadas (`exit` → transição → `entry`), prazos persistidos; a definição é dado (builder ou JSON, versionada, com fingerprint, validada na carga); núcleo puro `transition()`/`can()`/`nextEvents()` e uma única porta de escrita, o `MachineRunner` (compare-and-set, chave de idempotência, histórico append-only, outbox transacional), sobre stores InMemory ou PDO com DDL ANSI de referência (exemplo 14).
+- 🧭 **Casos de Uso (Módulo 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, validação do request em que só `ERROR` bloqueia), `UseCaseResult` com status de domínio fechado e HTTP só na borda (`toHttpStatus()`), nenhuma exceção ou stack trace no resultado, e `StateMachineEventUseCase` expondo um evento da máquina como caso de uso pelo `IOutcome` comum (exemplo 15).
 
 ---
 
@@ -69,6 +71,7 @@ Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limi
 | **Fluent Chaining & DSL de Domínio** | ⚠️ Básico | ⚠️ Parcial | ✅ Sintaxe em prosa inglesa (`Spec::specify()->where()->and()->or()`) + helpers funcionais (`prop()`, `is()`, `not()`) |
 | **Álgebra Booleana de Venn & Remainder** | ✅ Completo | ❌ Inexistente na maioria | ✅ `isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith` e `remainderUnsatisfiedBy` |
 | **Particionamento DAG $O(1)$** | ✅ Presente | ❌ Raro | ✅ Repositórios com descarte antecipado de ramos disjuntos |
+| **Máquina de Estados com Negação Explicada** | ❌ Não possui | ❌ Não possui | ✅ Guards são especificações: a rejeição traz código, mensagem e severidade; outbox, idempotência e prazos persistidos |
 | **Concorrência & Locks** | ⚠️ Java Threads / Locks | ❌ Não suportado | ✅ Repositórios sincronizados (`SemaphoreSynchronizer` reentrante, ciente de Fibers) `SysVSemaphoreSynchronizer` sobre SysV IPC entre processos, e locks `flock` atômicos |
 | **Tipagem Estrita e Recursos Modernos** | ⚠️ Java 6/7 Generics | ⚠️ PHP 7.x legado | ✅ **PHP 8.2+** nativo (Enums, First-class callables, Readonly, 8 Traits segregados) |
 
@@ -151,6 +154,8 @@ if (!$result->isSatisfied) {
     }
 }
 ```
+
+**Erros de avaliação e o que mostrar.** Quando uma regra não pode ser avaliada (uma especificação, um handler ou um guard lança), `isError` é `true`, a falha traz a mensagem genérica `SpecificationResult::EVALUATION_ERROR_MESSAGE` com o código da regra, e a exceção fica em `$result->exception`, nunca nas falhas. A biblioteca não faz log por você. Boa prática: mande `$result->exception` para o seu logger, com cuidado para não registrar mais do que o necessário (mensagens de exceção podem conter credenciais, dados pessoais ou SQL); mostre ao usuário só `$failure->message`, que é a sua mensagem de negócio ou a genérica; e nunca mostre a `metadata`, que é diagnóstica e pode conter o valor avaliado (`metadata['actual']`).
 
 ---
 
@@ -613,6 +618,312 @@ Spec::calling('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTr
 
 Os visitors SQL e TCriteria recusam a chamada de método como folha não traduzível (como `must()`); o visitor ALinq a compila.
 
+### 14. Máquina de Estados Dirigida por Especificações (Módulos 17 e 18)
+
+`Antevemus\ASpecification\StateMachine` é uma máquina de estados em que **todo guard é uma `ISpecification`**: quando uma transição é negada, o resultado diz por quê, com o código, a mensagem, a propriedade e a severidade da especificação que barrou. A API é dirigida por evento (`send(evento)`, o alvo é consequência), a definição é dado (chave estável e versão inteira, montada por builder fluente ou carregada de JSON), `transition()` é puro (calcula o snapshot novo, as transições tomadas e os efeitos, e não executa nada) e o `MachineRunner` é a única porta de escrita (snapshot, histórico e outbox numa transação). Os trechos desta seção se apoiam uns nos outros.
+
+#### 14.1 Máquina Mínima: Guards São Especificações
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\StateMachine\Event;
+
+// Guards nomeados: nome => fábrica(array $params): ISpecification, avaliada contra um TransitionCandidate
+// (context = seu objeto de domínio ou array, event = tipo + payload + occurredAt, snapshot = estados atuais)
+$guards = Spec::guardRegistry()->register('hasRole', fn(array $params) =>
+    Spec::property('context.role', Spec::in(...$params['roles']))
+        ->because('Only a manager can approve.')
+        ->withCode('ROLE_NOT_ALLOWED'));
+
+$order = Spec::machine('purchase_order', 1)
+    ->region('lifecycle', 'draft')
+        ->state('draft')
+            ->on('SUBMIT', 'submitted')
+        ->state('submitted')
+            ->on('APPROVE', 'approved')->guard('hasRole', ['roles' => ['manager']])
+            ->on('SEND_BACK', 'draft')->guard('payloadHas', ['field' => 'motive'])   // guard embutido
+        ->finalState('approved')
+    ->build();
+
+Spec::validateMachine($order, $guards);              // [] (lança nos erros, devolve os avisos)
+
+$machine  = Spec::stateMachine($guards);
+$now      = new DateTimeImmutable('2026-10-10 09:00'); // a máquina nunca lê o relógio
+$snapshot = $machine->initialSnapshot($order, null, $now)->getSnapshot();
+
+$result = $machine->transition($order, $snapshot, Event::external('SUBMIT', $now));
+$result->isAccepted();                               // true
+$snapshot = $result->getSnapshot();
+$snapshot->stateOf('lifecycle');                     // 'submitted'
+
+$denied = $machine->transition($order, $snapshot, Event::external('APPROVE', $now), ['role' => 'clerk']);
+$denied->isRejected();                               // true: negação é resultado, nunca exceção
+$denied->getSnapshot() === $snapshot;                // true: nada mudou
+$denied->getReason()->failures[0]->code;             // 'ROLE_NOT_ALLOWED'
+$denied->getReason()->failures[0]->message;          // 'Only a manager can approve.'
+
+$machine->transition($order, $snapshot, Event::external('APPROVE', $now), ['role' => 'manager'])
+    ->getSnapshot()->isDone();                       // true: a região está num estado final
+```
+
+Evento que nenhuma transição do estado atual atende é `unhandled` (sem mudança e sem exceção). Quando várias transições atendem o mesmo evento, são testadas na ordem declarada e vence a primeira cujo guard passa; guard que lança vira falha `ERROR` marcada `evaluation_error`.
+
+#### 14.2 Regiões Paralelas: Pendência Que Nunca Perde o Andamento
+
+A máquina tem uma ou mais regiões ortogonais, cada uma com seu estado atual. A pendência modelada como região própria (`none ⇄ open`) pode ser registrada e resolvida em qualquer etapa sem um estado "pendente" no fluxo principal, então resolvê-la nunca precisa adivinhar onde o processo estava. `inState('região.estado')` lê outra região, e uma expressão de guard pode trazer a própria mensagem e o próprio código:
+
+```php
+use Antevemus\ASpecification\StateMachine\GuardExpression;
+
+$quote = Spec::machine('quote', 1)
+    ->region('progress', 'registering')
+        ->state('registering')
+            ->on('SEND_PROPOSAL', 'proposal_sent')
+        ->state('proposal_sent')
+            ->on('APPROVE', 'approved')
+                ->guard(GuardExpression::not(GuardExpression::ref('inState', ['state' => 'pending.open']))
+                    ->because('Resolve the open pending item first.')
+                    ->withCode('QUOTE_PENDING_OPEN'))
+            ->on('CANCEL', 'cancelled')
+        ->finalState('approved')
+        ->finalState('cancelled')
+    ->region('pending', 'none')
+        ->state('none')
+            ->on('REGISTER_PENDING', 'open')->guard('payloadHas', ['field' => 'motive'])
+        ->state('open')
+            ->on('RESOLVE_PENDING', 'none')
+    ->build();
+
+$machine = Spec::stateMachine();
+$state = $machine->initialSnapshot($quote, null, $now)->getSnapshot();
+$state = $machine->transition($quote, $state, Event::external('SEND_PROPOSAL', $now))->getSnapshot();
+$state = $machine->transition($quote, $state, Event::external('REGISTER_PENDING', $now, ['motive' => 'Missing ID']))->getSnapshot();
+
+$state->stateOf('progress');                         // 'proposal_sent': registrar a pendência só moveu a região dela
+$state->isIn('pending.open');                        // true
+$machine->transition($quote, $state, Event::external('APPROVE', $now))
+    ->getReason()->failures[0]->code;                // 'QUOTE_PENDING_OPEN'
+$machine->transition($quote, $state, Event::external('CANCEL', $now))->isAccepted(); // true: CANCEL não é barrado
+
+$state = $machine->transition($quote, $state, Event::external('RESOLVE_PENDING', $now))->getSnapshot();
+$state->stateOf('progress');                         // 'proposal_sent': de volta onde estava, nada a lembrar
+$machine->transition($quote, $state, Event::external('APPROVE', $now))->isAccepted(); // true
+```
+
+Os guards leem o snapshot **anterior** ao evento (a ordem das regiões nunca muda o resultado), e o evento é tudo ou nada: se alguma região o rejeita, nenhuma se move. A máquina fica `done` quando toda região que declara estado final está num deles; região sem estado final (a pendência) não segura a máquina aberta, e máquina `done` responde `unhandled` a todo evento.
+
+#### 14.3 `can()` e `nextEvents()`: Botão Desabilitado Com o Motivo
+
+`can()` é o próprio `transition()`, sem efeito colateral; `nextEvents()` testa cada evento que os estados atuais atendem (como evento externo com payload vazio), para o painel de ações mostrar o botão desabilitado junto com o motivo. Continuando com a pendência ainda aberta:
+
+```php
+foreach ($machine->nextEvents($quote, $state, null, $now) as $type => $answer) {
+    echo $type, ': ', $answer->isAccepted() ? 'enabled' : 'disabled (' . $answer->getReason()->failures[0]->message . ')', PHP_EOL;
+}
+// APPROVE: disabled (Resolve the open pending item first.)
+// CANCEL: enabled
+// RESOLVE_PENDING: enabled
+
+$machine->can($quote, $state, Event::external('APPROVE', $now))
+    ->getRejections()['progress']->failures[0]->code; // 'QUOTE_PENDING_OPEN' (o motivo por região que rejeitou)
+```
+
+#### 14.4 A Definição É Dado: JSON e o Validador
+
+Guards e ações são referenciados por nome e parâmetros, nunca por closures, então a definição faz ida e volta por array e JSON sem perda e tem fingerprint determinístico (SHA-256 da forma canônica) para detectar definição alterada sem troca de versão. O validador roda na carga: recusa a definição (uma exceção com a lista de todos os erros) por região sem estado inicial, alvo ou caminho de `inState` inexistente, guard sem fábrica (ou ação sem handler, quando os nomes de ação conhecidos são informados), estado final com transição de saída; avisa, sem bloquear, sobre estados inalcançáveis, estados não finais sem saída, guards sobrepostos ou encobertos e guards que sempre passam. O requisito documental abaixo (pendente → entregue → validado, ou vencido após 30 dias) é o `RequirementState` que o changelog da 1.0.0 anunciou, agora expresso como máquina:
+
+```php
+use Antevemus\ASpecification\StateMachine\MachineDefinition;
+
+$requirement = MachineDefinition::fromJson(<<<'JSON'
+{
+  "key": "document_requirement",
+  "version": 1,
+  "regions": [{
+    "name": "lifecycle",
+    "initial": "pending",
+    "states": [
+      {"name": "pending", "transitions": [
+        {"event": "DELIVER", "target": "delivered", "guard": {"guard": "payloadHas", "params": {"field": "file"}}}
+      ]},
+      {"name": "delivered", "deadline": {"after": "P30D", "event": "EXPIRE"}, "transitions": [
+        {"event": "VALIDATE", "target": "validated"},
+        {"event": "EXPIRE", "target": "expired"}
+      ]},
+      {"name": "on_hold"},
+      {"name": "validated", "final": true},
+      {"name": "expired", "final": true}
+    ]
+  }]
+}
+JSON);
+
+MachineDefinition::fromArray($requirement->toArray()) == $requirement;   // true: ida e volta sem perda
+$requirement->fingerprint();                         // 64 caracteres hexadecimais, estável entre execuções e ordem de chaves
+$requirement->getTransition('lifecycle.pending.DELIVER') !== null;       // true: ids gerados como região.estado.EVENTO
+
+foreach (Spec::validateMachine($requirement) as $warning) {
+    echo $warning->kind, ': ', $warning->state, PHP_EOL;
+}
+// unreachable_state: on_hold
+// dead_end_state: on_hold
+```
+
+#### 14.5 O Runner: Uma Transação, Idempotência, Outbox e Prazos Persistidos
+
+`MachineRunner::send()` carrega a instância e a versão da definição em que ela nasceu, confere a chave de idempotência, calcula a transição e grava o snapshot novo (compare-and-set pela versão: mudança concorrente lança `ConcurrencyConflictException` e nunca é repetida em silêncio), uma linha de histórico por região movida e os efeitos na outbox, em **uma** transação. Os efeitos (as ações nomeadas: `exit` → transição → `entry`) são entregues **depois** do commit por um `EffectDispatcher`, cada um com sua chave de idempotência, na ordem de gravação por instância; handler que falha nunca desfaz a transição. Prazo é persistido (`due_at`), nunca timer em memória: um cron pede os vencidos e os entrega pelo mesmo runner, e entrega atrasada ou repetida é inofensiva.
+
+```php
+use Antevemus\ASpecification\StateMachine\Effect;
+use Antevemus\ASpecification\StateMachine\Persistence\InMemory\InMemoryMachineDefinitionRepository;
+use Antevemus\ASpecification\StateMachine\Persistence\MachinePersistence;
+use Antevemus\ASpecification\StateMachine\Runner\EffectDispatcher;
+use Antevemus\ASpecification\StateMachine\Runner\EffectHandlerRegistry;
+use Antevemus\ASpecification\StateMachine\Runner\MachineRunner;
+
+$document = Spec::machine('document', 1)
+    ->region('lifecycle', 'pending')
+        ->state('pending')
+            ->on('DELIVER', 'delivered')->guard('payloadHas', ['field' => 'file'])->action('notify_reviewer')
+        ->state('delivered')->deadline('P3D', 'EXPIRE')
+            ->on('VALIDATE', 'validated')
+            ->on('EXPIRE', 'expired')->action('notify_owner')
+        ->finalState('validated')
+        ->finalState('expired')
+    ->build();
+
+$sent = [];
+$handlers = (new EffectHandlerRegistry())
+    ->register('notify_reviewer', function (Effect $effect, string $idempotencyKey) use (&$sent): void { $sent[] = $effect->action; })
+    ->register('notify_owner', function (Effect $effect, string $idempotencyKey) use (&$sent): void { $sent[] = $effect->action; });
+
+$persistence = MachinePersistence::inMemory();
+$runner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$document]), $persistence, $handlers);
+$runner->start('doc-42', 'document', 1, null, new DateTimeImmutable('2026-10-10 09:00'));
+
+$deliver = Event::external('DELIVER', new DateTimeImmutable('2026-10-10 10:00'), ['file' => 'id.pdf'], 'upload-7f3a');
+$runner->send('doc-42', $deliver, actor: 'alice')->isAccepted();  // true
+$runner->send('doc-42', $deliver, actor: 'alice')->isAccepted();  // true: mesma chave, o resultado original, nada gravado duas vezes
+$runner->load('doc-42')->version;                                 // 2 (start + um evento aceito)
+count($persistence->history->findByInstance('doc-42'));           // 2 (append-only: start + DELIVER)
+
+// Depois do commit (um worker ou um cron): entrega os efeitos
+(new EffectDispatcher($persistence->outbox, $handlers))->dispatchPending()->deliveredCount(); // 1
+$sent;                                                            // ['notify_reviewer']
+
+// Prazos: acha e entrega os vencidos (o evento EXPIRE é interno: não pode ser enviado de fora)
+$runner->findDue(new DateTimeImmutable('2026-10-12 10:00'));       // [] (vence em 2026-10-13 10:00)
+$deliveries = $runner->deliverDue(new DateTimeImmutable('2026-10-13 10:00'), actor: 'scheduler');
+$deliveries[0]->isDelivered();                                    // true
+$runner->load('doc-42')->snapshot->stateOf('lifecycle');          // 'expired'
+```
+
+`EffectHandlerRegistry::registerSync()` declara o efeito raro que precisa poder vetar: roda dentro da transação, antes do commit, e uma exceção desfaz o passo inteiro. Cada instância fica presa à versão da definição em que nasceu; levá-la a uma versão nova é explícito (`registerMigration()` + `migrate()`).
+
+#### 14.6 Persistência em PDO e o DDL de Referência
+
+`MachinePersistence::pdo()` dá as mesmas portas sobre as tabelas de [`resources/sql/state_machine.ansi.sql`](resources/sql/state_machine.ansi.sql): SQL portável, `CREATE TABLE IF NOT EXISTS` (aceito por PostgreSQL, MySQL/MariaDB e SQLite), chave primária em toda tabela, `UNIQUE (instance_id, idempotency_key)`, instantes como texto UTC de largura fixa. Os prazos vencidos são buscados por uma especificação compilada para SQL pelo SQL visitor. Os stores InMemory e PDO rodam a mesma bateria de testes (SQLite em memória na suíte).
+
+```php
+// Uma vez, com sua ferramenta de migração: resources/sql/state_machine.ansi.sql
+$runner = new MachineRunner(
+    Spec::stateMachine(),
+    new InMemoryMachineDefinitionRepository([$document]),  // as definições vão junto com a aplicação
+    MachinePersistence::pdo($pdo),                         // mesmo contrato do inMemory()
+    $handlers
+);
+
+// Tabelas com outros nomes: nome por papel (instance, region, history, outbox, idempotency,
+// rejection), um schema opcional e, quando as colunas diferem, coluna canônica => coluna real
+$persistence = MachinePersistence::pdo($pdo, tables: ['instance' => 'quote_state', 'history' => 'quote_state_history']);
+```
+
+> **Colunas JSON.** `snapshot`, `payload`, `params`, `reason` e `transition_result` são JSON guardado em `VARCHAR(4000)`, o tamanho portável que cabe também no Oracle. Payload de evento maior exige alargar a coluna para `TEXT`/`JSONB`/`CLOB` na sua cópia do DDL. Se a conexão PDO já estiver numa transação, o runner entra nela e quem a abriu faz o commit ou o rollback.
+
+Fora do escopo de propósito (cada um pode ser modelado sem ele): atores, `invoke`/`spawn` (trabalho assíncrono é job externo que devolve um evento), transições sem evento (`always`) e `raise` (quem chama envia o próximo evento), estados aninhados dentro de região e history state (uma região paralela, como a pendência acima, cobre os casos reais) e contexto da máquina (`assign`): o contexto é o objeto de domínio de quem chama. O histórico é trilha; o snapshot é a verdade (sem event sourcing).
+
+### 15. Casos de Uso Com Resultado Comum à Máquina (Módulo 19)
+
+Um caso de uso é uma classe com um método, `execute(object $request): UseCaseResult`. O `UseCaseRunner` o executa pelos middlewares, valida antes o request (atributos `#[ValidateRule]`/`#[AssertSpec]` mais as especificações registradas para a classe dele) e só falha `ERROR` bloqueia: `WARNING` e `INFO` voltam junto do sucesso. O status é um enum de domínio fechado (`SUCCESS`, `CREATED`, `ACCEPTED`, `NO_CHANGE`, `INVALID`, `REJECTED`, `NOT_FOUND`, `CONFLICT`, `FORBIDDEN`, `FAILED`); o sucesso deriva só dele, e HTTP existe só num método de borda, `toHttpStatus()`. Exceção não tratada vira `FAILED` com mensagem genérica e vai para um `IUseCaseErrorReporter` opcional: nenhuma mensagem, classe, arquivo, linha ou stack trace chega ao resultado. Nenhum mediator, contêiner ou descoberta de handlers vem embutido.
+
+#### 15.1 `IUseCase`, `UseCaseRunner` e `TransactionMiddleware`
+
+```php
+use Antevemus\ASpecification\Attributes\ValidateRule;
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\UseCase\IUseCase;
+use Antevemus\ASpecification\UseCase\TransactionMiddleware;
+use Antevemus\ASpecification\UseCase\UseCaseResult;
+use Antevemus\ASpecification\UseCase\UseCaseStatus;
+
+final class RegisterTenantRequest
+{
+    public function __construct(
+        #[ValidateRule('not_blank', code: 'NAME_REQUIRED', message: 'The tenant name is required.')]
+        public readonly string $name,
+        #[ValidateRule('<=', value: 5000, code: 'RENT_REVIEW', message: 'Rent above 5 000 goes to manual review.', severity: 'WARNING')]
+        public readonly int $rent,
+    ) {}
+}
+
+/** @implements IUseCase<RegisterTenantRequest, int> */
+final class RegisterTenant implements IUseCase
+{
+    public function __construct(private PDO $pdo) {}
+
+    public function execute(object $request): UseCaseResult
+    {
+        $this->pdo->prepare('INSERT INTO tenant (name, rent) VALUES (?, ?)')->execute([$request->name, $request->rent]);
+
+        return UseCaseResult::created((int) $this->pdo->lastInsertId());
+    }
+}
+
+$useCases = Spec::useCaseRunner(middlewares: [
+    new TransactionMiddleware($pdo->beginTransaction(...), $pdo->commit(...), $pdo->rollBack(...)),
+]);
+
+$created = $useCases->run(new RegisterTenant($pdo), new RegisterTenantRequest('Alice', 6200));
+$created->isSuccess();                       // true: WARNING nunca bloqueia (commit feito)
+$created->getStatus();                       // UseCaseStatus::CREATED
+$created->getWarnings()[0]->code;            // 'RENT_REVIEW'
+
+$invalid = $useCases->run(new RegisterTenant($pdo), new RegisterTenantRequest('', 1200));
+$invalid->getStatus();                       // UseCaseStatus::INVALID: execute() não foi chamado (rollback)
+$invalid->getCodes();                        // ['NAME_REQUIRED']
+
+// HTTP só na borda da aplicação
+$invalid->getStatus()->toHttpStatus();       // 400 (CREATED → 201, REJECTED → 422, CONFLICT → 409 ...)
+```
+
+O `TransactionMiddleware` só faz commit de sucesso e faz rollback de status de falha ou de exceção (que ele relança para o runner transformar em `FAILED`). `UseCaseResult` e o `TransitionResult` da máquina implementam o mesmo `Results\IOutcome` (`isSuccess()`, `getReason()`), e `UseCaseResult::fromTransition()` converte um no outro.
+
+#### 15.2 Evento da Máquina Como Caso de Uso
+
+`StateMachineEventUseCase` (ou `Spec::machineEventUseCase()`) expõe um evento da máquina como caso de uso: o request é um `MachineEventRequest` (id da instância, `occurredAt`, payload, chave de idempotência, ator e versão esperada opcionais) e o resultado é o do runner convertido: aceito → `SUCCESS` (payload = o snapshot novo), rejeitado → `REJECTED` com os códigos dos guards, unhandled → `CONFLICT`, versão velha → `CONFLICT` com `SM_CONCURRENCY_CONFLICT`, instância inexistente → `NOT_FOUND`. Com a máquina da cotação do 14.2:
+
+```php
+use Antevemus\ASpecification\UseCase\MachineEventRequest;
+
+$runner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$quote]), MachinePersistence::inMemory());
+$runner->start('quote-7', 'quote', 1, null, $now);
+
+$useCases = Spec::useCaseRunner();
+$send = fn(string $event, array $payload = []): UseCaseResult => $useCases->run(
+    Spec::machineEventUseCase($runner, $event),
+    new MachineEventRequest('quote-7', $now, $payload, actor: 'alice')
+);
+
+$send('SEND_PROPOSAL')->getStatus();                          // UseCaseStatus::SUCCESS
+$send('REGISTER_PENDING', ['motive' => 'Missing ID'])->isSuccess(); // true
+$send('APPROVE')->getCodes();                                 // ['QUOTE_PENDING_OPEN'] (status REJECTED, HTTP 422)
+$send('SEND_PROPOSAL')->getStatus();                          // UseCaseStatus::CONFLICT: o evento não cabe no estado atual
+$send('RESOLVE_PENDING')->getPayload()->stateOf('progress');  // 'proposal_sent'
+
+$useCases->run(Spec::machineEventUseCase($runner, 'CANCEL'), new MachineEventRequest('quote-99', $now))
+    ->getStatus();                                            // UseCaseStatus::NOT_FOUND
+```
+
 ---
 
 ## 🏗️ Estrutura de Diretórios
@@ -664,7 +975,11 @@ src/
 │   └── ALinqSpecificationVisitor.php # Compilador de AST para predicados funcionais LINQ
 ├── Factory/                   # SpecificationFactory unificada (~140 métodos)
 │   └── Traits/               # 8 Traits modulares (Type, Comparison, Logical, Special, String, Date, Collection, Wrapper)
-├── Results/                   # SpecificationResult, SpecificationFailure
+├── Results/                   # SpecificationResult, SpecificationFailure, FailureSeverity, IOutcome
+├── StateMachine/              # Máquina de estados dirigida por especificações (Módulos 17 e 18): builder, definição, validador, núcleo puro
+│   ├── Persistence/          # Portas, MachinePersistence, stores InMemory/ e Pdo/ (resources/sql/state_machine.ansi.sql)
+│   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrações
+├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Módulo 19)
 ├── Helpers/                   # PropertyAccessor (dot notation), StopWatch, InstrumentationUtils
 ├── DSL/                       # Funções globais de apoio para syntax fluente
 └── Spec.php                   # Facade principal da biblioteca
@@ -694,23 +1009,26 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 • [SUITE] Módulo 5: Persistência em Arquivo e Decorator Híbrido... ✅ PASS (115 asserções)
 • [SUITE] Módulo 6: Utilitários de Concorrência e RW-Lock... ✅ PASS (97 asserções)
 • [SUITE] Módulo 7: Predicados, Fábricas, Helpers e Visitor... ✅ PASS (61 asserções)
-• [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (133 asserções)
-• [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (203 asserções)
+• [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (143 asserções)
+• [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (204 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (409 asserções)
 • [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (459 asserções)
 • [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 asserções)
 • [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (263 asserções)
-• [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (213 asserções)
+• [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (221 asserções)
 • [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (550 asserções)
+• [SUITE] Módulo 17: Máquina de Estados Dirigida por Especificações... ✅ PASS (476 asserções)
+• [SUITE] Módulo 18: Runner e Persistência da Máquina de Estados... ✅ PASS (576 asserções)
+• [SUITE] Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)... ✅ PASS (408 asserções)
 
 ====================================================================
- RESULTADO FINAL: 16/16 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 3281 | TEMPO: ~2s | REGRESSÕES: 0
+ RESULTADO FINAL: 19/19 SUÍTES APROVADAS (100% PASS)
+ TOTAL DE ASSERÇÕES: 4760 | TEMPO: ~4s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 237 testes e 5.410 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 240 testes e 6.892 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
@@ -739,6 +1057,8 @@ Principais destaques:
 9. **`MethodParameterizedSpecification`: chamadas de método declarativas** (entregue na v1.6.0)
 10. **Detecção de tautologia e contradição** (entregue na v1.6.0)
 11. **Backlog anunciado e não entregue II: TTL, índice do DAG de partições e três dialetos SQL** (entregue na v1.6.0)
+11a. **Máquina de estados dirigida por especificações** (o `RequirementState` reservado, agora expressável como máquina) (entregue na v1.8.0)
+11b. **Casos de uso com resultado comum à máquina de estados** (entregue na v1.8.0)
 12. **`simplify()` de especificações** (v1.6.x)
 13. **Aposentadoria do serializer PHP nativo, etapa 2: remoção e envelope só JSON** (v2.0.0)
 14. **Accessor de propriedades compartilhado com o ALinq** (v2.0.0)
@@ -746,7 +1066,7 @@ Principais destaques:
 16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis)
 17. **Compiladores AST para GraphQL & OpenAPI 3.1**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**
-19. **Disparo Reativo de Domain Events**
+19. **Disparo de Eventos de Domínio por Especificação**
 20. **Sintetizador de Especificações Assistido por IA**
 21. **Repositório sobre PDO** (o `HibernateRepository` do Domian)
 

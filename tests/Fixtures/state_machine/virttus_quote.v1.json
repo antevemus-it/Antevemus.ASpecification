@@ -1,0 +1,733 @@
+{
+    "key": "virttus.rental_guarantee_quote",
+    "version": 1,
+    "regions": [
+        {
+            "name": "progress",
+            "initial": "registering",
+            "states": [
+                {
+                    "name": "registering",
+                    "transitions": [
+                        {
+                            "id": "complete_calculation",
+                            "event": "COMPLETE_CALCULATION",
+                            "target": "calculation_done",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "send_to_scoring_analysis",
+                            "event": "SEND_TO_SCORING_ANALYSIS",
+                            "target": "pending_scoring_analysis",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "send_to_income_adjustment",
+                            "event": "SEND_TO_INCOME_ADJUSTMENT",
+                            "target": "pending_income_adjustment",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "block_by_policy",
+                            "event": "BLOCK_BY_POLICY",
+                            "target": "policy_restrictions",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "send_credit_or_rental_to_review",
+                            "event": "SEND_TO_REVIEW",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "calculation_done",
+                    "transitions": [
+                        {
+                            "id": "request_client_documents",
+                            "event": "REQUEST_CLIENT_DOCUMENTS",
+                            "target": "awaiting_client_documents",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "return_to_data",
+                            "event": "RETURN_TO_DATA",
+                            "target": "registering",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "send_to_review",
+                            "event": "SEND_TO_REVIEW",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_documents",
+                            "event": "REQUEST_DOCUMENTS",
+                            "target": "awaiting_documents",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_calc",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "pending_scoring_analysis",
+                    "transitions": [
+                        {
+                            "id": "approve_with_scoring_restriction",
+                            "event": "APPROVE_WITH_SCORING_RESTRICTION",
+                            "target": "approved_with_scoring_restriction",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "reject_by_scoring",
+                            "event": "REJECT_BY_SCORING",
+                            "target": "rejected_by_scoring"
+                        },
+                        {
+                            "id": "cancel_from_pending_scoring_analysis",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "pending_income_adjustment",
+                    "transitions": [
+                        {
+                            "id": "return_after_income_adjustment",
+                            "event": "RETURN_AFTER_INCOME_ADJUSTMENT",
+                            "target": "registering",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "policy_restrictions",
+                    "transitions": [
+                        {
+                            "id": "return_from_policy",
+                            "event": "RETURN_FROM_POLICY",
+                            "target": "registering",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_policy",
+                            "event": "CANCEL",
+                            "target": "cancelled",
+                            "guard": {
+                                "guard": "hasRole",
+                                "params": {
+                                    "roles": []
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "under_review",
+                    "transitions": [
+                        {
+                            "id": "send_to_approval",
+                            "event": "SEND_TO_APPROVAL",
+                            "target": "awaiting_approval",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_docs_from_review",
+                            "event": "REQUEST_DOCUMENTS",
+                            "target": "awaiting_documents",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "reject",
+                            "event": "REJECT",
+                            "target": "rejected",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "cancelled",
+                    "final": true,
+                    "transitions": []
+                },
+                {
+                    "name": "awaiting_client_documents",
+                    "transitions": [
+                        {
+                            "id": "client_documents_received",
+                            "event": "CLIENT_DOCUMENTS_RECEIVED",
+                            "target": "awaiting_hiring_proposal",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_awaiting_client_documents",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "awaiting_documents",
+                    "transitions": [
+                        {
+                            "id": "documents_received",
+                            "event": "DOCUMENTS_RECEIVED",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "return_to_plan",
+                            "event": "RETURN_TO_PLAN",
+                            "target": "calculation_done",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "send_to_awaiting_hiring_proposal",
+                            "event": "SEND_TO_AWAITING_HIRING_PROPOSAL",
+                            "target": "awaiting_hiring_proposal",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_awaiting_docs",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "awaiting_hiring_proposal",
+                    "transitions": [
+                        {
+                            "id": "send_proposal",
+                            "event": "SEND_PROPOSAL",
+                            "target": "proposal_sent",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "proposal_sent",
+                    "transitions": [
+                        {
+                            "id": "approve_proposal_quotation",
+                            "event": "APPROVE_PROPOSAL_QUOTATION",
+                            "target": "approve_proposal_quotation",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "reject_by_scoring_in_proprosal_analysis",
+                            "event": "REJECT_BY_SCORING",
+                            "target": "rejected_by_scoring"
+                        },
+                        {
+                            "id": "send_to_scoring_analysis_from_proposal",
+                            "event": "SEND_TO_SCORING_ANALYSIS",
+                            "target": "pending_scoring_analysis",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_proof_of_life",
+                            "event": "REQUEST_PROOF_OF_LIFE",
+                            "target": "awaiting_proof_of_life",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_signatures",
+                            "event": "REQUEST_SIGNATURES",
+                            "target": "awaiting_signatures",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_proposal_sent",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "approve_proposal_quotation",
+                    "transitions": [
+                        {
+                            "id": "complete_proposal",
+                            "event": "COMPLETE_PROPOSAL",
+                            "target": "completed",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_approve_proposal_quotation",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "rejected_by_scoring",
+                    "transitions": [
+                        {
+                            "id": "cancel_from_rejected_by_scoring",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                },
+                {
+                    "name": "awaiting_proof_of_life",
+                    "transitions": [
+                        {
+                            "id": "proof_of_life_received",
+                            "event": "PROOF_OF_LIFE_RECEIVED",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "awaiting_signatures",
+                    "transitions": []
+                },
+                {
+                    "name": "completed",
+                    "final": true,
+                    "transitions": []
+                },
+                {
+                    "name": "approved_with_scoring_restriction",
+                    "transitions": [
+                        {
+                            "id": "proceed_to_calculation",
+                            "event": "PROCEED_TO_CALCULATION",
+                            "target": "calculation_done",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_quotation_from_scoring_approval",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        },
+                        {
+                            "id": "send_to_review_from_scoring",
+                            "event": "SEND_TO_REVIEW",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_proof_of_life_from_scoring_approval",
+                            "event": "REQUEST_PROOF_OF_LIFE",
+                            "target": "awaiting_proof_of_life",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "request_signatures_from_scoring_approval",
+                            "event": "REQUEST_SIGNATURES",
+                            "target": "awaiting_signatures",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "complete_proposal_from_scoring_approval",
+                            "event": "COMPLETE_PROPOSAL",
+                            "target": "completed",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "awaiting_approval",
+                    "transitions": [
+                        {
+                            "id": "approve",
+                            "event": "APPROVE",
+                            "target": "approved",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "return_to_review",
+                            "event": "RETURN_TO_REVIEW",
+                            "target": "under_review",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "reject_from_approval",
+                            "event": "REJECT",
+                            "target": "rejected",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "rejected",
+                    "final": true,
+                    "transitions": []
+                },
+                {
+                    "name": "approved",
+                    "transitions": [
+                        {
+                            "id": "complete",
+                            "event": "COMPLETE",
+                            "target": "completed",
+                            "guard": {
+                                "not": {
+                                    "guard": "inState",
+                                    "params": {
+                                        "state": "pending.open"
+                                    }
+                                },
+                                "code": "QUOTE_PENDING_OPEN",
+                                "message": "The quote has an open pending item: resolve it before moving the quote forward."
+                            }
+                        },
+                        {
+                            "id": "cancel_from_approved",
+                            "event": "CANCEL",
+                            "target": "cancelled"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "pending",
+            "initial": "none",
+            "states": [
+                {
+                    "name": "none",
+                    "transitions": [
+                        {
+                            "id": "register_pending",
+                            "event": "REGISTER_PENDING",
+                            "target": "open"
+                        }
+                    ]
+                },
+                {
+                    "name": "open",
+                    "transitions": [
+                        {
+                            "id": "resolve_pending",
+                            "event": "RESOLVE_PENDING",
+                            "target": "none"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

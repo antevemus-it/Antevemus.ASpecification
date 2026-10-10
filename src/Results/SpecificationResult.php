@@ -31,6 +31,9 @@ use Stringable;
  */
 final readonly class SpecificationResult implements Countable, Stringable
 {
+    /** Message of the failure recorded for an evaluation error (the exception stays in $exception). */
+    public const EVALUATION_ERROR_MESSAGE = 'The rule could not be evaluated.';
+
     /**
      * @param bool $isSatisfied True if all specification conditions are satisfied; false if violations occurred
      * @param list<SpecificationFailure> $failures Collection of recorded rule failures
@@ -50,9 +53,12 @@ final readonly class SpecificationResult implements Countable, Stringable
     /**
      * Create an evaluation-error result: the rule could not be evaluated at all.
      *
-     * The result is unsatisfied, flagged with isError and carries the exception. A single
-     * SpecificationFailure with the exception message is recorded so that consumers that only
-     * read failures keep seeing a reason.
+     * The result is unsatisfied, flagged with isError and carries the exception in $exception, for
+     * the caller to log. The recorded SpecificationFailure never repeats the exception: its message
+     * is the generic EVALUATION_ERROR_MESSAGE, its code the given one (unchanged), and
+     * metadata['evaluation_error'] is `true`. Failures are what callers show; an exception message
+     * (SQL, paths, values) must not reach them (since 1.8.0; before, the message and the class name
+     * were copied into the failure).
      *
      * @param \Throwable $exception Exception raised while evaluating the candidate
      * @param string $ruleName Name of the specification whose evaluation failed
@@ -67,11 +73,11 @@ final readonly class SpecificationResult implements Countable, Stringable
         ?string $code = null
     ): self {
         $failure = new SpecificationFailure(
-            message: $exception->getMessage() !== '' ? $exception->getMessage() : get_class($exception),
+            message: self::EVALUATION_ERROR_MESSAGE,
             code: $code,
             ruleName: $ruleName,
             property: $property,
-            metadata: ['evaluation_error' => get_class($exception)]
+            metadata: ['evaluation_error' => true]
         );
 
         return new self(false, [$failure], true, $exception);
