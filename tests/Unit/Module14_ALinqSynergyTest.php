@@ -8,6 +8,7 @@ use Antevemus\ALinq\ALinqCollection;
 use Antevemus\ALinq\ALinqLazyCollection;
 use Antevemus\ASpecification\AbstractCompositeSpecification;
 use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Attributes\Specifiable;
 use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Linq\ALinqBridge;
@@ -48,7 +49,7 @@ use stdClass;
  * - Interoperabilidade fluente com ALinqCollection (where, orderBy, take, sum)
  * - Integração nativa de InMemoryRepository com asLinqCollection e findAsLinqCollection
  *
- * @version    1.6.0
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -63,6 +64,8 @@ class Module14_ALinqSynergyTest extends TestCase
         $this->testPropertyAccessorDotNotation();
         $this->testPropertyAccessorArraySupport();
         $this->testPropertySpecificationWithDotNotation();
+        // v1.6.1: propriedade não pública só é lida por nome com o opt-in #[Specifiable] (README 10.1)
+        $this->testReadme101SpecifiableOptIn();
         $this->testALinqVisitorLeafCompilations();
         $this->testALinqVisitorCompositesAndShortCircuit();
         $this->testALinqVisitorWithComplexDomainObject();
@@ -195,6 +198,30 @@ class Module14_ALinqSynergyTest extends TestCase
 
         $this->assertFalse($specCity->evaluate($candidate2)->isSatisfied);
         $this->assertFalse($specMaxAge->evaluate($candidate2)->isSatisfied);
+    }
+
+    /**
+     * v1.6.1 (patch de segurança): o exemplo do README 10.1 transcrito. A propriedade privada marcada
+     * #[Specifiable] é lida por nome; a não marcada se comporta como inexistente, também no visitor ALinq.
+     */
+    private function testReadme101SpecifiableOptIn(): void
+    {
+        $account = new Module14SpecifiableAccount();
+
+        $this->assertTrue(Spec::property('status', Spec::equalTo('active'))->isSatisfiedBy($account));
+        $this->assertFalse(PropertyAccessor::hasProperty($account, 'passwordHash'));
+        $this->assertTrue(Spec::property('passwordHash', Spec::startsWith('h'))->evaluate($account)->isError);
+
+        // O mesmo resultado de uma propriedade inexistente, e o visitor ALinq espelha o núcleo
+        $this->assertEquals(
+            str_replace('nope', 'passwordHash', (string) Spec::property('nope', Spec::startsWith('h'))->evaluate($account)->exception?->getMessage()),
+            (string) Spec::property('passwordHash', Spec::startsWith('h'))->evaluate($account)->exception?->getMessage()
+        );
+        $this->assertTrue(PropertyAccessor::getValue($account, 'passwordHash') === null);
+        $this->assertTrue(ALinqSpecificationVisitor::createPredicate(Spec::property('status', Spec::equalTo('active')))($account));
+        $this->assertThrows(\InvalidArgumentException::class, fn() => ALinqSpecificationVisitor::createPredicate(
+            Spec::property('passwordHash', Spec::startsWith('h'))
+        )($account));
     }
 
     /**
@@ -996,4 +1023,12 @@ final class Module14LazyFileEntity extends \Antevemus\ASpecification\Entities\Ab
     {
         parent::__construct();
     }
+}
+
+/** Entidade do exemplo do README 10.1 (v1.6.1): uma propriedade privada marcada e uma não marcada. */
+final class Module14SpecifiableAccount
+{
+    #[Specifiable]
+    private string $status = 'active';      // opt-in: legível por nome, gravável por delta
+    private string $passwordHash = 'h4sh';  // não marcada: invisível para um nome
 }

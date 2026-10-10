@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Helpers;
 
+use Antevemus\ASpecification\Attributes\Specifiable;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Closure;
 use DateTimeImmutable;
@@ -23,8 +24,11 @@ use UnitEnum;
  * make sense without JVM generics and primitive boxing are ported:
  *
  * - getFieldByName() / getMethodByName() walk the class hierarchy and find PRIVATE and protected
- *   members declared in superclasses, exactly as the Java original does; this is what lets a
- *   specification be bound to a private field without a getter (PropertyAccessor, last resolution step).
+ *   members declared in superclasses, exactly as the Java original does. The specification paths
+ *   that receive a property NAME as text (PropertyAccessor, last resolution step, and the delta of
+ *   SpecificationHelper::updateEntityState()) only use such a field when isSpecifiable() says the
+ *   author of the class opted in with #[Specifiable] (since 1.6.1); getFieldValue()/setFieldValue()
+ *   stay unrestricted utilities for code that calls them explicitly.
  * - getMethodByNameWithPossiblePrefix() tries the bare name and then each prefix ("get", "is" by default).
  * - invokeMethod() resolves by name and parameter count and returns null instead of throwing when the
  *   method is missing or fails (the Java original swallows IllegalArgument/IllegalAccess/InvocationTarget).
@@ -36,12 +40,14 @@ use UnitEnum;
  *   arrays and object properties with cycle detection and the same depth threshold as the Java original
  *   (deeper than the threshold yields null).
  * - isEntity() reports whether the object is a domain entity (IEntity).
+ * - isSpecifiable() reports whether a property, or the class that declares it, carries #[Specifiable]
+ *   (original to this library, not in Domian).
  *
  * Not ported (JVM-only): getClass(Type), getTypeArguments(), isDate(), isDecimalNumber(), and the three
  * mutable static flags DO_COPY_OBJECTS / DO_COPY_ENTITIES / RECURSIVE_COPYING_DEPTH_TRESHOLD, which are
  * parameters of the copy methods here instead of process-wide state.
  *
- * @version    1.4.4
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -52,6 +58,15 @@ final class ReflectionUtils
 {
     /** Default depth threshold of the recursive copy (Java RECURSIVE_COPYING_DEPTH_TRESHOLD). */
     public const DEFAULT_RECURSIVE_COPYING_DEPTH_THRESHOLD = 5;
+
+    /**
+     * Attribute names that mark a non-public property as specifiable: this library's own and the
+     * ALinq one, compared by name so that ALinq is not a dependency.
+     */
+    public const SPECIFIABLE_ATTRIBUTES = [
+        Specifiable::class,
+        'Antevemus\\ALinq\\Attributes\\Specifiable',
+    ];
 
     /** Prefixes tried by getMethodByNameWithPossiblePrefix() when none are given (Java ParameterizedSpecification). */
     public const DEFAULT_METHOD_PREFIXES = ['get', 'is'];
@@ -185,6 +200,32 @@ final class ReflectionUtils
                 $e->getMessage()
             ), 0, $e);
         }
+    }
+
+    /**
+     * Tells whether the author of the class opted the property in to access by name: the property
+     * carries #[Specifiable], or the class that DECLARES it does (a marker on a parent or on a
+     * subclass does not count). Both Antevemus\ASpecification\Attributes\Specifiable and
+     * Antevemus\ALinq\Attributes\Specifiable are accepted, by name.
+     *
+     * Public properties need no marker; this method only reports the marker and is what the
+     * name-based specification paths consult before touching a private or protected property.
+     *
+     * @param ReflectionProperty $property
+     * @return bool
+     */
+    public static function isSpecifiable(ReflectionProperty $property): bool
+    {
+        foreach (self::SPECIFIABLE_ATTRIBUTES as $attribute) {
+            if ($property->getAttributes($attribute) !== []) {
+                return true;
+            }
+            if ($property->getDeclaringClass()->getAttributes($attribute) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     ///////////////////////////////////////////////////////////////////////////

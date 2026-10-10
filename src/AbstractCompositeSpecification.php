@@ -24,7 +24,7 @@ declare(strict_types=1);
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.0
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -38,6 +38,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
+use Antevemus\ASpecification\Helpers\ReflectionUtils;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -594,7 +595,8 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
      * Hybrid resolution order:
      * 1. Public getters (getX, isX, hasX)
      * 2. Public properties
-     * 3. Private/protected reflection properties
+     * 3. Private/protected properties declared by the object's class and marked #[Specifiable]
+     *    (on the property or on that class; opt-in since 1.6.1, an unmarked one is "not found")
      *
      * @param object $object Target instance
      * @param string $propertyName Property name
@@ -627,6 +629,13 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
 
         try {
             $reflection = new \ReflectionProperty($object, $propertyName);
+            if (!ReflectionUtils::isSpecifiable($reflection)) {
+                throw new \ReflectionException(sprintf(
+                    'Property %s::$%s is not public and not marked #[Specifiable]',
+                    get_class($object),
+                    $propertyName
+                ));
+            }
             $reflection->setAccessible(true);
             return $reflection->getValue($object);
         } catch (\ReflectionException $e) {

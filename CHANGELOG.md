@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-10
+
+Security patch. Access by name to private and protected properties, added in 1.4.4 for Domian parity, becomes opt-in by the author of the class through the new `#[Specifiable]` attribute. One declared behaviour change, for code that read or wrote unmarked non-public properties by name.
+
+### Security
+
+- **Private and protected properties are reached by name only when marked `#[Specifiable]`.** Since 1.4.4 the `PropertyAccessor` read any private or protected property, declared anywhere in the class hierarchy, as its last resolution step, and `updateWithDelta()` (`SpecificationHelper::updateEntityState()`) wrote any of them when the entity had no public setter. The library only receives a property name as text and cannot tell a domain rule written by the author of the entity from a name that came from a request (a filter or an ordering built by a screen). So (1) **reading worked as an oracle**: a range or a prefix over a private field (`Spec::property('password_hash', Spec::greaterThanOrEqualTo('a')->and(Spec::lessThan('b')))`, `Spec::property('password_hash', Spec::startsWith('a'))`) revealed its value character by character through which candidates passed the filter; (2) **writing worked as mass assignment**: a delta built from request fields set a private field directly, skipping the setter and its invariants. The decision of the author to keep a property private holds again; the author marks what is specifiable. **Before → after**, on a private or protected property without accessor and without the marker: `Spec::property('passwordHash', $spec)->isSatisfiedBy($entity)` read the field → throws `InvalidArgumentException` (`Property "passwordHash" not found or not accessible ...`, the same answer as for a missing property, whatever the range; `evaluate()` returns an error state and `not()` does not approve it; the ALinq visitor mirrors it); `PropertyAccessor::hasProperty()` `true` → `false` and `getValue()` the value → `null`; `updateWithDelta($entity, Spec::property('passwordHash', Spec::is('x')))` wrote the field → `InvalidArgumentException` (`Property "passwordHash" of Foo is not public and not marked #[Specifiable]; it cannot be written by a delta specification`). The protected `AbstractCompositeSpecification::getPropertyValue()` follows the same rule in its reflection fallback (an unmarked property is "not found"). `StrictReturnsNullFactory` never wrote private state, but it checks the built object against the specification, so it now returns `null` for a class whose private fields have neither getter nor marker. **Unchanged:** the earlier resolution steps and their order (array or `ArrayAccess` key, public `getX()`/`x()`/`isX()`/`hasX()`, `__get` guarded by `__isset`, public property), public setters in a delta (a private property with a public setter needs no marker), public properties, and the explicit utilities `ReflectionUtils::getFieldByName()`/`getFieldValue()`/`setFieldValue()`, which code calls by its own decision. **Migration:** mark with `#[Specifiable]` each non-public property that rules are meant to reach by name (or the class, for every property it declares), or give it a public getter/setter.
+
+### Added
+
+- **`Attributes\Specifiable`** (`#[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_CLASS)]`): on a property, makes that private or protected property readable by name and writable by a delta; on a class, the same for every property **declared by that class** (it does not reach the properties of a parent class nor of a subclass). `#[Antevemus\ALinq\Attributes\Specifiable]` (ALinq 1.4.1) is accepted as the same marker, recognized by name, so the ALinq package is not a dependency. `ReflectionUtils::isSpecifiable(ReflectionProperty): bool` and `ReflectionUtils::SPECIFIABLE_ATTRIBUTES` expose the check.
+
+### Documentation
+
+- README (EN and pt-BR): the release badge, which still read v1.4.3, now reads v1.6.1. Section 10.1: the resolution order and the opt-in, with an example (one marked and one unmarked private property) transcribed as a test in Module 14; directory tree; runner block (16 suites, 2 877 assertions) and PHPUnit counts (237 tests, 5 006 assertions; Domian Parity 219 tests, 2 106 assertions).
+
 ## [1.6.0] - 2026-10-09
 
 Algebra and announced backlog II (ROADMAP milestones 9, 10 and 11; Reversa forwards 018, 019 and 020). Two declared contract extensions (`ISpecification`, `IVolatileRepository`); no other breaking change.
@@ -367,7 +383,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.4...v1.5.0
 [1.4.4]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.3...v1.4.4

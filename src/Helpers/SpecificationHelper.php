@@ -32,7 +32,7 @@ use TypeError;
  * - Optimized iterable filtering with type-safety checks and key preservation
  * - Idiomatic Closure conversion and structural specification introspection
  *
- * @version    1.4.4
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -140,8 +140,11 @@ class SpecificationHelper extends AbstractSpecificationHelper
      * The delta is walked whole (conjunctions, nested composites); every property clause
      * (PropertySpecification) whose inner specification is bound to a value (IValueBoundSpecification:
      * equalTo/is, looselyEqualTo, ...) sets that property on the entity to the bound value, by public
-     * setter when one exists, otherwise directly on the property, private or inherited included, as the
-     * Java original sets the Field. A property clause whose inner specification is a joint denial
+     * setter when one exists, otherwise directly on the property, inherited included, as the Java
+     * original sets the Field. A private or protected property is written only when its author marked
+     * it #[Specifiable] (on the property or on the class that declares it; since 1.6.1): the delta may be
+     * built from request data, and without the opt-in it would be mass assignment that skips the setter.
+     * A property clause whose inner specification is a joint denial
      * (Java "extra support for 'notNull'") sets the property to null. Any other clause carries no value
      * and is ignored, as in Java. A null delta does nothing.
      *
@@ -149,7 +152,8 @@ class SpecificationHelper extends AbstractSpecificationHelper
      * @param ISpecification|null $deltaSpecification Conjunction of property clauses bound to the new values, or null
      * @return void
      * @throws InvalidArgumentException When a property clause is bound to a class the entity is not an
-     *                                  instance of, or names a property the entity does not have
+     *                                  instance of, names a property the entity does not have, or names a
+     *                                  non-public property without public setter not marked #[Specifiable]
      */
     public static function updateEntityState(IEntity $entity, ?ISpecification $deltaSpecification): void
     {
@@ -214,6 +218,15 @@ class SpecificationHelper extends AbstractSpecificationHelper
         if (method_exists($entity, $setter) && is_callable([$entity, $setter])) {
             $entity->$setter($value);
             return;
+        }
+
+        $field = ReflectionUtils::getFieldByName($property, $entity);
+        if ($field !== null && !$field->isPublic() && !ReflectionUtils::isSpecifiable($field)) {
+            throw new InvalidArgumentException(sprintf(
+                'Property "%s" of %s is not public and not marked #[Specifiable]; it cannot be written by a delta specification',
+                $property,
+                get_class($entity)
+            ));
         }
 
         ReflectionUtils::setFieldValue($entity, $property, $value);

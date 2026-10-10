@@ -18,8 +18,9 @@ use Closure;
  * - Getter method (getProperty, property) and boolean predicate (isProperty, hasProperty) resolution
  * - Array and ArrayAccess interface support
  * - Nested dot notation path traversal (e.g. 'user.address.city')
- * - Private and protected properties, declared anywhere in the class hierarchy, as the LAST resort
- *   (Domian ReflectionUtils.getFieldByName(): a specification may be bound to a field without a getter)
+ * - Private and protected properties marked #[Specifiable] by the author of the class, declared
+ *   anywhere in the class hierarchy, as the LAST resort (Domian ReflectionUtils.getFieldByName(): a
+ *   specification may be bound to a field without a getter; opt-in since 1.6.1)
  * - Generates optimized Closures for functional pipelines and LINQ queries
  *
  * Resolution order of a single segment, first match wins:
@@ -27,10 +28,16 @@ use Closure;
  *   2. public method getX(), x(), isX(), hasX();
  *   3. isset($object->x): public initialized property, or __get guarded by __isset;
  *   4. public property (reflection; an uninitialized typed property yields null);
- *   5. non-public property declared by the class or a superclass (reflection; since 1.4.4);
+ *   5. non-public property marked #[Specifiable] (on the property or on the class that declares it),
+ *      declared by the class or a superclass (reflection; since 1.4.4, opt-in since 1.6.1);
  *   6. null.
  *
- * @version    1.4.4
+ * An unmarked private or protected property is not resolved: getValue() yields null and hasProperty()
+ * answers false, as for a property that does not exist. The name reaching this class may come from a
+ * request (a filter or an ordering built by a screen); without the author's opt-in, a range over a
+ * private field would work as a read oracle for its value.
+ *
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -130,8 +137,8 @@ final class PropertyAccessor
             }
 
             // Last resort: a private/protected property declared by the class or a superclass
-            // (Domian reads the field itself when no accessor exists).
-            $field = ReflectionUtils::getFieldByName($property, $target);
+            // (Domian reads the field itself when no accessor exists), only when its author opted in.
+            $field = self::specifiableField($target, $property);
             if ($field !== null) {
                 try {
                     if ($field->isStatic()) {
@@ -189,11 +196,33 @@ final class PropertyAccessor
                 }
             }
 
-            // Last resort: a private/protected property declared by the class or a superclass
-            return ReflectionUtils::hasField($target, $property);
+            // Last resort: a private/protected property marked #[Specifiable]
+            try {
+                return self::specifiableField($target, $property) !== null;
+            } catch (\InvalidArgumentException) {
+                return false;
+            }
         }
 
         return false;
+    }
+
+    /**
+     * The property declared by the class or a superclass under that name, when it is public or its
+     * author marked it #[Specifiable]; null otherwise (missing, or non-public without the opt-in).
+     *
+     * @param object $target
+     * @param string $property
+     * @return \ReflectionProperty|null
+     * @throws \InvalidArgumentException When the name is empty (ReflectionUtils::getFieldByName())
+     */
+    private static function specifiableField(object $target, string $property): ?\ReflectionProperty
+    {
+        $field = ReflectionUtils::getFieldByName($property, $target);
+        if ($field === null || (!$field->isPublic() && !ReflectionUtils::isSpecifiable($field))) {
+            return null;
+        }
+        return $field;
     }
 
     /**

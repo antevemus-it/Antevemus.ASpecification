@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Tests\Unit;
 
+use Antevemus\ASpecification\Attributes\Specifiable;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
@@ -48,6 +49,7 @@ enum MethodCallPureEnumDummy
 
 /**
  * Candidato do forward 018: métodos públicos com e sem argumentos, um protegido e um privado.
+ * `occurrences` é lido por where() sem getter: desde a 1.6.1 isso exige o opt-in #[Specifiable].
  */
 class MethodCallContractDummy
 {
@@ -55,7 +57,7 @@ class MethodCallContractDummy
 
     public function __construct(
         private DateTimeImmutable $endsAt,
-        private int $occurrences = 3,
+        #[Specifiable] private int $occurrences = 3,
         private ?MethodCallPlanDummy $plan = MethodCallPlanDummy::GOLD
     ) {
     }

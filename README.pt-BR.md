@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.4.3-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.4.3)
+[![Latest Version](https://img.shields.io/badge/Release-v1.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2870%20Assertions)%20%2B%20Domian%20Parity%20213-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2877%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -391,6 +391,29 @@ $result = $vipInSP->evaluate($user);
 // $result->isSatisfied === true
 ```
 
+Cada segmento é resolvido nesta ordem, vence o primeiro que casar: chave de array ou `ArrayAccess`; método público `getX()`, `x()`, `isX()`, `hasX()`; propriedade pública inicializada ou `__get` guardado por `__isset`; propriedade pública; e, por último, propriedade privada ou protegida **marcada com `#[Specifiable]`** pelo autor da classe (desde a v1.6.1). O nome da propriedade pode vir do request (um filtro ou uma ordenação montados pela tela), então o estado privado só é alcançado por nome quando o autor opta por isso. Propriedade não pública sem a marca se comporta como inexistente: a especificação de propriedade é erro de avaliação, `PropertyAccessor::hasProperty()` responde `false` e um delta (`updateWithDelta()`) que a nomeie lança `InvalidArgumentException`, a menos que a entidade tenha setter público para ela.
+
+```php
+use Antevemus\ASpecification\Attributes\Specifiable;
+use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ASpecification\Spec;
+
+final class Account
+{
+    #[Specifiable]
+    private string $status = 'active';      // opt-in: legível por nome, gravável por delta
+    private string $passwordHash = 'h4sh';  // sem a marca: invisível para um nome
+}
+
+$account = new Account();
+
+Spec::property('status', Spec::equalTo('active'))->isSatisfiedBy($account);        // true
+PropertyAccessor::hasProperty($account, 'passwordHash');                            // false
+Spec::property('passwordHash', Spec::startsWith('h'))->evaluate($account)->isError; // true, como propriedade inexistente
+```
+
+`#[Specifiable]` na classe vale para todas as propriedades **declaradas naquela classe** (não para as da superclasse nem das subclasses). `#[Antevemus\ALinq\Attributes\Specifiable]` é aceito como a mesma marca, pelo nome.
+
 #### 10.2 Compilador de AST para Predicados LINQ (`ALinqSpecificationVisitor`)
 Converta árvores de especificações em um `Closure(mixed $candidate): bool` compilado com operadores de curto-circuito (`&&`, `||`, `!`), sem overhead:
 
@@ -577,6 +600,7 @@ src/
 │   ├── AssertSpec.php        # Attribute de referência a Specifications
 │   ├── ValidateRule.php      # Attribute de validação inline rápida
 │   ├── AttributeValidator.php # Avaliador de reflexão de alta performance
+│   ├── Specifiable.php       # Opt-in: propriedade não pública alcançável por nome (v1.6.1)
 │   └── Exceptions/           # AttributeValidationException
 ├── Contracts/                 # Interfaces formais segregadas (ISP)
 │   ├── Entities/             # IEntity, ITransientEntity
@@ -653,17 +677,17 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (252 asserções)
 • [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (459 asserções)
 • [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 asserções)
-• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (256 asserções)
+• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (263 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (213 asserções)
 • [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (303 asserções)
 
 ====================================================================
  RESULTADO FINAL: 16/16 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 2870 | TEMPO: ~2s | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 2877 | TEMPO: ~2s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (213 testes PHPUnit, 2.043 asserções; `vendor/bin/phpunit` roda 231 testes e 4.936 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 237 testes e 5.006 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.

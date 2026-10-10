@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Tests\Parity;
 
+use Antevemus\ASpecification\AbstractCompositeSpecification;
+use Antevemus\ASpecification\Attributes\Specifiable;
 use Antevemus\ASpecification\Concurrent\NullSynchronizer;
 use Antevemus\ASpecification\Concurrent\SemaphoreSynchronizer;
 use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
@@ -20,6 +22,7 @@ use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Helpers\ReflectionUtils;
 use Antevemus\ASpecification\Helpers\SpecificationHelper;
 use Antevemus\ASpecification\Helpers\StopWatch;
+use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 use Antevemus\ASpecification\Repositories\FakePartitionRepository;
 use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Repositories\NullRepository;
@@ -44,7 +47,11 @@ use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
  * NullRepositoryTest, AbstractDomianCoreRepository (synchronizer) and SpecificationUtils.updateEntityState().
  * Each test names the Java test it transcribes.
  *
- * @version    1.4.4
+ * Since 1.6.1 a private or protected property is reached by name only when the author of the class
+ * marked it #[Specifiable]; the fixtures that stand for the Domian test domain carry the marker, and
+ * the opt-in section below covers the unmarked cases.
+ *
+ * @version    1.6.1
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Parity
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -436,7 +443,7 @@ final class DomianConcurrencyEntityUtilTest extends TestCase
 
         self::assertSame('Peter', $customer->getName(), 'public setter used');
         self::assertSame(31, $customer->age, 'public property set');
-        self::assertSame('s3cr3t', ReflectionUtils::getFieldValue($customer, 'secret'), 'private field without setter set directly, as the Java Field.set()');
+        self::assertSame('s3cr3t', ReflectionUtils::getFieldValue($customer, 'secret'), 'private field without setter set directly, as the Java Field.set() (class marked #[Specifiable])');
         self::assertSame($customer, $repository->findSingle(Spec::property('name', Spec::is('Peter'))));
     }
 
@@ -703,7 +710,8 @@ final class DomianConcurrencyEntityUtilTest extends TestCase
     #[Test]
     public function aSpecificationCanBeBoundToAPrivateFieldWithoutAGetter(): void
     {
-        // Domian: a(Child.class).where("own", is(x)) reads the private field itself (getFieldByName)
+        // Domian: a(Child.class).where("own", is(x)) reads the private field itself (getFieldByName);
+        // since 1.6.1 both classes of the fixture opt in with #[Specifiable]
         $child = new ParityChild();
 
         self::assertTrue(Spec::property('own', Spec::equalTo('child-private'))->isSatisfiedBy($child));
@@ -724,8 +732,206 @@ final class DomianConcurrencyEntityUtilTest extends TestCase
         self::assertSame('getter', PropertyAccessor::getValue($shadowed, 'name'), 'a public getter wins over the private field');
         self::assertSame('magic', PropertyAccessor::getValue($shadowed, 'ghost'), '__get guarded by __isset wins over the private field');
         self::assertSame('pub', PropertyAccessor::getValue($shadowed, 'exposed'), 'public property wins');
-        self::assertNull(PropertyAccessor::getValue($shadowed, 'lazy'), 'uninitialized typed private property yields null');
+        self::assertNull(PropertyAccessor::getValue($shadowed, 'lazy'), 'uninitialized typed private property (marked) yields null');
         self::assertTrue(PropertyAccessor::hasProperty($shadowed, 'lazy'));
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // #[Specifiable] opt-in (1.6.1): a non-public property is reached by name only when marked
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[Test]
+    public function anUnmarkedPrivatePropertyIsNotReadByName(): void
+    {
+        $account = new ParityGuardedAccount(1);
+
+        // Control: the marked property of the same object is read
+        self::assertSame('active', PropertyAccessor::getValue($account, 'status'));
+        self::assertTrue(PropertyAccessor::hasProperty($account, 'status'));
+        self::assertTrue(Spec::property('status', Spec::equalTo('active'))->isSatisfiedBy($account));
+
+        // Unmarked private and protected: the result of a property that does not exist
+        foreach (['passwordHash', 'failedLogins'] as $name) {
+            self::assertNull(PropertyAccessor::getValue($account, $name), $name);
+            self::assertFalse(PropertyAccessor::hasProperty($account, $name), $name);
+            self::assertSame(
+                PropertyAccessor::hasProperty($account, 'nope'),
+                PropertyAccessor::hasProperty($account, $name),
+                'indistinguishable from a missing property'
+            );
+            $result = Spec::property($name, Spec::isNotNull())->evaluate($account);
+            self::assertTrue($result->isError, $name . ': evaluation error, as a missing property');
+            self::assertSame(
+                sprintf('Property "%s" not found or not accessible on candidate of type "%s"', $name, ParityGuardedAccount::class),
+                $result->exception?->getMessage()
+            );
+        }
+        self::assertFalse(PropertyAccessor::hasProperty($account, 'id'), 'the promoted private id is not marked either');
+
+        // Dot notation stops at the unmarked segment
+        self::assertFalse(PropertyAccessor::hasProperty((object) ['account' => $account], 'account.passwordHash'));
+        self::assertNull(PropertyAccessor::getValue((object) ['account' => $account], 'account.passwordHash'));
+        self::assertSame('active', PropertyAccessor::getValue((object) ['account' => $account], 'account.status'));
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Property "passwordHash" not found or not accessible');
+        Spec::property('passwordHash', Spec::isNotNull())->isSatisfiedBy($account);
+    }
+
+    #[Test]
+    public function aDeltaCannotWriteAnUnmarkedPrivateProperty(): void
+    {
+        $repository = new InMemoryRepository();
+        $account = new ParityGuardedAccount(2);
+        $repository->put($account);
+
+        // Setter first (private property, public setter: no marker needed), marked property written directly
+        $repository->updateWithDelta($account, Spec::specify(ParityGuardedAccount::class)
+            ->where('email', Spec::is('Ann@Example.com'))
+            ->and('status', Spec::is('blocked')));
+        self::assertSame('ann@example.com', ReflectionUtils::getFieldValue($account, 'email'), 'the setter ran');
+        self::assertSame('blocked', ReflectionUtils::getFieldValue($account, 'status'));
+
+        foreach (['passwordHash' => 'pwned', 'failedLogins' => 0, 'id' => 99] as $name => $value) {
+            try {
+                SpecificationHelper::updateEntityState($account, Spec::property($name, Spec::is($value)));
+                self::fail($name . ' must not be written');
+            } catch (InvalidArgumentException $e) {
+                self::assertSame(
+                    sprintf('Property "%s" of %s is not public and not marked #[Specifiable]; it cannot be written by a delta specification', $name, ParityGuardedAccount::class),
+                    $e->getMessage()
+                );
+            }
+        }
+        self::assertSame('h4sh', ReflectionUtils::getFieldValue($account, 'passwordHash'), 'mass assignment refused');
+        self::assertSame(3, ReflectionUtils::getFieldValue($account, 'failedLogins'));
+        self::assertSame(2, $account->getEntityId());
+
+        // A missing property keeps its own message
+        try {
+            SpecificationHelper::updateEntityState($account, Spec::property('nope', Spec::is(1)));
+            self::fail('missing property');
+        } catch (InvalidArgumentException $e) {
+            self::assertStringContainsString('not found', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function aClassMarkerCoversOnlyThePropertiesDeclaredByThatClass(): void
+    {
+        // Marked parent, unmarked child: the parent's field is reachable, the child's own is not
+        $childOfMarked = new ParityChildOfMarked();
+        self::assertSame('base', PropertyAccessor::getValue($childOfMarked, 'baseSecret'));
+        self::assertTrue(PropertyAccessor::hasProperty($childOfMarked, 'baseSecret'));
+        self::assertNull(PropertyAccessor::getValue($childOfMarked, 'childSecret'));
+        self::assertFalse(PropertyAccessor::hasProperty($childOfMarked, 'childSecret'), 'the marker does not go down');
+
+        // Unmarked parent, marked child: the child's own field is reachable, the parent's is not
+        $markedChild = new ParityMarkedChildOfUnmarked();
+        self::assertSame('child', PropertyAccessor::getValue($markedChild, 'childSecret'));
+        self::assertTrue(PropertyAccessor::hasProperty($markedChild, 'childSecret'));
+        self::assertNull(PropertyAccessor::getValue($markedChild, 'baseSecret'));
+        self::assertFalse(PropertyAccessor::hasProperty($markedChild, 'baseSecret'), 'the marker does not go up');
+
+        // The same on the write side: ParityCustomer is marked, ParityVipCustomer is not
+        $vip = new ParityVipCustomer(7);
+        SpecificationHelper::updateEntityState($vip, Spec::property('secret', Spec::is('inherited')));
+        self::assertSame('inherited', ReflectionUtils::getFieldValue($vip, 'secret'), 'declared by the marked class');
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Property "vipSince" of ' . ParityVipCustomer::class . ' is not public and not marked #[Specifiable]');
+        SpecificationHelper::updateEntityState($vip, Spec::property('vipSince', Spec::is(new DateTimeImmutable())));
+    }
+
+    #[Test]
+    public function theALinqSpecifiableAttributeIsAcceptedByName(): void
+    {
+        // #[Antevemus\ALinq\Attributes\Specifiable] is recognized by name: no dependency on the ALinq package
+        $onClass = new ParityALinqMarkedClass();
+        self::assertSame('A1', PropertyAccessor::getValue($onClass, 'code'));
+        self::assertTrue(Spec::property('code', Spec::equalTo('A1'))->isSatisfiedBy($onClass));
+
+        $onProperty = new ParityALinqMarkedProperty();
+        self::assertSame('B2', PropertyAccessor::getValue($onProperty, 'code'));
+        self::assertFalse(PropertyAccessor::hasProperty($onProperty, 'other'), 'only the marked property');
+
+        self::assertTrue(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityALinqMarkedClass::class, 'code')));
+        self::assertTrue(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityALinqMarkedProperty::class, 'code')));
+        self::assertFalse(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityALinqMarkedProperty::class, 'other')));
+        self::assertTrue(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityGuardedAccount::class, 'status')));
+        self::assertFalse(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityGuardedAccount::class, 'passwordHash')));
+        self::assertSame(
+            [Specifiable::class, 'Antevemus\ALinq\Attributes\Specifiable'],
+            ReflectionUtils::SPECIFIABLE_ATTRIBUTES
+        );
+    }
+
+    #[Test]
+    public function aRangeOverAnUnmarkedPrivatePropertyIsNotAReadOracle(): void
+    {
+        // The probe of the 1.6.1 finding: a name from a request, a range moved character by character
+        $account = new ParityGuardedAccount(3);   // passwordHash = 'h4sh'
+        $range = static fn(string $from, string $to): ISpecification =>
+            Spec::greaterThanOrEqualTo($from)->and(Spec::lessThanOrEqualTo($to));
+        $wouldMatch = Spec::property('passwordHash', $range('a', 'z'));
+        $wouldMiss = Spec::property('passwordHash', $range('x', 'y'));
+        $prefix = Spec::property('passwordHash', Spec::startsWith('h'));
+
+        // Positive control: on the marked property the very same probe discriminates
+        self::assertTrue(Spec::property('status', $range('a', 'z'))->isSatisfiedBy($account));
+        self::assertFalse(Spec::property('status', $range('x', 'y'))->isSatisfiedBy($account));
+        self::assertTrue(Spec::property('status', Spec::startsWith('a'))->isSatisfiedBy($account));
+
+        // Negative: on the unmarked one both ranges give the same answer, which reveals nothing
+        $hit = $wouldMatch->evaluate($account);
+        $miss = $wouldMiss->evaluate($account);
+        self::assertTrue($hit->isError);
+        self::assertTrue($miss->isError);
+        self::assertSame($hit->exception?->getMessage(), $miss->exception?->getMessage());
+        self::assertSame($hit->exception?->getMessage(), $prefix->evaluate($account)->exception?->getMessage());
+        self::assertStringNotContainsString('h4sh', (string) $hit->exception?->getMessage());
+        self::assertFalse(Spec::not($wouldMatch)->evaluate($account)->isSatisfied, 'NOT does not approve it');
+        self::assertFalse(Spec::not($wouldMiss)->evaluate($account)->isSatisfied);
+
+        // A repository filter by it does not run (same exception for both ranges), nor the ALinq predicate
+        $repository = new InMemoryRepository([$account]);
+        $messages = [];
+        foreach ([$wouldMatch, $wouldMiss, $prefix] as $probe) {
+            try {
+                $repository->findAll($probe);
+                self::fail('the filter must not run over an unmarked private property');
+            } catch (InvalidArgumentException $e) {
+                $messages[] = $e->getMessage();
+            }
+            try {
+                ALinqSpecificationVisitor::createPredicate($probe)($account);
+                self::fail('the ALinq predicate must not run over an unmarked private property');
+            } catch (InvalidArgumentException $e) {
+                $messages[] = $e->getMessage();
+            }
+        }
+        self::assertCount(1, array_unique($messages), 'one answer for every probe');
+    }
+
+    #[Test]
+    public function theCompositePropertyReaderFollowsTheSameRule(): void
+    {
+        $reader = new class (ParityGuardedAccount::class) extends AbstractCompositeSpecification {
+            protected function isSpecifyingAllInstancesOfItsType(): bool
+            {
+                return true;
+            }
+
+            public function read(object $object, string $name): mixed
+            {
+                return $this->getPropertyValue($object, $name);
+            }
+        };
+        $account = new ParityGuardedAccount(4);
+
+        self::assertSame('active', $reader->read($account, 'status'));
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Property "passwordHash" not found on ' . ParityGuardedAccount::class);
+        $reader->read($account, 'passwordHash');
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -965,6 +1171,7 @@ final class DomianConcurrencyEntityUtilTest extends TestCase
 // Fixtures (the Domian test domain, reduced to what the transcribed tests use)
 ///////////////////////////////////////////////////////////////////////////////
 
+#[Specifiable]
 class ParityCustomer extends AbstractEntity
 {
     public int $age = 0;
@@ -1070,12 +1277,14 @@ final class ParityForeignEntity implements IEntity
     }
 }
 
+#[Specifiable]
 class ParityBase
 {
     private string $secret = 'base-private';
     protected int $prot = 7;
 }
 
+#[Specifiable]
 final class ParityChild extends ParityBase
 {
     private string $own = 'child-private';
@@ -1086,6 +1295,7 @@ final class ParityShadowed
     public string $exposed = 'pub';
     private string $name = 'private';
     private string $ghost = 'private';
+    #[Specifiable]
     private string $lazy;
 
     public function getName(): string
@@ -1147,6 +1357,7 @@ final class ParityImmutableClass
 }
 
 /** Java SomeStrictClass: private fields, constructor only, no accessors at all. */
+#[Specifiable]
 final class ParityStrictClass
 {
     public function __construct(private string $field1, private int $field2, private DateTimeImmutable $field3)
@@ -1155,6 +1366,7 @@ final class ParityStrictClass
 }
 
 /** Java SomeSetterOnlyClass: default constructor and setters. */
+#[Specifiable]
 final class ParitySetterOnlyClass
 {
     private string $field1 = '';
@@ -1179,6 +1391,7 @@ final class ParitySetterOnlyClass
 }
 
 /** Java SomeOnlySupportingStaticFactoryMethodClass: private constructor, static createInstance(). */
+#[Specifiable]
 final class ParityStaticFactoryOnlyClass
 {
     private function __construct(private string $field1, private int $field2, private DateTimeImmutable $field3)
@@ -1200,6 +1413,67 @@ final class ParityNormalizingClass
     {
         $this->code = strtoupper($code);
     }
+}
+
+/** 1.6.1: one marked and several unmarked non-public properties, no getters (oracle and mass-assignment probe). */
+final class ParityGuardedAccount extends AbstractEntity
+{
+    #[Specifiable]
+    private string $status = 'active';
+    private string $passwordHash = 'h4sh';
+    private string $email = '';
+    protected int $failedLogins = 3;
+
+    public function __construct(private int $id)
+    {
+        parent::__construct();
+    }
+
+    public function getEntityId(): int
+    {
+        return $this->id;
+    }
+
+    public function setEmail(string $email): void
+    {
+        $this->email = strtolower($email);
+    }
+}
+
+#[Specifiable]
+class ParityMarkedBase
+{
+    private string $baseSecret = 'base';
+}
+
+final class ParityChildOfMarked extends ParityMarkedBase
+{
+    private string $childSecret = 'child';
+}
+
+class ParityUnmarkedBase
+{
+    private string $baseSecret = 'base';
+}
+
+#[Specifiable]
+final class ParityMarkedChildOfUnmarked extends ParityUnmarkedBase
+{
+    private string $childSecret = 'child';
+}
+
+/** The ALinq marker, by name only (the ALinq package is not required). */
+#[\Antevemus\ALinq\Attributes\Specifiable]
+final class ParityALinqMarkedClass
+{
+    private string $code = 'A1';
+}
+
+final class ParityALinqMarkedProperty
+{
+    #[\Antevemus\ALinq\Attributes\Specifiable]
+    private string $code = 'B2';
+    private string $other = 'x';
 }
 
 /** Records the mode of every synchronizer call; nested calls are kept apart from the outermost ones. */
