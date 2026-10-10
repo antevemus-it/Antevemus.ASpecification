@@ -17,8 +17,10 @@ use Antevemus\ASpecification\Results\FailureSeverity;
  * - Helper methods for severity checking (isBlocking, isWarning, isLogOnly)
  * - Flexible string converter with fallback support
  * - Mapping to the FailureSeverity carried by engine failures (toSeverity, 1.5.0)
+ * - English values since 1.7.0 (`block`, `warn`, `log`); the Portuguese values of 1.6.x
+ *   (`bloquear`, `alertar`, `apenas_log`) are still read by fromOrDefault() (legacy)
  *
- * @version    1.5.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -27,9 +29,20 @@ use Antevemus\ASpecification\Results\FailureSeverity;
  */
 enum RuleAction: string
 {
-    case BLOCK = 'bloquear';
-    case WARN = 'alertar';
-    case LOG = 'apenas_log';
+    case BLOCK = 'block';
+    case WARN = 'warn';
+    case LOG = 'log';
+
+    /**
+     * Portuguese values used up to 1.6.x, mapped to the canonical value. Accepted on read by
+     * fromOrDefault() (catalog rows and failure metadata written before 1.7.0); never produced.
+     * Legacy since 1.7.0, removed in 2.0.0: store the English values (block, warn, log).
+     */
+    public const LEGACY_PORTUGUESE_VALUES = [
+        'bloquear' => 'block',
+        'alertar' => 'warn',
+        'apenas_log' => 'log',
+    ];
 
     /**
      * Checks if the action represents an impeding block.
@@ -79,7 +92,10 @@ enum RuleAction: string
     /**
      * Resolves the action from an input string, using the default fallback if invalid.
      *
-     * @param string|null $action Action string (e.g. 'bloquear', 'alertar', 'apenas_log')
+     * Accepts the canonical values (`block`, `warn`, `log`) and, as legacy, the Portuguese values of
+     * 1.6.x (`bloquear`, `alertar`, `apenas_log`), case-insensitively.
+     *
+     * @param string|null $action Action string (e.g. 'block', 'warn', 'log'; legacy 'bloquear', 'alertar', 'apenas_log')
      * @param self $default Default action if value is null or unrecognized
      * @return self
      */
@@ -89,6 +105,9 @@ enum RuleAction: string
             return $default;
         }
 
-        return self::tryFrom(strtolower(trim($action))) ?? $default;
+        $key = strtolower(trim($action));
+        $legacy = self::LEGACY_PORTUGUESE_VALUES[$key] ?? null;
+
+        return self::tryFrom($key) ?? ($legacy !== null ? self::from($legacy) : $default);
     }
 }

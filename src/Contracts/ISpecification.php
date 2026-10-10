@@ -31,7 +31,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * implementing ISpecification directly (without extending AbstractSpecification) must add them.
  *
  * @template T
- * @version    1.6.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -92,7 +92,7 @@ interface ISpecification
      *
      * <code>
      * Spec::specify(Contract::class)
-     *     ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+     *     ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getIntValue(), $rule->getCode(), $rule->getViolationMessage());
      * </code>
      *
      * An exception thrown inside the closure propagates from `isSatisfiedBy()` and becomes an

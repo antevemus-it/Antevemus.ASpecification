@@ -23,9 +23,10 @@ use InvalidArgumentException;
  * - Filtering by operational scope, business scenario, and active status
  * - Exact scope/scenario matching for documents (no cross-scope leakage); null scenario = scope-global only
  * - Native descending priority sorting
- * - Applicability filters (codigo_produto, codigo_plano, data_referencia) read from the rule's parametros (RN-17)
+ * - Applicability filters (product_code, plan_code, reference_date) read from the rule's parameters (RN-17);
+ *   the Portuguese keys of 1.6.x are read as legacy when the English key is absent (1.7.0)
  *
- * @version    1.4.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,13 +36,23 @@ use InvalidArgumentException;
 class InMemoryRuleCatalog implements IRuleCatalog
 {
     /** Reserved `$filters` key: product code the validation is about (RN-17). */
-    public const FILTER_PRODUCT = 'codigo_produto';
+    public const FILTER_PRODUCT = 'product_code';
 
     /** Reserved `$filters` key: plan code the validation is about (RN-17). */
-    public const FILTER_PLAN = 'codigo_plano';
+    public const FILTER_PLAN = 'plan_code';
 
     /** Reserved `$filters` key: reference date for the validity window (RN-17). */
-    public const FILTER_REFERENCE_DATE = 'data_referencia';
+    public const FILTER_REFERENCE_DATE = 'reference_date';
+
+    /**
+     * Portuguese names of the reserved `$filters` keys up to 1.6.x (canonical => legacy), read when the
+     * English key is absent; removed in 2.0.0.
+     */
+    public const LEGACY_FILTER_KEYS = [
+        self::FILTER_PRODUCT => 'codigo_produto',
+        self::FILTER_PLAN => 'codigo_plano',
+        self::FILTER_REFERENCE_DATE => 'data_referencia',
+    ];
 
     /** @var list<IRuleDefinition> */
     private array $rules = [];
@@ -88,7 +99,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
     }
 
     /** {@inheritdoc} */
-    public function findRules(string $escopo, ?string $cenario = null, array $filters = []): array
+    public function findRules(string $scope, ?string $scenario = null, array $filters = []): array
     {
         $matched = [];
 
@@ -97,17 +108,17 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
-            $ruleEscopo = $rule->getEscopo();
+            $ruleScope = $rule->getScope();
             // Global rule (null scope) or matching scope
-            if ($ruleEscopo !== null && $ruleEscopo !== '' && $ruleEscopo !== $escopo) {
+            if ($ruleScope !== null && $ruleScope !== '' && $ruleScope !== $scope) {
                 continue;
             }
 
-            $ruleCenario = $rule->getCenario();
+            $ruleScenario = $rule->getScenario();
             // Rule without scenario applies to the whole scope. A rule bound to a scenario only
             // applies when that exact scenario is requested: validating without a scenario means
             // "scope-global rules only", never "every scenario at once".
-            if ($ruleCenario !== null && $ruleCenario !== '' && ($cenario === null || $ruleCenario !== $cenario)) {
+            if ($ruleScenario !== null && $ruleScenario !== '' && ($scenario === null || $ruleScenario !== $scenario)) {
                 continue;
             }
 
@@ -119,13 +130,13 @@ class InMemoryRuleCatalog implements IRuleCatalog
         }
 
         // Sort by descending priority
-        usort($matched, fn(IRuleDefinition $a, IRuleDefinition $b) => $b->getPrioridade() <=> $a->getPrioridade());
+        usort($matched, fn(IRuleDefinition $a, IRuleDefinition $b) => $b->getPriority() <=> $a->getPriority());
 
         return $matched;
     }
 
     /** {@inheritdoc} */
-    public function findDocumentRules(string $escopo, ?string $cenario = null): array
+    public function findDocumentRules(string $scope, ?string $scenario = null): array
     {
         $matched = [];
 
@@ -134,13 +145,13 @@ class InMemoryRuleCatalog implements IRuleCatalog
                 continue;
             }
 
-            if ($this->documentRuleMatches($docRule, $escopo, $cenario)) {
+            if ($this->documentRuleMatches($docRule, $scope, $scenario)) {
                 $matched[] = $docRule;
             }
         }
 
         // Sort by order column
-        usort($matched, fn(IDocumentRuleDefinition $a, IDocumentRuleDefinition $b) => $a->getOrdem() <=> $b->getOrdem());
+        usort($matched, fn(IDocumentRuleDefinition $a, IDocumentRuleDefinition $b) => $a->getSortOrder() <=> $b->getSortOrder());
 
         return $matched;
     }
@@ -148,12 +159,12 @@ class InMemoryRuleCatalog implements IRuleCatalog
     /**
      * Decides whether a rule applies under the applicability filters (RN-17, BUG-20261007-ZB6A).
      *
-     * Reads the rule's restrictions from `getParametros()` (`codigo_produto`, `codigo_plano`,
-     * `data_inicio_vigencia`, `data_fim_vigencia`) and the reserved keys of `$filters`, with AND
-     * semantics mirroring scope and scenario: a restriction only passes when the filter brings the
-     * same value, so a missing filter excludes every restricted rule and never excludes a global one.
-     * The validity window is evaluated only when `data_referencia` is given (inclusive, by day).
-     * Unknown filter keys are ignored.
+     * Reads the rule's restrictions from `getParameters()` (`product_code`, `plan_code`, `valid_from`,
+     * `valid_until`) and the reserved keys of `$filters`, with AND semantics mirroring scope and
+     * scenario: a restriction only passes when the filter brings the same value, so a missing filter
+     * excludes every restricted rule and never excludes a global one. The validity window is evaluated
+     * only when `reference_date` is given (inclusive, by day). Unknown filter keys are ignored. The
+     * Portuguese keys of 1.6.x are read, in both arrays, when the English key is absent.
      *
      * @param IRuleDefinition $rule
      * @param array<string, mixed> $filters
@@ -162,36 +173,62 @@ class InMemoryRuleCatalog implements IRuleCatalog
      */
     protected function ruleMatchesFilters(IRuleDefinition $rule, array $filters): bool
     {
-        $restrictions = $rule->getParametros();
+        $restrictions = $rule->getParameters();
 
         foreach ([self::FILTER_PRODUCT, self::FILTER_PLAN] as $key) {
-            $required = $restrictions[$key] ?? null;
+            $required = self::restriction($restrictions, $key);
             if ($required === null || $required === '') {
                 continue;
             }
-            $given = $filters[$key] ?? null;
+            $given = self::filterValue($filters, $key);
             if (!is_scalar($given) || !is_scalar($required) || (string) $given !== (string) $required) {
                 return false;
             }
         }
 
-        $reference = $filters[self::FILTER_REFERENCE_DATE] ?? null;
+        $reference = self::filterValue($filters, self::FILTER_REFERENCE_DATE);
         if ($reference === null) {
             return true;
         }
         $day = self::toDay($reference, self::FILTER_REFERENCE_DATE);
 
-        $start = $restrictions['data_inicio_vigencia'] ?? null;
-        if ($start !== null && $start !== '' && self::toDay($start, 'data_inicio_vigencia') > $day) {
+        $start = self::restriction($restrictions, 'valid_from');
+        if ($start !== null && $start !== '' && self::toDay($start, 'valid_from') > $day) {
             return false;
         }
 
-        $end = $restrictions['data_fim_vigencia'] ?? null;
-        if ($end !== null && $end !== '' && self::toDay($end, 'data_fim_vigencia') < $day) {
+        $end = self::restriction($restrictions, 'valid_until');
+        if ($end !== null && $end !== '' && self::toDay($end, 'valid_until') < $day) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Reads a reserved `$filters` key, falling back to its Portuguese name of 1.6.x.
+     *
+     * @param array<string, mixed> $filters
+     * @param string $key One of the FILTER_* constants
+     * @return mixed
+     */
+    public static function filterValue(array $filters, string $key): mixed
+    {
+        return $filters[$key] ?? (isset(self::LEGACY_FILTER_KEYS[$key]) ? ($filters[self::LEGACY_FILTER_KEYS[$key]] ?? null) : null);
+    }
+
+    /**
+     * Reads an applicability restriction from the rule parameters, falling back to its Portuguese name of 1.6.x.
+     *
+     * @param array<string, mixed> $parameters
+     * @param string $key One of RuleDefinition::APPLICABILITY_COLUMNS
+     * @return mixed
+     */
+    private static function restriction(array $parameters, string $key): mixed
+    {
+        $legacy = RuleDefinition::LEGACY_APPLICABILITY_COLUMNS[$key] ?? null;
+
+        return $parameters[$key] ?? ($legacy !== null ? ($parameters[$legacy] ?? null) : null);
     }
 
     /**
@@ -231,21 +268,21 @@ class InMemoryRuleCatalog implements IRuleCatalog
      * an identifier and never takes part in matching, so nothing can leak between scopes.
      *
      * @param IDocumentRuleDefinition $docRule
-     * @param string $escopo
-     * @param string|null $cenario
+     * @param string $scope
+     * @param string|null $scenario
      * @return bool
      */
-    protected function documentRuleMatches(IDocumentRuleDefinition $docRule, string $escopo, ?string $cenario): bool
+    protected function documentRuleMatches(IDocumentRuleDefinition $docRule, string $scope, ?string $scenario): bool
     {
-        if ($docRule->getEscopo() !== $escopo) {
+        if ($docRule->getScope() !== $scope) {
             return false;
         }
 
-        $docCenario = $docRule->getCenario();
-        if ($docCenario === null || $docCenario === '') {
+        $docScenario = $docRule->getScenario();
+        if ($docScenario === null || $docScenario === '') {
             return true;
         }
 
-        return $cenario !== null && $docCenario === $cenario;
+        return $scenario !== null && $docScenario === $scenario;
     }
 }

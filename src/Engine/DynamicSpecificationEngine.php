@@ -27,8 +27,9 @@ use Antevemus\ASpecification\Spec;
  * - Catalog validation mode (1.6.0): one RuleCompilationWarning per compiled rule that is
  *   structurally a contradiction (never satisfied) or a tautology (never fails); reported through
  *   getCompilationWarnings(), never blocking, never part of the verdict
+ * - English parameter names since 1.7.0 (`scope:`, `scenario:`)
  *
- * @version    1.6.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -111,11 +112,11 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     /** {@inheritdoc} */
     public function validate(
         object|array $target,
-        string $escopo,
-        ?string $cenario = null,
+        string $scope,
+        ?string $scenario = null,
         array $context = []
     ): RuleEngineVerdict {
-        $specification = $this->compileSpecification($escopo, $cenario, $context);
+        $specification = $this->compileSpecification($scope, $scenario, $context);
         $result = $specification->evaluate($target);
 
         return RuleEngineVerdict::fromSpecificationResult($result);
@@ -123,15 +124,15 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
 
     /** {@inheritdoc} */
     public function compileSpecification(
-        string $escopo,
-        ?string $cenario = null,
+        string $scope,
+        ?string $scenario = null,
         array $context = []
     ): ISpecification {
         $specs = [];
         $this->compilationWarnings = [];
 
         // 1. Load and compile business rules
-        $rules = $this->catalog->findRules($escopo, $cenario, $context);
+        $rules = $this->catalog->findRules($scope, $scenario, $context);
         foreach ($rules as $rule) {
             $compiled = $this->registry->buildSpecification($rule);
             if ($this->catalogValidation) {
@@ -144,7 +145,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         }
 
         // 2. Load and compile mandatory document requirements
-        $docRules = $this->catalog->findDocumentRules($escopo, $cenario);
+        $docRules = $this->catalog->findDocumentRules($scope, $scenario);
         if (!empty($docRules)) {
             $specs[] = $this->documentBuilder->build($docRules, $context);
         }

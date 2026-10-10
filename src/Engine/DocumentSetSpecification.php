@@ -19,7 +19,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * A failing set emits ONE aggregated failure (`DOC_SET_<KEY>`) listing the accepted documents,
  * instead of one failure per document, so the verdict reports one blocked requirement.
  *
- * @version    1.5.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -29,7 +29,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 final class DocumentSetSpecification extends AbstractSpecification
 {
     /**
-     * @param string $setKey Set identifier (codigo_set_alternativas, or the group code for implicit sets)
+     * @param string $setKey Set identifier (the alternative_set_code of its documents)
      * @param DocumentRequirementMode $mode ANY or ONE_OF_SET
      * @param list<DocumentLeafSpecification> $leaves Documents belonging to the set
      */
@@ -87,7 +87,7 @@ final class DocumentSetSpecification extends AbstractSpecification
         try {
             [$applicable, $present] = $this->tally($candidate);
         } catch (\Throwable $e) {
-            $error = SpecificationResult::error($e, 'DocumentRuleSet:' . $this->setKey, 'documentos_set.' . $this->setKey, $this->getFailureCode());
+            $error = SpecificationResult::error($e, 'DocumentRuleSet:' . $this->setKey, 'document_sets.' . $this->setKey, $this->getFailureCode());
             // A document requirement always blocks: its failures, errors included, are ERROR (1.5.0).
             return new SpecificationResult(false, [$error->failures[0]->withSeverity(FailureSeverity::ERROR)], true, $e);
         }
@@ -111,9 +111,18 @@ final class DocumentSetSpecification extends AbstractSpecification
             message: $message,
             code: $this->getFailureCode(),
             ruleName: 'DocumentRuleSet:' . $this->setKey,
-            property: 'documentos_set.' . $this->setKey,
+            property: 'document_sets.' . $this->setKey,
             metadata: [
-                'acao' => 'bloquear',
+                'action' => RuleAction::BLOCK->value,
+                'alternative_set' => $this->setKey,
+                'mode' => $this->mode->value,
+                'accepted_documents' => $accepted,
+                'codes' => $codes,
+                'present' => $presentTypes,
+                'expected' => $this->mode === DocumentRequirementMode::ANY ? '>=1' : 1,
+                'received' => count($present),
+                // Legacy Portuguese keys, removed in 2.0.0.
+                'acao' => RuleAction::BLOCK->value,
                 'set_alternativas' => $this->setKey,
                 'modo' => $this->mode->value,
                 'documentos_aceitos' => $accepted,

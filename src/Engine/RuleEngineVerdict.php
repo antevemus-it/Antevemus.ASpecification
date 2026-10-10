@@ -27,8 +27,10 @@ use Countable;
  *   the transition is forbidden. `canProceed()` is its negation.
  * - An evaluation error (a rule that could not be evaluated: missing property, throwing getter,
  *   incompatible type) is ALWAYS a blocking failure, regardless of the rule's configured action.
+ * - The action is read from the failure metadata (`acao`, `acao_ao_violar`, `action`) with
+ *   RuleAction::fromOrDefault(): English values (1.7.0) and the legacy Portuguese ones are triaged alike.
  *
- * @version    1.2.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -39,9 +41,9 @@ final readonly class RuleEngineVerdict implements Countable
 {
     /**
      * @param bool $isSatisfied True if no failure was registered
-     * @param list<SpecificationFailure> $blockingFailures Violations with 'bloquear' (block) action
-     * @param list<SpecificationFailure> $warningFailures Violations with 'alertar' (warn) action
-     * @param list<SpecificationFailure> $logFailures Violations with 'apenas_log' (log) action
+     * @param list<SpecificationFailure> $blockingFailures Violations with the 'block' action
+     * @param list<SpecificationFailure> $warningFailures Violations with the 'warn' action
+     * @param list<SpecificationFailure> $logFailures Violations with the 'log' action
      * @param SpecificationResult $specificationResult Original result from Notification Pattern
      */
     public function __construct(
@@ -93,10 +95,11 @@ final readonly class RuleEngineVerdict implements Countable
                 continue;
             }
 
-            $actionRaw = $failure->metadata['acao']
+            $actionRaw = $failure->metadata['action']
+                ?? $failure->metadata['violation_action']
+                ?? $failure->metadata['acao']
                 ?? $failure->metadata['acao_ao_violar']
-                ?? $failure->metadata['action']
-                ?? 'bloquear';
+                ?? RuleAction::BLOCK;
 
             $action = $actionRaw instanceof RuleAction
                 ? $actionRaw
@@ -186,7 +189,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Returns all failures with 'bloquear' (block) action.
+     * Returns all failures with the 'block' action.
      *
      * @return list<SpecificationFailure>
      */
@@ -196,7 +199,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Returns all failures with 'alertar' (warn) action.
+     * Returns all failures with the 'warn' action.
      *
      * @return list<SpecificationFailure>
      */
@@ -206,7 +209,7 @@ final readonly class RuleEngineVerdict implements Countable
     }
 
     /**
-     * Returns all failures with 'apenas_log' (log) action.
+     * Returns all failures with the 'log' action.
      *
      * @return list<SpecificationFailure>
      */

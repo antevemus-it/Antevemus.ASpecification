@@ -15,7 +15,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * DocumentLeafSpecification - Presence of One Required Document, with Optional Guard
  *
  * Leaf of the document requirement matrix. Distinguishes three states of a document for a
- * candidate: NOT APPLICABLE (the guard `condicional_expressao` does not hold, the document is
+ * candidate: NOT APPLICABLE (the guard `condition_expression` does not hold, the document is
  * not required), PRESENT and MISSING. Set specifications (ANY / ONE_OF_SET) only count applicable
  * documents; an ALL leaf is satisfied when the document is not applicable or present.
  *
@@ -23,7 +23,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Anything else is rejected at construction time (InvalidConditionalExpressionException): a guard
  * that cannot be understood must never silently require or waive a document.
  *
- * @version    1.5.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,7 +60,7 @@ final class DocumentLeafSpecification extends AbstractSpecification
      */
     public static function parseGuard(IDocumentRuleDefinition $rule): ?array
     {
-        $expr = $rule->getCondicionalExpressao();
+        $expr = $rule->getConditionExpression();
         if ($expr === null || trim($expr) === '') {
             return null;
         }
@@ -68,8 +68,8 @@ final class DocumentLeafSpecification extends AbstractSpecification
         if (!preg_match(self::GUARD_PATTERN, trim($expr), $m)) {
             throw new InvalidConditionalExpressionException(
                 $expr,
-                $rule->getCodigoTipoDocumento(),
-                $rule->getGrupoCodigo()
+                $rule->getDocumentTypeCode(),
+                $rule->getGroupCode()
             );
         }
 
@@ -85,13 +85,13 @@ final class DocumentLeafSpecification extends AbstractSpecification
     /** @return string Technical document type code */
     public function getDocumentType(): string
     {
-        return $this->rule->getCodigoTipoDocumento();
+        return $this->rule->getDocumentTypeCode();
     }
 
     /** @return string Failure code emitted when the document is missing (DOC_<TYPE>) */
     public function getFailureCode(): string
     {
-        return 'DOC_' . strtoupper($this->rule->getCodigoTipoDocumento());
+        return 'DOC_' . strtoupper($this->rule->getDocumentTypeCode());
     }
 
     /**
@@ -135,7 +135,7 @@ final class DocumentLeafSpecification extends AbstractSpecification
             return false;
         }
 
-        return $this->evaluator->hasDocument($candidate, $this->rule->getCodigoTipoDocumento(), $this->context);
+        return $this->evaluator->hasDocument($candidate, $this->rule->getDocumentTypeCode(), $this->context);
     }
 
     /** {@inheritdoc} */
@@ -158,7 +158,7 @@ final class DocumentLeafSpecification extends AbstractSpecification
                 return SpecificationResult::satisfied();
             }
         } catch (\Throwable $e) {
-            $error = SpecificationResult::error($e, 'DocumentRule:' . $this->rule->getGrupoCodigo(), 'documentos.' . $this->getDocumentType(), $this->getFailureCode());
+            $error = SpecificationResult::error($e, 'DocumentRule:' . $this->rule->getGroupCode(), 'documents.' . $this->getDocumentType(), $this->getFailureCode());
             // A document requirement always blocks: its failures, errors included, are ERROR (1.5.0).
             return new SpecificationResult(false, [$error->failures[0]->withSeverity(FailureSeverity::ERROR)], true, $e);
         }
@@ -166,13 +166,18 @@ final class DocumentLeafSpecification extends AbstractSpecification
         return SpecificationResult::failure(
             message: sprintf('Required document missing: %s.', $this->getDocumentType()),
             code: $this->getFailureCode(),
-            ruleName: 'DocumentRule:' . $this->rule->getGrupoCodigo(),
-            property: 'documentos.' . $this->getDocumentType(),
+            ruleName: 'DocumentRule:' . $this->rule->getGroupCode(),
+            property: 'documents.' . $this->getDocumentType(),
             metadata: [
-                'acao' => 'bloquear',
+                'action' => RuleAction::BLOCK->value,
+                'document_type' => $this->getDocumentType(),
+                'group_code' => $this->rule->getGroupCode(),
+                'requirement_mode' => $this->rule->getRequirementMode()->value,
+                // Legacy Portuguese keys, removed in 2.0.0.
+                'acao' => RuleAction::BLOCK->value,
                 'tipo_documento' => $this->getDocumentType(),
-                'grupo' => $this->rule->getGrupoCodigo(),
-                'regra' => $this->rule->getRegraObrigatoriedade()->value,
+                'grupo' => $this->rule->getGroupCode(),
+                'regra' => $this->rule->getRequirementMode()->value,
             ],
             severity: FailureSeverity::ERROR
         );

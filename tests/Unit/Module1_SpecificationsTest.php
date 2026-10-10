@@ -605,7 +605,7 @@ class Module1_SpecificationsTest extends TestCase
 
         // Rule engine: report the rules that can never pass (or never fail), without blocking
         $catalog = new InMemoryRuleCatalog();
-        $catalog->addRule(new RuleDefinition(codigo: 'R-12', nome: 'Active and inactive', tipoRegra: 'status_both', escopo: 'rental_contract'));
+        $catalog->addRule(new RuleDefinition(code: 'R-12', name: 'Active and inactive', ruleType: 'status_both', scope: 'rental_contract'));
         $registry = Spec::ruleRegistry()->registerClosure('status_both', fn() => $active->and($inactive));
 
         $engine = Spec::engine($catalog, $registry)->withCatalogValidation();

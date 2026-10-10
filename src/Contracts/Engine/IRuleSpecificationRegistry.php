@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Dynamic registration of Closure-based specification factories
  * - Seamless resolution and compilation of target specifications
  *
- * @version    1.1.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -38,27 +38,27 @@ interface IRuleSpecificationRegistry
     /**
      * Registers a concise specification factory via a Closure.
      *
-     * @param string $tipoRegra Technical rule type key
+     * @param string $ruleType Technical rule type key
      * @param Closure(IRuleDefinition): ISpecification $factory
      * @return self
      */
-    public function registerClosure(string $tipoRegra, Closure $factory): self;
+    public function registerClosure(string $ruleType, Closure $factory): self;
 
     /**
      * Retrieves the handler responsible for processing the specified rule type.
      *
-     * @param string $tipoRegra Technical rule type key
+     * @param string $ruleType Technical rule type key
      * @return IRuleSpecificationHandler|null
      */
-    public function getHandler(string $tipoRegra): ?IRuleSpecificationHandler;
+    public function getHandler(string $ruleType): ?IRuleSpecificationHandler;
 
     /**
      * Checks if a handler is registered for the specified rule type.
      *
-     * @param string $tipoRegra Technical rule type key
+     * @param string $ruleType Technical rule type key
      * @return bool
      */
-    public function hasHandler(string $tipoRegra): bool;
+    public function hasHandler(string $ruleType): bool;
 
     /**
      * Compiles and returns the specification for the provided rule definition.

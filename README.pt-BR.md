@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.6.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.7.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.7.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2877%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(3281%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -236,7 +236,7 @@ echo InstrumentationUtils::formatMemoryUsage() . "\n";
 
 Permite compilar regras de negócio dinâmicas e matrizes de documentos obrigatórios diretamente a partir de tabelas relacionais de catálogo (ex.: PostgreSQL, MySQL):
 
-> **Nota de vocabulário.** O contrato de dados do motor de regras é em português por desenho (`escopo`, `cenario`, `acao`, `fundamento_legal`, `getValorInteiro()`, `getMensagemViolacao()`, ações `bloquear`/`alertar`/`apenas_log`): espelha o esquema do catálogo relacional que ele hidrata, um domínio jurídico brasileiro. As APIs de orquestração e veredito (`validate()`, `hasBlockingErrors()`, `canProceed()`) são em inglês. Não há previsão de aliases em inglês para o contrato de dados.
+> **Nota de vocabulário.** Desde a v1.7.0 o motor de regras é inteiro em inglês: getters (`getCode()`, `getIntValue()`, `getViolationMessage()`, `getLegalBasis()`), parâmetros nomeados (`scope:`, `scenario:`), chaves do `fromArray()` e colunas do catálogo (`code`, `rule_type`, `violation_action`, `product_code`, `valid_from`...), chaves de contexto (`product_code`, `plan_code`, `reference_date`) e os valores de ação `block`/`warn`/`log`. O vocabulário em português da v1.6 é legado até a v2.0.0: os getters em português continuam em `RuleDefinition`/`DocumentRuleDefinition` como aliases depreciados, o `fromArray()`, os catálogos e o `RuleAction::fromOrDefault()` ainda leem as chaves e os valores de ação em português, e o `PdoRuleCatalog` lê tabelas criadas com o esquema antigo por dois presets (abaixo). Argumentos nomeados em português (`escopo:`) deixaram de funcionar, porque o PHP não tem alias de parâmetro; a tabela completa está no [CHANGELOG](CHANGELOG.md).
 
 ```php
 use Antevemus\ASpecification\Spec;
@@ -245,7 +245,7 @@ use Antevemus\ASpecification\Spec;
 $registry = Spec::ruleRegistry();
 $registry->registerClosure('max_ocorrencias_por_contrato', function ($rule) {
     return Spec::specify(Contrato::class)
-        ->must(fn($c) => $c->getOcorrenciasCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+        ->must(fn($c) => $c->getOcorrenciasCount() <= $rule->getIntValue(), $rule->getCode(), $rule->getViolationMessage());
 });
 
 // 2. Cria a Engine dinâmica conectada ao Catálogo
@@ -254,12 +254,12 @@ $engine = Spec::engine($meuCatalogoRepository, $registry);
 // 3. Valida a entidade para o escopo e cenário desejados
 $verdict = $engine->validate(
     target: $contrato,
-    escopo: 'contrato_locacao',
-    cenario: 'contrato_locacao_ativacao'
+    scope: 'contrato_locacao',
+    scenario: 'contrato_locacao_ativacao'
 );
 
 if ($verdict->hasBlockingErrors()) {
-    // Violações graves com ação 'bloquear' (ex: HTTP 403 Forbidden)
+    // Violações graves com ação 'block' (ex: HTTP 403 Forbidden)
     return response()->json([
         'status' => 403,
         'erros' => $verdict->getBlockingFailures(),
@@ -268,9 +268,32 @@ if ($verdict->hasBlockingErrors()) {
 }
 
 if ($verdict->hasWarnings()) {
-    // Alertas não impeditivos com ação 'alertar'
+    // Alertas não impeditivos com ação 'warn'
     NotificationService::dispatch($verdict->getWarningFailures());
 }
+```
+
+O catálogo pode morar em tabelas relacionais: o `PdoRuleCatalog` lê as tabelas do DDL de referência [`resources/sql/rule_catalog.ansi.sql`](resources/sql/rule_catalog.ansi.sql) (`business_rule`, `document_requirement_group`, `document_requirement`) em SQL ANSI portável e parametrizado, e responde exatamente como o catálogo em memória. Nomes de tabela e de coluna são configuráveis (`$tables`, `$columns`: coluna canônica => coluna real):
+
+```php
+use Antevemus\ASpecification\Engine\PdoRuleCatalog;
+
+// Opcional: lê só as regras vigentes numa data (janela de vigência filtrada no SQL)
+$catalogo = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
+
+// Tabelas criadas com o esquema em português da v1.5/v1.6 (regra_negocio...) continuam legíveis, sem migração
+$catalogoLegado = new PdoRuleCatalog(
+    $pdo,
+    'rental_guarantee',
+    PdoRuleCatalog::legacyPortugueseTables(),
+    PdoRuleCatalog::legacyPortugueseColumns()
+);
+
+$verdict = Spec::engine($catalogo, $registry)->validate(
+    target: $contrato,
+    scope: 'contrato_locacao',
+    context: ['product_code' => 'PROD_A']
+);
 ```
 
 ---
@@ -547,7 +570,7 @@ Spec::greaterThan(5)->or(Spec::lessThan(10))->isTautology(); // false: not prove
 
 // Rule engine: report the rules that can never pass (or never fail), without blocking
 $catalog = new InMemoryRuleCatalog();
-$catalog->addRule(new RuleDefinition(codigo: 'R-12', nome: 'Active and inactive', tipoRegra: 'status_both', escopo: 'rental_contract'));
+$catalog->addRule(new RuleDefinition(code: 'R-12', name: 'Active and inactive', ruleType: 'status_both', scope: 'rental_contract'));
 $registry = Spec::ruleRegistry()->registerClosure('status_both', fn() => $active->and($inactive));
 
 $engine = Spec::engine($catalog, $registry)->withCatalogValidation();
@@ -674,20 +697,20 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina:
 • [SUITE] Módulo 8: Notification Pattern & SpecificationResult... ✅ PASS (133 asserções)
 • [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (203 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
-• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (252 asserções)
+• [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (409 asserções)
 • [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (459 asserções)
 • [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 asserções)
 • [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (263 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (213 asserções)
-• [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (303 asserções)
+• [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (550 asserções)
 
 ====================================================================
  RESULTADO FINAL: 16/16 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 2877 | TEMPO: ~2s | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 3281 | TEMPO: ~2s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 237 testes e 5.006 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 237 testes e 5.410 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.

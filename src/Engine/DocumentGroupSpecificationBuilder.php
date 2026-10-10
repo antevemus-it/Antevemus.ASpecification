@@ -22,14 +22,14 @@ use Antevemus\ASpecification\Spec;
  * - Pluggable document presence evaluator (IDocumentPresenceEvaluator)
  * - Intelligent default mechanism for inspecting documents in domain entities or arrays
  * - Alternative document sets (e.g. Tax ID or Passport or Driver License); an ANY / ONE_OF_SET rule
- *   without `codigo_set_alternativas` is rejected at compilation (MissingAlternativeSetException),
+ *   without `alternative_set_code` is rejected at compilation (MissingAlternativeSetException),
  *   mirroring the relational catalog constraint, never grouped by guesswork
  * - Conditional guard predicates (e.g., rental_type <> seasonal): a document whose guard does not
  *   hold is NOT APPLICABLE and leaves the set count; an unsupported guard expression is rejected at
  *   compilation (InvalidConditionalExpressionException), never silently applied
  * - One aggregated failure per failing set, listing the accepted documents
  *
- * @version    1.2.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,7 +75,7 @@ class DocumentGroupSpecificationBuilder
             $leafSpec = $this->createDocumentLeafSpec($rule, $context);
             $entry = ['rule' => $rule, 'spec' => $leafSpec];
 
-            match ($rule->getRegraObrigatoriedade()) {
+            match ($rule->getRequirementMode()) {
                 DocumentRequirementMode::ALL => $allSpecs[] = $leafSpec,
                 DocumentRequirementMode::ANY => $anySets[$this->resolveSetKey($rule)][] = $entry,
                 DocumentRequirementMode::ONE_OF_SET => $oneOfSets[$this->resolveSetKey($rule)][] = $entry,
@@ -100,9 +100,9 @@ class DocumentGroupSpecificationBuilder
     }
 
     /**
-     * Resolves the set an ANY / ONE_OF_SET rule belongs to: its declared `codigo_set_alternativas`.
+     * Resolves the set an ANY / ONE_OF_SET rule belongs to: its declared `alternative_set_code`.
      * A rule in one of those modes without a set is a catalog error and is refused, exactly as the
-     * relational catalog refuses it (`regra_obrigatoriedade = 'all' OR codigo_set_alternativas IS NOT NULL`).
+     * relational catalog refuses it (`requirement_mode = 'all' OR alternative_set_code IS NOT NULL`).
      *
      * @param IDocumentRuleDefinition $rule
      * @return string
@@ -110,15 +110,15 @@ class DocumentGroupSpecificationBuilder
      */
     protected function resolveSetKey(IDocumentRuleDefinition $rule): string
     {
-        $declared = $rule->getCodigoSetAlternativas();
+        $declared = $rule->getAlternativeSetCode();
         if ($declared !== null && trim($declared) !== '') {
             return trim($declared);
         }
 
         throw new MissingAlternativeSetException(
-            $rule->getRegraObrigatoriedade()->value,
-            $rule->getCodigoTipoDocumento(),
-            $rule->getGrupoCodigo()
+            $rule->getRequirementMode()->value,
+            $rule->getDocumentTypeCode(),
+            $rule->getGroupCode()
         );
     }
 
@@ -178,13 +178,26 @@ class DocumentGroupSpecificationBuilder
     {
         return new class implements IDocumentPresenceEvaluator {
             /** {@inheritdoc} */
-            public function hasDocument(object|array $target, string $codigoTipoDocumento, array $context = []): bool
+            public function hasDocument(object|array $target, string $documentTypeCode, array $context = []): bool
             {
-                $tipo = strtolower(trim($codigoTipoDocumento));
+                $tipo = strtolower(trim($documentTypeCode));
 
+                // English names are canonical since 1.7.0 (hasDocument(), getDocuments(),
+                // ->documents, ['documents']); the Portuguese ones are read as legacy until 2.0.0.
                 if (is_object($target)) {
                     if (method_exists($target, 'hasDocument')) {
                         return (bool) $target->hasDocument($tipo);
+                    }
+                    if (method_exists($target, 'getDocuments')) {
+                        $docs = $target->getDocuments();
+                        if (is_array($docs)) {
+                            return in_array($tipo, array_map('strtolower', $docs), true)
+                                || isset($docs[$tipo]);
+                        }
+                    }
+                    if (isset($target->documents) && is_array($target->documents)) {
+                        return in_array($tipo, array_map('strtolower', $target->documents), true)
+                            || isset($target->documents[$tipo]);
                     }
                     if (method_exists($target, 'hasDocumento')) {
                         return (bool) $target->hasDocumento($tipo);
@@ -203,6 +216,10 @@ class DocumentGroupSpecificationBuilder
                 }
 
                 if (is_array($target)) {
+                    if (isset($target['documents']) && is_array($target['documents'])) {
+                        return in_array($tipo, array_map('strtolower', $target['documents']), true)
+                            || isset($target['documents'][$tipo]);
+                    }
                     if (isset($target['documentos']) && is_array($target['documentos'])) {
                         return in_array($tipo, array_map('strtolower', $target['documentos']), true)
                             || isset($target['documentos'][$tipo]);

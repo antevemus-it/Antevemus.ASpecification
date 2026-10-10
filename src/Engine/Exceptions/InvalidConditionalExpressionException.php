@@ -8,11 +8,11 @@ namespace Antevemus\ASpecification\Engine\Exceptions;
  * InvalidConditionalExpressionException - Unparseable Document Guard Expression
  *
  * Raised at compilation time by the DocumentGroupSpecificationBuilder when a
- * `condicional_expressao` does not match the supported grammar (`prop=value`,
+ * `condition_expression` does not match the supported grammar (`prop=value`,
  * `prop<>value`, `prop!=value`). Failing loudly here prevents a document from being
  * silently required (or silently waived) because its guard could not be understood.
  *
- * @version    1.2.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

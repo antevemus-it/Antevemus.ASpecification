@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.6.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.7.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.7.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(2877%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-16%2F16%20Suites%20Pass%20(3281%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -237,7 +237,7 @@ echo InstrumentationUtils::formatMemoryUsage() . "\n";
 
 Compile dynamic rules and mandatory document matrices directly from relational database tables (e.g. PostgreSQL, MySQL):
 
-> **Vocabulary note.** The rule-engine data contract is Portuguese by design (`escopo`, `cenario`, `acao`, `fundamento_legal`, `getValorInteiro()`, `getMensagemViolacao()`, actions `bloquear`/`alertar`/`apenas_log`): it mirrors the relational catalog schema it hydrates from, a Brazilian legal domain. Orchestration and verdict APIs (`validate()`, `hasBlockingErrors()`, `canProceed()`) are English. English aliases for the data contract are not planned.
+> **Vocabulary note.** Since v1.7.0 the rule engine is English end to end: getters (`getCode()`, `getIntValue()`, `getViolationMessage()`, `getLegalBasis()`), named parameters (`scope:`, `scenario:`), `fromArray()` keys and catalog columns (`code`, `rule_type`, `violation_action`, `product_code`, `valid_from`...), context keys (`product_code`, `plan_code`, `reference_date`) and the action values `block`/`warn`/`log`. The Portuguese vocabulary of v1.6 is legacy until v2.0.0: the Portuguese getters remain on `RuleDefinition`/`DocumentRuleDefinition` as deprecated aliases, `fromArray()`, the catalogs and `RuleAction::fromOrDefault()` still read the Portuguese keys and action values, and `PdoRuleCatalog` reads tables created with the old schema through two presets (below). Portuguese named arguments (`escopo:`) no longer work, since PHP has no parameter aliases; the [CHANGELOG](CHANGELOG.md) has the full table.
 
 ```php
 use Antevemus\ASpecification\Spec;
@@ -246,7 +246,7 @@ use Antevemus\ASpecification\Spec;
 $registry = Spec::ruleRegistry();
 $registry->registerClosure('max_occurrences_per_contract', function ($rule) {
     return Spec::specify(Contract::class)
-        ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getValorInteiro(), $rule->getCodigo(), $rule->getMensagemViolacao());
+        ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getIntValue(), $rule->getCode(), $rule->getViolationMessage());
 });
 
 // 2. Instantiate the Engine connected to the relational catalog repository
@@ -255,8 +255,8 @@ $engine = Spec::engine($myCatalogRepository, $registry);
 // 3. Validate target entity for a specific scope and scenario
 $verdict = $engine->validate(
     target: $contract,
-    escopo: 'rental_contract',
-    cenario: 'activation'
+    scope: 'rental_contract',
+    scenario: 'activation'
 );
 
 if ($verdict->hasBlockingErrors()) {
@@ -270,6 +270,29 @@ if ($verdict->hasBlockingErrors()) {
 if ($verdict->hasWarnings()) {
     NotificationService::dispatch($verdict->getWarningFailures());
 }
+```
+
+The catalog can live in relational tables: `PdoRuleCatalog` reads the tables of the reference DDL [`resources/sql/rule_catalog.ansi.sql`](resources/sql/rule_catalog.ansi.sql) (`business_rule`, `document_requirement_group`, `document_requirement`) in portable, parameterized ANSI SQL and answers exactly like the in-memory catalog. Table and column names are configurable (`$tables`, `$columns`: canonical column => real column):
+
+```php
+use Antevemus\ASpecification\Engine\PdoRuleCatalog;
+
+// Optional: read only the rules in force on a date (validity window filtered in SQL)
+$catalog = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
+
+// Tables created with the Portuguese schema of v1.5/v1.6 (regra_negocio...) stay readable without migration
+$legacyCatalog = new PdoRuleCatalog(
+    $pdo,
+    'rental_guarantee',
+    PdoRuleCatalog::legacyPortugueseTables(),
+    PdoRuleCatalog::legacyPortugueseColumns()
+);
+
+$verdict = Spec::engine($catalog, $registry)->validate(
+    target: $contract,
+    scope: 'rental_contract',
+    context: ['product_code' => 'PROD_A']
+);
 ```
 
 ---
@@ -535,7 +558,7 @@ Spec::greaterThan(5)->or(Spec::lessThan(10))->isTautology(); // false: not prove
 
 // Rule engine: report the rules that can never pass (or never fail), without blocking
 $catalog = new InMemoryRuleCatalog();
-$catalog->addRule(new RuleDefinition(codigo: 'R-12', nome: 'Active and inactive', tipoRegra: 'status_both', escopo: 'rental_contract'));
+$catalog->addRule(new RuleDefinition(code: 'R-12', name: 'Active and inactive', ruleType: 'status_both', scope: 'rental_contract'));
 $registry = Spec::ruleRegistry()->registerClosure('status_both', fn() => $active->and($inactive));
 
 $engine = Spec::engine($catalog, $registry)->withCatalogValidation();
@@ -662,20 +685,20 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (133 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (203 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (252 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (409 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (459 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 assertions)
 • [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (263 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (213 assertions)
-• [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (303 assertions)
+• [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (550 assertions)
 
 ====================================================================
  FINAL RESULT: 16/16 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 2877 | DURATION: ~2s | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 3281 | DURATION: ~2s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 237 tests and 5 006 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 237 tests and 5 410 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.

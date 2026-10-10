@@ -19,7 +19,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * Detection is the structural, conservative one of ISpecification::isContradiction() and
  * isTautology(): a rule without a warning is "not proven degenerate", never "proven sound".
  *
- * @version    1.6.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,8 +36,8 @@ final class RuleCompilationWarning
 
     /**
      * @param string $kind One of the KIND_* constants
-     * @param string $ruleCode Catalog code of the rule (IRuleDefinition::getCodigo())
-     * @param string $ruleType Rule type that selected the handler (IRuleDefinition::getTipoRegra())
+     * @param string $ruleCode Catalog code of the rule (IRuleDefinition::getCode())
+     * @param string $ruleType Rule type that selected the handler (IRuleDefinition::getRuleType())
      * @param string $message Human-readable explanation
      * @param ISpecification $specification Specification compiled by the rule handler
      */
@@ -63,12 +63,12 @@ final class RuleCompilationWarning
         if ($specification->isContradiction()) {
             return new self(
                 self::KIND_CONTRADICTION,
-                $rule->getCodigo(),
-                $rule->getTipoRegra(),
+                $rule->getCode(),
+                $rule->getRuleType(),
                 sprintf(
                     "Rule '%s' (%s) compiles to a contradiction: no candidate can satisfy it, so it always fails.",
-                    $rule->getCodigo(),
-                    $rule->getTipoRegra()
+                    $rule->getCode(),
+                    $rule->getRuleType()
                 ),
                 $specification
             );
@@ -76,12 +76,12 @@ final class RuleCompilationWarning
         if ($specification->isTautology()) {
             return new self(
                 self::KIND_TAUTOLOGY,
-                $rule->getCodigo(),
-                $rule->getTipoRegra(),
+                $rule->getCode(),
+                $rule->getRuleType(),
                 sprintf(
                     "Rule '%s' (%s) compiles to a tautology: every candidate satisfies it, so it never fails.",
-                    $rule->getCodigo(),
-                    $rule->getTipoRegra()
+                    $rule->getCode(),
+                    $rule->getRuleType()
                 ),
                 $specification
             );

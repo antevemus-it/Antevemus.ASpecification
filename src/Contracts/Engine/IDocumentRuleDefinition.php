@@ -19,8 +19,10 @@ use Antevemus\ASpecification\Engine\DocumentRequirementMode;
  * - Resolution of Boolean requirement semantics (all, any, one_of_set)
  * - Grouping by alternative sets (e.g., 'identity'), mandatory for any / one_of_set
  * - Conditional expression for requirement activation
+ * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract and survive
+ *   only as deprecated aliases on DocumentRuleDefinition (removed in 2.0.0)
  *
- * @version    1.2.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,7 +37,7 @@ interface IDocumentRuleDefinition
      *
      * @return string
      */
-    public function getGrupoCodigo(): string;
+    public function getGroupCode(): string;
 
     /**
      * Returns the operational scope this document requirement belongs to (e.g. 'contrato_locacao',
@@ -43,7 +45,7 @@ interface IDocumentRuleDefinition
      *
      * @return string
      */
-    public function getEscopo(): string;
+    public function getScope(): string;
 
     /**
      * Returns the scenario this document requirement belongs to (e.g. 'sinistro:ocupado').
@@ -51,21 +53,21 @@ interface IDocumentRuleDefinition
      *
      * @return string|null
      */
-    public function getCenario(): ?string;
+    public function getScenario(): ?string;
 
     /**
      * Returns the technical code of the required document type (e.g. 'cnpj_imobiliaria', 'cnh_locatario').
      *
      * @return string
      */
-    public function getCodigoTipoDocumento(): string;
+    public function getDocumentTypeCode(): string;
 
     /**
      * Returns the document requirement mode (ALL, ANY, ONE_OF_SET).
      *
      * @return DocumentRequirementMode
      */
-    public function getRegraObrigatoriedade(): DocumentRequirementMode;
+    public function getRequirementMode(): DocumentRequirementMode;
 
     /**
      * Returns the alternative set identifier for ANY or ONE_OF_SET rules. Null is only valid
@@ -73,21 +75,21 @@ interface IDocumentRuleDefinition
      *
      * @return string|null
      */
-    public function getCodigoSetAlternativas(): ?string;
+    public function getAlternativeSetCode(): ?string;
 
     /**
      * Returns the conditional expression determining whether the document is required.
      *
      * @return string|null
      */
-    public function getCondicionalExpressao(): ?string;
+    public function getConditionExpression(): ?string;
 
     /**
      * Returns the display/evaluation order of the document within the group.
      *
      * @return int
      */
-    public function getOrdem(): int;
+    public function getSortOrder(): int;
 
     /**
      * Verifies whether the document requirement is currently active.

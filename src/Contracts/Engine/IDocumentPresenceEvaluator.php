@@ -14,7 +14,7 @@ namespace Antevemus\ASpecification\Contracts\Engine;
  * - Document presence evaluation over domain entities or data structures
  * - Support for extended context metadata (e.g., rental tenure, expiration date)
  *
- * @version    1.1.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -27,9 +27,9 @@ interface IDocumentPresenceEvaluator
      * Evaluates whether the document identified by the given code is present and valid in the target.
      *
      * @param object|array $target Target object or payload under evaluation
-     * @param string $codigoTipoDocumento Technical identifier code of the document type
+     * @param string $documentTypeCode Technical identifier code of the document type
      * @param array<string, mixed> $context Additional contextual metadata
      * @return bool
      */
-    public function hasDocument(object|array $target, string $codigoTipoDocumento, array $context = []): bool;
+    public function hasDocument(object|array $target, string $documentTypeCode, array $context = []): bool;
 }

@@ -9,14 +9,14 @@ namespace Antevemus\ASpecification\Results;
  *
  * Optional classification carried by a SpecificationFailure. Plain specifications leave it null;
  * the dynamic rule engine fills it from the catalog rule action that produced the failure
- * (`bloquear` → ERROR, `alertar` → WARNING, `apenas_log` → INFO), and an evaluation error is
+ * (`block` → ERROR, `warn` → WARNING, `log` → INFO), and an evaluation error is
  * always ERROR, mirroring the RuleEngineVerdict triage.
  *
  * Features:
  * - Three-level typed enumeration (ERROR, WARNING, INFO)
  * - String-backed for logging, telemetry and JSON transport
  *
- * @version    1.5.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

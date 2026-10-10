@@ -16,7 +16,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Validation of technical rule type keys support (supports)
  * - Compilation of rule definition into an executable domain specification with metadata
  *
- * @version    1.1.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -28,10 +28,10 @@ interface IRuleSpecificationHandler
     /**
      * Verifies whether this handler is capable of compiling the provided rule type.
      *
-     * @param string $tipoRegra Technical validation type key
+     * @param string $ruleType Technical validation type key
      * @return bool
      */
-    public function supports(string $tipoRegra): bool;
+    public function supports(string $ruleType): bool;
 
     /**
      * Builds the corresponding specification based on the rule definition parameters.

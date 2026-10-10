@@ -22,7 +22,7 @@ use Stringable;
  * - Optional FailureSeverity (ERROR, WARNING, INFO), filled by the dynamic rule engine (1.5.0)
  * - Human-readable string representation via Stringable
  *
- * @version    1.5.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -53,7 +53,7 @@ final readonly class SpecificationFailure implements Stringable
      * Returns the severity of the violation, or null when the failure was not classified.
      *
      * The dynamic rule engine classifies every failure it reports from the catalog rule action
-     * (`bloquear` → ERROR, `alertar` → WARNING, `apenas_log` → INFO; evaluation errors → ERROR).
+     * (`block` → ERROR, `warn` → WARNING, `log` → INFO; evaluation errors → ERROR).
      * Failures produced by plain specifications outside the engine carry null.
      *
      * @return FailureSeverity|null

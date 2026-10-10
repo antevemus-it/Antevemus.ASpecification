@@ -18,7 +18,7 @@ use Antevemus\ASpecification\Engine\RuleEngineVerdict;
  * - Isolated compilation of composite specifications for inspection or testing
  * - Direct access to rule catalog and handler registry
  *
- * @version    1.1.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,29 +31,29 @@ interface IDynamicSpecificationEngine
      * Evaluates the target against all active rules and document requirements for the specified scope and scenario.
      *
      * @param object|array $target Domain entity or data structure under evaluation
-     * @param string $escopo Operational scope (e.g. 'rental_contract', 'claim')
-     * @param string|null $cenario Optional business scenario
+     * @param string $scope Operational scope (e.g. 'rental_contract', 'claim')
+     * @param string|null $scenario Optional business scenario
      * @param array<string, mixed> $context Additional contextual metadata
      * @return RuleEngineVerdict
      */
     public function validate(
         object|array $target,
-        string $escopo,
-        ?string $cenario = null,
+        string $scope,
+        ?string $scenario = null,
         array $context = []
     ): RuleEngineVerdict;
 
     /**
      * Compiles and returns the unified composite specification without executing it immediately.
      *
-     * @param string $escopo Operational scope
-     * @param string|null $cenario Optional business scenario
+     * @param string $scope Operational scope
+     * @param string|null $scenario Optional business scenario
      * @param array<string, mixed> $context Additional contextual metadata
      * @return ISpecification
      */
     public function compileSpecification(
-        string $escopo,
-        ?string $cenario = null,
+        string $scope,
+        ?string $scenario = null,
         array $context = []
     ): ISpecification;
 

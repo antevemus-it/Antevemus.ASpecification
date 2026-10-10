@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-10
+
+The rule engine (`Engine\*`, `Contracts\Engine\*` and the reference DDL) adopts English as its canonical vocabulary: it was the last part of the public API in Portuguese. Portuguese stays readable as legacy wherever PHP allows it (deprecated getters on the concrete classes, `fromArray()` keys, `RuleAction` values, context keys, presets of `PdoRuleCatalog` for the old tables) until 2.0.0. Three declared breaking changes, each with a migration note below: Portuguese named arguments (and the promoted public properties that follow them), code that compares `RuleAction::value` with the Portuguese strings, and code that matches the document failure paths `documentos.*` / `documentos_set.*` textually.
+
+### Changed
+
+- **English vocabulary of the rule engine.** Catalog columns, `fromArray()` keys, getters and constructor parameters:
+
+  | Portuguese (1.6.x) | English (1.7.0) | Getter | Constructor parameter |
+  |---|---|---|---|
+  | `codigo` | `code` | `getCode()` | `code` |
+  | `nome` | `name` | `getName()` | `name` |
+  | `descricao` | `description` | `getDescription()` | `description` |
+  | `tipo_regra` (`tipo`) | `rule_type` | `getRuleType()` | `ruleType` |
+  | `acao_ao_violar` (`acao`) | `violation_action` | `getViolationAction()` | `violationAction` |
+  | `valor_inteiro` | `int_value` | `getIntValue()` | `intValue` |
+  | `valor_decimal` | `decimal_value` | `getDecimalValue()` | `decimalValue` |
+  | `valor_texto` | `text_value` | `getTextValue()` | `textValue` |
+  | `fundamento_legal` | `legal_basis` | `getLegalBasis()` | `legalBasis` |
+  | `mensagem_violacao` | `violation_message` | `getViolationMessage()` | `violationMessage` |
+  | `condicional_expressao` (`condicional`) | `condition_expression` | `getConditionExpression()` | `conditionExpression` |
+  | `prioridade` | `priority` | `getPriority()` | `priority` |
+  | `escopo` | `scope` | `getScope()` | `scope` |
+  | `cenario` | `scenario` | `getScenario()` | `scenario` |
+  | `parametros` | `parameters` | `getParameters()` | `parameters` |
+  | `ativo` / `active` | `active` | `isActive()` | `active` |
+  | `data_inicio_vigencia` | `valid_from` | — (applicability) | — |
+  | `data_fim_vigencia` | `valid_until` | — (applicability) | — |
+  | `codigo_produto` | `product_code` | — (applicability and context key) | — |
+  | `codigo_plano` | `plan_code` | — (applicability and context key) | — |
+  | `data_referencia` | `reference_date` | — (context key) | — |
+  | `grupo_codigo` (`grupo`) | `group_code` | `getGroupCode()` | `groupCode` |
+  | `codigo_tipo_documento` (`tipo_documento`) | `document_type_code` | `getDocumentTypeCode()` | `documentTypeCode` |
+  | `regra_obrigatoriedade` (`regra`) | `requirement_mode` | `getRequirementMode()` | `requirementMode` |
+  | `codigo_set_alternativas` (`set_alt`) | `alternative_set_code` | `getAlternativeSetCode()` | `alternativeSetCode` |
+  | `ordem` | `sort_order` | `getSortOrder()` | `sortOrder` |
+  | `grupo_id` | `group_id` | — | — |
+  | `bloquear` / `alertar` / `apenas_log` | `block` / `warn` / `log` | `RuleAction::BLOCK` / `WARN` / `LOG` (case names unchanged) | — |
+  | table `regra_negocio` | `business_rule` | — | — |
+  | table `grupo_documento_obrigatorio` | `document_requirement_group` | — | — |
+  | table `grupo_documento_obrigatorio_tipo` | `document_requirement` | — | — |
+
+  `getSetKey()`, the `DocumentRequirementMode` values (`all`, `any`, `one_of_set`), the `RuleAction` case names, `RuleAction::toSeverity()` and the `RuleEngineVerdict` API do not change.
+- **Contract extension: `IRuleDefinition` and `IDocumentRuleDefinition` declare only the English getters.** The Portuguese getters left the interfaces (they remain on `RuleDefinition` and `DocumentRuleDefinition`, see *Deprecated*); an external implementation of either interface implements the English names, as `equals()` was added in 1.2.0. Code that calls Portuguese getters on a variable typed with the interface keeps working at runtime only when the object is one of the library classes.
+- **Breaking: named arguments in English.** The positional order is unchanged, so positional calls are not affected; a call by name in Portuguese fails with `Unknown named parameter` (PHP has no parameter aliases). Before → after:
+
+  | Method | Before | After |
+  |---|---|---|
+  | `new RuleDefinition()` | `codigo:`, `nome:`, `tipoRegra:`, `acaoAoViolar:`, `descricao:`, `valorInteiro:`, `valorDecimal:`, `valorTexto:`, `fundamentoLegal:`, `mensagemViolacao:`, `condicionalExpressao:`, `prioridade:`, `escopo:`, `cenario:`, `parametros:` | `code:`, `name:`, `ruleType:`, `violationAction:`, `description:`, `intValue:`, `decimalValue:`, `textValue:`, `legalBasis:`, `violationMessage:`, `conditionExpression:`, `priority:`, `scope:`, `scenario:`, `parameters:` (`active:` unchanged) |
+  | `new DocumentRuleDefinition()` | `grupoCodigo:`, `codigoTipoDocumento:`, `escopo:`, `regraObrigatoriedade:`, `codigoSetAlternativas:`, `condicionalExpressao:`, `ordem:`, `cenario:` | `groupCode:`, `documentTypeCode:`, `scope:`, `requirementMode:`, `alternativeSetCode:`, `conditionExpression:`, `sortOrder:`, `scenario:` (`active:` unchanged) |
+  | `IRuleCatalog::findRules()`, `findDocumentRules()` (`InMemoryRuleCatalog`, `PdoRuleCatalog`) | `escopo:`, `cenario:` | `scope:`, `scenario:` (`filters:` unchanged) |
+  | `IDynamicSpecificationEngine::validate()`, `compileSpecification()` | `escopo:`, `cenario:` | `scope:`, `scenario:` (`target:`, `context:` unchanged) |
+  | `IDocumentPresenceEvaluator::hasDocument()` | `codigoTipoDocumento:` | `documentTypeCode:` |
+  | `IRuleSpecificationHandler::supports()`, `IRuleSpecificationRegistry::registerClosure()`, `getHandler()`, `hasHandler()` | `tipoRegra:` | `ruleType:` |
+  | `new MissingRuleHandlerException()` | `tipoRegra:`, `codigo:` | `ruleType:`, `ruleCode:` |
+
+  The constructors promote their parameters, so the public readonly properties follow the same names (`$rule->codigo` → `$rule->code`, `$doc->grupoCodigo` → `$doc->groupCode`, `$e->tipoRegra` → `$e->ruleType`, `$e->codigo` → `$e->ruleCode`); read them through the getters, which keep a Portuguese alias.
+- **Breaking: `RuleAction::value` in English.** `'bloquear'` → `'block'`, `'alertar'` → `'warn'`, `'apenas_log'` → `'log'`. `RuleAction::fromOrDefault()` (and therefore `fromArray()`, the failure stamping and the verdict triage) still reads the Portuguese values, case-insensitively, so catalog rows and metadata persisted in Portuguese keep their meaning; `RuleAction::from('bloquear')` now throws and `tryFrom('bloquear')` returns `null`. The engine stamps `metadata['acao']` with the English value, and document failures carry `'acao' => 'block'`. Code that compares `->value` or `metadata['acao']` with a Portuguese string switches to the English value (or to the enum case).
+- **`PdoRuleCatalog` reads the English schema by default**: tables `business_rule`, `document_requirement_group`, `document_requirement`; table roles `rule`, `group`, `requirement` (the 1.6.x roles `regra`, `grupo`, `grupo_tipo` are still accepted as keys of `$tables`, the English role wins when both are given; `getTables()` returns the English roles); `RULE_COLUMNS` lists the canonical English columns; the document join is `requirement.group_id = group.id`; placeholders `:scope`, `:scenario`, `:f_product_code`, `:f_plan_code`, `:as_of_from`, `:as_of_until`, each used once. A table created with the 1.5.0/1.6.x DDL is read through the presets (see *Added*) or migrated.
+- **`resources/sql/rule_catalog.ansi.sql` rewritten in English**, with the same types, defaults, constraints and indexes (renamed after the tables: `pk_business_rule`, `chk_business_rule_action` with `block`/`warn`/`log`, `chk_dr_set`...). The reference DDL is a single file; the Portuguese schema is documented by the presets, not shipped as a second file.
+- Applicability and context keys: `RuleDefinition::APPLICABILITY_COLUMNS` is `product_code`, `plan_code`, `valid_from`, `valid_until`, and `fromArray()` hydrates them into `parameters` under the English keys; `InMemoryRuleCatalog::FILTER_PRODUCT`, `FILTER_PLAN`, `FILTER_REFERENCE_DATE` are `product_code`, `plan_code`, `reference_date` (so are `PdoRuleCatalog::FILTER_COLUMNS`). The Portuguese keys are still read in the context and in `parameters` when the English key is absent.
+- Docblocks and exception messages of the engine use the English vocabulary (`alternative_set_code`, scope, `parameters` column).
+- **Failure metadata in English, Portuguese kept alongside.** Engine failures now carry `action`, `rule_code`, `rule_type`, `rule_name`, `priority`, `original_message`, `legal_basis`, `original_messages`, `original_failures`; document failures `action`, `document_type`, `group_code`, `requirement_mode`; document-set failures `action`, `alternative_set`, `mode`, `accepted_documents`, `codes`, `present`, `expected`, `received`. The 1.6.x Portuguese keys (`acao`, `regra`, `tipo_regra`, `nome_regra`, `prioridade`, `mensagem_original`, `fundamento_legal`, `mensagens_originais`, `falhas_originais`, `tipo_documento`, `grupo`, `set_alternativas`, `modo`, `documentos_aceitos`, `codigos`, `presentes`, `esperado`, `recebido`) are written as well, with the same values, until 2.0.0, so consumers reading them are not affected. The handler's action wins over the rule's whatever key the handler used, and both keys carry it; the verdict reads `action` first.
+- **Breaking: property paths of document failures in English.** `documentos.<type>` → `documents.<type>` and `documentos_set.<set>` → `document_sets.<set>` (a single string cannot carry both). Code that matched the path textually must switch.
+- **Default document presence evaluator reads English first:** `hasDocument()`, `getDocuments()`, `->documents`, `['documents']`, then the legacy `hasDocumento()`, `getDocumentos()`, `->documentos`, `['documentos']`.
+
+### Added
+
+- **Column map on `PdoRuleCatalog`**: fourth constructor parameter `array $columns = []`, canonical column (the English name of the reference DDL) => real column of the consumer table, in the spirit of the `FieldMapper` of the SQL visitor. Real names pass the same identifier validation as table names (`^[A-Za-z_][A-Za-z0-9_]*$`) and an unknown canonical column is refused with `InvalidArgumentException`; each real column is selected under its canonical alias. A canonical column shared by several tables (`id`, `code`, `scope`, `scenario`, `sort_order`, `condition_expression`, `active`) maps to the same real name in all of them. New `getColumns()`, `canonicalColumns()`, `GROUP_COLUMNS`, `REQUIREMENT_COLUMNS` and `LEGACY_TABLE_ROLES`.
+- **Presets for the Portuguese schema of 1.5.0/1.6.x**: `PdoRuleCatalog::legacyPortugueseTables()` (`regra_negocio`, `grupo_documento_obrigatorio`, `grupo_documento_obrigatorio_tipo`) and `PdoRuleCatalog::legacyPortugueseColumns()`, so existing tables stay readable without migration: `new PdoRuleCatalog($pdo, $schema, PdoRuleCatalog::legacyPortugueseTables(), PdoRuleCatalog::legacyPortugueseColumns())`. Tested against the 1.6.1 DDL on SQLite: same rules, same documents and the same verdict as the English schema.
+- `RuleAction::LEGACY_PORTUGUESE_VALUES`, `RuleDefinition::LEGACY_APPLICABILITY_COLUMNS`, `InMemoryRuleCatalog::LEGACY_FILTER_KEYS` (the Portuguese names, canonical => legacy) and `InMemoryRuleCatalog::filterValue()` (reads a reserved context key with its legacy fallback).
+
+### Deprecated
+
+- The Portuguese getters of `RuleDefinition` (`getCodigo()`, `getNome()`, `getDescricao()`, `getTipoRegra()`, `getAcaoAoViolar()`, `getValorInteiro()`, `getValorDecimal()`, `getValorTexto()`, `getFundamentoLegal()`, `getMensagemViolacao()`, `getCondicionalExpressao()`, `getPrioridade()`, `getEscopo()`, `getCenario()`, `getParametros()`) and of `DocumentRuleDefinition` (`getGrupoCodigo()`, `getCodigoTipoDocumento()`, `getEscopo()`, `getCenario()`, `getRegraObrigatoriedade()`, `getCodigoSetAlternativas()`, `getCondicionalExpressao()`, `getOrdem()`): aliases that delegate to the English getters, marked `@deprecated 1.7.0`, removed in 2.0.0.
+- The Portuguese vocabulary still read as legacy, removed in 2.0.0, without runtime notices (catalog data is not code): the `fromArray()` keys of the table above, including the synonyms `tipo`, `acao`, `ativo`, `grupo`, `tipo_documento`, `regra`, `set_alt`, `condicional` (the English key wins when both are present); the action values `bloquear`, `alertar`, `apenas_log`; the context keys `codigo_produto`, `codigo_plano`, `data_referencia` and the same applicability keys inside `parameters`; the `PdoRuleCatalog` table roles `regra`, `grupo`, `grupo_tipo`.
+
+### Documentation
+
+- README (EN and pt-BR): the vocabulary note of example 7 describes the English vocabulary and the legacy layer; examples 7 and 12 use the English identifiers (texts stay in the language of each README); example 7 gains the `PdoRuleCatalog` block with the presets, transcribed as a test in Module 16. Release badge v1.7.0; runner block (16 suites, 3 281 assertions) and PHPUnit counts (237 tests, 5 410 assertions; Domian Parity unchanged, 219 tests, 2 106 assertions).
+
 ## [1.6.1] - 2026-10-10
 
 Security patch. Access by name to private and protected properties, added in 1.4.4 for Domian parity, becomes opt-in by the author of the class through the new `#[Specifiable]` attribute. One declared behaviour change, for code that read or wrote unmarked non-public properties by name.
@@ -383,7 +464,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.4.4...v1.5.0

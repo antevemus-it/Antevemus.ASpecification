@@ -14,16 +14,16 @@ use Antevemus\ASpecification\Engine\Exceptions\MissingRuleHandlerException;
 /**
  * RuleSpecificationRegistry - Central Registry and Configurator for Business Rule Handlers
  *
- * Manages the catalog of specification compilation strategies, mapping each `tipo_regra`
+ * Manages the catalog of specification compilation strategies, mapping each `rule_type`
  * to its respective specialized factory (dedicated handler classes or concise Closures).
  *
  * Features:
  * - Fluent registration of IRuleSpecificationHandler instances
  * - Direct registration of Closure-based specification factories
- * - Fast handler resolution by technical rule key (tipo_regra)
+ * - Fast handler resolution by technical rule key (rule_type)
  * - Automatic MissingRuleHandlerException when an unhandled rule type is requested
  *
- * @version    1.1.0
+ * @version    1.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -58,16 +58,16 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     }
 
     /** {@inheritdoc} */
-    public function registerClosure(string $tipoRegra, Closure $factory): self
+    public function registerClosure(string $ruleType, Closure $factory): self
     {
-        $this->closures[trim($tipoRegra)] = $factory;
+        $this->closures[trim($ruleType)] = $factory;
         return $this;
     }
 
     /** {@inheritdoc} */
-    public function getHandler(string $tipoRegra): ?IRuleSpecificationHandler
+    public function getHandler(string $ruleType): ?IRuleSpecificationHandler
     {
-        $key = trim($tipoRegra);
+        $key = trim($ruleType);
         foreach ($this->handlers as $handler) {
             if ($handler->supports($key)) {
                 return $handler;
@@ -77,9 +77,9 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     }
 
     /** {@inheritdoc} */
-    public function hasHandler(string $tipoRegra): bool
+    public function hasHandler(string $ruleType): bool
     {
-        $key = trim($tipoRegra);
+        $key = trim($ruleType);
         if (isset($this->closures[$key])) {
             return true;
         }
@@ -90,20 +90,20 @@ class RuleSpecificationRegistry implements IRuleSpecificationRegistry
     /** {@inheritdoc} */
     public function buildSpecification(IRuleDefinition $rule): ISpecification
     {
-        $tipo = $rule->getTipoRegra();
+        $ruleType = $rule->getRuleType();
 
         // 1. Priority for Closure-registered handlers
-        if (isset($this->closures[$tipo])) {
-            $closure = $this->closures[$tipo];
+        if (isset($this->closures[$ruleType])) {
+            $closure = $this->closures[$ruleType];
             return $closure($rule);
         }
 
         // 2. Search class-based handlers
-        $handler = $this->getHandler($tipo);
+        $handler = $this->getHandler($ruleType);
         if ($handler !== null) {
             return $handler->build($rule);
         }
 
-        throw new MissingRuleHandlerException($tipo, $rule->getCodigo());
+        throw new MissingRuleHandlerException($ruleType, $rule->getCode());
     }
 }
