@@ -46,7 +46,7 @@ use Antevemus\ASpecification\Sql\SqlWhereClause;
  *   already uses
  *
  * @internal Used by PdoRepository; not part of the public API.
- * @version    1.11.0
+ * @version    1.12.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -65,8 +65,10 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
         private readonly ISqlDialect $sqlDialect,
         private readonly PdoValueConverter $converter
     ) {
-        parent::__construct($sqlDialect, function (string $property): string {
-            $column = $this->mapping->findQueryColumn($property);
+        // A static closure: binding $this would make every compiler (one per query) a reference
+        // cycle, left for the cycle collector instead of being freed when the query returns
+        parent::__construct($sqlDialect, static function (string $property) use ($mapping): string {
+            $column = $mapping->findQueryColumn($property);
 
             // visitComposite() checked the property first; this is only reached for a mapped one
             return $column !== null ? $column->column : throw new \LogicException("Unmapped property {$property}.");

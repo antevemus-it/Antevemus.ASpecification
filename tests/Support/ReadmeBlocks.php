@@ -8,16 +8,17 @@ namespace Antevemus\ASpecification\Tests\Support;
  * Reads the PHP blocks of one numbered README example, so that a transcription test can check that
  * the English and the Portuguese README carry the same code (comments aside).
  *
- * @version 1.11.0
+ * @version 1.12.0
  */
 final class ReadmeBlocks
 {
     /**
-     * The ```php blocks of example $number (from its "### N. " heading to the next "### " or "## ").
+     * The ```php blocks of example $number (from its "### N. " heading to the next "### " or "## ");
+     * a sub-example is named by its text ('18.1' for "### 18.1. ").
      *
      * @return list<string>
      */
-    public static function of(string $file, int $number): array
+    public static function of(string $file, int|string $number): array
     {
         $text = (string) file_get_contents($file);
         $start = strpos($text, "\n### {$number}. ");

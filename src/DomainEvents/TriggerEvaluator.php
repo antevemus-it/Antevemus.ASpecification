@@ -9,6 +9,7 @@ use BackedEnum;
 use Closure;
 use DateTimeImmutable;
 use InvalidArgumentException;
+use LogicException;
 use Stringable;
 use Throwable;
 
@@ -32,15 +33,17 @@ use Throwable;
  *
  * "Now" is injected, never read inside: changes() stamps the events with $now, or with the clock
  * given to the constructor when $now is null. With neither, a write that produces an event is
- * refused with InvalidArgumentException (a write that produces none needs no instant). The
- * specifications themselves never receive a clock: a specification whose truth changes with time
- * alone (e.g. "overdue for more than 30 days") only crosses when something is written (D8).
+ * refused with InvalidArgumentException (a write that produces none needs no instant). A plain
+ * specification never receives a clock. A time-based trigger (SpecificationTrigger::timed(), since
+ * 1.12.0, forward 030, D1) is evaluated on the specification its factory builds with that same
+ * instant; without an instant it cannot be evaluated, which is an evaluation error of that trigger.
+ * A crossing caused by time alone, with no write, is found by TriggerSweeper.
  *
  * The entity id is read with IEntity::getEntityId() unless an identity reader is given; ints,
  * strings, Stringable objects and backed enums have a text form, anything else is an identity
  * error of the trigger that needed it.
  *
- * @version    1.11.0
+ * @version    1.12.0
  * @package    Antevemus\ASpecification
  * @subpackage DomainEvents
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,17 +81,31 @@ final class TriggerEvaluator
         if ($before !== null && $after !== null && $before !== $after) {
             $this->assertSameEntity($before, $after);
         }
+        // A time-based trigger needs the instant to be evaluated, not only to stamp an event
+        if ($now === null && $this->clock !== null && $triggers->hasTimed()) {
+            $now = ($this->clock)();
+        }
 
-        return $this->compare($triggers, $this->statesOf($triggers, $before), $this->statesOf($triggers, $after), $after ?? $before, $now);
+        return $this->compare(
+            $triggers,
+            $this->statesOf($triggers, $before, $now),
+            $this->statesOf($triggers, $after, $now),
+            $after ?? $before,
+            $now
+        );
     }
 
     /**
      * Satisfaction of every trigger by one object (an exception is kept as the state).
      *
+     * A time-based trigger is evaluated on the specification built for $now; without $now its
+     * state is a LogicException (an evaluation error, never a silent false).
+     *
      * @param TriggerSet $triggers Triggers
      * @param object|null $subject Object; null = absent (nothing satisfied)
+     * @param DateTimeImmutable|null $now Instant of the evaluation (time-based triggers; since 1.12.0)
      */
-    public function statesOf(TriggerSet $triggers, ?object $subject): TriggerStates
+    public function statesOf(TriggerSet $triggers, ?object $subject, ?DateTimeImmutable $now = null): TriggerStates
     {
         if ($subject === null) {
             return TriggerStates::absent();
@@ -96,13 +113,32 @@ final class TriggerEvaluator
         $states = [];
         foreach ($triggers->all() as $trigger) {
             try {
-                $states[$trigger->name] = $trigger->specification->isSatisfiedBy($subject) === true;
+                $states[$trigger->name] = $this->satisfies($trigger, $subject, $now);
             } catch (Throwable $e) {
                 $states[$trigger->name] = $e;
             }
         }
 
         return new TriggerStates($states);
+    }
+
+    /**
+     * Whether one object satisfies one trigger at an instant (since 1.12.0).
+     *
+     * @throws LogicException When the trigger is time-based and there is no instant
+     * @throws Throwable Whatever the specification (or the factory of a time-based trigger) throws
+     */
+    public function satisfies(SpecificationTrigger $trigger, object $subject, ?DateTimeImmutable $now = null): bool
+    {
+        if ($trigger->isTimed()) {
+            if ($now === null) {
+                throw new LogicException(sprintf('Trigger "%s" is time-based: an instant is required to evaluate it.', $trigger->name));
+            }
+
+            return $trigger->specificationAt($now)->isSatisfiedBy($subject) === true;
+        }
+
+        return $trigger->specification->isSatisfiedBy($subject) === true;
     }
 
     /**

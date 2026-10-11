@@ -14,10 +14,12 @@ use Traversable;
  * TriggerSet - Immutable, Ordered Set of Uniquely Named Triggers
  *
  * The evaluator walks the triggers in declaration order, so the events of one write come out in
- * that order too (forward 029, D1). Trigger names are unique; with() returns a new set.
+ * that order too (forward 029, D1). Trigger names are unique; with() returns a new set. Since
+ * 1.12.0 a set may hold time-based triggers (SpecificationTrigger::timed()), which TriggerSweeper
+ * sweeps (timedTriggers()).
  *
  * @implements IteratorAggregate<string, SpecificationTrigger>
- * @version    1.11.0
+ * @version    1.12.0
  * @package    Antevemus\ASpecification
  * @subpackage DomainEvents
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +77,28 @@ final class TriggerSet implements IteratorAggregate, Countable
     public function all(): array
     {
         return array_values($this->triggers);
+    }
+
+    /**
+     * The time-based triggers, in declaration order (since 1.12.0).
+     *
+     * @return list<SpecificationTrigger>
+     */
+    public function timedTriggers(): array
+    {
+        return array_values(array_filter($this->triggers, static fn(SpecificationTrigger $t): bool => $t->isTimed()));
+    }
+
+    /** True when at least one trigger is time-based (since 1.12.0). */
+    public function hasTimed(): bool
+    {
+        foreach ($this->triggers as $trigger) {
+            if ($trigger->isTimed()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

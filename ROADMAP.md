@@ -112,7 +112,16 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 ### 19. Specification-Driven Domain Event Triggers 📡 (Shipped in v1.11.0)
 - **Description:** `DomainEvents\SpecificationTrigger` binds a specification to an enter and an exit event: when an entity starts to satisfy it, the enter event; when it stops, the exit event ("policy delinquent for more than 30 days" → `delinquency.started` / `delinquency.ended`). `TriggerEvaluator` compares the before and the after of a write (a creation that already satisfies is an enter, a removal of an entity that satisfied is an exit; an evaluation error emits nothing and is returned for the log). `TriggeringRepository` decorates any `IRepository` and does it on every write; over a `PdoRepository` it reads the "before" with an identity specification compiled to SQL. Events are immutable, carry a deterministic idempotency key and a payload without personal data (the trigger and the entity id), and go to a publisher: in production an outbox (in memory or PDO, reference DDL `resources/sql/domain_events.ansi.sql`) written in the same transaction as the write and delivered after the commit by `DomainEventDispatcher`, in the design of the 1.8.0 effect outbox. `MachineEventBridge` delivers an event to a state machine instance as a transition trigger, idempotently. Renamed in 1.8.0 from "Reactive Domain Event Sourcing Triggers": it never meant event sourcing.
 - **Goal:** "Something became true about this entity" is declared once, as a specification, and reaches handlers and state machines reliably, without polling and without leaking the entity.
-- **Not in this release:** crossings caused by time alone, without a write (milestone 19b); an external bus client (publish from a handler); event sourcing.
+- **Not in this release:** crossings caused by time alone, without a write (milestone 19b, shipped in v1.12.0); an external bus client (publish from a handler); event sourcing.
+
+---
+
+## ✅ v1.12.0 — Time-Based Domain Event Triggers (Shipped in v1.12.0)
+
+### 19b. Time-Based Domain Event Triggers ⏰ (Shipped in v1.12.0)
+- **Description:** The triggers of v1.11.0 (milestone 19) are evaluated on writes, so a specification whose truth changes with time alone ("unpaid and due more than 30 days ago") crossed only when something wrote the entity. `SpecificationTrigger::timed()` builds its specification from the instant of each evaluation (a factory `fn(DateTimeImmutable $now): ISpecification`, which never reads a clock); `DomainEvents\State\ITriggerStateStore` (in memory and PDO, table `domain_event_trigger_state` in `resources/sql/domain_events.ansi.sql`) keeps the last known state of every trigger for every entity; `TriggerSweeper::sweep($now, $limit)`, run by the application's cron as the state machine's `deliverDue()` is, compares it with the truth at `$now` and publishes the crossings through the same publisher and outbox. A sweep that finds no crossing loads no entity (one page of states and one `COUNT(*)` per 500 entities recorded inside, then one `COUNT(*)`); each crossing is one transaction with a compare-and-set of the state on the version read, so two sweepers, or a sweeper and a write, publish it once. `baseline($now)` introduces a trigger over existing data without publishing an enter for everything already inside. A trigger may declare the real instant of its crossings (`crossedAt`), which keeps the idempotency key stable across sweeps and processes. `TriggeringRepository` takes the same store: its "before" is the recorded state, which also lifts the in-memory limitation of v1.11.0.
+- **Goal:** Time-based crossings without a write, with the same events, keys and outbox as the write path, correct under concurrent sweepers and in constant memory.
+- **Not in this release:** an embedded scheduler (the cron is the application's) and partitioning of a sweep between processes (two sweepers are correct together, not faster).
 
 ---
 
@@ -142,10 +151,6 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ### 18. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`, beside the 12 database drivers over 7 SQL dialects and Adianti TCriteria.
-
-### 19b. Time-Based Domain Event Triggers ⏰
-- **Description:** The triggers of v1.11.0 (milestone 19) are evaluated on writes, so a specification whose truth changes with time alone ("overdue for more than 30 days") crosses only when something writes the entity. A sweeper run by a cron, with "now" injected, closes the gap: a persisted last-known state per trigger and entity (`satisfied`, `evaluated_at`), candidates found by a now-dependent specification compiled to SQL (a trigger declares a factory `fn(DateTimeImmutable $now): ISpecification`, as the state machine's `findDue()` searches the due deadlines), comparison with the persisted state and publication with the same idempotency key as the write path. The decorator would update the same projection, which also gives the in-memory repositories a "before" for entities stored before the decorator existed.
-- **Goal:** Time-based crossings without a write, with the same events, keys and outbox as the write path.
 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.

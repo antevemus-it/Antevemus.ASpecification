@@ -28,6 +28,7 @@ use Antevemus\ASpecification\Tests\Unit\Module20_SimplifyTest;
 use Antevemus\ASpecification\Tests\Unit\Module21_ConcurrentDataResolutionTest;
 use Antevemus\ASpecification\Tests\Unit\Module22_PdoRepositoryTest;
 use Antevemus\ASpecification\Tests\Unit\Module23_DomainEventTriggersTest;
+use Antevemus\ASpecification\Tests\Unit\Module24_TimeBasedDomainEventsTest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Throwable;
@@ -44,7 +45,7 @@ use Throwable;
  * A failing module suite surfaces as a failing PHPUnit test carrying the suite's original
  * message, file and line.
  *
- * @version    1.11.0
+ * @version    1.12.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -83,6 +84,7 @@ final class ModuleSuitesTest extends TestCase
         yield 'Módulo 21: Resolução Concorrente de Dados (DataResolver)' => [Module21_ConcurrentDataResolutionTest::class];
         yield 'Módulo 22: Repositório sobre PDO (PdoRepository)' => [Module22_PdoRepositoryTest::class];
         yield 'Módulo 23: Eventos de Domínio por Especificação' => [Module23_DomainEventTriggersTest::class];
+        yield 'Módulo 24: Eventos de Domínio pela Passagem do Tempo' => [Module24_TimeBasedDomainEventsTest::class];
     }
 
     /**

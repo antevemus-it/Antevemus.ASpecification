@@ -927,7 +927,7 @@ class Module23_DomainEventTriggersTest extends TestCase
         $this->assertTrue(str_contains($ddl, 'UNIQUE (idempotency_key)'));
         $statements = implode("\n", array_filter(explode("\n", $ddl), static fn(string $line): bool => !str_starts_with(ltrim($line), '--')));
         $this->assertFalse(str_contains(strtoupper($statements), 'CREATE INDEX'), 'MySQL has no CREATE INDEX IF NOT EXISTS');
-        $this->assertEquals(1, substr_count($statements, ';'));
+        $this->assertEquals(2, substr_count($statements, ';'), 'two tables since 1.12.0: the outbox and the trigger state');
 
         // Idempotent script
         $pdo = $this->sqlite();

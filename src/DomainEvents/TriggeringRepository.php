@@ -9,7 +9,10 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 use Antevemus\ASpecification\Contracts\Repositories\IPartitionRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
+use Antevemus\ASpecification\DomainEvents\Exceptions\DomainEventPersistenceException;
 use Antevemus\ASpecification\DomainEvents\Exceptions\DomainEventTriggerException;
+use Antevemus\ASpecification\DomainEvents\State\ITriggerStateStore;
+use Antevemus\ASpecification\DomainEvents\State\TriggerState;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Persistence\ITransactionManager;
@@ -62,11 +65,29 @@ use WeakMap;
  * events are atomic: both commit or neither does. Without one, the write is not undone when the
  * publication or a strict evaluation fails.
  *
- * The clock is read once per write (default: system clock) and stamps every event of that write.
+ * The clock is read once per write (default: system clock) and stamps every event of that write; it
+ * is also the instant a time-based trigger (SpecificationTrigger::timed()) is evaluated at.
+ *
+ * Persisted trigger state (since 1.12.0, forward 030, D6): with an ITriggerStateStore, the decorator
+ * keeps the store that TriggerSweeper reads, so a write and a sweep never publish the same crossing
+ * twice:
+ * - the "before" of each trigger is the recorded state when the store has one (one read of every
+ *   state of the entity per write); the identity lookup above runs only when a trigger of the entity
+ *   has no recorded state yet, and the in-memory limitation above disappears for the entities that
+ *   have one (TriggerSweeper::baseline() records every entity)
+ * - every write records the state of every trigger (plain and time-based) of the entity, with the
+ *   write's instant, by compare-and-set on the version read; when another writer or a sweeper
+ *   changed the row in between, the decorator reads it again and decides on the new value (up to
+ *   five times, then DomainEventPersistenceException), so the crossing is published by one of them
+ * - a removal deletes the states of the removed entities (compare-and-delete)
+ * - a trigger that cannot be evaluated keeps its recorded state; an entity whose id cannot be read
+ *   is handled as without the store
+ * Give the store the same connection and transaction manager as the repository and the outbox.
+ * Without a store, the behaviour of 1.11.0 is unchanged.
  *
  * @template T of IEntity
  * @implements IRepository<T>
- * @version    1.11.0
+ * @version    1.12.0
  * @package    Antevemus\ASpecification
  * @subpackage DomainEvents
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +96,9 @@ use WeakMap;
  */
 final class TriggeringRepository implements IRepository
 {
+    /** Compare-and-set attempts on one trigger state before a write gives up (since 1.12.0). */
+    public const MAX_STATE_ATTEMPTS = 5;
+
     private readonly IDomainEventErrorReporter $errors;
 
     /** @var Closure(): DateTimeImmutable */
@@ -99,6 +123,7 @@ final class TriggeringRepository implements IRepository
      *        selecting the stored entity of an id; null = predicate on getEntityId()
      * @param bool $failOnEvaluationError True = an evaluation error makes the write throw
      * @param TriggerEvaluator|null $evaluator Evaluator (custom identity reader); null = default
+     * @param ITriggerStateStore|null $states Persisted trigger state (since 1.12.0); null = 1.11.0 behaviour
      */
     public function __construct(
         private readonly IRepository $inner,
@@ -109,7 +134,8 @@ final class TriggeringRepository implements IRepository
         ?Closure $clock = null,
         ?Closure $identitySpecification = null,
         private readonly bool $failOnEvaluationError = false,
-        ?TriggerEvaluator $evaluator = null
+        ?TriggerEvaluator $evaluator = null,
+        private readonly ?ITriggerStateStore $states = null
     ) {
         $this->errors = $errors ?? new NullDomainEventErrorReporter();
         $this->clock = $clock ?? static fn(): DateTimeImmutable => new DateTimeImmutable('now');
@@ -166,6 +192,12 @@ final class TriggeringRepository implements IRepository
         return $this->publisher;
     }
 
+    /** The trigger state store, or null (since 1.12.0). */
+    public function getStates(): ?ITriggerStateStore
+    {
+        return $this->states;
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // Writes (evaluated)
     ///////////////////////////////////////////////////////////////////////////
@@ -210,11 +242,15 @@ final class TriggeringRepository implements IRepository
             $now = ($this->clock)();
             $stored = $this->findStored($entity);
             $subject = $stored ?? $entity;
-            $before = $this->recordedOrEvaluated($subject);
+            $records = $this->recordsOf($subject);
+            $before = $this->recordedOrEvaluated($subject, $now);
             if (!$this->inner->remove($entity)) {
                 return false;
             }
             unset($this->recorded[$entity], $this->recorded[$subject]);
+            if ($this->states !== null) {
+                $before = $this->record($subject, $records, $before, TriggerStates::absent(), $now, true);
+            }
             $this->emit([$this->evaluator->compare($this->triggers, $before, TriggerStates::absent(), $subject, $now)]);
 
             return true;
@@ -227,11 +263,15 @@ final class TriggeringRepository implements IRepository
         return $this->atomically(function () use ($specification): int {
             $now = ($this->clock)();
             $victims = $this->inner->findAllEntitiesSpecifiedBy($specification);
-            $before = array_map($this->recordedOrEvaluated(...), $victims);
+            $before = array_map(fn(IEntity $victim): TriggerStates => $this->recordedOrEvaluated($victim, $now), $victims);
+            $records = array_map($this->recordsOf(...), $victims);
             $removed = $this->inner->removeAllEntitiesSpecifiedBy($specification);
             $changes = [];
             foreach ($victims as $i => $victim) {
                 unset($this->recorded[$victim]);
+                if ($this->states !== null) {
+                    $before[$i] = $this->record($victim, $records[$i], $before[$i], TriggerStates::absent(), $now, true);
+                }
                 $changes[] = $this->evaluator->compare($this->triggers, $before[$i], TriggerStates::absent(), $victim, $now);
             }
             $this->emit($changes);
@@ -366,13 +406,98 @@ final class TriggeringRepository implements IRepository
     {
         $this->atomically(function () use ($entity, $write): void {
             $now = ($this->clock)();
-            $stored = $this->findStored($entity);
-            $before = $stored === null ? TriggerStates::absent() : $this->recordedOrEvaluated($stored);
+            $records = $this->recordsOf($entity);
+            // With a recorded state for every trigger, the stored entity is not needed
+            $before = TriggerStates::absent();
+            if ($this->states === null || count($records) < count($this->triggers)) {
+                $stored = $this->findStored($entity);
+                $before = $stored === null ? TriggerStates::absent() : $this->recordedOrEvaluated($stored, $now);
+            }
             $write();
-            $after = $this->evaluator->statesOf($this->triggers, $entity);
+            $after = $this->evaluator->statesOf($this->triggers, $entity, $now);
             $this->recorded[$entity] = $after;
+            if ($this->states !== null) {
+                $before = $this->record($entity, $records, $before, $after, $now, false);
+            }
             $this->emit([$this->evaluator->compare($this->triggers, $before, $after, $entity, $now)]);
         });
+    }
+
+    /**
+     * The recorded states of the set's triggers for an entity, by trigger name (none without a
+     * store, or when the id cannot be read yet: a creation with a generated id).
+     *
+     * @return array<string, TriggerState>
+     */
+    private function recordsOf(IEntity $entity): array
+    {
+        if ($this->states === null || $entity->getEntityId() === null) {
+            return [];
+        }
+        try {
+            $id = $this->evaluator->identityOf($entity);
+        } catch (InvalidArgumentException) {
+            return [];
+        }
+
+        return array_intersect_key($this->states->findByEntity(get_class($entity), $id), array_flip($this->triggers->names()));
+    }
+
+    /**
+     * Records the after state of every trigger (or deletes it, on a removal) by compare-and-set and
+     * returns the "before" the events are computed from: the recorded state when there is one, the
+     * 1.11.0 "before" otherwise. On a lost compare-and-set the row is read again and the decision
+     * taken on its new value.
+     *
+     * @param array<string, TriggerState> $records States read before the write, by trigger name
+     * @param TriggerStates $legacy The 1.11.0 "before" (for the triggers without a recorded state)
+     * @param TriggerStates $after States after the write (absent on a removal)
+     * @throws DomainEventPersistenceException When a state keeps changing under the write
+     */
+    private function record(IEntity $entity, array $records, TriggerStates $legacy, TriggerStates $after, DateTimeImmutable $now, bool $removal): TriggerStates
+    {
+        try {
+            $id = $this->evaluator->identityOf($entity);
+        } catch (InvalidArgumentException) {
+            // Without an id the state cannot be keyed: 1.11.0 behaviour (compare() reports the
+            // identity error if an event needs the id)
+            return $legacy;
+        }
+        $class = get_class($entity);
+        /** @var array<string, bool|Throwable> $before */
+        $before = [];
+        foreach ($this->triggers->all() as $trigger) {
+            $name = $trigger->name;
+            $record = $records[$name] ?? null;
+            $fromStore = $record !== null;
+            for ($attempt = 1; ; $attempt++) {
+                $was = $fromStore ? ($record?->satisfied ?? false) : ($legacy->errorOf($name) ?? $legacy->isSatisfied($name));
+                if ($was instanceof Throwable || $after->errorOf($name) !== null) {
+                    break;   // evaluation error: the recorded state is left as it is
+                }
+                $written = $removal
+                    ? ($record === null || $this->states->compareAndDelete($name, $class, $id, $record->version))
+                    : $this->states->compareAndSet($name, $class, $id, $record?->version, $after->isSatisfied($name), $now);
+                if ($written) {
+                    break;
+                }
+                if ($attempt >= self::MAX_STATE_ATTEMPTS) {
+                    throw new DomainEventPersistenceException(sprintf(
+                        'The state of trigger "%s" for %s#%s changed %d times while it was being written.',
+                        $name,
+                        $class,
+                        $id,
+                        $attempt
+                    ));
+                }
+                // Lost: someone recorded (or deleted) the row since it was read; the store is the truth now
+                $record = $this->states->find($name, $class, $id);
+                $fromStore = true;
+            }
+            $before[$name] = $was;
+        }
+
+        return new TriggerStates($before);
     }
 
     /**
@@ -393,9 +518,9 @@ final class TriggeringRepository implements IRepository
      * current states. Only the in-memory case (the stored object IS the caller's object) hits the
      * record; a hydrated copy is never in it.
      */
-    private function recordedOrEvaluated(IEntity $stored): TriggerStates
+    private function recordedOrEvaluated(IEntity $stored, DateTimeImmutable $now): TriggerStates
     {
-        return $this->recorded[$stored] ?? $this->evaluator->statesOf($this->triggers, $stored);
+        return $this->recorded[$stored] ?? $this->evaluator->statesOf($this->triggers, $stored, $now);
     }
 
     /**
