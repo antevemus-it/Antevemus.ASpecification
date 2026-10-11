@@ -19,9 +19,10 @@ declare(strict_types=1);
  * - Structural tautology/contradiction detection (isTautology, isContradiction, 1.6.0)
  * - Spec-driven state machine entry points (machine, guardRegistry, stateMachine, validateMachine, 1.8.0)
  * - Use case entry points (useCaseRunner, machineEventUseCase, 1.8.0)
+ * - Simplification of a specification tree (simplify, 1.9.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,6 +37,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
+use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
 use DateTimeInterface;
 
 final class Spec
@@ -130,6 +132,24 @@ final class Spec
         ISpecification $resultSpecification
     ): MethodParameterizedSpecification {
         return new MethodParameterizedSpecification($methodName, $arguments, $resultSpecification);
+    }
+
+    /**
+     * Returns an equivalent, smaller specification (1.9.0, forward 025). Annotated nodes
+     * (because()/withCode()) are kept, so the verdict and the annotated messages do not change;
+     * equivalence is guaranteed in truth value only, for non-null candidates. The input is not
+     * modified. See SpecificationSimplifier for the rules.
+     *
+     * <code>
+     * Spec::simplify(Spec::not(Spec::not($active))->and(Spec::alwaysTrue())); // $active
+     * </code>
+     *
+     * @param ISpecification $specification Specification to simplify
+     * @return ISpecification
+     */
+    public static function simplify(ISpecification $specification): ISpecification
+    {
+        return SpecificationSimplifier::simplify($specification);
     }
 
     /**

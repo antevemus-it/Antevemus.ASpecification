@@ -18,7 +18,7 @@ use Stringable;
  * - Location (region, state, transition id) when applicable
  * - Human-readable message
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -59,6 +59,12 @@ final class MachineDefinitionError implements Stringable
 
     /** A final state declares outgoing transitions (final states are inert). */
     public const KIND_FINAL_STATE_WITH_EXIT = 'final_state_with_exit';
+
+    /**
+     * A deadline declares no source or more than one among `after`, `afterFrom` and `atFrom`, or a
+     * context path that is not `context.<path>` (forward 025, D12).
+     */
+    public const KIND_INVALID_DEADLINE = 'invalid_deadline';
 
     /**
      * @param string $kind One of the KIND_* constants

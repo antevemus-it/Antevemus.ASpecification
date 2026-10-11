@@ -37,7 +37,7 @@ use PDOStatement;
  * map, give the real names exactly as the catalog stores them (lowercase for unquoted DDL in
  * PostgreSQL).
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -61,7 +61,7 @@ final class PdoMachineSchema
         'instance' => [
             'instance_id', 'machine_key', 'machine_version', 'version', 'snapshot', 'done', 'created_at', 'updated_at',
         ],
-        'region' => ['instance_id', 'region', 'machine_key', 'current_state', 'due_at', 'sort_order'],
+        'region' => ['instance_id', 'region', 'machine_key', 'current_state', 'due_at', 'sort_order', 'paused_remaining'],
         'history' => [
             'instance_id', 'instance_version', 'sort_order', 'machine_key', 'machine_version', 'region',
             'from_state', 'to_state', 'event_type', 'transition_id', 'payload', 'actor', 'idempotency_key',

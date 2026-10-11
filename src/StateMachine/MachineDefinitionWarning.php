@@ -20,7 +20,7 @@ use Stringable;
  * - Location (region, state, transition id, event type) when applicable
  * - Human-readable message
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -53,6 +53,13 @@ final class MachineDefinitionWarning implements Stringable
      * role guard with an empty role list). Allowed, but it is the author's decision, not an accident.
      */
     public const KIND_TAUTOLOGICAL_GUARD = 'tautological_guard';
+
+    /**
+     * The pause condition (`pausedWhile`) of a state's deadline references the state's own region
+     * (forward 025, D12): while the region is in that state the condition is either always or never
+     * true, and leaving the state drops the deadline, so a pause entered this way never ends.
+     */
+    public const KIND_SELF_REFERENCING_PAUSE = 'self_referencing_pause';
 
     /**
      * @param string $kind One of the KIND_* constants

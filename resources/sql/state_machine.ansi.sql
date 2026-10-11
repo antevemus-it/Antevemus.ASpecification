@@ -43,7 +43,11 @@
 --   state_machine_region       projection of the snapshot per region:
 --                              current state and due instant of its
 --                              deadline (D18; NULL once the instance is
---                              done); searched by (machine_key, due_at)
+--                              done); searched by (machine_key, due_at);
+--                              paused_remaining (since 1.9.0, forward
+--                              025, D11): whole seconds left of a paused
+--                              deadline, whose due_at is then NULL (so
+--                              a paused region is never due)
 --   state_machine_history      append-only trail (D15, RN-07): one row
 --                              per region moved, plus start and
 --                              migration rows; key = (instance,
@@ -55,6 +59,17 @@
 --                              idempotency_key)
 --   state_machine_rejection    optional rejection log (RN-07, off by
 --                              default)
+--
+-- Upgrading a database created by the 1.8 script (1.9.0): CREATE TABLE
+-- IF NOT EXISTS does not add a column to an existing table, so add the
+-- nullable column once, by hand (portable ANSI; MySQL, PostgreSQL and
+-- SQLite accept it as is):
+--
+--   ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER;
+--
+-- Until then the 1.9 stores keep working with the old table for every
+-- definition that never pauses a deadline (the column is only written
+-- for a paused region); the first paused region fails without it.
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS state_machine_instance (
@@ -78,6 +93,7 @@ CREATE TABLE IF NOT EXISTS state_machine_region (
     current_state            VARCHAR(120)   NOT NULL,
     due_at                   VARCHAR(26),
     sort_order               INTEGER        NOT NULL,
+    paused_remaining         INTEGER,
     CONSTRAINT pk_state_machine_region PRIMARY KEY (instance_id, region),
     CONSTRAINT fk_smr_instance FOREIGN KEY (instance_id)
         REFERENCES state_machine_instance (instance_id) ON DELETE CASCADE,

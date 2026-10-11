@@ -57,11 +57,12 @@ use Throwable;
  * the validated target definition, with one history row per target region (event type
  * MIGRATE_EVENT). deliverDue(): sends the deadline event of each due region with internal origin
  * and a deterministic idempotency key, so a repeated delivery returns the original result and an
- * early one is rejected by the core (D18).
+ * early one is rejected by the core (D18). A start whose initial deadline source is missing or
+ * invalid is rejected and writes nothing (forward 025, D8); a paused deadline is never due (D11).
  *
  * The runner reads no clock: every instant comes from the events (or the caller's $now).
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Runner
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -121,10 +122,12 @@ final class MachineRunner
      * @param string $instanceId Instance id chosen by the caller (at most 120 characters)
      * @param string $machineKey Machine key
      * @param int|null $version Definition version; null = the latest registered
-     * @param object|array<mixed>|null $context Domain context (reserved: no guard runs at start)
+     * @param object|array<mixed>|null $context Domain context: read by deadline sources and pause
+     *                                          conditions of the initial states (no guard runs at start)
      * @param DateTimeImmutable $occurredAt Instant of the start (deadlines count from it)
      * @param string|null $actor Who started it, recorded in the history
-     * @return TransitionResult Accepted start result (event null)
+     * @return TransitionResult Accepted start result (event null); rejected, with nothing written,
+     *                          when an initial deadline cannot be computed (SM_DEADLINE_SOURCE_INVALID)
      * @throws MachineInstanceAlreadyExistsException When the id is taken
      * @throws UnknownMachineDefinitionException When the definition is not registered
      * @throws InvalidMachineDefinitionException When the definition is refused by the validator
@@ -148,6 +151,9 @@ final class MachineRunner
                 throw new MachineInstanceAlreadyExistsException(sprintf('Machine instance "%s" already exists.', $instanceId));
             }
             $result = $this->machine->initialSnapshot($definition, $context, $occurredAt);
+            if (!$result->isAccepted()) {
+                return $result;
+            }
             $instance = new MachineInstance($instanceId, $result->snapshot, 1, $occurredAt, $occurredAt);
             $this->persistence->instances->insert($instance);
 
@@ -404,14 +410,25 @@ final class MachineRunner
      * synchronous effect veto skips that deadline (the next run retries it); other errors
      * propagate.
      *
+     * The event is sent with a null context unless $contextProvider is given (since 1.9.0): a
+     * deadline transition entering a state whose deadline reads the context (`afterFrom`,
+     * `atFrom`), or a pause condition that reads it, needs the domain context of the instance.
+     *
      * @param DateTimeImmutable $now Reference instant ("now" of the cron)
      * @param string|null $machineKey Only this machine, when given
      * @param int $limit Maximum number of deadlines
      * @param string|null $actor Recorded in the history (e.g. "scheduler")
+     * @param (Closure(DueDeadline, MachineInstance): (object|array<mixed>|null))|null $contextProvider
+     *        Domain context of each delivery; null sends a null context (1.8.0 behavior)
      * @return list<DeadlineDelivery>
      */
-    public function deliverDue(DateTimeImmutable $now, ?string $machineKey = null, int $limit = 100, ?string $actor = null): array
-    {
+    public function deliverDue(
+        DateTimeImmutable $now,
+        ?string $machineKey = null,
+        int $limit = 100,
+        ?string $actor = null,
+        ?Closure $contextProvider = null
+    ): array {
         $deliveries = [];
         foreach ($this->findDue($now, $machineKey, $limit) as $deadline) {
             $instance = $this->persistence->instances->load($deadline->instanceId);
@@ -433,7 +450,8 @@ final class MachineRunner
                 self::DEADLINE_KEY_PREFIX . $deadline->region . ':' . PersistenceSupport::toText($dueAt)
             );
             try {
-                $deliveries[] = new DeadlineDelivery($deadline, $this->send($deadline->instanceId, $event, null, $actor));
+                $context = $contextProvider !== null ? $contextProvider($deadline, $instance) : null;
+                $deliveries[] = new DeadlineDelivery($deadline, $this->send($deadline->instanceId, $event, $context, $actor));
             } catch (ConcurrencyConflictException | SyncEffectFailedException $e) {
                 $deliveries[] = new DeadlineDelivery($deadline, null, $e->getMessage());
             }
@@ -535,6 +553,9 @@ final class MachineRunner
                 $state = $snapshot->stateOf($region->name);
                 if (!$region->hasState($state)) {
                     $problems[] = sprintf('region "%s" is in state "%s", which the target does not declare', $region->name, $state);
+                } elseif ($snapshot->isPaused($region->name) && $region->getState($state)?->deadline?->pausedWhile === null) {
+                    // A paused balance in a state that can never resume would leave the region without a deadline forever.
+                    $problems[] = sprintf('region "%s" is paused in state "%s", whose deadline declares no pausedWhile (the migration must resume the deadline or drop the balance)', $region->name, $state);
                 }
             }
         }

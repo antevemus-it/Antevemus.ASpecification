@@ -20,13 +20,17 @@ use Throwable;
  * PdoMachineInstanceStore - Instance Store over PDO
  *
  * Tables `state_machine_instance` (the snapshot as JSON, the truth) and `state_machine_region`
- * (the per-region projection: current state and due instant, rewritten on every save; no due
- * instant once the instance is done). The compare-and-set is a single
+ * (the per-region projection: current state, due instant and, since 1.9.0, the remaining seconds
+ * of a paused deadline, rewritten on every save; neither once the instance is done). A paused
+ * region has no due instant, so findDue() never returns it (forward 025, D11). The column
+ * `paused_remaining` is only written for a paused region, so a database created by the 1.8 DDL
+ * keeps working until a definition pauses a deadline (then the column must be added, see the DDL
+ * header). The compare-and-set is a single
  * `UPDATE ... WHERE instance_id = :id AND version = :expected` whose row count decides
  * (forward 023, RN-08). findDue() compiles DueDeadline::specification() to SQL with the SQL
  * visitor in the connection's dialect (D18).
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -163,21 +167,28 @@ final class PdoMachineInstanceStore implements IMachineInstanceStore
     }
 
     /**
-     * Writes the per-region projection of the snapshot (no due instant once the instance is done).
+     * Writes the per-region projection of the snapshot (no due instant nor paused balance once the
+     * instance is done). `paused_remaining` is only in the column list of a paused region's row.
      */
     private function writeRegions(MachineInstance $instance): void
     {
         $order = 0;
+        $done = $instance->snapshot->isDone();
         foreach ($instance->snapshot->getStates() as $region => $state) {
-            $due = $instance->snapshot->isDone() ? null : $instance->snapshot->dueAt($region);
-            $this->schema->insert('region', [
+            $due = $done ? null : $instance->snapshot->dueAt($region);
+            $paused = $done ? null : $instance->snapshot->pausedRemaining($region);
+            $row = [
                 'instance_id' => $instance->instanceId,
                 'region' => $region,
                 'machine_key' => $instance->snapshot->machineKey,
                 'current_state' => $state,
                 'due_at' => $due === null ? null : PersistenceSupport::toText($due),
                 'sort_order' => $order++,
-            ]);
+            ];
+            if ($paused !== null) {
+                $row['paused_remaining'] = $paused;
+            }
+            $this->schema->insert('region', $row);
         }
     }
 

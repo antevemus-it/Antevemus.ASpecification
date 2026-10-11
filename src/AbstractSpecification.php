@@ -15,10 +15,12 @@ declare(strict_types=1);
  * - Set algebra analysis hooks (generalization, specialization, disjointness)
  * - Structural tautology/contradiction detection defaults (1.6.0: "not proven")
  * - Declarative method-call restriction (whereMethod, 1.6.0)
+ * - Simplification shortcut (simplify, 1.9.0): an equivalent, smaller tree through
+ *   SpecificationSimplifier; not part of ISpecification
  *
  * @template T
  * @implements ISpecification<T>
- * @version    1.6.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -39,6 +41,7 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
+use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
 use ReflectionClass;
 
 abstract class AbstractSpecification implements ISpecification
@@ -212,6 +215,22 @@ abstract class AbstractSpecification implements ISpecification
     public function isContradiction(): bool
     {
         return false;
+    }
+
+    /**
+     * Returns an equivalent, smaller specification (1.9.0): identity, annihilation, double negation,
+     * idempotence, flattening, contradiction/tautology and subsumption, applied bottom-up to a fixed
+     * point. Nodes annotated with because()/withCode() are kept (simplified only inside), so the
+     * verdict and the annotated messages do not change. Equivalence is guaranteed in truth value only
+     * (for non-null candidates): a removed redundant branch may have been one that would raise.
+     * This specification is not modified. Shortcut of SpecificationSimplifier::simplify(); it is not
+     * declared by ISpecification, so external implementations of the interface are unaffected.
+     *
+     * @return ISpecification<T>
+     */
+    public function simplify(): ISpecification
+    {
+        return SpecificationSimplifier::simplify($this);
     }
 
     /**

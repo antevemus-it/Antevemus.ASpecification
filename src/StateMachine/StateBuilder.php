@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\StateMachine;
 
+use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException;
+
 /**
  * StateBuilder - Fluent Builder of a StateDefinition
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -73,14 +75,39 @@ final class StateBuilder
     }
 
     /**
-     * Declares the state's persisted deadline.
+     * Declares the state's persisted deadline (forward 023, D18; forward 025, D7 and D9).
      *
-     * @param string $after ISO-8601 duration (e.g. 'P3D')
-     * @param string $event Event delivered when it expires (internal)
+     * Exactly one source: a fixed duration (`deadline('P3D', 'EXPIRE')`, as in 1.8.0), a duration
+     * read from the context (`deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.stage')`)
+     * or the due instant read from the context (`deadline(event: 'SLA_BREACHED', atFrom:
+     * 'context.sla_due_at')`). The optional pause condition is a guard expression, or a
+     * `'region.state'` string as a shorthand for `inState` (`pausedWhile: 'pending.open'`).
+     *
+     * @param string|null $after ISO-8601 duration (e.g. 'P3D')
+     * @param string|null $event Event delivered when it expires (internal); required
+     * @param string|null $afterFrom Context path of an ISO-8601 duration (e.g. 'context.deadlines.stage')
+     * @param string|null $atFrom Context path of the due instant (e.g. 'context.sla_due_at')
+     * @param GuardExpression|string|null $pausedWhile Pause condition; a string is an inState path
+     * @throws InvalidMachineDefinitionException When the event is missing or the sources are not exactly one
      */
-    public function deadline(string $after, string $event): self
-    {
-        $this->deadline = new DeadlineDefinition($after, $event);
+    public function deadline(
+        ?string $after = null,
+        ?string $event = null,
+        ?string $afterFrom = null,
+        ?string $atFrom = null,
+        GuardExpression|string|null $pausedWhile = null
+    ): self {
+        if ($event === null) {
+            throw InvalidMachineDefinitionException::single(
+                MachineDefinitionError::KIND_INVALID_DEADLINE,
+                sprintf('The deadline of state "%s" needs the event delivered when it expires.', $this->name),
+                state: $this->name
+            );
+        }
+        if (is_string($pausedWhile)) {
+            $pausedWhile = GuardExpression::ref(GuardRegistry::IN_STATE, ['state' => $pausedWhile]);
+        }
+        $this->deadline = new DeadlineDefinition($after, $event, $afterFrom, $atFrom, $pausedWhile);
         return $this;
     }
 

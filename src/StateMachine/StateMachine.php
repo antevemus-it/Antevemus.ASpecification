@@ -32,6 +32,17 @@ use DateTimeImmutable;
  * - Implicit guards: a transition declared `internal`, or answering the deadline event of the
  *   current state, only accepts internal events (D19); a deadline event is only accepted when the
  *   region's dueAt is set and `dueAt <= occurredAt` (D18).
+ * - Deadline sources (forward 025, D7, D8): entering a state whose deadline reads its source from
+ *   the context (`afterFrom`, `atFrom`) computes `dueAt` from the context given to this call; a
+ *   missing or invalid source rejects the event (CODE_DEADLINE_SOURCE_INVALID, ERROR, with the
+ *   path, never the value).
+ * - Deadline pause (forward 025, D9, D10): after the transitions of an accepted event (and at the
+ *   start), every region whose current state's deadline declares `pausedWhile` evaluates it against
+ *   the NEW snapshot (context and event of the call). Starting to hold pauses: the remaining whole
+ *   seconds (`dueAt - occurredAt`, floored, never negative) are kept and `dueAt` becomes null.
+ *   Ceasing to hold resumes: `dueAt = occurredAt + remaining`. A state entered by this event starts
+ *   a fresh deadline (the balance is dropped) and pauses at once if the condition holds. A pause
+ *   condition that throws rejects the event (ERROR, `evaluation_error`).
  * - Effects in SCXML order: every exit, then every transition action, then every entry; within a
  *   phase, regions then actions in declaration order. A transition to the same state reenters
  *   (exit + entry, deadline recomputed); a targetless transition runs only its actions.
@@ -40,7 +51,7 @@ use DateTimeImmutable;
  *   not hold the machine open. A machine with no final state anywhere is never done. Once done,
  *   the machine is inert: every event is unhandled (CODE_MACHINE_DONE) and nextEvents() is empty.
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -49,6 +60,12 @@ use DateTimeImmutable;
  */
 final class StateMachine
 {
+    /**
+     * Type of the internal event the pause conditions see at the start (the same reserved type the
+     * runner records for the start rows of the history).
+     */
+    public const START_EVENT = 'machine.start';
+
     private readonly GuardRegistry $guards;
 
     /**
@@ -67,15 +84,22 @@ final class StateMachine
 
     /**
      * Computes the start of an instance: every region in its initial state, deadlines computed
-     * from $occurredAt, and the entry actions of the initial states as effects (one TakenTransition
-     * per region with `from` and `transitionId` null).
+     * from $occurredAt (and from the context for `afterFrom`/`atFrom` sources), paused when their
+     * `pausedWhile` holds on the initial snapshot, and the entry actions of the initial states as
+     * effects (one TakenTransition per region with `from` and `transitionId` null).
      *
      * The definition is expected to be validated (MachineDefinitionValidator) beforehand.
      *
+     * When a deadline source is missing or invalid (or a pause condition throws), the start is
+     * REJECTED (event null, no transition, no effect; reason CODE_DEADLINE_SOURCE_INVALID for a
+     * source, an ERROR marked `evaluation_error` for a pause condition that throws); its snapshot is
+     * informative only (the failing regions without due instant) and must not be stored.
+     *
      * @param MachineDefinition $definition Machine definition
-     * @param object|array<mixed>|null $context Domain context (reserved: no guard runs at start)
+     * @param object|array<mixed>|null $context Domain context: read by deadline sources and pause
+     *                                          conditions (no transition guard runs at start)
      * @param DateTimeImmutable $occurredAt Instant of the start
-     * @return TransitionResult Accepted result whose snapshot is the initial snapshot
+     * @return TransitionResult Accepted result whose snapshot is the initial snapshot (or rejected, see above)
      * @throws InvalidSnapshotException When a region has no valid initial state
      */
     public function initialSnapshot(
@@ -88,6 +112,8 @@ final class StateMachine
         $taken = [];
         $effects = [];
         $allFinal = true;
+        /** @var array<string, SpecificationResult> $rejections */
+        $rejections = [];
 
         foreach ($definition->regions as $region) {
             $initial = $region->initial !== null ? $region->getState($region->initial) : null;
@@ -99,7 +125,13 @@ final class StateMachine
                 ));
             }
             $states[$region->name] = $initial->name;
-            $dueAt[$region->name] = $initial->deadline?->dueFrom($occurredAt);
+            $dueAt[$region->name] = null;
+            if ($initial->deadline !== null) {
+                $dueAt[$region->name] = $initial->deadline->resolveDue($occurredAt, $context);
+                if ($dueAt[$region->name] === null) {
+                    $rejections[$region->name] = $this->sourceInvalid($region, $initial, null, null);
+                }
+            }
             $taken[] = new TakenTransition($region->name, null, $initial->name, null, null);
             foreach ($initial->entry as $action) {
                 $effects[] = new Effect($action->name, $action->params, $region->name, EffectPhase::ENTRY, $initial->name, null);
@@ -108,6 +140,23 @@ final class StateMachine
         }
 
         $snapshot = new MachineSnapshot($definition->key, $definition->version, $states, $dueAt, $allFinal);
+        if ($rejections === []) {
+            [$snapshot, $rejections] = $this->applyPauses(
+                $definition,
+                $snapshot,
+                Event::internal(self::START_EVENT, $occurredAt),
+                $context
+            );
+        }
+        if ($rejections !== []) {
+            return new TransitionResult(
+                TransitionStatus::REJECTED,
+                null,
+                $snapshot,
+                reason: SpecificationResult::combine(...array_values($rejections)),
+                rejections: $rejections
+            );
+        }
 
         return new TransitionResult(TransitionStatus::ACCEPTED, null, $snapshot, $taken, $effects);
     }
@@ -209,7 +258,7 @@ final class StateMachine
             );
         }
 
-        return $this->apply($definition, $snapshot, $event, $selected);
+        return $this->apply($definition, $snapshot, $event, $selected, $context);
     }
 
     /**
@@ -348,12 +397,14 @@ final class StateMachine
             $due = $candidate->snapshot->dueAt($region->name);
             if ($due === null || $due > $event->occurredAt) {
                 return $this->stamp(SpecificationResult::failure(
-                    message: sprintf(
-                        "The deadline of state '%s' in region '%s' is not due yet (due at %s).",
-                        $state->name,
-                        $region->name,
-                        $due?->format(MachineSnapshot::DATE_FORMAT) ?? 'never'
-                    ),
+                    message: $candidate->snapshot->isPaused($region->name)
+                        ? sprintf("The deadline of state '%s' in region '%s' is paused.", $state->name, $region->name)
+                        : sprintf(
+                            "The deadline of state '%s' in region '%s' is not due yet (due at %s).",
+                            $state->name,
+                            $region->name,
+                            $due?->format(MachineSnapshot::DATE_FORMAT) ?? 'never'
+                        ),
                     code: TransitionResult::CODE_DEADLINE_NOT_DUE,
                     ruleName: 'StateMachine'
                 ), $region, $transition, $event);
@@ -425,18 +476,22 @@ final class StateMachine
      * Applies the selected transitions: new snapshot, taken transitions and effects.
      *
      * @param array<string, array{region: RegionDefinition, from: StateDefinition, transition: TransitionDefinition}> $selected
+     * @param object|array<mixed>|null $context Domain context (deadline sources and pause conditions)
      */
     private function apply(
         MachineDefinition $definition,
         MachineSnapshot $snapshot,
         Event $event,
-        array $selected
+        array $selected,
+        object|array|null $context
     ): TransitionResult {
         $exits = [];
         $actions = [];
         $entries = [];
         $taken = [];
         $next = $snapshot;
+        /** @var array<string, SpecificationResult> $rejections */
+        $rejections = [];
 
         foreach ($definition->regions as $region) {
             if (!isset($selected[$region->name])) {
@@ -466,11 +521,31 @@ final class StateMachine
                 foreach ($target->entry as $action) {
                     $entries[] = new Effect($action->name, $action->params, $region->name, EffectPhase::ENTRY, $target->name, $transition->id);
                 }
-                $next = $next->withState($region->name, $target->name, $target->deadline?->dueFrom($event->occurredAt));
+                $due = null;
+                if ($target->deadline !== null) {
+                    $due = $target->deadline->resolveDue($event->occurredAt, $context);
+                    if ($due === null) {
+                        $rejections[$region->name] = $this->sourceInvalid($region, $target, $transition, $event);
+                    }
+                }
+                $next = $next->withState($region->name, $target->name, $due);
                 $taken[] = new TakenTransition($region->name, $from->name, $target->name, $transition->id, $event->type);
             } else {
                 $taken[] = new TakenTransition($region->name, $from->name, $from->name, $transition->id, $event->type, true);
             }
+        }
+
+        if ($rejections === []) {
+            [$next, $rejections] = $this->applyPauses($definition, $next, $event, $context);
+        }
+        if ($rejections !== []) {
+            return new TransitionResult(
+                TransitionStatus::REJECTED,
+                $event,
+                $snapshot,
+                reason: SpecificationResult::combine(...array_values($rejections)),
+                rejections: $rejections
+            );
         }
 
         $done = self::isDone($definition, $next);
@@ -485,6 +560,140 @@ final class StateMachine
             $taken,
             [...$exits, ...$actions, ...$entries]
         );
+    }
+
+    /**
+     * Pauses and resumes the deadlines whose `pausedWhile` condition changed on the new snapshot
+     * (forward 025, D9). A region whose state was entered by this step has no balance (withState()
+     * dropped it), so it pauses at once with its full deadline when the condition holds.
+     *
+     * @return array{0: MachineSnapshot, 1: array<string, SpecificationResult>} New snapshot, and the
+     *         ERROR failure of each region whose pause condition could not be evaluated
+     */
+    private function applyPauses(
+        MachineDefinition $definition,
+        MachineSnapshot $next,
+        Event $event,
+        object|array|null $context
+    ): array {
+        $candidate = new TransitionCandidate($context, $event, $next);
+        $result = $next;
+        $errors = [];
+        foreach ($definition->regions as $region) {
+            $state = $region->getState($next->stateOf($region->name));
+            $condition = $state?->deadline?->pausedWhile;
+            if ($state === null || $condition === null) {
+                continue;
+            }
+            try {
+                $holds = $this->guards->compile($condition)->isSatisfiedBy($candidate);
+            } catch (UnknownGuardException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                $errors[$region->name] = $this->locate(
+                    SpecificationResult::error($e, 'Deadline:pausedWhile', code: $condition->getCode()),
+                    ['region' => $region->name, 'state' => $state->name, 'event' => $event->type]
+                );
+                continue;
+            }
+
+            $remaining = $next->pausedRemaining($region->name);
+            if ($holds && $remaining === null) {
+                $due = $next->dueAt($region->name);
+                if ($due !== null) {
+                    $result = $result->withPaused($region->name, self::remainingSeconds($due, $event->occurredAt));
+                }
+            } elseif (!$holds && $remaining !== null) {
+                $result = $result->withDueAt($region->name, self::resumeAt($event->occurredAt, $remaining));
+            }
+        }
+
+        return [$result, $errors];
+    }
+
+    /**
+     * Whole seconds from $now to $due, floored, never negative (pausing an overdue deadline keeps
+     * it overdue: it resumes already due).
+     */
+    private static function remainingSeconds(DateTimeImmutable $due, DateTimeImmutable $now): int
+    {
+        $micros = ((int) $due->format('U') - (int) $now->format('U')) * 1_000_000
+            + (int) $due->format('u') - (int) $now->format('u');
+
+        return $micros <= 0 ? 0 : intdiv($micros, 1_000_000);
+    }
+
+    /**
+     * $now plus $seconds of elapsed time, in the time zone of $now (no wall-clock DST surprise).
+     */
+    private static function resumeAt(DateTimeImmutable $now, int $seconds): DateTimeImmutable
+    {
+        $instant = DateTimeImmutable::createFromFormat(
+            'U.u',
+            sprintf('%d.%s', (int) $now->format('U') + $seconds, $now->format('u'))
+        );
+        \assert($instant instanceof DateTimeImmutable);
+
+        return $instant->setTimezone($now->getTimezone());
+    }
+
+    /**
+     * The ERROR failure of a deadline whose context source is missing or invalid (forward 025, D8).
+     * The message names the path, never the value read from the context.
+     */
+    private function sourceInvalid(
+        RegionDefinition $region,
+        StateDefinition $state,
+        ?TransitionDefinition $transition,
+        ?Event $event
+    ): SpecificationResult {
+        \assert($state->deadline !== null);
+        $path = (string) $state->deadline->sourcePath();
+        $expected = $state->deadline->atFrom !== null
+            ? 'a DateTimeInterface or an ISO-8601 instant with date, time and offset'
+            : 'an ISO-8601 duration';
+        $metadata = ['region' => $region->name, 'state' => $state->name, 'path' => $path, 'source' => $state->deadline->sourceKind()];
+        if ($transition !== null) {
+            $metadata['transition_id'] = $transition->id;
+        }
+        $metadata['event'] = $event?->type ?? self::START_EVENT;
+
+        return SpecificationResult::failure(
+            message: sprintf(
+                "The deadline of state '%s' in region '%s' cannot be computed: the context value at '%s' is missing or invalid (expected %s).",
+                $state->name,
+                $region->name,
+                $path,
+                $expected
+            ),
+            code: TransitionResult::CODE_DEADLINE_SOURCE_INVALID,
+            ruleName: 'StateMachine',
+            property: $path,
+            metadata: $metadata,
+            severity: FailureSeverity::ERROR
+        );
+    }
+
+    /**
+     * Adds location metadata to every failure and forces the ERROR severity.
+     *
+     * @param array<string, string> $location
+     */
+    private function locate(SpecificationResult $result, array $location): SpecificationResult
+    {
+        $failures = array_map(
+            static fn(SpecificationFailure $f): SpecificationFailure => new SpecificationFailure(
+                message: $f->message,
+                code: $f->code,
+                ruleName: $f->ruleName,
+                property: $f->property,
+                metadata: $f->metadata + $location,
+                severity: FailureSeverity::ERROR
+            ),
+            $result->failures
+        );
+
+        return new SpecificationResult($result->isSatisfied, $failures, $result->isError, $result->exception);
     }
 
     /**

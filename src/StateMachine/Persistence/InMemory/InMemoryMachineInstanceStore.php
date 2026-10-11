@@ -19,9 +19,10 @@ use stdClass;
  *
  * Same contract as PdoMachineInstanceStore (forward 023, D14): insert, compare-and-set by
  * version, and findDue() evaluating DueDeadline::specification() over the same per-region
- * projection the PDO store keeps in its region table (no due instant once the instance is done).
+ * projection the PDO store keeps in its region table (no due instant once the instance is done;
+ * a paused region has no due instant either, so it is never due, forward 025, D11).
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\InMemory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -94,12 +95,14 @@ final class InMemoryMachineInstanceStore implements IMachineInstanceStore, IInMe
         $rows = [];
         foreach ($instance->snapshot->getStates() as $region => $state) {
             $due = $instance->snapshot->isDone() ? null : $instance->snapshot->dueAt($region);
+            $paused = $instance->snapshot->isDone() ? null : $instance->snapshot->pausedRemaining($region);
             $row = new stdClass();
             $row->instanceId = $instance->instanceId;
             $row->machineKey = $instance->snapshot->machineKey;
             $row->region = $region;
             $row->state = $state;
             $row->dueAt = $due === null ? null : PersistenceSupport::toText($due);
+            $row->pausedRemaining = $paused;
             $rows[] = $row;
         }
 

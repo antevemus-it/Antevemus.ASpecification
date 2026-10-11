@@ -24,6 +24,7 @@ use Antevemus\ASpecification\Tests\Unit\Module16_PdoRuleCatalogTest;
 use Antevemus\ASpecification\Tests\Unit\Module17_StateMachineTest;
 use Antevemus\ASpecification\Tests\Unit\Module18_StateMachineRunnerTest;
 use Antevemus\ASpecification\Tests\Unit\Module19_UseCaseTest;
+use Antevemus\ASpecification\Tests\Unit\Module20_SimplifyTest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Throwable;
@@ -40,7 +41,7 @@ use Throwable;
  * A failing module suite surfaces as a failing PHPUnit test carrying the suite's original
  * message, file and line.
  *
- * @version    1.3.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +76,7 @@ final class ModuleSuitesTest extends TestCase
         yield 'Módulo 17: Máquina de Estados Dirigida por Especificações' => [Module17_StateMachineTest::class];
         yield 'Módulo 18: Runner e Persistência da Máquina de Estados' => [Module18_StateMachineRunnerTest::class];
         yield 'Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)' => [Module19_UseCaseTest::class];
+        yield 'Módulo 20: Simplificação de Especificações (simplify)' => [Module20_SimplifyTest::class];
     }
 
     /**

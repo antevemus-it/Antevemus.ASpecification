@@ -62,7 +62,14 @@ use RuntimeException;
  * presa à versão + migração explícita), D18 (prazo → findDue → deliverDue com relógio injetado) e a
  * espinha da Virttus com a pendência registrada e resolvida.
  *
- * @version    1.8.0
+ * Forward 025, fase 3 (1.9.0): início rejeitado por fonte de prazo inválida não grava nada; região
+ * com prazo pausado fora do `findDue` nos dois stores; retomada com o saldo; `deliverDue` com
+ * provedor de contexto; coluna `paused_remaining` no PDO, banco criado pelo DDL da 1.8 (funciona
+ * até a primeira pausa; o ALTER TABLE do cabeçalho o atualiza) e snapshot da 1.8.0 gravado em JSON.
+ * README 14.7 (prazos do contexto, pausa com saldo, deliverDue com contexto) e a nota de atualização
+ * da 1.8 em 14.6, transcritos.
+ *
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -107,13 +114,19 @@ class Module18_StateMachineRunnerTest extends TestCase
             $this->testHistoryIsAppendOnly($label, $factory);
             $this->testTransactionBoundary($label, $factory);
             $this->testCanAndNextEventsThroughRunner($label, $factory);
+            $this->testDeadlineSourcesAndPause($label, $factory);
+            $this->testMigrationRefusesStrandedPause($label, $factory);
         }
 
         $this->testParityInMemoryVsPdo();
+        if (extension_loaded('pdo_sqlite')) {
+            $this->testPausedProjectionAndDdlUpgrade();
+        }
         $this->testReadme14_5RunnerInMemory();
         if (extension_loaded('pdo_sqlite')) {
             $this->testReadme14_6PdoPersistence();
         }
+        $this->testReadme14_7DeadlinesFromTheContext();
     }
 
     // ==========================================
@@ -1161,6 +1174,226 @@ class Module18_StateMachineRunnerTest extends TestCase
     }
 
     // ==========================================
+    // Forward 025 (1.9.0): prazos do contexto e pausa através do runner (D8, D9, D11, RN-03)
+    // ==========================================
+
+    /** The claim machine of Module17 (SLA in its own region, paused while pending.open). */
+    private function claimMachine(): MachineDefinition
+    {
+        return Spec::machine('claim', 1)
+            ->region('progress', 'received')
+                ->state('received')->deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.received')
+                    ->on('START_ANALYSIS', 'document_analysis', 'start_analysis')
+                    ->on('STAGE_OVERDUE', 'late', 'received_overdue')
+                ->state('document_analysis')->deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.document_analysis')
+                    ->on('APPROVE', 'closed', 'approve')
+                    ->on('STAGE_OVERDUE', 'late', 'analysis_overdue')
+                ->state('late')
+                    ->on('APPROVE', 'closed', 'approve_late')
+                ->finalState('closed')
+            ->region('pending', 'none')
+                ->state('none')->on('REGISTER_PENDING', 'open', 'register_pending')
+                ->state('open')->on('RESOLVE_PENDING', 'none', 'resolve_pending')
+            ->region('sla', 'running')
+                ->state('running')->deadline(event: 'SLA_BREACHED', atFrom: 'context.sla_due_at', pausedWhile: 'pending.open')
+                    ->on('SLA_BREACHED', 'breached', 'sla_breached')
+                    ->on('CLOSE_SLA', 'met', 'close_sla')
+                ->state('breached')->on('CLOSE_SLA', 'met', 'close_breached')
+                ->finalState('met')
+            ->build();
+    }
+
+    /** @return array<string, mixed> */
+    private function clientA(): array
+    {
+        return ['sla_due_at' => '2026-11-09T23:59:59-03:00', 'deadlines' => ['received' => 'P2D', 'document_analysis' => 'P5D']];
+    }
+
+    /**
+     * Battery (InMemory and Pdo): a start with an invalid source writes nothing; a paused region is
+     * never due; resuming makes it due at the shifted instant; deliverDue passes the context.
+     *
+     * @param Closure(bool): MachinePersistence $factory
+     */
+    /**
+     * A migration that keeps a paused balance in a state whose deadline has no pausedWhile is refused:
+     * the region could never resume and would stay without a deadline forever.
+     *
+     * @param Closure(bool): MachinePersistence $factory
+     */
+    private function testMigrationRefusesStrandedPause(string $label, Closure $factory): void
+    {
+        $persistence = $factory(false);
+        $v2 = MachineDefinition::fromArray(array_replace($this->claimMachine()->toArray(), ['version' => 2]));
+        $array = $v2->toArray();
+        foreach ($array['regions'] as &$region) {
+            if ($region['name'] === 'sla') {
+                foreach ($region['states'] as &$state) {
+                    if ($state['name'] === 'running') {
+                        unset($state['deadline']['pausedWhile']);
+                    }
+                }
+                unset($state);
+            }
+        }
+        unset($region);
+        $v2 = MachineDefinition::fromArray($array);
+        $runner = $this->runner($persistence, [$this->claimMachine(), $v2]);
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+        $this->assertTrue($runner->start('m-1', 'claim', 1, $this->clientA(), $t0)->isAccepted());
+        $this->assertTrue($runner->send('m-1', Event::external('REGISTER_PENDING', $t0->modify('+1 day')), $this->clientA())->isAccepted());
+        $this->assertTrue($runner->load('m-1')->snapshot->isPaused('sla'), "{$label}: paused before the migration");
+
+        $runner->registerMigration('claim', 1, 2, static fn(MachineSnapshot $s): MachineSnapshot => MachineSnapshot::fromArray(array_replace($s->toArray(), ['machine_version' => 2])));
+        $e = $this->assertThrows(MachineMigrationException::class, fn() => $runner->migrate('m-1', 2, $t0->modify('+2 days')));
+        $this->assertTrue(str_contains($e->getMessage(), 'declares no pausedWhile'), "{$label}: the stranded pause is named");
+        $this->assertEquals(1, $runner->load('m-1')->snapshot->machineVersion, "{$label}: nothing was written");
+    }
+
+    private function testDeadlineSourcesAndPause(string $label, Closure $factory): void
+    {
+        $persistence = $factory(true);
+        $runner = $this->runner($persistence, [$this->claimMachine()]);
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+
+        // D8: the start is rejected and nothing is written (not even the rejection log: no event).
+        $bad = $runner->start('c-bad', 'claim', 1, ['deadlines' => ['received' => 'P2D']], $t0);
+        $this->assertTrue($bad->isRejected(), "{$label}: start without the SLA source is rejected");
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $bad->getReason()->getCodes());
+        $this->assertEquals(null, $persistence->instances->load('c-bad'), "{$label}: no instance");
+        $this->assertEquals([], $persistence->history->findByInstance('c-bad'));
+        $this->assertEquals([], $persistence->outbox->findByInstance('c-bad'));
+
+        $this->assertTrue($runner->start('c-1', 'claim', 1, $this->clientA(), $t0)->isAccepted());
+        $this->assertEquals(['progress', 'sla'], array_map(static fn(DueDeadline $d): string => $d->region, $runner->findDue($this->at('2026-11-10T00:00:00-03:00'), 'claim')));
+
+        // Invalid source on send: rejected, version unchanged, logged as a rejection.
+        $context = $this->clientA();
+        $context['deadlines']['document_analysis'] = 'not-a-duration';
+        $rejected = $runner->send('c-1', Event::external('START_ANALYSIS', $t0->modify('+1 hour')), $context);
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $rejected->getReason()->getCodes());
+        $this->assertEquals(1, $runner->load('c-1')->version);
+        $this->assertCount(1, $persistence->rejections?->findByInstance('c-1') ?? []);
+
+        // Pending opened: the SLA region pauses and leaves the due list; the stage deadline stays.
+        $t1 = $this->at('2026-10-11T10:00:00-03:00');
+        $this->assertTrue($runner->send('c-1', Event::external('REGISTER_PENDING', $t1), $this->clientA())->isAccepted());
+        $stored = $runner->load('c-1')->snapshot;
+        $this->assertEquals(29 * 86400 + 13 * 3600 + 59 * 60 + 59, $stored->pausedRemaining('sla'), "{$label}: the balance is persisted");
+        $this->assertEquals(null, $stored->dueAt('sla'));
+        $this->assertEquals(['progress'], array_map(static fn(DueDeadline $d): string => $d->region, $runner->findDue($this->at('2027-12-31T00:00:00Z'), 'claim')), "{$label}: findDue ignores the paused region");
+
+        // The cron while paused: the stage deadline is delivered, the SLA is not.
+        $deliveries = $runner->deliverDue($this->at('2026-11-15T00:00:00-03:00'), 'claim', 100, 'scheduler');
+        $this->assertEquals(['progress'], array_map(static fn($d): string => $d->deadline->region, $deliveries));
+        $this->assertTrue($deliveries[0]->isDelivered());
+        $this->assertEquals('late', $runner->load('c-1')->snapshot->stateOf('progress'));
+        $this->assertEquals(29 * 86400 + 13 * 3600 + 59 * 60 + 59, $runner->load('c-1')->snapshot->pausedRemaining('sla'), "{$label}: the balance survives other steps");
+
+        // Resolved: resumes at occurredAt + balance (2026-11-20T04:59:59-03:00 = 07:59:59 UTC).
+        $this->assertTrue($runner->send('c-1', Event::external('RESOLVE_PENDING', $this->at('2026-10-21T15:00:00-03:00')), $this->clientA())->isAccepted());
+        $this->assertEquals([], $runner->findDue($this->at('2026-11-20T04:59:58-03:00'), 'claim'));
+        $due = $runner->findDue($this->at('2026-11-20T04:59:59-03:00'), 'claim');
+        $this->assertEquals(
+            [['instance_id' => 'c-1', 'machine_key' => 'claim', 'region' => 'sla', 'state' => 'running', 'due_at' => '2026-11-20 07:59:59.000000']],
+            array_map(static fn(DueDeadline $d): array => $d->toArray(), $due),
+            "{$label}: due at the resumed instant"
+        );
+        $this->assertFalse(array_key_exists('paused_remaining', $runner->load('c-1')->snapshot->toArray()), 'No pause left: 1.8.0 snapshot form');
+        $breach = $runner->deliverDue($this->at('2026-11-20T04:59:59-03:00'), 'claim');
+        $this->assertTrue($breach[0]->isDelivered());
+        $history = $persistence->history->findByInstance('c-1');
+        $this->assertEquals(['SLA_BREACHED', 'deadline:sla:2026-11-20 07:59:59.000000'], [$history[count($history) - 1]->eventType, $history[count($history) - 1]->idempotencyKey]);
+        $this->assertEquals('breached', $runner->load('c-1')->snapshot->stateOf('sla'));
+
+        // deliverDue and the context: a deadline transition entering a state whose deadline reads
+        // the context needs the instance's context (null by default, as in 1.8.0).
+        $stages = Spec::machine('stages', 1)
+            ->region('r', 'a')
+                ->state('a')->deadline(event: 'NEXT', afterFrom: 'context.d.a')->on('NEXT', 'b', 'a_next')
+                ->state('b')->deadline(event: 'NEXT', afterFrom: 'context.d.b')->on('NEXT', 'c', 'b_next')
+                ->finalState('c')
+            ->build();
+        $stagesRunner = $this->runner($factory(false), [$stages]);
+        $ctx = ['d' => ['a' => 'P1D', 'b' => 'P2D']];
+        $stagesRunner->start('s-1', 'stages', 1, $ctx, $t0);
+        $withoutContext = $stagesRunner->deliverDue($t0->modify('+1 day'));
+        $this->assertFalse($withoutContext[0]->isDelivered(), "{$label}: without the context the next deadline cannot be computed");
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $withoutContext[0]->result?->getReason()->getCodes());
+        $this->assertEquals('a', $stagesRunner->load('s-1')->snapshot->stateOf('r'));
+        $seen = [];
+        $withContext = $stagesRunner->deliverDue($t0->modify('+1 day'), null, 100, null, static function (DueDeadline $d, MachineInstance $i) use ($ctx, &$seen): array {
+            $seen[] = $d->instanceId . '@' . $i->version;
+
+            return $ctx;
+        });
+        $this->assertTrue($withContext[0]->isDelivered());
+        $this->assertEquals(['s-1@1'], $seen, 'The provider receives the deadline and the loaded instance');
+        $this->assertEquals('2026-10-13T10:00:00.000000-03:00', $stagesRunner->load('s-1')->snapshot->dueAt('r')?->format(MachineSnapshot::DATE_FORMAT));
+    }
+
+    /**
+     * PDO only: the `paused_remaining` column of the region projection, a database created by the
+     * 1.8 DDL (works until a deadline pauses; the documented ALTER TABLE upgrades it), and a 1.8.0
+     * snapshot stored as JSON without `paused_remaining`.
+     */
+    private function testPausedProjectionAndDdlUpgrade(): void
+    {
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+        $projection = static fn(PDO $pdo, string $id): array => $pdo->query(
+            "SELECT region, due_at, paused_remaining FROM state_machine_region WHERE instance_id = '{$id}' ORDER BY sort_order"
+        )->fetchAll(PDO::FETCH_NUM);
+
+        // Current DDL: the balance is projected, due_at is NULL while paused.
+        $pdo = $this->sqlite();
+        $runner = $this->runner(MachinePersistence::pdo($pdo), [$this->claimMachine()]);
+        $runner->start('c-1', 'claim', 1, $this->clientA(), $t0);
+        $runner->send('c-1', Event::external('REGISTER_PENDING', $this->at('2026-10-11T10:00:00-03:00')), $this->clientA());
+        $rows = array_map(static fn(array $r): array => [$r[0], $r[1], $r[2] === null ? null : (int) $r[2]], $projection($pdo, 'c-1'));
+        $this->assertEquals([
+            ['progress', '2026-10-12 13:00:00.000000', null],
+            ['pending', null, null],
+            ['sla', null, 29 * 86400 + 13 * 3600 + 59 * 60 + 59],
+        ], $rows, 'paused_remaining projected, due_at NULL');
+        $runner->send('c-1', Event::external('RESOLVE_PENDING', $this->at('2026-10-21T15:00:00-03:00')), $this->clientA());
+        $this->assertEquals(['sla', '2026-11-20 07:59:59.000000', null], $projection($pdo, 'c-1')[2], 'Resumed: due_at back, paused_remaining NULL');
+
+        // A database created by the 1.8 DDL (no paused_remaining column).
+        $ddl = (string) file_get_contents(self::DDL);
+        $old = str_replace("    paused_remaining         INTEGER,\n", '', $ddl);
+        $this->assertFalse($old === $ddl, 'The 1.9 DDL declares paused_remaining');
+        $legacy = $this->sqlite($old);
+        $columns = array_map(static fn(array $c): string => $c['name'], $legacy->query('PRAGMA table_info(state_machine_region)')->fetchAll(PDO::FETCH_ASSOC));
+        $this->assertFalse(in_array('paused_remaining', $columns, true));
+        $persistence = MachinePersistence::pdo($legacy);
+        $legacyRunner = $this->runner($persistence, [$this->deadlineMachine(), $this->claimMachine()]);
+        $legacyRunner->start('doc-1', 'deadline', 1, null, $t0);
+        $this->assertTrue($legacyRunner->send('doc-1', Event::external('RESUBMIT', $t0->modify('+1 day')))->isAccepted(), 'Never-pausing definitions keep working on the 1.8 table');
+        $this->assertCount(1, $legacyRunner->findDue($t0->modify('+4 days')));
+        $legacyRunner->start('c-1', 'claim', 1, $this->clientA(), $t0);
+        $this->assertThrows(MachinePersistenceException::class, fn() => $legacyRunner->send('c-1', Event::external('REGISTER_PENDING', $t0->modify('+1 day')), $this->clientA()), 'The first paused region needs the column');
+        $this->assertEquals(1, $legacyRunner->load('c-1')->version, 'Rolled back');
+
+        // The ALTER TABLE documented in the DDL header upgrades it in place.
+        $this->assertEquals(1, preg_match('/^--\s+(ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER);$/m', $ddl, $m), 'The header documents the upgrade');
+        $legacy->exec($m[1]);
+        $this->assertTrue($legacyRunner->send('c-1', Event::external('REGISTER_PENDING', $t0->modify('+1 day')), $this->clientA())->isAccepted());
+        $this->assertTrue($legacyRunner->load('c-1')->snapshot->isPaused('sla'));
+        $this->assertEquals(['sla', null, 29 * 86400 + 13 * 3600 + 59 * 60 + 59], array_map(static fn(array $r): array => [$r[0], $r[1], $r[2] === null ? null : (int) $r[2]], $projection($legacy, 'c-1'))[2]);
+
+        // A 1.8.0 snapshot stored as JSON (no paused_remaining) loads and runs.
+        $v180 = '{"machine_key":"claim","machine_version":1,"states":{"progress":"received","pending":"none","sla":"running"},'
+            . '"due_at":{"progress":"2026-10-12T10:00:00.000000-03:00","pending":null,"sla":"2026-11-09T23:59:59.000000-03:00"},"done":false}';
+        $pdo->exec("INSERT INTO state_machine_instance (instance_id, machine_key, machine_version, version, snapshot, done, created_at, updated_at) VALUES ('old-1', 'claim', 1, 3, '{$v180}', 'N', '2026-10-10 13:00:00.000000', '2026-10-10 13:00:00.000000')");
+        $loaded = $runner->load('old-1');
+        $this->assertEquals(3, $loaded->version);
+        $this->assertEquals(null, $loaded->snapshot->pausedRemaining('sla'));
+        $this->assertEquals(json_decode($v180, true), $loaded->snapshot->toArray(), 'Same array form as stored by 1.8.0');
+        $this->assertTrue($runner->send('old-1', Event::external('REGISTER_PENDING', $this->at('2026-10-11T10:00:00-03:00')), $this->clientA())->isAccepted());
+        $this->assertEquals(29 * 86400 + 13 * 3600 + 59 * 60 + 59, $runner->load('old-1')->snapshot->pausedRemaining('sla'));
+    }
+
+    // ==========================================
     // README (1.8.0): exemplos 14.5 e 14.6 transcritos (EN/pt-BR); cada comentário "// valor" do
     // bloco é uma asserção aqui.
     // ==========================================
@@ -1267,5 +1500,138 @@ class Module18_StateMachineRunnerTest extends TestCase
         $this->assertTrue($pdo->inTransaction());
         $pdo->rollBack();
         $this->assertEquals('pending', $runner->load('doc-1')->snapshot->stateOf('lifecycle'));
+
+        // Nota do README (1.9.0), "Upgrading from 1.8": banco do script da 1.8 funciona até a
+        // primeira pausa, que falha e é desfeita; o ALTER TABLE da nota, como escrito, o atualiza.
+        $ddl = (string) file_get_contents(self::DDL);
+        $legacy = $this->sqlite(str_replace("    paused_remaining         INTEGER,\n", '', $ddl));
+        $legacyRunner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$document, $this->readmeClaim()]), MachinePersistence::pdo($legacy), $handlers);
+        $context = ['sla_due_at' => '2026-11-09T18:00:00-03:00', 'deadlines' => ['triage' => 'P2D', 'analysis' => 'P5D']];
+        $this->assertTrue($legacyRunner->start('doc-9', 'document', 1, null, new DateTimeImmutable('2026-10-10 09:00'))->isAccepted());
+        $this->assertTrue($legacyRunner->start('claim-7', 'claim', 1, $context, new DateTimeImmutable('2026-10-10T09:00:00-03:00'))->isAccepted());
+        $pending = Event::external('REGISTER_PENDING', new DateTimeImmutable('2026-10-20T18:00:00-03:00'));
+        $this->assertThrows(MachinePersistenceException::class, fn() => $legacyRunner->send('claim-7', $pending, $context), 'the first pause needs the column');
+        $this->assertEquals(1, $legacyRunner->load('claim-7')->version, 'the step is rolled back');
+        $legacy->exec('ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER;');
+        $this->assertTrue($legacyRunner->send('claim-7', $pending, $context)->isAccepted());
+        $this->assertEquals(1728000, $legacyRunner->load('claim-7')->snapshot->pausedRemaining('sla'));
+        $this->assertTrue(str_contains($ddl, 'ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER;'), 'the DDL header documents the same statement');
+    }
+
+    // ==========================================
+    // README (1.9.0): exemplo 14.7 transcrito (EN/pt-BR); cada comentário "// valor" do bloco é
+    // uma asserção aqui.
+    // ==========================================
+
+    /** A máquina `claim` do README 14.7, como escrita. */
+    private function readmeClaim(): MachineDefinition
+    {
+        $claim = Spec::machine('claim', 1)
+            ->region('progress', 'triage')
+                ->state('triage')->deadline(event: 'TRIAGE_CLOSED', afterFrom: 'context.deadlines.triage')
+                    ->on('START_ANALYSIS', 'analysis')
+                    ->on('TRIAGE_CLOSED', 'analysis')
+                ->state('analysis')->deadline(event: 'ANALYSIS_OVERDUE', afterFrom: 'context.deadlines.analysis')
+                    ->on('APPROVE', 'approved')
+                    ->on('ANALYSIS_OVERDUE', 'late')
+                ->state('late')
+                    ->on('APPROVE', 'approved')
+                ->finalState('approved')
+            ->region('pending', 'none')
+                ->state('none')->on('REGISTER_PENDING', 'open')
+                ->state('open')->on('RESOLVE_PENDING', 'none')
+            ->region('sla', 'running')
+                ->state('running')->deadline(event: 'SLA_BREACHED', atFrom: 'context.sla_due_at', pausedWhile: 'pending.open')
+                    ->on('SLA_BREACHED', 'breached')
+                ->finalState('breached')
+            ->build();
+
+        return $claim;
+    }
+
+    /** README 14.7: prazo do contexto (atFrom/afterFrom), fonte ausente rejeitada, deliverDue com contexto, pausa com saldo. */
+    private function testReadme14_7DeadlinesFromTheContext(): void
+    {
+        $claim = $this->readmeClaim();
+        $this->assertEquals([], Spec::validateMachine($claim), 'the README machine has no warning');
+
+        // The context of each claim: the SLA instant of the contract and the stage durations of the client
+        $contexts = ['claim-7' => ['sla_due_at' => '2026-11-09T18:00:00-03:00', 'deadlines' => ['triage' => 'P2D', 'analysis' => 'P5D']]];
+
+        $persistence = MachinePersistence::inMemory();
+        $runner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$claim]), $persistence);
+        $this->assertTrue($runner->start('claim-7', 'claim', 1, $contexts['claim-7'], new DateTimeImmutable('2026-10-10T09:00:00-03:00'))->isAccepted());
+        $this->assertEquals('2026-11-09T18:00:00-03:00', $runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM));      // atFrom
+        $this->assertEquals('2026-10-12T09:00:00-03:00', $runner->load('claim-7')->snapshot->dueAt('progress')->format(DATE_ATOM)); // start + P2D
+
+        // A missing source is a rejection, never a silently empty SLA: the start writes nothing
+        $missing = $runner->start('claim-8', 'claim', 1, ['deadlines' => ['triage' => 'P2D']], new DateTimeImmutable('2026-10-10T09:00:00-03:00'));
+        $this->assertTrue($missing->isRejected());                                                   // true
+        $this->assertEquals('SM_DEADLINE_SOURCE_INVALID', $missing->getReason()->failures[0]->code);
+        $this->assertEquals('context.sla_due_at', $missing->getReason()->failures[0]->property);
+        $this->assertEquals(null, $persistence->instances->load('claim-8'), 'the start writes nothing');
+        $this->assertEquals([], $persistence->history->findByInstance('claim-8'));
+        $this->assertFalse(str_contains($missing->getReason()->failures[0]->message, 'P2D'), 'the message names the path, never the value');
+
+        // Prosa do comentário: sem o provedor, a entrega é rejeitada (contexto nulo) e fica para a próxima rodada
+        $withoutProvider = $runner->deliverDue(new DateTimeImmutable('2026-10-12T09:00:00-03:00'));
+        $this->assertFalse($withoutProvider[0]->isDelivered());
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $withoutProvider[0]->result?->getReason()->getCodes());
+        $this->assertEquals('triage', $runner->load('claim-7')->snapshot->stateOf('progress'));
+
+        // The cron: TRIAGE_CLOSED enters 'analysis', whose deadline reads the context, so the cron provides it
+        $deliveries = $runner->deliverDue(
+            new DateTimeImmutable('2026-10-12T09:00:00-03:00'),
+            contextProvider: fn(DueDeadline $due, MachineInstance $instance) => $contexts[$instance->instanceId]
+        );
+        $this->assertTrue($deliveries[0]->isDelivered());                                            // true
+        $this->assertEquals('2026-10-17T09:00:00-03:00', $runner->load('claim-7')->snapshot->dueAt('progress')->format(DATE_ATOM));
+
+        // A pending item opened 20 days before the SLA: the SLA pauses and keeps the balance
+        $runner->send('claim-7', Event::external('REGISTER_PENDING', new DateTimeImmutable('2026-10-20T18:00:00-03:00')), $contexts['claim-7']);
+        $snapshot = $runner->load('claim-7')->snapshot;
+        $this->assertTrue($snapshot->isPaused('sla'));                                               // true
+        $this->assertEquals(null, $snapshot->dueAt('sla'));                                          // a paused deadline is never due
+        $this->assertEquals(1728000, $snapshot->pausedRemaining('sla'));                             // 20 days, in whole seconds
+        $this->assertEquals(['progress'], array_map(fn(DueDeadline $due) => $due->region, $runner->findDue(new DateTimeImmutable('2027-01-01T00:00:00-03:00'))));
+
+        // Resolved 5 days later: the SLA resumes with the balance, 5 days after the contract instant
+        $runner->send('claim-7', Event::external('RESOLVE_PENDING', new DateTimeImmutable('2026-10-25T18:00:00-03:00')), $contexts['claim-7']);
+        $this->assertEquals('2026-11-14T18:00:00-03:00', $runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM));
+        $this->assertFalse($runner->load('claim-7')->snapshot->isPaused('sla'));
+
+        // Prosa do exemplo: reentrar no estado reinicia o prazo e descarta o saldo (pausado de novo, com o prazo inteiro)
+        $restart = Spec::machine('restart', 1)
+            ->region('flag', 'off')
+                ->state('off')->on('OPEN', 'on')
+                ->state('on')->on('CLOSE', 'off')
+            ->region('sla', 'running')
+                ->state('running')->deadline(event: 'BREACH', after: 'P10D', pausedWhile: 'flag.on')
+                    ->on('RESTART', 'running')
+                    ->on('BREACH', 'breached')
+                ->finalState('breached')
+            ->build();
+        $machine = Spec::stateMachine();
+        $t0 = new DateTimeImmutable('2026-10-10T09:00:00-03:00');
+        $state = $machine->initialSnapshot($restart, null, $t0)->getSnapshot();
+        $state = $machine->transition($restart, $state, Event::external('OPEN', $t0->modify('+4 days')))->getSnapshot();
+        $this->assertEquals(6 * 86400, $state->pausedRemaining('sla'), 'paused with 6 days left');
+        $state = $machine->transition($restart, $state, Event::external('RESTART', $t0->modify('+5 days')))->getSnapshot();
+        $this->assertEquals(10 * 86400, $state->pausedRemaining('sla'), 'reentered: a fresh deadline, paused at once with its full duration');
+        $state = $machine->transition($restart, $state, Event::external('CLOSE', $t0->modify('+6 days')))->getSnapshot();
+        $this->assertEquals('2026-10-26T09:00:00-03:00', $state->dueAt('sla')?->format(DATE_ATOM));
+
+        // Prosa do exemplo: o validador avisa da pausa na própria região e recusa inState inexistente
+        $warnings = Spec::validateMachine(Spec::machine('self_pause', 1)
+            ->region('r', 'a')
+                ->state('a')->deadline(event: 'EXPIRE', after: 'P1D', pausedWhile: 'r.a')->on('EXPIRE', 'b')
+                ->finalState('b')
+            ->build());
+        $this->assertEquals(['self_referencing_pause'], array_map(static fn($w): string => $w->kind, $warnings));
+        $this->assertThrows(InvalidMachineDefinitionException::class, fn() => Spec::validateMachine(Spec::machine('bad_pause', 1)
+            ->region('r', 'a')
+                ->state('a')->deadline(event: 'EXPIRE', after: 'P1D', pausedWhile: 'nowhere.x')->on('EXPIRE', 'b')
+                ->finalState('b')
+            ->build()));
     }
 }

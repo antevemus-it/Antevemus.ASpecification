@@ -23,6 +23,7 @@ use Antevemus\ASpecification\Tests\Unit\Module16_PdoRuleCatalogTest;
 use Antevemus\ASpecification\Tests\Unit\Module17_StateMachineTest;
 use Antevemus\ASpecification\Tests\Unit\Module18_StateMachineRunnerTest;
 use Antevemus\ASpecification\Tests\Unit\Module19_UseCaseTest;
+use Antevemus\ASpecification\Tests\Unit\Module20_SimplifyTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -48,6 +49,7 @@ $suites = [
     'Módulo 17: Máquina de Estados Dirigida por Especificações' => new Module17_StateMachineTest(),
     'Módulo 18: Runner e Persistência da Máquina de Estados' => new Module18_StateMachineRunnerTest(),
     'Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)' => new Module19_UseCaseTest(),
+    'Módulo 20: Simplificação de Especificações (simplify)' => new Module20_SimplifyTest(),
 ];
 
 $startTime = microtime(true);

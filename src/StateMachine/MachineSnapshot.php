@@ -13,12 +13,16 @@ use DateTimeImmutable;
  * What the machine keeps between events (forward 023, §5: no machine context, the domain object
  * belongs to the caller): the machine key and the version the instance was born with (D16), the
  * current state of every region (D2), the due instant of each region's deadline (D18, RN-06) and
- * the `done` flag (every region in a final state, D10). Immutable: every change returns a copy
- * through the with* methods (RN-02).
+ * the `done` flag (every region in a final state, D10) and, since 1.9.0, the remaining whole
+ * seconds of each paused deadline (forward 025, D9, D11). A paused region has no due instant: the
+ * pause keeps the balance and nulls `dueAt`, resuming recomputes it. Immutable: every change returns
+ * a copy through the with* methods (RN-02).
  *
- * Array form: `{"machine_key", "machine_version", "states": {region: state}, "due_at": {region: iso|null}, "done"}`.
+ * Array form: `{"machine_key", "machine_version", "states": {region: state}, "due_at": {region: iso|null}, "done"}`,
+ * plus `"paused_remaining": {region: seconds|null}` only when some region is paused (so a snapshot
+ * that never paused keeps its 1.8.0 form, and a 1.8.0 array, without the key, loads).
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,12 +40,16 @@ final class MachineSnapshot
     /** @var array<string, DateTimeImmutable|null> */
     private array $dueAt;
 
+    /** @var array<string, int|null> */
+    private array $pausedRemaining;
+
     /**
      * @param string $machineKey Key of the machine definition
      * @param int $machineVersion Version of the machine definition
      * @param array<string, string> $states Current state per region, in region order
      * @param array<string, DateTimeImmutable|null> $dueAt Due instant per region (missing = null)
      * @param bool $done Whether every region is in a final state
+     * @param array<string, int|null> $pausedRemaining Remaining seconds of each paused deadline (missing = not paused)
      * @throws InvalidSnapshotException When the arrays are malformed
      */
     public function __construct(
@@ -49,7 +57,8 @@ final class MachineSnapshot
         public readonly int $machineVersion,
         array $states,
         array $dueAt = [],
-        public readonly bool $done = false
+        public readonly bool $done = false,
+        array $pausedRemaining = []
     ) {
         if ($states === []) {
             throw new InvalidSnapshotException('A snapshot must hold the state of at least one region.');
@@ -72,8 +81,25 @@ final class MachineSnapshot
                 throw new InvalidSnapshotException(sprintf('Due instant given for unknown region "%s".', (string) $region));
             }
         }
+        $normalizedPaused = [];
+        foreach ($states as $region => $_) {
+            $remaining = $pausedRemaining[$region] ?? null;
+            if ($remaining !== null && (!is_int($remaining) || $remaining < 0)) {
+                throw new InvalidSnapshotException(sprintf('The paused remaining seconds of region "%s" must be a non-negative integer.', $region));
+            }
+            if ($remaining !== null && $normalizedDue[$region] !== null) {
+                throw new InvalidSnapshotException(sprintf('Region "%s" cannot be paused and have a due instant at the same time.', $region));
+            }
+            $normalizedPaused[$region] = $remaining;
+        }
+        foreach ($pausedRemaining as $region => $_) {
+            if (!isset($states[$region])) {
+                throw new InvalidSnapshotException(sprintf('Paused remaining seconds given for unknown region "%s".', (string) $region));
+            }
+        }
         $this->states = $states;
         $this->dueAt = $normalizedDue;
+        $this->pausedRemaining = $normalizedPaused;
     }
 
     /** Machine key. */
@@ -160,6 +186,30 @@ final class MachineSnapshot
         return $this->dueAt;
     }
 
+    /**
+     * Remaining whole seconds of the region's paused deadline, or null when it is not paused.
+     */
+    public function pausedRemaining(string $region): ?int
+    {
+        return $this->pausedRemaining[$region] ?? null;
+    }
+
+    /** True when the region's deadline is paused (forward 025, D9). */
+    public function isPaused(string $region): bool
+    {
+        return ($this->pausedRemaining[$region] ?? null) !== null;
+    }
+
+    /**
+     * Remaining seconds per region (null when the region's deadline is not paused).
+     *
+     * @return array<string, int|null>
+     */
+    public function getPausedRemaining(): array
+    {
+        return $this->pausedRemaining;
+    }
+
     /** True when every region is in a final state. */
     public function isDone(): bool
     {
@@ -167,7 +217,8 @@ final class MachineSnapshot
     }
 
     /**
-     * Returns a copy with the region in the given state (and the given due instant).
+     * Returns a copy with the region in the given state (and the given due instant). Entering a
+     * state drops any paused balance of the region (forward 025, D10).
      *
      * @param string $region Region name
      * @param string $state New state
@@ -181,20 +232,45 @@ final class MachineSnapshot
         $states[$region] = $state;
         $due = $this->dueAt;
         $due[$region] = $dueAt;
+        $paused = $this->pausedRemaining;
+        $paused[$region] = null;
 
-        return new self($this->machineKey, $this->machineVersion, $states, $due, $this->done);
+        return new self($this->machineKey, $this->machineVersion, $states, $due, $this->done, $paused);
     }
 
     /**
-     * Returns a copy with the region's due instant replaced.
+     * Returns a copy with the region's due instant replaced (a running deadline: any paused balance
+     * of the region is dropped).
      */
     public function withDueAt(string $region, ?DateTimeImmutable $dueAt): self
     {
         $this->stateOf($region);
         $due = $this->dueAt;
         $due[$region] = $dueAt;
+        $paused = $this->pausedRemaining;
+        $paused[$region] = null;
 
-        return new self($this->machineKey, $this->machineVersion, $this->states, $due, $this->done);
+        return new self($this->machineKey, $this->machineVersion, $this->states, $due, $this->done, $paused);
+    }
+
+    /**
+     * Returns a copy with the region's deadline paused: no due instant, $remaining seconds kept
+     * (forward 025, D9).
+     *
+     * @param string $region Region name
+     * @param int $remaining Remaining whole seconds (non-negative)
+     * @return self
+     * @throws InvalidSnapshotException When the region is unknown or the balance is negative
+     */
+    public function withPaused(string $region, int $remaining): self
+    {
+        $this->stateOf($region);
+        $due = $this->dueAt;
+        $due[$region] = null;
+        $paused = $this->pausedRemaining;
+        $paused[$region] = $remaining;
+
+        return new self($this->machineKey, $this->machineVersion, $this->states, $due, $this->done, $paused);
     }
 
     /**
@@ -202,17 +278,17 @@ final class MachineSnapshot
      */
     public function withDone(bool $done): self
     {
-        return new self($this->machineKey, $this->machineVersion, $this->states, $this->dueAt, $done);
+        return new self($this->machineKey, $this->machineVersion, $this->states, $this->dueAt, $done, $this->pausedRemaining);
     }
 
     /**
      * Returns the JSON-friendly array form.
      *
-     * @return array{machine_key: string, machine_version: int, states: array<string, string>, due_at: array<string, string|null>, done: bool}
+     * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'machine_key' => $this->machineKey,
             'machine_version' => $this->machineVersion,
             'states' => $this->states,
@@ -222,6 +298,11 @@ final class MachineSnapshot
             ),
             'done' => $this->done,
         ];
+        if (array_filter($this->pausedRemaining, static fn(?int $r): bool => $r !== null) !== []) {
+            $array['paused_remaining'] = $this->pausedRemaining;
+        }
+
+        return $array;
     }
 
     /**
@@ -252,13 +333,23 @@ final class MachineSnapshot
                 throw new InvalidSnapshotException(sprintf('The due instant of region "%s" is not a valid date: %s', (string) $region, $value));
             }
         }
+        $paused = $data['paused_remaining'] ?? [];
+        if (!is_array($paused)) {
+            throw new InvalidSnapshotException('The paused_remaining of a snapshot array must be an object.');
+        }
+        foreach ($paused as $region => $value) {
+            if ($value !== null && !is_int($value)) {
+                throw new InvalidSnapshotException(sprintf('The paused remaining seconds of region "%s" must be an integer.', (string) $region));
+            }
+        }
 
         return new self(
             $data['machine_key'],
             $data['machine_version'],
             $data['states'],
             $due,
-            (bool) ($data['done'] ?? false)
+            (bool) ($data['done'] ?? false),
+            $paused
         );
     }
 }

@@ -32,6 +32,10 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * - guard without factory in the GuardRegistry, or whose factory fails with the declared params
  * - action not in the list of known actions (only when the list is given)
  * - final state with outgoing transitions (final states are inert)
+ * - deadline pause condition (`pausedWhile`, forward 025, D12) with a guard without factory, an
+ *   inState naming a region or state that does not exist, or a guard whose factory fails (the
+ *   deadline with no source or more than one is refused earlier, when the definition is built,
+ *   with the same exception type and the kind `invalid_deadline`)
  *
  * Warnings (list of MachineDefinitionWarning):
  * - state unreachable from the initial state of its region
@@ -42,13 +46,15 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * - transition without guard (or with a guard proven a tautology) followed by another for the
  *   same event in the same list: the later one never runs
  * - declared guard proven a tautology by the algebra (always passes, e.g. an empty role list)
+ * - deadline pause condition referencing the state's own region (the pause would never end,
+ *   forward 025, D12)
  *
  * The decidable fragment: AlwaysTrue/AlwaysFalse, the built-in inState and eventOrigin leaves,
  * comparison and set leaves (equalTo, in, ranges, null checks), property restrictions over those,
  * and and/or/not of decidable operands. Outside it (closures, method calls, custom classes) the
  * algebra cannot decide and no overlap warning is issued.
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -128,6 +134,18 @@ final class MachineDefinitionValidator
                 foreach ($state->transitions as $transition) {
                     self::checkTransition($definition, $region, $state->name, $transition, $guards, $actionSet, $errors);
                 }
+                if ($state->deadline?->pausedWhile !== null) {
+                    self::checkGuardRefs(
+                        $state->deadline->pausedWhile,
+                        $definition,
+                        $region->name,
+                        $state->name,
+                        null,
+                        "the deadline pause of state '{$region->name}.{$state->name}'",
+                        $guards,
+                        $errors
+                    );
+                }
             }
             foreach ($region->transitions as $transition) {
                 self::checkTransition($definition, $region, null, $transition, $guards, $actionSet, $errors);
@@ -145,6 +163,7 @@ final class MachineDefinitionValidator
             }
             self::warnOrdering($region, null, $region->transitions, $compiled, $warnings);
             self::warnTautologies($region, $compiled, $warnings);
+            self::warnSelfReferencingPauses($region, $warnings);
         }
 
         return new MachineValidationReport($errors, $warnings);
@@ -282,14 +301,43 @@ final class MachineDefinitionValidator
             return;
         }
 
-        foreach ($transition->guard->refs() as $ref) {
+        self::checkGuardRefs(
+            $transition->guard,
+            $definition,
+            $region->name,
+            $state,
+            $transition->id,
+            "transition '{$transition->id}'",
+            $guards,
+            $errors
+        );
+    }
+
+    /**
+     * Checks every named guard of an expression: factory registered, inState path existing,
+     * factory buildable with the declared parameters.
+     *
+     * @param string $owner Human description of the owner ("transition 'x'", "the deadline pause of state 'r.s'")
+     * @param list<MachineDefinitionError> $errors
+     */
+    private static function checkGuardRefs(
+        GuardExpression $guard,
+        MachineDefinition $definition,
+        string $region,
+        ?string $state,
+        ?string $transitionId,
+        string $owner,
+        GuardRegistry $guards,
+        array &$errors
+    ): void {
+        foreach ($guard->refs() as $ref) {
             if (!$guards->has($ref->name)) {
                 $errors[] = new MachineDefinitionError(
                     MachineDefinitionError::KIND_UNKNOWN_GUARD,
-                    sprintf("Guard '%s' of transition '%s' has no registered factory.", $ref->name, $transition->id),
-                    $region->name,
+                    sprintf("Guard '%s' of %s has no registered factory.", $ref->name, $owner),
+                    $region,
                     $state,
-                    $transition->id
+                    $transitionId
                 );
                 continue;
             }
@@ -301,13 +349,13 @@ final class MachineDefinitionValidator
                     $errors[] = new MachineDefinitionError(
                         MachineDefinitionError::KIND_UNKNOWN_IN_STATE,
                         sprintf(
-                            "Guard inState('%s') of transition '%s' references a region or state that does not exist.",
+                            "Guard inState('%s') of %s references a region or state that does not exist.",
                             is_string($path) ? $path : json_encode($path),
-                            $transition->id
+                            $owner
                         ),
-                        $region->name,
+                        $region,
                         $state,
-                        $transition->id
+                        $transitionId
                     );
                     continue;
                 }
@@ -318,15 +366,48 @@ final class MachineDefinitionValidator
                 $errors[] = new MachineDefinitionError(
                     MachineDefinitionError::KIND_GUARD_BUILD_FAILED,
                     sprintf(
-                        "Guard '%s' of transition '%s' cannot be built with its parameters: %s",
+                        "Guard '%s' of %s cannot be built with its parameters: %s",
                         $ref->name,
-                        $transition->id,
+                        $owner,
                         $e->getMessage()
                     ),
-                    $region->name,
+                    $region,
                     $state,
-                    $transition->id
+                    $transitionId
                 );
+            }
+        }
+    }
+
+    /**
+     * A deadline pause that references its own region never ends (forward 025, D12).
+     *
+     * @param list<MachineDefinitionWarning> $warnings
+     */
+    private static function warnSelfReferencingPauses(RegionDefinition $region, array &$warnings): void
+    {
+        foreach ($region->states as $state) {
+            $condition = $state->deadline?->pausedWhile;
+            if ($condition === null) {
+                continue;
+            }
+            foreach ($condition->refs() as $ref) {
+                $path = $ref->name === GuardRegistry::IN_STATE ? ($ref->params['state'] ?? null) : null;
+                if (is_string($path) && explode('.', $path, 2)[0] === $region->name) {
+                    $warnings[] = new MachineDefinitionWarning(
+                        MachineDefinitionWarning::KIND_SELF_REFERENCING_PAUSE,
+                        sprintf(
+                            "The deadline pause of state '%s.%s' references its own region (inState('%s')): while the region stays in '%s' that condition cannot change, so the deadline is either never paused or paused for good (only leaving the state, which drops the deadline, ends it). Pause on another region.",
+                            $region->name,
+                            $state->name,
+                            $path,
+                            $state->name
+                        ),
+                        $region->name,
+                        $state->name
+                    );
+                    break;
+                }
             }
         }
     }

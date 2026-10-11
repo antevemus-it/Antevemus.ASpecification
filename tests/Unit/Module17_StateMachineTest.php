@@ -47,7 +47,11 @@ use RuntimeException;
  *
  * Runner, persistência, outbox e DDL (D12-D16, fase 5) estão no Module18_StateMachineRunnerTest.
  *
- * @version    1.8.0
+ * Forward 025, fase 3 (1.9.0): prazo lido do contexto (`afterFrom`, `atFrom`), rejeição por fonte
+ * ausente ou inválida sem vazar o valor, pausa com saldo (`pausedWhile`), reentrada que reinicia,
+ * modelo/fingerprint/validador dos campos novos e snapshot da 1.8.0 sem `paused_remaining`.
+ *
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -86,6 +90,11 @@ class Module17_StateMachineTest extends TestCase
         $this->testRegionLevelTransitionsPriority();
         $this->testInternalEvents();
         $this->testDeadlines();
+        $this->testDeadlineSourcesFromContext();
+        $this->testDeadlineSourceInvalid();
+        $this->testDeadlinePauseWithBalance();
+        $this->testDeadlineDefinitionModel();
+        $this->testSnapshotPausedRemainingCompatibility();
         $this->testEffectsOrderAndSelfTransitions();
         $this->testGuardExceptionBecomesErrorFailure();
         $this->testValidatorErrors();
@@ -970,6 +979,386 @@ class Module17_StateMachineTest extends TestCase
         // Leaving by another path also clears it.
         $validated = $machine->transition($definition, $snapshot, Event::external('VALIDATE', $t0->modify('+1 day')));
         $this->assertEquals(null, $validated->getSnapshot()->dueAt('doc'));
+    }
+
+    // ==========================================
+    // Forward 025 (1.9.0): prazos lidos do contexto e pausa com saldo (D7-D12, RN-03)
+    // ==========================================
+
+    /**
+     * The claim machine of the Virttus modelling (§5 L1-L3): stage deadlines per client (read from
+     * a context table), an absolute SLA read from the context in its own region, paused while a
+     * pending item is open.
+     */
+    private function claimMachine(): MachineDefinition
+    {
+        return Spec::machine('claim', 1)
+            ->region('progress', 'received')
+                ->state('received')->deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.received')
+                    ->on('START_ANALYSIS', 'document_analysis', 'start_analysis')
+                    ->on('STAGE_OVERDUE', 'late', 'received_overdue')
+                ->state('document_analysis')->deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.document_analysis')
+                    ->on('APPROVE', 'closed', 'approve')
+                    ->on('STAGE_OVERDUE', 'late', 'analysis_overdue')
+                    ->on('COMMENT', null, 'comment')
+                ->state('late')
+                    ->on('APPROVE', 'closed', 'approve_late')
+                ->finalState('closed')
+            ->region('pending', 'none')
+                ->state('none')->on('REGISTER_PENDING', 'open', 'register_pending')
+                ->state('open')->on('RESOLVE_PENDING', 'none', 'resolve_pending')
+            ->region('sla', 'running')
+                ->state('running')->deadline(event: 'SLA_BREACHED', atFrom: 'context.sla_due_at', pausedWhile: 'pending.open')
+                    ->on('SLA_BREACHED', 'breached', 'sla_breached')
+                    ->on('RESET_SLA', 'running', 'reset_sla')
+                    ->on('CLOSE_SLA', 'met', 'close_sla')
+                ->state('breached')->on('CLOSE_SLA', 'met', 'close_breached')
+                ->finalState('met')
+            ->build();
+    }
+
+    /** Client A: SLA as ISO text, stage durations as ISO text (the "contract table" of the client). */
+    /** @return array<string, mixed> */
+    private function clientA(): array
+    {
+        return ['sla_due_at' => '2026-11-09T23:59:59-03:00', 'deadlines' => ['received' => 'P2D', 'document_analysis' => 'P5D']];
+    }
+
+    private function iso(?DateTimeImmutable $instant): ?string
+    {
+        return $instant?->format(MachineSnapshot::DATE_FORMAT);
+    }
+
+    /** D7, RN-03: absolute SLA and per-client stage durations read from the context. */
+    private function testDeadlineSourcesFromContext(): void
+    {
+        $definition = $this->claimMachine();
+        $this->assertEquals([], MachineDefinitionValidator::validate($definition, new GuardRegistry()), 'The claim machine validates without warnings');
+        $machine = new StateMachine();
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+
+        // Client A: durations and SLA as ISO-8601 text.
+        $a = $machine->initialSnapshot($definition, $this->clientA(), $t0);
+        $this->assertTrue($a->isAccepted());
+        $this->assertEquals('2026-10-12T10:00:00.000000-03:00', $this->iso($a->getSnapshot()->dueAt('progress')), 'afterFrom: P2D from the client table');
+        $this->assertEquals('2026-11-09T23:59:59.000000-03:00', $this->iso($a->getSnapshot()->dueAt('sla')), 'atFrom: the absolute SLA instant');
+        $this->assertEquals(null, $a->getSnapshot()->dueAt('pending'));
+
+        // Client B, same definition: DateTimeImmutable and DateInterval values, object context.
+        $clientB = (object) [
+            'sla_due_at' => new DateTimeImmutable('2026-12-01T12:00:00+00:00'),
+            'deadlines' => (object) ['received' => 'PT36H', 'document_analysis' => new \DateInterval('P18D')],
+        ];
+        $b = $machine->initialSnapshot($definition, $clientB, $t0);
+        $this->assertTrue($b->isAccepted());
+        $this->assertEquals('2026-10-11T22:00:00.000000-03:00', $this->iso($b->getSnapshot()->dueAt('progress')));
+        $this->assertEquals('2026-12-01T12:00:00.000000+00:00', $this->iso($b->getSnapshot()->dueAt('sla')));
+
+        // Entering the next stage reads the next row of each client's table at that moment.
+        $t1 = $t0->modify('+1 hour');
+        $nextA = $machine->transition($definition, $a->getSnapshot(), Event::external('START_ANALYSIS', $t1), $this->clientA());
+        $nextB = $machine->transition($definition, $b->getSnapshot(), Event::external('START_ANALYSIS', $t1), $clientB);
+        $this->assertEquals('2026-10-15T11:00:00.000000-03:00', $this->iso($nextA->getSnapshot()->dueAt('progress')), 'Client A: P5D');
+        $this->assertEquals('2026-10-28T11:00:00.000000-03:00', $this->iso($nextB->getSnapshot()->dueAt('progress')), 'Client B: P18D');
+        $this->assertTrue($nextA->getSnapshot()->dueAt('sla') == $a->getSnapshot()->dueAt('sla'), 'The SLA region did not move: its instant is kept');
+
+        // A mutable DateTime and the "Z" designator are accepted too.
+        $mutable = ['sla_due_at' => new \DateTime('2026-11-01T00:00:00Z'), 'deadlines' => ['received' => 'P1D']];
+        $this->assertEquals('2026-11-01T00:00:00.000000+00:00', $this->iso($machine->initialSnapshot($definition, $mutable, $t0)->getSnapshot()->dueAt('sla')));
+        $zulu = ['sla_due_at' => '2026-11-01T00:00:00.250Z', 'deadlines' => ['received' => 'P1D']];
+        $this->assertEquals('2026-11-01T00:00:00.250000+00:00', $this->iso($machine->initialSnapshot($definition, $zulu, $t0)->getSnapshot()->dueAt('sla')));
+
+        // The fixed duration of 1.8.0 is unchanged.
+        $this->assertEquals('2026-10-13T10:00:00.000000-03:00', $this->iso((new \Antevemus\ASpecification\StateMachine\DeadlineDefinition('P3D', 'E'))->resolveDue($t0, null)));
+    }
+
+    /** D8: a missing or invalid source rejects the event; the message never carries the value. */
+    private function testDeadlineSourceInvalid(): void
+    {
+        $definition = $this->claimMachine();
+        $machine = new StateMachine();
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+        $leaks = static function (TransitionResult $r, string $secret): bool {
+            $json = (string) json_encode(['reason' => $r->toArray()['reason'], 'rejections' => $r->toArray()['rejections']]);
+
+            return str_contains($json, $secret) || str_contains((string) $r->getReason(), $secret);
+        };
+
+        // At the start: missing SLA instant.
+        $missing = $machine->initialSnapshot($definition, ['deadlines' => ['received' => 'P2D']], $t0);
+        $this->assertTrue($missing->isRejected(), 'A start without the SLA source is rejected');
+        $this->assertEquals(null, $missing->getEvent());
+        $this->assertEquals([], $missing->getTransitions());
+        $this->assertEquals([], $missing->getEffects());
+        $this->assertEquals(['sla'], array_keys($missing->getRejections()));
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $missing->getReason()->getCodes());
+        $failure = $missing->getReason()->failures[0];
+        $this->assertEquals(FailureSeverity::ERROR, $failure->severity);
+        $this->assertEquals('context.sla_due_at', $failure->property);
+        $this->assertEquals(
+            ['region' => 'sla', 'state' => 'running', 'path' => 'context.sla_due_at', 'source' => 'atFrom', 'event' => 'machine.start'],
+            $failure->metadata
+        );
+        $this->assertTrue(str_contains($failure->message, "'context.sla_due_at'"), 'The message names the path');
+        $this->assertTrue($machine->initialSnapshot($definition, null, $t0)->isRejected(), 'Null context: rejected');
+        $this->assertEquals(['progress', 'sla'], array_keys($machine->initialSnapshot($definition, [], $t0)->getRejections()), 'Every failing region is reported');
+
+        // Invalid instants: garbage, relative text (the core reads no clock), calendar overflow,
+        // no offset, wrong types. None of them leaks into the reason.
+        foreach (['SECRET-2026-11-09', 'tomorrow', '2026-02-30T10:00:00Z', '2026-11-09T23:59:59', '2026-11-09', 1762743599, ['x'], true] as $value) {
+            $context = ['sla_due_at' => $value, 'deadlines' => ['received' => 'P2D']];
+            $result = $machine->initialSnapshot($definition, $context, $t0);
+            $label = json_encode($value);
+            $this->assertTrue($result->isRejected(), "Invalid SLA instant {$label} is rejected");
+            $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $result->getReason()->getCodes());
+            if (is_string($value) || is_int($value)) {
+                $this->assertFalse($leaks($result, (string) $value), "The value {$label} does not leak into the reason");
+            }
+        }
+
+        // On a transition: invalid duration in the client table; nothing changes.
+        $start = $machine->initialSnapshot($definition, $this->clientA(), $t0)->getSnapshot();
+        $context = $this->clientA();
+        $context['deadlines']['document_analysis'] = 'P5D-SECRET-VALUE';
+        $bad = $machine->transition($definition, $start, Event::external('START_ANALYSIS', $t0->modify('+1 hour')), $context);
+        $this->assertTrue($bad->isRejected());
+        $this->assertEquals($start->toArray(), $bad->getSnapshot()->toArray(), 'Rejected: the snapshot is the input snapshot');
+        $this->assertEquals(['progress'], array_keys($bad->getRejections()));
+        $this->assertEquals(
+            ['region' => 'progress', 'state' => 'document_analysis', 'path' => 'context.deadlines.document_analysis', 'source' => 'afterFrom', 'transition_id' => 'start_analysis', 'event' => 'START_ANALYSIS'],
+            $bad->getReason()->failures[0]->metadata
+        );
+        $this->assertFalse($leaks($bad, 'SECRET'), 'The invalid duration does not leak');
+        $this->assertTrue(str_contains($bad->getReason()->failures[0]->message, 'ISO-8601 duration'));
+        unset($context['deadlines']['document_analysis']);
+        $this->assertTrue($machine->transition($definition, $start, Event::external('START_ANALYSIS', $t0), $context)->isRejected(), 'Missing duration: rejected');
+        $negative = new \DateInterval('P1D');
+        $negative->invert = 1;
+        $context['deadlines']['document_analysis'] = $negative;
+        $this->assertTrue($machine->transition($definition, $start, Event::external('START_ANALYSIS', $t0), $context)->isRejected(), 'Negative duration: rejected');
+
+        // can() is transition(): the action panel shows the same reason.
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_SOURCE_INVALID], $machine->can($definition, $start, Event::external('START_ANALYSIS', $t0), $context)->getReason()->getCodes());
+    }
+
+    /** D9, D10, RN-03: SLA paused while pending.open, resumed with the balance (exact instants). */
+    private function testDeadlinePauseWithBalance(): void
+    {
+        $definition = $this->claimMachine();
+        $machine = new StateMachine();
+        $ctx = $this->clientA();
+        $t0 = $this->at('2026-10-10T10:00:00-03:00');
+        $start = $machine->initialSnapshot($definition, $ctx, $t0)->getSnapshot();
+        $this->assertFalse($start->isPaused('sla'));
+
+        // Pending opened one day later: 29 days 13:59:59 left until 2026-11-09T23:59:59.
+        $t1 = $this->at('2026-10-11T10:00:00-03:00');
+        $paused = $machine->transition($definition, $start, Event::external('REGISTER_PENDING', $t1), $ctx)->getSnapshot();
+        $balance = 29 * 86400 + 13 * 3600 + 59 * 60 + 59;
+        $this->assertTrue($paused->isPaused('sla'));
+        $this->assertEquals($balance, $paused->pausedRemaining('sla'));
+        $this->assertEquals(null, $paused->dueAt('sla'), 'A paused region has no due instant');
+        $this->assertEquals('2026-10-12T10:00:00.000000-03:00', $this->iso($paused->dueAt('progress')), 'A deadline without pausedWhile keeps running');
+        $this->assertEquals(['progress' => null, 'pending' => null, 'sla' => $balance], $paused->toArray()['paused_remaining']);
+        $this->assertEquals($paused->toArray(), MachineSnapshot::fromArray($paused->toArray())->toArray(), 'Paused snapshot round trip');
+
+        // While paused the deadline event is not due, even long after the original instant.
+        $late = $machine->transition($definition, $paused, Event::internal('SLA_BREACHED', $this->at('2026-11-30T00:00:00-03:00')), $ctx);
+        $this->assertTrue($late->isRejected());
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_NOT_DUE], $late->getReason()->getCodes());
+        $this->assertTrue(str_contains($late->getReason()->getReasons()[0], 'paused'));
+
+        // Other steps while paused keep the balance (no recomputation).
+        $moved = $machine->transition($definition, $paused, Event::external('START_ANALYSIS', $this->at('2026-10-13T10:00:00-03:00')), $ctx)->getSnapshot();
+        $this->assertEquals($balance, $moved->pausedRemaining('sla'));
+
+        // Resolved 10 days 5 hours later: resumes at occurredAt + balance.
+        $t2 = $this->at('2026-10-21T15:00:00-03:00');
+        $resumed = $machine->transition($definition, $moved, Event::external('RESOLVE_PENDING', $t2), $ctx)->getSnapshot();
+        $this->assertFalse($resumed->isPaused('sla'));
+        $this->assertEquals('2026-11-20T04:59:59.000000-03:00', $this->iso($resumed->dueAt('sla')), 'Original instant shifted by the 10d5h of pause');
+        $this->assertFalse(array_key_exists('paused_remaining', $resumed->toArray()), 'No pause: the 1.8.0 array form');
+        $early = $machine->transition($definition, $resumed, Event::internal('SLA_BREACHED', $this->at('2026-11-20T04:59:58-03:00')), $ctx);
+        $this->assertEquals([TransitionResult::CODE_DEADLINE_NOT_DUE], $early->getReason()->getCodes());
+        $breached = $machine->transition($definition, $resumed, Event::internal('SLA_BREACHED', $this->at('2026-11-20T04:59:59-03:00')), $ctx);
+        $this->assertTrue($breached->isAccepted(), 'Due exactly at the resumed instant');
+        $this->assertEquals('breached', $breached->getSnapshot()->stateOf('sla'));
+        $this->assertEquals(null, $breached->getSnapshot()->dueAt('sla'));
+
+        // D10: reentering restarts from the source and drops the balance; still pending, it pauses
+        // at once with the full new balance (2026-10-12T10:00 → 2026-12-31T23:59:59 = 80d 13:59:59).
+        $newCtx = ['sla_due_at' => '2026-12-31T23:59:59-03:00'] + $ctx;
+        $reset = $machine->transition($definition, $paused, Event::external('RESET_SLA', $this->at('2026-10-12T10:00:00-03:00')), $newCtx)->getSnapshot();
+        $this->assertEquals(80 * 86400 + 13 * 3600 + 59 * 60 + 59, $reset->pausedRemaining('sla'));
+        $this->assertEquals(null, $reset->dueAt('sla'));
+        $running = $machine->transition($definition, $start, Event::external('RESET_SLA', $t1), $newCtx)->getSnapshot();
+        $this->assertEquals('2026-12-31T23:59:59.000000-03:00', $this->iso($running->dueAt('sla')), 'Reentry without pending: fresh instant, not paused');
+        $this->assertFalse($running->isPaused('sla'));
+
+        // Paused already overdue: balance 0, resumes already due.
+        $short = ['sla_due_at' => '2026-10-10T11:00:00-03:00'] + $ctx;
+        $s0 = $machine->initialSnapshot($definition, $short, $t0)->getSnapshot();
+        $s1 = $machine->transition($definition, $s0, Event::external('REGISTER_PENDING', $t0->modify('+3 hours')), $short)->getSnapshot();
+        $this->assertEquals(0, $s1->pausedRemaining('sla'), 'Negative remaining becomes zero');
+        $s2 = $machine->transition($definition, $s1, Event::external('RESOLVE_PENDING', $t0->modify('+5 hours')), $short)->getSnapshot();
+        $this->assertEquals('2026-10-10T15:00:00.000000-03:00', $this->iso($s2->dueAt('sla')));
+        $this->assertTrue($machine->transition($definition, $s2, Event::internal('SLA_BREACHED', $t0->modify('+5 hours')), $short)->isAccepted());
+
+        // Whole seconds, floored: 10.75 s left becomes 10 s.
+        $fraction = ['sla_due_at' => '2026-10-10T10:00:10.750000-03:00'] + $ctx;
+        $f0 = $machine->initialSnapshot($definition, $fraction, $t0)->getSnapshot();
+        $f1 = $machine->transition($definition, $f0, Event::external('REGISTER_PENDING', $t0), $fraction)->getSnapshot();
+        $this->assertEquals(10, $f1->pausedRemaining('sla'));
+        $f2 = $machine->transition($definition, $f1, Event::external('RESOLVE_PENDING', $t0->modify('+1 hour')), $fraction)->getSnapshot();
+        $this->assertEquals('2026-10-10T11:00:10.000000-03:00', $this->iso($f2->dueAt('sla')));
+
+        // Paused at the start (initial state already pending), fixed duration; and a pause by a
+        // composed guard reading the context ("billing interrupted", L2).
+        $guards = Spec::guardRegistry()
+            ->register('interrupted', static fn(array $p): ISpecification => Spec::property('context.interrupted', Spec::equalTo(true)))
+            ->register('boom', static fn(array $p): ISpecification => new PredicateSpecification(static function (): bool {
+                throw new RuntimeException('pause condition exploded with SECRET');
+            }));
+        $billing = Spec::machine('billing', 1)
+            ->region('pending', 'open')
+                ->state('open')->on('RESOLVE', 'none', 'resolve')
+                ->state('none')->on('REOPEN', 'open', 'reopen')
+            ->region('collection', 'running')
+                ->state('running')
+                    ->deadline('P10D', 'OVERDUE', pausedWhile: GuardExpression::anyOf(GuardExpression::ref('inState', ['state' => 'pending.open']), 'interrupted'))
+                    ->on('OVERDUE', 'overdue', 'overdue')
+                    ->on('NOTE', null, 'note')
+                ->finalState('overdue')
+            ->build();
+        $this->assertEquals([], MachineDefinitionValidator::validate($billing, $guards));
+        $bm = new StateMachine($guards);
+        $b0 = $bm->initialSnapshot($billing, ['interrupted' => false], $t0);
+        $this->assertTrue($b0->isAccepted());
+        $this->assertEquals(864000, $b0->getSnapshot()->pausedRemaining('collection'), 'Paused at the start with the full balance');
+        $b1 = $bm->transition($billing, $b0->getSnapshot(), Event::external('RESOLVE', $t0->modify('+2 days')), ['interrupted' => false])->getSnapshot();
+        $this->assertEquals('2026-10-22T10:00:00.000000-03:00', $this->iso($b1->dueAt('collection')));
+        $b2 = $bm->transition($billing, $b1, Event::external('NOTE', $t0->modify('+3 days')), ['interrupted' => true])->getSnapshot();
+        $this->assertEquals(9 * 86400, $b2->pausedRemaining('collection'), 'A targetless step pauses when the context condition holds');
+        $b3 = $bm->transition($billing, $b2, Event::external('NOTE', $t0->modify('+4 days')), ['interrupted' => false])->getSnapshot();
+        $this->assertEquals('2026-10-23T10:00:00.000000-03:00', $this->iso($b3->dueAt('collection')));
+
+        // A pause condition that throws rejects the step (ERROR, evaluation_error, generic message).
+        $exploding = Spec::machine('exploding', 1)
+            ->region('r', 'a')->state('a')->deadline('P1D', 'LATE', pausedWhile: GuardExpression::ref('boom'))
+                ->on('LATE', 'b', 'late')->on('NOTE', null, 'note')
+            ->finalState('b')
+            ->build();
+        $boom = $bm->initialSnapshot($exploding, null, $t0);
+        $this->assertTrue($boom->isRejected());
+        $this->assertTrue((bool) ($boom->getReason()->failures[0]->metadata['evaluation_error'] ?? false));
+        $this->assertEquals(FailureSeverity::ERROR, $boom->getReason()->failures[0]->severity);
+        $this->assertFalse(str_contains((string) $boom->getReason(), 'SECRET'));
+    }
+
+    /** D7, D12: model, array form, fingerprint and validator of the new deadline fields. */
+    private function testDeadlineDefinitionModel(): void
+    {
+        $deadlineClass = \Antevemus\ASpecification\StateMachine\DeadlineDefinition::class;
+        $this->assertEquals(['after' => 'P3D', 'event' => 'E'], (new $deadlineClass('P3D', 'E'))->toArray(), '1.8.0 array form kept');
+
+        // The 1.8.0 deadline machine keeps the fingerprint computed by 1.8.1 (git HEAD).
+        $old = Spec::machine('deadline', 1)
+            ->region('doc', 'delivered')
+                ->state('delivered')->deadline('P3D', 'EXPIRE')->entry('notify_delivered')->exit('leave_delivered')
+                    ->on('EXPIRE', 'expired', 'expire')
+                    ->on('RESUBMIT', 'delivered', 'resubmit')->action('log_resubmit')
+                    ->on('COMMENT', null, 'comment')->action('log_comment')
+                    ->on('VALIDATE', 'validated', 'validate')
+                ->finalState('validated')
+                ->finalState('expired')
+            ->build();
+        $this->assertEquals('87773f465965f636fac98f5e324ac9a9112e1b298402fa896dafb2d8e099cbe1', $old->fingerprint(), 'Pinned 1.8.1 fingerprint of a fixed-duration deadline');
+
+        $claim = $this->claimMachine();
+        $states = static fn(MachineDefinition $d, string $region): array => array_column($d->toArray()['regions'][array_search($region, $d->regionNames(), true)]['states'], null, 'name');
+        $this->assertEquals(['afterFrom' => 'context.deadlines.received', 'event' => 'STAGE_OVERDUE'], $states($claim, 'progress')['received']['deadline']);
+        $this->assertEquals(
+            ['atFrom' => 'context.sla_due_at', 'event' => 'SLA_BREACHED', 'pausedWhile' => ['guard' => 'inState', 'params' => ['state' => 'pending.open']]],
+            $states($claim, 'sla')['running']['deadline'],
+            'A string pausedWhile is an inState shorthand, stored in canonical form'
+        );
+        $again = MachineDefinition::fromJson($claim->toJson(false));
+        $this->assertEquals($claim->toArray(), $again->toArray(), 'Round trip of the new fields');
+        $this->assertEquals($claim->fingerprint(), $again->fingerprint());
+        $this->assertEquals($claim->fingerprint(), MachineDefinition::fromArray($this->reverseKeys($claim->toArray()))->fingerprint(), 'Key order does not matter');
+        $array = $claim->toArray();
+        $slaIndex = array_search('sla', $claim->regionNames(), true);
+        unset($array['regions'][$slaIndex]['states'][0]['deadline']['pausedWhile']);
+        $this->assertFalse(MachineDefinition::fromArray($array)->fingerprint() === $claim->fingerprint(), 'pausedWhile is part of the fingerprint');
+        $array['regions'][$slaIndex]['states'][0]['deadline'] = ['afterFrom' => 'context.sla_due_at', 'event' => 'SLA_BREACHED'];
+        $this->assertFalse(MachineDefinition::fromArray($array)->fingerprint() === $claim->fingerprint(), 'The source kind is part of the fingerprint');
+
+        // Exactly one source; the event is required; paths are context paths.
+        $kinds = fn(\Closure $build): array => $this->assertThrows(InvalidMachineDefinitionException::class, $build)->getErrorKinds();
+        $state = static fn() => Spec::machine('m', 1)->region('r', 'a')->state('a');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $state()->deadline('P1D', 'E', atFrom: 'context.at')), 'Two sources');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $state()->deadline(event: 'E')), 'No source');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $state()->deadline('P1D')), 'No event');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $state()->deadline(event: 'E', atFrom: 'sla_due_at')), 'Path outside the context');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $state()->deadline(event: 'E', afterFrom: 'context.')), 'Empty segment');
+        $this->assertEquals([MachineDefinitionError::KIND_MALFORMED], $kinds(fn() => $state()->deadline('3 days', 'E')), 'Invalid fixed duration (1.8.0)');
+        $this->assertEquals([MachineDefinitionError::KIND_INVALID_DEADLINE], $kinds(fn() => $deadlineClass::fromArray(['after' => 'P1D', 'atFrom' => 'context.x', 'event' => 'E'])));
+        $this->assertEquals([MachineDefinitionError::KIND_MALFORMED], $kinds(fn() => $deadlineClass::fromArray(['atFrom' => 'context.x', 'event' => 'E', 'pausedWhile' => 42])));
+        $this->assertEquals([MachineDefinitionError::KIND_MALFORMED], $kinds(fn() => $deadlineClass::fromArray(['atFrom' => ['x'], 'event' => 'E'])));
+        $this->assertThrows(\LogicException::class, fn() => (new $deadlineClass(null, 'E', atFrom: 'context.x'))->dueFrom($this->at('2026-10-10T10:00:00Z')), 'dueFrom() needs a fixed duration');
+
+        // Validator (D12): pause guards are checked like transition guards; self reference warns.
+        $broken = Spec::machine('broken', 1)
+            ->region('pending', 'none')->state('none')->on('OPEN', 'open', 'open')->state('open')->on('CLOSE', 'none', 'close')
+            ->region('sla', 'running')
+                ->state('running')->deadline('P1D', 'BREACH', pausedWhile: GuardExpression::not('ghostGuard'))->on('BREACH', 'waiting', 'breach')
+                ->state('waiting')->deadline('P1D', 'AGAIN', pausedWhile: 'ghost.state')->on('AGAIN', 'held', 'again')
+                ->state('held')->deadline('P1D', 'BUILD', pausedWhile: GuardExpression::ref('payloadHas'))->on('BUILD', 'self', 'build')
+                ->state('self')->deadline('P1D', 'SELF', pausedWhile: 'sla.self')->on('SELF', 'running', 'self_loop')
+            ->build();
+        $report = MachineDefinitionValidator::analyze($broken, new GuardRegistry());
+        $this->assertEquals([
+            MachineDefinitionError::KIND_UNKNOWN_GUARD,
+            MachineDefinitionError::KIND_UNKNOWN_IN_STATE,
+            MachineDefinitionError::KIND_GUARD_BUILD_FAILED,
+        ], $report->errorKinds());
+        $unknown = $report->errorsOfKind(MachineDefinitionError::KIND_UNKNOWN_GUARD)[0];
+        $this->assertEquals(['sla', 'running', null], [$unknown->region, $unknown->state, $unknown->transitionId]);
+        $this->assertEquals("Guard 'ghostGuard' of the deadline pause of state 'sla.running' has no registered factory.", $unknown->message);
+        $this->assertEquals([MachineDefinitionWarning::KIND_SELF_REFERENCING_PAUSE], $report->warningKinds());
+        $this->assertEquals('self', $report->warningsOfKind(MachineDefinitionWarning::KIND_SELF_REFERENCING_PAUSE)[0]->state);
+        $this->assertCount(3, $this->assertThrows(InvalidMachineDefinitionException::class, fn() => MachineDefinitionValidator::validate($broken, new GuardRegistry()))->getErrors());
+    }
+
+    /** D11, RN-01: a 1.8.0 snapshot array (no paused_remaining) loads and keeps its form. */
+    private function testSnapshotPausedRemainingCompatibility(): void
+    {
+        $v180 = [
+            'machine_key' => 'claim', 'machine_version' => 1,
+            'states' => ['progress' => 'received', 'pending' => 'none', 'sla' => 'running'],
+            'due_at' => ['progress' => '2026-10-12T10:00:00.000000-03:00', 'pending' => null, 'sla' => '2026-11-09T23:59:59.000000-03:00'],
+            'done' => false,
+        ];
+        $loaded = MachineSnapshot::fromArray($v180);
+        $this->assertEquals(['progress' => null, 'pending' => null, 'sla' => null], $loaded->getPausedRemaining());
+        $this->assertFalse($loaded->isPaused('sla'));
+        $this->assertEquals($v180, $loaded->toArray(), 'Unpaused snapshot: exactly the 1.8.0 array');
+
+        // The 1.8.0 snapshot keeps running and pauses under 1.9.0.
+        $result = (new StateMachine())->transition($this->claimMachine(), $loaded, Event::external('REGISTER_PENDING', $this->at('2026-10-11T10:00:00-03:00')), $this->clientA());
+        $this->assertEquals(29 * 86400 + 13 * 3600 + 59 * 60 + 59, $result->getSnapshot()->pausedRemaining('sla'));
+
+        // Invariants: paused means no due instant; the balance is a non-negative integer.
+        $this->assertThrows(InvalidSnapshotException::class, fn() => new MachineSnapshot('k', 1, ['r' => 's'], ['r' => $this->at('2026-10-10T10:00:00Z')], false, ['r' => 5]));
+        $this->assertThrows(InvalidSnapshotException::class, fn() => new MachineSnapshot('k', 1, ['r' => 's'], [], false, ['r' => -1]));
+        $this->assertThrows(InvalidSnapshotException::class, fn() => new MachineSnapshot('k', 1, ['r' => 's'], [], false, ['x' => 5]));
+        $this->assertThrows(InvalidSnapshotException::class, fn() => MachineSnapshot::fromArray($v180 + ['paused_remaining' => ['sla' => '10']]));
+        $this->assertThrows(InvalidSnapshotException::class, fn() => MachineSnapshot::fromArray(['paused_remaining' => 'x'] + $v180));
+        $snap = new MachineSnapshot('k', 1, ['r' => 's'], [], false, ['r' => 7]);
+        $this->assertEquals(7, $snap->withDone(true)->pausedRemaining('r'), 'withDone keeps the balance');
+        $this->assertEquals(null, $snap->withState('r', 's')->pausedRemaining('r'), 'Entering a state drops the balance');
+        $this->assertEquals(null, $snap->withDueAt('r', $this->at('2026-10-10T10:00:00Z'))->pausedRemaining('r'), 'A running deadline has no balance');
+        $this->assertEquals(null, $snap->withPaused('r', 3)->dueAt('r'));
     }
 
     private function testEffectsOrderAndSelfTransitions(): void

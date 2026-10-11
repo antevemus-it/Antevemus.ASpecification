@@ -10,6 +10,7 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleSpecificationRegistry;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
 
 /**
  * DynamicSpecificationEngine - Execution and Dynamic Compilation Engine for Specifications
@@ -28,8 +29,11 @@ use Antevemus\ASpecification\Spec;
  *   structurally a contradiction (never satisfied) or a tautology (never fails); reported through
  *   getCompilationWarnings(), never blocking, never part of the verdict
  * - English parameter names since 1.7.0 (`scope:`, `scenario:`)
+ * - Opt-in simplification (1.9.0): withSimplification() makes compileSpecification() (and
+ *   therefore validate()) return SpecificationSimplifier::simplify() of the compiled tree. Disabled
+ *   by default: the compiled tree is never rewritten unless asked
  *
- * @version    1.7.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -44,6 +48,11 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
      * Whether compileSpecification() inspects each compiled rule (catalog validation mode).
      */
     private bool $catalogValidation;
+
+    /**
+     * Whether compileSpecification() simplifies the compiled tree (1.9.0, opt-in).
+     */
+    private bool $simplification = false;
 
     /**
      * Warnings of the last compilation (empty when catalog validation is disabled).
@@ -96,6 +105,40 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     public function isCatalogValidationEnabled(): bool
     {
         return $this->catalogValidation;
+    }
+
+    /**
+     * Returns a copy of this engine with the simplification of the compiled tree enabled (or disabled)
+     * (1.9.0, forward 025 D6). Disabled by default.
+     *
+     * When enabled, compileSpecification() returns SpecificationSimplifier::simplify() of the tree it
+     * compiled, and validate() evaluates that simplified tree. Each rule binding is kept (simplified
+     * only inside), as is every node annotated with because()/withCode(), so the verdict and the
+     * reported rule failures do not change; equivalence is guaranteed in truth value only (a removed
+     * redundant branch may have been one that would raise). Catalog validation warnings are computed
+     * on each rule as compiled by its handler, before any simplification.
+     *
+     * Offered as a wither, like withCatalogValidation(), instead of a new parameter of
+     * compileSpecification(), so that the signature of IDynamicSpecificationEngine and of this class
+     * (which subclasses may override) does not change.
+     *
+     * @param bool $enabled
+     * @return static
+     */
+    public function withSimplification(bool $enabled = true): static
+    {
+        $clone = clone $this;
+        $clone->simplification = $enabled;
+
+        return $clone;
+    }
+
+    /**
+     * Whether compileSpecification() simplifies the compiled tree (1.9.0).
+     */
+    public function isSimplificationEnabled(): bool
+    {
+        return $this->simplification;
     }
 
     /**
@@ -154,11 +197,9 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
             return Spec::alwaysTrue();
         }
 
-        if (count($specs) === 1) {
-            return $specs[0];
-        }
+        $compiled = count($specs) === 1 ? $specs[0] : Spec::allOf(...$specs);
 
-        return Spec::allOf(...$specs);
+        return $this->simplification ? SpecificationSimplifier::simplify($compiled) : $compiled;
     }
 
     /**

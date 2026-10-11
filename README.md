@@ -5,9 +5,9 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.8.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.8.1)
+[![Latest Version](https://img.shields.io/badge/Release-v1.9.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.9.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-19%2F19%20Suites%20Pass%20(4760%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-20%2F20%20Suites%20Pass%20(5142%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -40,7 +40,7 @@
 - 🔗 **TCriteria Builder & Adianti Database Bridge (Module 13)**: Seamless compilation of domain specifications into native `Adianti\Database\TCriteria` and `TFilter` objects, with automatic De Morgan logic inversion for negations, strict parenthesis precedence, and chained pagination (`limit`, `offset`), sorting (`orderBy`, `direction`) and grouping (`groupBy`).
 - 🧩 **Dynamic Rule Engine & Document Matrix (Module 11)**: Dynamic runtime rule compilation driven by relational database catalogs (`RuleDefinition`), operational severity triage (`BLOCK`, `WARN`, `LOG`), and document requirement Boolean algebra (`ALL`, `ANY`, `ONE_OF_SET`).
 - ✂️ **Partial Satisfaction (`remainderUnsatisfiedBy`)**: Isolate at runtime precisely which sub-clauses failed for a given candidate entity.
-- 📐 **Complete Boolean & Venn Set Algebra**: Rigorous logical composition (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), Venn set subsumption calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) and structural tautology/contradiction detection (`isTautology()`, `isContradiction()`): it proves `A ∧ ¬A`, `A ∨ ¬A`, conjunctions of disjoint operands, `in([])` and the absorbing identities (`alwaysTrue()`/`alwaysFalse()`); it is conservative (`false` means "not proven", there is no SAT solving), and the rule engine reports degenerate catalog rules as `RuleCompilationWarning` (example 12).
+- 📐 **Complete Boolean & Venn Set Algebra**: Rigorous logical composition (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), Venn set subsumption calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) and structural tautology/contradiction detection (`isTautology()`, `isContradiction()`): it proves `A ∧ ¬A`, `A ∨ ¬A`, conjunctions of disjoint operands, `in([])` and the absorbing identities (`alwaysTrue()`/`alwaysFalse()`); it is conservative (`false` means "not proven", there is no SAT solving), and the rule engine reports degenerate catalog rules as `RuleCompilationWarning`; `simplify()` returns an equivalent, smaller tree (identity, double negation, idempotence, subsumption, proven contradictions and tautologies) without touching annotated nodes, with an opt-in in the rule engine (example 12).
 - 🗄️ **Repository Architecture & DAG Partitioning**:
   - $O(1)$ early branch pruning in query search trees through specification disjointness, over a materialised topological index of the DAG (`findAll` 45 % to 77 % faster than the recursive walk, see `tests/Benchmark/REPORT-dag-index.md`).
   - TTL and auto-prune on volatile repositories (`withTtl()`, `prune()`, injectable clock), inherited across partitions.
@@ -49,7 +49,7 @@
   - Hybrid $L1$ (RAM) + $L2$ (Disk) tiering via `InMemoryAndFileRepository`.
 - 🔒 **Concurrency & Atomic Locking**: `ISynchronizer` primitives wired into every repository (shared readers, exclusive writer, reentrant per execution context): the in-process `SemaphoreSynchronizer` (permit counter, Fiber-aware) and atomic file locks (`flock`) across processes for the file repositories. `SysVSemaphoreSynchronizer` (`ext-sysvsem`) shares the same reader/writer lock between processes through SysV IPC semaphores.
 - ⏱️ **Nanosecond Benchmarking & Diagnostics**: High-resolution stopwatches (`StopWatch` via `hrtime`) and hierarchical diagnostic utilities (`InstrumentationUtils`).
-- 🚦 **Spec-Driven State Machine (Modules 17 and 18)**: every guard is an `ISpecification`, so a denied transition says why (code, message, property, severity); parallel regions, region-level transitions, named actions (`exit` → transition → `entry`), persisted deadlines; the definition is data (builder or JSON, versioned, fingerprinted, validated at load time); a pure `transition()`/`can()`/`nextEvents()` core and a single write port, `MachineRunner` (compare-and-set, idempotency key, append-only history, transactional outbox), over InMemory or PDO stores with a reference ANSI DDL (example 14).
+- 🚦 **Spec-Driven State Machine (Modules 17 and 18)**: every guard is an `ISpecification`, so a denied transition says why (code, message, property, severity); parallel regions, region-level transitions, named actions (`exit` → transition → `entry`), persisted deadlines (a fixed duration, or a duration or an absolute instant read from the context, pausable with the balance kept while a condition holds); the definition is data (builder or JSON, versioned, fingerprinted, validated at load time); a pure `transition()`/`can()`/`nextEvents()` core and a single write port, `MachineRunner` (compare-and-set, idempotency key, append-only history, transactional outbox), over InMemory or PDO stores with a reference ANSI DDL (example 14).
 - 🧭 **Use Cases (Module 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, request validation where only `ERROR` blocks), `UseCaseResult` with a closed domain status and HTTP only at the edge (`toHttpStatus()`), no exception or stack trace in the result, and `StateMachineEventUseCase` exposing a machine event as a use case through the shared `IOutcome` (example 15).
 
 ---
@@ -84,7 +84,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-json` (for JSON entity serialization; required)
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
-- **Optional package**: `antevemus/alinq-collection` `^1.4.1` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
+- **Optional package**: `antevemus/alinq-collection` `^1.4.2` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
 
 ---
 
@@ -543,7 +543,7 @@ try {
 }
 ```
 
-### 12. Tautology & Contradiction Detection
+### 12. Tautology, Contradiction & Simplification
 
 Every specification answers two structural questions, `isTautology()` and `isContradiction()`. A `true` is a proof from the shape of the tree; a `false` means "not proven" (there is no SAT solving, and `evaluate()` is untouched). The rule engine can report the catalog rules that can never pass or never fail:
 
@@ -572,6 +572,48 @@ foreach ($engine->getCompilationWarnings() as $warning) {
     echo $warning->ruleCode . ': ' . $warning->kind, PHP_EOL;   // "R-12: contradiction"
 }
 ```
+
+`simplify()` (since 1.9.0) returns an equivalent, smaller specification. It applies, bottom-up until nothing changes: identity (`A ∧ true = A`, `A ∨ false = A`), annihilation (`A ∧ false = false`, `A ∨ true = true`), double negation, idempotence (`A ∧ A = A`, by `equals()`), flattening of nested `and`/`or`, the contradictions and tautologies proven above (collapsed to `alwaysFalse()`/`alwaysTrue()`) and subsumption (`A ∧ B = A` and `A ∨ B = B` when `A` is a special case of `B`). The input is never modified, and simplifying a simplified tree returns it unchanged. A node annotated with `because()`/`withCode()` is a unit: it is simplified inside but never removed, merged or replaced by a constant, so the verdict and the annotated messages stay the same.
+
+```php
+use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
+use Antevemus\ASpecification\Engine\RuleDefinition;
+use Antevemus\ASpecification\Spec;
+
+$active = Spec::property('status', Spec::equalTo('ACTIVE'));
+$adult  = Spec::property('age', Spec::greaterThanOrEqualTo(18))->because('The tenant must be an adult.')->withCode('TENANT_MINOR');
+
+// A redundant tree, as composed rules often end up: ¬¬A ∧ true ∧ B ∧ (status in ACTIVE, PENDING)
+$tree = Spec::not(Spec::not($active))
+    ->and(Spec::alwaysTrue())
+    ->and($adult)
+    ->and(Spec::property('status', Spec::in('ACTIVE', 'PENDING')));  // implied by status = ACTIVE
+
+$simple = $tree->simplify();                                   // same as Spec::simplify($tree)
+$simple->equals($active->and($adult));                         // true: double negation, identity and implied leaf removed
+Spec::simplify($simple) === $simple;                           // true: nothing left to simplify
+
+// Same truth value, and the annotated failure is still reported
+$minor = (object) ['status' => 'ACTIVE', 'age' => 16];
+$simple->isSatisfiedBy($minor) === $tree->isSatisfiedBy($minor); // true
+$simple->evaluate($minor)->failures[0]->code;                  // 'TENANT_MINOR'
+
+// Proven contradictions and tautologies become constants, but an annotated node is never dropped
+Spec::simplify($active->and($active->not()));                  // alwaysFalse()
+Spec::simplify($active->or($active->not()));                   // alwaysTrue()
+Spec::simplify($adult->and(Spec::alwaysFalse()))->evaluate($minor)->getCodes(); // ['TENANT_MINOR']
+
+// Rule engine: opt-in (off by default); every rule binding is kept and simplified inside
+$catalog = new InMemoryRuleCatalog();
+$catalog->addRule(new RuleDefinition(code: 'R-30', name: 'Active tenant', ruleType: 'active_tenant', scope: 'rental_contract'));
+$registry = Spec::ruleRegistry()->registerClosure('active_tenant', fn() => Spec::not(Spec::not($active))->and(Spec::alwaysTrue()));
+
+$engine = Spec::engine($catalog, $registry)->withSimplification();
+(string) $engine->compileSpecification('rental_contract');     // 'Rule[R-30]((AlwaysTrueSpecification WHERE status: EqualSpecification))'
+$engine->validate((object) ['status' => 'CLOSED'], 'rental_contract')->getFailureCodes(); // ['R-30']
+```
+
+Two limits, both stated in the docblocks. The equivalence holds for **non-null candidates**, the same premise as `isTautology()`/`isContradiction()`: `AND`/`OR`/`NOT` reject `null` whatever their operands, and the node left after simplification may not (`alwaysTrue()->and(alwaysTrue())` rejects `null`, `alwaysTrue()` accepts it). And it is an equivalence of **truth value only**: removing a redundant branch may remove one that would have raised an exception, and the default messages of unannotated nodes may change; only annotated messages and codes are guaranteed. Nothing simplifies by itself: the SQL, TCriteria and ALinq visitors compile the tree as given, and the rule engine simplifies only when asked.
 
 ### 13. Declarative Method Calls (`MethodParameterizedSpecification`)
 
@@ -828,6 +870,73 @@ $persistence = MachinePersistence::pdo($pdo, tables: ['instance' => 'quote_state
 
 > **JSON columns.** `snapshot`, `payload`, `params`, `reason` and `transition_result` are JSON stored as `VARCHAR(4000)`, the portable size that also fits Oracle. A larger event payload needs the column widened to `TEXT`/`JSONB`/`CLOB` in your copy of the DDL. If the PDO connection is already inside a transaction, the runner joins it and the owner of that transaction commits or rolls back.
 
+> **Upgrading from 1.8.** Since 1.9.0 `state_machine_region` has a nullable `paused_remaining` column (the balance of a paused deadline, example 14.7). `CREATE TABLE IF NOT EXISTS` does not add a column to an existing table, so a database created with the 1.8 script needs, once, before the first deadline pause: `ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER;`. Until then, every definition that never pauses a deadline keeps working on the old table; the first pause fails and its step is rolled back.
+
+#### 14.7 Deadlines From the Context: an SLA That Pauses While a Pending Item Is Open
+
+A deadline has exactly one source: a fixed duration (`deadline('P3D', 'EXPIRE')`, as in 14.5), a duration read from the context (`afterFrom: 'context.path'`, an ISO-8601 string or a `DateInterval`), or the due instant itself read from the context (`atFrom: 'context.path'`, a `DateTimeInterface` or an ISO-8601 text with date, time and offset). The path is read with the dot notation of the `PropertyAccessor` when the state is entered, from the context given to that call, so the computation stays pure. A missing or invalid source never becomes a silently empty deadline: the event that enters the state is rejected with `SM_DEADLINE_SOURCE_INVALID` (an `ERROR` that names the path, never the value), and so is a start, which then writes nothing. `pausedWhile` takes a guard expression (a `'region.state'` string is a shorthand for `inState`), evaluated after every accepted step: when it starts to hold, the deadline pauses (no due instant, so no cron ever finds it, and the remaining whole seconds are kept); when it stops holding, the deadline resumes from that balance. Re-entering the state restarts the deadline and drops the balance. Below, the SLA is a region of its own (an absolute instant from the contract), paused while a pending flag (the parallel region of example 14.2) is open, and each stage lasts what the client's table says:
+
+```php
+use Antevemus\ASpecification\StateMachine\Persistence\DueDeadline;
+use Antevemus\ASpecification\StateMachine\Persistence\MachineInstance;
+
+$claim = Spec::machine('claim', 1)
+    ->region('progress', 'triage')
+        ->state('triage')->deadline(event: 'TRIAGE_CLOSED', afterFrom: 'context.deadlines.triage')
+            ->on('START_ANALYSIS', 'analysis')
+            ->on('TRIAGE_CLOSED', 'analysis')
+        ->state('analysis')->deadline(event: 'ANALYSIS_OVERDUE', afterFrom: 'context.deadlines.analysis')
+            ->on('APPROVE', 'approved')
+            ->on('ANALYSIS_OVERDUE', 'late')
+        ->state('late')
+            ->on('APPROVE', 'approved')
+        ->finalState('approved')
+    ->region('pending', 'none')
+        ->state('none')->on('REGISTER_PENDING', 'open')
+        ->state('open')->on('RESOLVE_PENDING', 'none')
+    ->region('sla', 'running')
+        ->state('running')->deadline(event: 'SLA_BREACHED', atFrom: 'context.sla_due_at', pausedWhile: 'pending.open')
+            ->on('SLA_BREACHED', 'breached')
+        ->finalState('breached')
+    ->build();
+
+// The context of each claim: the SLA instant of the contract and the stage durations of the client
+$contexts = ['claim-7' => ['sla_due_at' => '2026-11-09T18:00:00-03:00', 'deadlines' => ['triage' => 'P2D', 'analysis' => 'P5D']]];
+
+$runner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$claim]), MachinePersistence::inMemory());
+$runner->start('claim-7', 'claim', 1, $contexts['claim-7'], new DateTimeImmutable('2026-10-10T09:00:00-03:00'))->isAccepted(); // true
+$runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM);      // '2026-11-09T18:00:00-03:00' (atFrom)
+$runner->load('claim-7')->snapshot->dueAt('progress')->format(DATE_ATOM); // '2026-10-12T09:00:00-03:00' (start + P2D, afterFrom)
+
+// A missing source is a rejection, never a silently empty SLA: the start writes nothing
+$missing = $runner->start('claim-8', 'claim', 1, ['deadlines' => ['triage' => 'P2D']], new DateTimeImmutable('2026-10-10T09:00:00-03:00'));
+$missing->isRejected();                                                   // true
+$missing->getReason()->failures[0]->code;                                 // 'SM_DEADLINE_SOURCE_INVALID'
+$missing->getReason()->failures[0]->property;                             // 'context.sla_due_at'
+
+// The cron: TRIAGE_CLOSED enters 'analysis', whose deadline reads the context, so the cron provides it
+$deliveries = $runner->deliverDue(
+    new DateTimeImmutable('2026-10-12T09:00:00-03:00'),
+    contextProvider: fn(DueDeadline $due, MachineInstance $instance) => $contexts[$instance->instanceId]
+);
+$deliveries[0]->isDelivered();                                            // true (without the provider: rejected, retried on the next run)
+$runner->load('claim-7')->snapshot->dueAt('progress')->format(DATE_ATOM); // '2026-10-17T09:00:00-03:00'
+
+// A pending item opened 20 days before the SLA: the SLA pauses and keeps the balance
+$runner->send('claim-7', Event::external('REGISTER_PENDING', new DateTimeImmutable('2026-10-20T18:00:00-03:00')), $contexts['claim-7']);
+$snapshot = $runner->load('claim-7')->snapshot;
+$snapshot->isPaused('sla');                                               // true
+$snapshot->dueAt('sla');                                                  // null: a paused deadline is never due
+$snapshot->pausedRemaining('sla');                                        // 1728000 (20 days, in whole seconds)
+array_map(fn(DueDeadline $due) => $due->region, $runner->findDue(new DateTimeImmutable('2027-01-01T00:00:00-03:00'))); // ['progress']
+
+// Resolved 5 days later: the SLA resumes with the balance, 5 days after the contract instant
+$runner->send('claim-7', Event::external('RESOLVE_PENDING', new DateTimeImmutable('2026-10-25T18:00:00-03:00')), $contexts['claim-7']);
+$runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM);      // '2026-11-14T18:00:00-03:00'
+```
+
+`deliverDue()` sends a null context unless given a `contextProvider` (it receives the due deadline and the loaded instance): a deadline transition entering a state whose deadline reads the context needs the instance's context, as here. A pause condition is any guard expression; one that throws rejects the step. The validator refuses a `pausedWhile` with an unknown guard or an `inState` path that does not exist, and warns when it references the deadline's own region (the pause would never end). The snapshot keeps the balance (`pausedRemaining()`, `paused_remaining` in its array form only while some region is paused, so a 1.8 snapshot loads unchanged), and `migrate()` refuses a migration that would leave a paused balance in a state whose deadline declares no `pausedWhile`, since it could never resume.
+
 Deliberately out of scope (each can be modelled without it): actors, `invoke`/`spawn` (asynchronous work is an external job that sends an event back), eventless (`always`) transitions and `raise` (the caller sends the next event), nested states inside a region and history states (a parallel region, like the pending flag above, covers the real cases), and a machine-owned context (`assign`): the context is the caller's domain object. The history is a trail; the snapshot is the source of truth (no event sourcing).
 
 ### 15. Use Cases With a Result Shared With the Machine (Module 19)
@@ -934,6 +1043,7 @@ src/
 │   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause
 ├── Entities/                  # Base entities, UUIDs, and random ID generators
 ├── Specifications/            # Concrete rule implementations
+│   ├── SpecificationSimplifier.php # simplify(): an equivalent, smaller tree (v1.9.0)
 │   ├── Comparison/           # Equal, GreaterThan, LessThan, RelationalOperator
 │   ├── Logical/              # AlwaysTrue, AlwaysFalse, JointDenial (NOR), DefaultValue
 │   ├── String/               # Regex, Wildcard, DateString, EnumName
@@ -1006,17 +1116,18 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (263 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
 • [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (550 assertions)
-• [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (476 assertions)
-• [SUITE] Module 18: State Machine Runner & Persistence... ✅ PASS (576 assertions)
+• [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (618 assertions)
+• [SUITE] Module 18: State Machine Runner & Persistence... ✅ PASS (700 assertions)
 • [SUITE] Module 19: Use Case & Shared Result (UseCaseResult)... ✅ PASS (408 assertions)
+• [SUITE] Module 20: Specification Simplification (simplify)... ✅ PASS (116 assertions)
 
 ====================================================================
- FINAL RESULT: 19/19 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 4760 | DURATION: ~4s | REGRESSIONS: 0
+ FINAL RESULT: 20/20 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 5142 | DURATION: ~4s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 240 tests and 6 892 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 241 tests and 7 275 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
@@ -1047,10 +1158,10 @@ Key highlights & upcoming roadmap:
 11. **Announced-but-Unshipped Backlog II: TTL, Partition DAG Index & Three SQL Dialects** (Shipped in v1.6.0)
 11a. **Specification-Driven State Machine** (the reserved `RequirementState`, now expressible as a machine) (Shipped in v1.8.0)
 11b. **Use Cases With a Result Shared With the State Machine** (Shipped in v1.8.0)
-12. **Specification `simplify()`** (v1.6.x)
+12. **Specification `simplify()`** (Shipped in v1.9.0)
 13. **PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope** (v2.0.0)
 14. **Shared Property Accessor with ALinq** (v2.0.0)
-15. **PHP Fibers & Non-Blocking Async Specification Runner** (v2.0.0)
+15. **Concurrent Data Resolution for I/O-Bound Specifications** (v2.0.0)
 16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
 17. **GraphQL AST & OpenAPI 3.1 Query Compilers**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**

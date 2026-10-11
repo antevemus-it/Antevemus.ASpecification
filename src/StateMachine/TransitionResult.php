@@ -23,7 +23,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * It implements IOutcome, the shape shared with the use case result (forward 023, D20; forward
  * 024, D4): UseCaseResult::fromTransition() converts it without manual mapping.
  *
- * @version    1.8.0
+ * @version    1.9.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -43,6 +43,12 @@ final class TransitionResult implements IOutcome
 
     /** Failure code of a deadline event delivered before the region's deadline is due (D18). */
     public const CODE_DEADLINE_NOT_DUE = 'SM_DEADLINE_NOT_DUE';
+
+    /**
+     * Failure code of an event (or start) entering a state whose deadline source, read from the
+     * context (`afterFrom`, `atFrom`), is missing or invalid (forward 025, D8).
+     */
+    public const CODE_DEADLINE_SOURCE_INVALID = 'SM_DEADLINE_SOURCE_INVALID';
 
     /** @var list<TakenTransition> */
     private array $transitions;

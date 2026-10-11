@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-11
+
+Two additions (MINOR, additive): `simplify()`, which returns an equivalent, smaller specification (roadmap milestone 12), and state machine deadlines read from the context (a duration or an absolute instant) that can pause while a condition holds and resume with the balance kept. Code that does not use the new features behaves as in 1.8; the reference DDL gains one nullable column (see *Upgrading*). No new Composer dependency.
+
+### Added
+
+- **`simplify()`**: `SpecificationSimplifier::simplify(ISpecification): ISpecification`, with the shortcuts `AbstractSpecification::simplify()` and `Spec::simplify()`. It is not declared by `ISpecification`, so external implementations of the interface are unaffected.
+  - Rules, applied bottom-up to a fixed point: identity (`A ∧ true = A`, `A ∨ false = A`), annihilation (`A ∧ false = false`, `A ∨ true = true`), double negation (`¬¬A = A`), idempotence (`A ∧ A = A`, `A ∨ A = A`, by `equals()`), flattening of nested `and`/`or` of the same kind, contradictory conjunctions → `alwaysFalse()` and tautological disjunctions → `alwaysTrue()` (the 1.6.0 structural detection), and subsumption (`A ∧ B = A`, `A ∨ B = B` when `A` is a special case of `B`, the 1.4.4 algebra). Not proven means not rewritten: there is no SAT solving.
+  - Annotations are preserved: a node with `because()` or `withCode()` is simplified inside but never removed, merged into another node or replaced by a constant, unless the very same annotation is on both sides; an annotated `and`/`or` keeps at least two operands; a double negation over an annotated subtree is kept. The verdict and the annotated messages and codes reported by `evaluate()` do not change.
+  - Immutable and idempotent: the input is never modified, unchanged subtrees are shared, simplifying a simplified tree returns that same tree, and the rewrite never adds nodes. AND, OR, NOT, NOR, property restrictions and rule bindings are simplified inside; any other node type, subclasses included, is kept as it is.
+- **Rule engine opt-in**: `DynamicSpecificationEngine::withSimplification(bool $enabled = true)` (returns a copy of the engine, like `withCatalogValidation()`) and `isSimplificationEnabled()`. When enabled, `compileSpecification()`, and therefore `validate()`, return the simplified tree; every rule binding is kept, so the verdict and the reported rule failures are the same. Disabled by default. The SQL, TCriteria and ALinq visitors never simplify by themselves.
+- **State machine deadlines read from the context.** `deadline()` takes exactly one source: `after` (a fixed ISO-8601 duration, as in 1.8.0), `afterFrom` (a context path holding an ISO-8601 duration or a `DateInterval`) or `atFrom` (a context path holding the due instant: a `DateTimeInterface` or an ISO-8601 text with date, time and offset). Paths start with `context.` and use the dot notation of the `PropertyAccessor`; the value is read from the context given to `transition()`/`initialSnapshot()` when the state is entered, so the core stays pure. Builder: `->deadline(event: 'SLA_BREACHED', atFrom: 'context.sla_due_at')`; array/JSON form: `{"atFrom": "context.sla_due_at", "event": "SLA_BREACHED"}`. A definition without the new fields keeps its 1.8.0 array form and fingerprint.
+- **A missing or invalid deadline source is a rejection** (`TransitionResult::CODE_DEADLINE_SOURCE_INVALID`, `SM_DEADLINE_SOURCE_INVALID`, severity `ERROR`), never a silently empty deadline. The failure names the path, region and state, never the value read. Relative texts (`tomorrow`), instants without offset, impossible dates and negative durations are refused. A deadline that declares no source or more than one is refused when the definition is built (`InvalidMachineDefinitionException`, kind `invalid_deadline`).
+- **Deadline pause with balance**: `deadline(..., pausedWhile: <guard expression>)`, where a `'region.state'` string is a shorthand for `inState`. It is evaluated after every accepted step, including the start and targetless transitions: when it starts to hold, the region's due instant becomes null and the remaining whole seconds are kept (an overdue deadline keeps zero and resumes already due); when it stops holding, the deadline resumes at `occurredAt + remaining`. Re-entering the state restarts the deadline and drops the balance. A pause condition that throws rejects the step (`ERROR`, `evaluation_error`). A paused region is never returned by `findDue()`. `MachineSnapshot` gains `pausedRemaining()`, `isPaused()`, `getPausedRemaining()` and `withPaused()`; its array form carries `paused_remaining` only while some region is paused, so a 1.8.0 snapshot loads and a snapshot that never paused keeps the 1.8.0 form.
+- **Validator**: refuses a `pausedWhile` with a guard without factory, an `inState` path that does not exist or a guard whose factory fails; warns (`MachineDefinitionWarning::KIND_SELF_REFERENCING_PAUSE`) when the pause references the deadline's own region, since such a pause would never end.
+- **Context provider for `MachineRunner::deliverDue()`**: a fifth, optional parameter `?Closure $contextProvider`, called with the `DueDeadline` and the loaded `MachineInstance`, returning the domain context of that delivery. A deadline transition that enters a state whose deadline reads the context, or a pause condition that reads it, needs it. Without it the context is null, as in 1.8.0.
+- **Reference DDL**: nullable column `paused_remaining INTEGER` in `state_machine_region` (the balance of a paused deadline, whose `due_at` is then `NULL`), projected by both stores. The PDO store only writes it for a paused region.
+- `StateMachine::START_EVENT` (`'machine.start'`), the internal event type a pause condition sees at the start.
+
+### Changed
+
+- **`StateMachine::initialSnapshot()` and `MachineRunner::start()` can now return a REJECTED result.** Before → after: the start was always accepted → it is rejected when an initial state's deadline reads a missing or invalid context source (`SM_DEADLINE_SOURCE_INVALID`) or its pause condition throws; `start()` then writes nothing (no instance, history or outbox row). Definitions that only use `after` are unaffected. Code that uses the new sources should check `isAccepted()` on the result of `start()`.
+- **`DeadlineDefinition::$after` is now `?string`** (was `string`): it is null when the deadline reads its source from the context. `dueFrom()` throws a `LogicException` for such a deadline; `resolveDue($enteredAt, $context)` covers the three sources. The 1.8.0 call `new DeadlineDefinition('P3D', 'EXPIRE')` is unchanged.
+- **`MachineRunner::migrate()` refuses a stranded pause.** Before → after: a migration whose target declares the current states was accepted → a migration that would leave a paused balance in a state whose deadline declares no `pausedWhile` is refused with `MachineMigrationException`, because the region could never resume and would stay without a deadline; the migration must resume the deadline or drop the balance.
+- **`suggest` for `antevemus/alinq-collection`: `^1.4.1` → `^1.4.2`** (`composer.json` and README).
+
+### Upgrading
+
+- A database created with the 1.8 reference DDL needs the new column once, before the first deadline pause (`CREATE TABLE IF NOT EXISTS` does not add columns to an existing table):
+
+  ```sql
+  ALTER TABLE state_machine_region ADD COLUMN paused_remaining INTEGER;
+  ```
+
+  Until then every definition that never pauses a deadline keeps working on the old table; the first pause fails with `MachinePersistenceException` and its step is rolled back.
+
+### Caveats
+
+- **The equivalence of `simplify()` holds for non-null candidates**, the same premise as `isTautology()`/`isContradiction()`: `AND`/`OR`/`NOT` reject `null` whatever their operands, while the node left after simplification answers for `null` on its own (`alwaysTrue()->and(alwaysTrue())` rejects it, `alwaysTrue()` accepts it).
+- **Truth value only**: removing a redundant branch may remove one that would have raised an exception; nothing else is promised.
+- **Default messages of unannotated nodes may change** after simplification; only the messages and codes set with `because()`/`withCode()` are guaranteed.
+
+### Documentation
+
+- README (EN and pt-BR): example 12 renamed "Tautology, Contradiction & Simplification", with a `simplify()` block (a redundant tree shrinking, an annotated node kept, the rule engine opt-in) and its two limits; new example 14.7, "Deadlines From the Context" (an SLA region with an absolute deadline from the context, paused while a pending item is open and resumed with the balance, per-client stage durations, a missing source rejected, `deliverDue()` with a context provider); example 14.6 gains the upgrade note for 1.8 databases. Every new block is transcribed as a test (Modules 18 and 20). Core Features, directory tree, roadmap list (milestone 12 shipped, milestone 15 renamed), release badge v1.9.0, runner block (20 suites, 5 142 assertions) and PHPUnit counts (241 tests, 7 275 assertions; Domian Parity unchanged, 219 tests, 2 106 assertions).
+- ROADMAP: new "v1.9.0" section with milestone 12 and the deadline additions; milestone 15 redesigned as "Concurrent Data Resolution for I/O-Bound Specifications".
+
 ## [1.8.1] - 2026-10-10
 
 Patch: the optional ALinq integration points to the release that follows this package's rule for non-public properties. No code changes.
@@ -507,7 +554,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.1...v1.7.0
