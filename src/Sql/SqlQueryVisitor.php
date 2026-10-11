@@ -37,6 +37,7 @@ use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgno
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
+use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 
@@ -60,9 +61,11 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   dialect's false condition (`1 = 0`), a null member as an extra `OR "col" IS NULL`
  * - A declarative method call (MethodParameterizedSpecification, 1.6.0) is opaque to SQL: it raises
  *   NonTranslatableSpecificationException, as the inline closure of must() does
+ * - External data (ExternalDataSpecification, 1.10.0) only exists when the tree is evaluated in PHP by
+ *   a DataResolver: it raises NonTranslatableSpecificationException
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.6.0
+ * @version    1.10.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -246,6 +249,16 @@ class SqlQueryVisitor implements ISpecificationVisitor
             throw new NonTranslatableSpecificationException(
                 $specification,
                 'An inline PHP closure (must()) is opaque and cannot be translated to SQL; express the rule with property specifications.'
+            );
+        }
+
+        if ($specification instanceof ExternalDataSpecification) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                sprintf(
+                    "external data (source '%s') is fetched by a DataResolver when the tree is evaluated in PHP and cannot be translated to SQL; filter in SQL with the other rules and evaluate the external part in PHP",
+                    $specification->getSource()
+                )
             );
         }
 

@@ -91,7 +91,18 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
-## 🔮 v2.0.0 — Zero `unserialize`, Shared Accessor & Concurrent Data Resolution
+## ✅ v1.10.0 — Concurrent Data Resolution, Core (Shipped in v1.10.0)
+
+### 15. Concurrent Data Resolution for I/O-Bound Specifications ⚡ (Core shipped in v1.10.0)
+- **Description:** Specifications stay pure: a specification that depends on external data (a credit bureau score, a fraud check, a microservice lookup) does not call the service itself, it **declares** the data it needs (`Spec::external('credit.score', ['document' => 'customer.cpf'], Spec::greaterThanOrEqualTo(700))`). Before evaluation, a `DataResolver` collects the declarations of the whole tree (deduplicated by a canonical request key) and fetches the data **concurrently**, then evaluation runs over the resolved data. The core resolver uses `curl_multi` (zero dependency, works under PHP-FPM; `ext-curl` is a `suggest`): `HttpDataSource` builds each call from a fixed base URL and a path template whose parameters are percent-encoded, so a parameter cannot change the host or the path; `CallableDataSource` covers synchronous non-HTTP sources. A **cost policy** chooses between fetching everything at once (`concurrent()`), fetching by cost with a three-valued evaluation after each stage that skips the sources whose result can no longer change the verdict (`tiered()`, the default), and fetching each leaf when the evaluation reaches it (`sequential()`). Outside a resolver a leaf fetches its own data synchronously, so every specification keeps working without it. A failed fetch (status, transport, time limit of the source or of the whole resolution, parser) is an evaluation error of its leaf, with the status code and never the response body; there is no retry. An optional cache between resolutions (`IDataCache`, in memory in the core) uses the TTL of each source. The SQL, TCriteria and ALinq visitors refuse the leaf.
+- **Why not "evaluate specifications in Fibers":** a Fiber alone does not make I/O non-blocking. A blocking client (PDO, plain `curl_exec`, `file_get_contents`) inside a Fiber still blocks the whole process; concurrency only happens when the I/O itself is driven by a non-blocking client (`curl_multi`, an event loop driver). And Fibers are cooperative scheduling in one thread, not parallelism: CPU-bound specifications gain nothing. Moving the I/O out of the specifications and into a resolver gets the concurrency where it actually is.
+- **What stays as it is:** evaluation remains synchronous, so `because()`/`withCode()`, the SQL and `TCriteria` compilation of the same specifications, the existing tests and the generic error message of 1.8.0 (an exception never reaches the failure) keep working unchanged. State machine guards stay pure: a use case resolves the data before sending the event.
+- **Goal:** Concurrent fetching of the data I/O-bound rules need, without async-coloring the specification API and without a dependency in the core.
+- **Not in this release:** the Fibers/Revolt adapter for applications whose SDKs are already asynchronous (milestone 15b), retries and circuit breakers, and the PSR-16 cache adapter (milestone 16).
+
+---
+
+## 🔮 v2.0.0 — Zero `unserialize` & Shared Accessor
 
 ### 13. PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope 🗑️
 - **Description:** `PhpNativeEntitySerializer` and the `.bin` branch are removed; the single-file envelope is always JSON and owned by the repository, the serializer only serialises the entity; existing `.bin` files fail with the migration recipe. Per-entity persistence metadata (`__persistence_metadata`, documented by the 006 data delta and never produced) is written and hydrated by the file repositories in the same format change.
@@ -101,15 +112,12 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 - **Description:** `PropertyAccessor` and the ALinq `ALinqPropertyAccess` ship the same resolution order as two copies. Extracting one package both libraries depend on changes the dependency graph of both (ALinq roadmap milestone 11).
 - **Goal:** One accessor, one contract test.
 
-### 15. Concurrent Data Resolution for I/O-Bound Specifications ⚡
-- **Description:** Specifications stay pure: a specification that depends on external data (a credit bureau score, a fraud check over gRPC, a microservice lookup) does not call the service itself, it **declares** the data it needs. Before evaluation, a resolver collects the declarations of the whole tree and fetches the data **concurrently**, then evaluation runs over the resolved data. The core resolver uses `curl_multi` (zero dependency, works under PHP-FPM); a satellite package (`antevemus/aspecification-async`) adds a Fibers/Revolt adapter for applications whose SDKs are already asynchronous. A **cost policy** in the resolver chooses between fetching everything concurrently and fetching sequentially with short-circuit: when calls are paid (bureau queries), it can resolve the cheapest or most decisive branch first and skip the ones whose result can no longer change the verdict.
-- **Why not "evaluate specifications in Fibers":** a Fiber alone does not make I/O non-blocking. A blocking client (PDO, plain `curl_exec`, `file_get_contents`) inside a Fiber still blocks the whole process; concurrency only happens when the I/O itself is driven by a non-blocking client (`curl_multi`, an event loop driver). And Fibers are cooperative scheduling in one thread, not parallelism: CPU-bound specifications gain nothing. Moving the I/O out of the specifications and into a resolver gets the concurrency where it actually is.
-- **What stays as it is:** evaluation remains synchronous, so `because()`/`withCode()`, the SQL and `TCriteria` compilation of the same specifications, the existing tests and the generic error message of 1.8.0 (an exception never reaches the failure) keep working unchanged.
-- **Goal:** Concurrent fetching of the data I/O-bound rules need, without async-coloring the specification API and without a dependency in the core.
-
 ---
 
 ## 🗓️ Unscheduled
+
+### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
+- **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps zero runtime dependencies.
 
 ### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here: the core has no `fromArray`/`jsonSerialize` of specifications yet).

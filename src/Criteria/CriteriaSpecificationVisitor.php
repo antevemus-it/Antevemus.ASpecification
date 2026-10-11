@@ -15,6 +15,7 @@ use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
+use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -59,9 +60,11 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   `TFilter('col', 'NOT IN', [...])`
  * - A declarative method call (MethodParameterizedSpecification, 1.6.0) is opaque to TCriteria: it
  *   raises NonTranslatableCriteriaException, as the inline closure of must() does
+ * - External data (ExternalDataSpecification, 1.10.0) only exists when the tree is evaluated in PHP by
+ *   a DataResolver: it raises NonTranslatableCriteriaException, negated or not
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.6.0
+ * @version    1.10.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -209,6 +212,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
         if ($specification instanceof MethodParameterizedSpecification) {
             throw self::methodCallNotTranslatable($specification);
+        }
+
+        if ($specification instanceof ExternalDataSpecification) {
+            throw self::externalDataNotTranslatable($specification);
         }
 
         $col = $this->currentProperty;
@@ -534,6 +541,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             throw self::methodCallNotTranslatable($inner);
         }
 
+        if ($inner instanceof ExternalDataSpecification) {
+            throw self::externalDataNotTranslatable($inner);
+        }
+
         $col = $this->currentProperty;
         if ($col === null) {
             throw new NonTranslatableCriteriaException(
@@ -679,6 +690,21 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             sprintf(
                 "A method call on the candidate (%s) is evaluated in PHP and cannot be converted to TCriteria; express the rule with property specifications.",
                 $specification->getRuleName()
+            )
+        );
+    }
+
+    /**
+     * The "non translatable" exception of an external data leaf (1.10.0): the data only exists when
+     * the tree is evaluated in PHP by a DataResolver.
+     */
+    private static function externalDataNotTranslatable(ExternalDataSpecification $specification): NonTranslatableCriteriaException
+    {
+        return new NonTranslatableCriteriaException(
+            $specification,
+            sprintf(
+                "External data (source '%s') is fetched by a DataResolver when the tree is evaluated in PHP and cannot be converted to TCriteria; filter with the other rules and evaluate the external part in PHP.",
+                $specification->getSource()
             )
         );
     }

@@ -20,9 +20,10 @@ declare(strict_types=1);
  * - Spec-driven state machine entry points (machine, guardRegistry, stateMachine, validateMachine, 1.8.0)
  * - Use case entry points (useCaseRunner, machineEventUseCase, 1.8.0)
  * - Simplification of a specification tree (simplify, 1.9.0)
+ * - External data leaf resolved concurrently by a DataResolver (external, 1.10.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.9.0
+ * @version    1.10.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +36,7 @@ namespace Antevemus\ASpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
+use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
@@ -150,6 +152,28 @@ final class Spec
     public static function simplify(ISpecification $specification): ISpecification
     {
         return SpecificationSimplifier::simplify($specification);
+    }
+
+    /**
+     * Creates an external data leaf (1.10.0, forward 026): "the data `$source` returns for these
+     * parameters satisfies `$specification`". The leaf declares the data, it does not call the
+     * service: a DataResolver collects the declarations of the whole tree and fetches them
+     * concurrently before evaluating; outside a resolver the leaf fetches its own data, synchronously,
+     * through the default DataSourceRegistry. The SQL, TCriteria and ALinq visitors refuse it.
+     *
+     * <code>
+     * Spec::external('credit.score', ['document' => 'customer.cpf'], Spec::greaterThanOrEqualTo(700));
+     * </code>
+     *
+     * @param string $source Name of a registered data source
+     * @param array<string, string> $parameters Request parameters: name => dot path into the candidate
+     * @param ISpecification $specification Specification applied to the fetched value
+     * @return ExternalDataSpecification
+     * @throws \InvalidArgumentException If the source name, a parameter name or a path is not valid
+     */
+    public static function external(string $source, array $parameters, ISpecification $specification): ExternalDataSpecification
+    {
+        return new ExternalDataSpecification($source, $parameters, $specification);
     }
 
     /**

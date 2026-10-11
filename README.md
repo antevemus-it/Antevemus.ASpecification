@@ -4,16 +4,17 @@
   <strong>🇺🇸 English</strong> &nbsp;|&nbsp; <a href="README.pt-BR.md">🇧🇷 Português (Brasil)</a>
 </p>
 
+[![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.9.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.9.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.10.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.10.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-20%2F20%20Suites%20Pass%20(5142%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-21%2F21%20Suites%20Pass%20(6006%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
-> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine and use cases with a result shared between both.
+> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, and concurrent resolution of the external data I/O-bound rules depend on.
 
 ---
 
@@ -51,6 +52,7 @@
 - ⏱️ **Nanosecond Benchmarking & Diagnostics**: High-resolution stopwatches (`StopWatch` via `hrtime`) and hierarchical diagnostic utilities (`InstrumentationUtils`).
 - 🚦 **Spec-Driven State Machine (Modules 17 and 18)**: every guard is an `ISpecification`, so a denied transition says why (code, message, property, severity); parallel regions, region-level transitions, named actions (`exit` → transition → `entry`), persisted deadlines (a fixed duration, or a duration or an absolute instant read from the context, pausable with the balance kept while a condition holds); the definition is data (builder or JSON, versioned, fingerprinted, validated at load time); a pure `transition()`/`can()`/`nextEvents()` core and a single write port, `MachineRunner` (compare-and-set, idempotency key, append-only history, transactional outbox), over InMemory or PDO stores with a reference ANSI DDL (example 14).
 - 🧭 **Use Cases (Module 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, request validation where only `ERROR` blocks), `UseCaseResult` with a closed domain status and HTTP only at the edge (`toHttpStatus()`), no exception or stack trace in the result, and `StateMachineEventUseCase` exposing a machine event as a use case through the shared `IOutcome` (example 15).
+- ⚡ **Concurrent Data Resolution (Module 21)**: a rule that depends on external data (a bureau score, a fraud check, a balance) declares it with `Spec::external()` instead of calling the service; a `DataResolver` collects the declarations of the whole tree, fetches them concurrently through `curl_multi` (no dependency, works under PHP-FPM) and then evaluates the tree synchronously. A cost policy (`concurrent()`, `tiered()` with three-valued logic, `sequential()`) skips paid sources that can no longer change the verdict; requests are deduplicated; a failed fetch is an evaluation error of its leaf; parameters cannot change the host or path of a call (example 16).
 
 ---
 
@@ -84,7 +86,8 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-json` (for JSON entity serialization; required)
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
-- **Optional package**: `antevemus/alinq-collection` `^1.4.2` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
+  - `ext-curl` *(optional: `HttpDataSource`, the concurrent HTTP fetching of the `DataResolver`, Module 21; without it an HTTP source is refused when registered and `CallableDataSource` keeps working)*
+- **Optional package**: `antevemus/alinq-collection` `^1.5.0` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
 
 ---
 
@@ -1021,6 +1024,98 @@ $useCases->run(Spec::machineEventUseCase($runner, 'CANCEL'), new MachineEventReq
     ->getStatus();                                            // UseCaseStatus::NOT_FOUND
 ```
 
+### 16. Concurrent Data Resolution for I/O-Bound Specifications (Module 21)
+
+A rule that depends on data held elsewhere (a credit bureau score, a fraud check, the balance in the core banking) does not call the service. `Spec::external()` **declares** the data it needs: a source name, parameters read from the candidate (dot paths), and an ordinary specification that decides on the value, with its own `because()`/`withCode()`. A `DataResolver` collects the declarations of the whole tree, fetches the data concurrently (`curl_multi`, no package dependency, works under PHP-FPM) and only then evaluates the tree, synchronously, as every specification is evaluated. Sources are registered by name: `HttpDataSource` (fixed base URL, a path template with `{placeholders}`, headers, its own time limit, a cost and a cache TTL) and `CallableDataSource` (any synchronous callable: a repository, an SDK, a gRPC client).
+
+```php
+use Antevemus\ASpecification\Resolution\DataResolver;
+use Antevemus\ASpecification\Resolution\DataSourceRegistry;
+use Antevemus\ASpecification\Resolution\HttpDataSource;
+use Antevemus\ASpecification\Resolution\ResolutionPolicy;
+use Antevemus\ASpecification\Spec;
+
+$serasaUrl = 'https://bureau.example.com';         // owned by the source, never by the candidate
+$fraudUrl  = 'https://fraud.example.com';
+$bankUrl   = 'https://core-banking.example.com';
+
+$registry = DataSourceRegistry::default()
+    ->register('serasa.score', new HttpDataSource(
+        baseUrl: $serasaUrl,
+        path: '/serasa/score/{document}',
+        parse: fn(int $status, array $headers, string $body): int => json_decode($body, true)['score'],
+        headers: ['Authorization' => 'Bearer bureau-token'],
+        timeout: 2.0,
+        cost: 10,                                 // a paid bureau query
+    ))
+    ->register('fraud.flag', new HttpDataSource(
+        baseUrl: $fraudUrl,
+        path: '/fraud/check/{document}',
+        parse: fn(int $status, array $headers, string $body): bool => json_decode($body, true)['flagged'],
+        cost: 5,
+    ))
+    ->register('bank.balance', new HttpDataSource(
+        baseUrl: $bankUrl,
+        path: '/bank/balance/{account}',
+        parse: fn(int $status, array $headers, string $body): float => json_decode($body, true)['balance'],
+        cost: 1,                                  // our own core banking: cheap
+    ));
+
+// The rule declares the data it needs; it calls nothing
+$credit = Spec::external('bank.balance', ['account' => 'account.number'],
+        Spec::greaterThanOrEqualTo(1000)->because('Balance below 1,000.')->withCode('LOW_BALANCE'))
+    ->and(Spec::external('fraud.flag', ['document' => 'cpf'], Spec::isFalse())->withCode('FRAUD_SUSPECTED'))
+    ->and(Spec::external('serasa.score', ['document' => 'cpf'], Spec::greaterThanOrEqualTo(700))
+        ->because('Credit score below 700.')->withCode('SCORE_LOW'));
+
+$customer = (object) ['cpf' => '111.444.777-35', 'account' => (object) ['number' => 'A-1']];
+$resolver = new DataResolver($registry);
+
+// concurrent() (the default): the three calls at once, about the time of the slowest one
+$resolver->evaluate($credit, $customer, ResolutionPolicy::concurrent())->isSatisfied;      // true
+
+// tiered() (an explicit choice): cheapest first, stopping as soon as the verdict is decided
+$poor = (object) ['cpf' => '222.333.444-05', 'account' => (object) ['number' => 'A-2']];
+$data = $resolver->resolve($credit, $poor, ResolutionPolicy::tiered()); // balance 10: the AND is already false
+count($data->getSkippedRequests());                   // 2: the fraud check and the bureau were not called
+$data->evaluate($credit, $poor)->getCodes();          // ['LOW_BALANCE']
+
+// Same verdict under every policy; concurrent() paid every source and reports every failure
+$resolver->evaluate($credit, $poor, ResolutionPolicy::concurrent())->getCodes();          // ['LOW_BALANCE', 'SCORE_LOW']
+$resolver->evaluate($credit, $poor, ResolutionPolicy::sequential())->isSatisfied;         // false
+```
+
+The policies: `concurrent()` (the default) fetches every request of the tree in one stage and reports every failure, as an evaluation outside the resolver does; `tiered()` (an explicit choice, when calls cost money) fetches by cost, cheapest first, and after each stage evaluates the tree in three-valued logic (true, false, unknown): once the verdict can no longer change (an `and` with a false operand, an `or` whose left operand is true) the more expensive sources are not called; `sequential()` fetches nothing beforehand and each leaf fetches when the evaluation reaches it. The verdict is the same under every policy and outside the resolver; under `tiered()`, a branch that was not fetched because it could not change the verdict reports no failure, so the list of failures can be shorter than with `concurrent()`. An `or` stops early only on its left operand: in the core an error on the left operand aborts the disjunction, so an unknown left operand cannot be skipped. Two leaves asking the same data (same source, same parameters) cause one call. A failed fetch is unknown, never a decision on its own.
+
+```php
+use Antevemus\ASpecification\Resolution\HttpDataSource;
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
+
+// Outside the resolver the same rule still works: each leaf fetches its own data through the
+// default registry, synchronously (one call after the other, no deduplication)
+$credit->evaluate($customer)->isSatisfied;                          // true
+
+// A source that fails is an evaluation error of its leaf, never a silent "false"
+$limitsUrl = 'https://limits.example.com';
+$registry->register('credit.limit', new HttpDataSource(baseUrl: $limitsUrl, path: '/limits/{document}', cost: 2));
+$limit = Spec::external('credit.limit', ['document' => 'cpf'], Spec::greaterThan(0));
+
+$result = $resolver->evaluate($limit, $customer);                   // the service answers 503
+$result->isError;                                                   // true
+$result->failures[0]->message;                                      // 'The rule could not be evaluated.'
+$result->exception->getStatusCode();                                // 503, for the log (the body is never kept)
+
+// The visitors refuse the leaf: the data only exists when the tree is evaluated in PHP
+try {
+    $credit->toSql('pgsql');
+} catch (NonTranslatableSpecificationException $e) {
+    // filter in SQL with the other rules, evaluate the external part in PHP
+}
+```
+
+Errors follow the 1.8.0 rule: a fetch that fails (an HTTP status outside 2xx, a transport error, the time limit of the source or of the whole resolution with `ResolutionPolicy::tiered(timeout: 3.0)`, a parser that throws, an unknown source) is an evaluation error of the leaf: a failure with the generic message, `evaluation_error = true`, and a `DataFetchException` in `$result->exception` with the status code, never the response body. There is no retry. A parameter value is percent-encoded into the URL template, so `/`, `?`, `#`, `..` or a whole URL in a document number cannot change the host or the path of the call; redirects are not followed. A cache between resolutions is optional (`new DataResolver($registry, new InMemoryDataCache())`, with the TTL of each source; failures are never cached). `ext-curl` is a `suggest`: without it an `HttpDataSource` is refused when registered and a `CallableDataSource` keeps working. The SQL, TCriteria and ALinq visitors refuse the leaf with their "non translatable" exception. State machine guards stay pure: a use case resolves the data before sending the event. Concurrency for non-HTTP sources (Fibers/Revolt) is a planned satellite package.
+
 ---
 
 ## 🏗️ Directory Structure
@@ -1069,6 +1164,7 @@ src/
 │   ├── CriteriaSpecificationVisitor.php # GoF Visitor compiling AST to TCriteria/TFilter
 │   └── TCriteriaBuilder.php  # Fluent builder with pagination, sorting, and field mapping
 ├── Linq/                      # ALinq Synergy & Fluent Collections (Module 14)
+│   ├── Exceptions/           # NonTranslatableLinqException (v1.10.0)
 │   ├── ALinqBridge.php       # Bridge between repositories and ALinq collections
 │   └── ALinqSpecificationVisitor.php # AST compiler for short-circuit functional predicates
 ├── Factory/                   # Unified SpecificationFactory (~140 methods)
@@ -1078,6 +1174,12 @@ src/
 │   ├── Persistence/          # Ports, MachinePersistence, InMemory/ and Pdo/ stores (resources/sql/state_machine.ansi.sql)
 │   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrations
 ├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Module 19)
+├── Resolution/                # Concurrent data resolution (Module 21, v1.10.0)
+│   ├── Exceptions/           # DataResolutionException, DataFetchException, DataSourceNotFoundException
+│   ├── ExternalDataSpecification.php # Spec::external(): the leaf that declares external data
+│   ├── DataResolver.php      # resolve()/evaluate(); ResolutionPolicy concurrent()/tiered()/sequential()
+│   ├── HttpDataSource.php    # URL template with encoded parameters, fetched through curl_multi
+│   └── CallableDataSource.php # Any synchronous callable; DataSourceRegistry, IDataCache, InMemoryDataCache
 ├── Helpers/                   # PropertyAccessor (dot-notation), StopWatch, InstrumentationUtils
 ├── DSL/                       # Global helper functions for fluent domain syntax
 └── Spec.php                   # Unified static facade
@@ -1120,14 +1222,15 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 18: State Machine Runner & Persistence... ✅ PASS (700 assertions)
 • [SUITE] Module 19: Use Case & Shared Result (UseCaseResult)... ✅ PASS (408 assertions)
 • [SUITE] Module 20: Specification Simplification (simplify)... ✅ PASS (116 assertions)
+• [SUITE] Module 21: Concurrent Data Resolution (DataResolver)... ✅ PASS (864 assertions)
 
 ====================================================================
- FINAL RESULT: 20/20 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 5142 | DURATION: ~4s | REGRESSIONS: 0
+ FINAL RESULT: 21/21 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 6006 | DURATION: ~9s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 241 tests and 7 275 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 242 tests and 8 140 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
@@ -1161,7 +1264,8 @@ Key highlights & upcoming roadmap:
 12. **Specification `simplify()`** (Shipped in v1.9.0)
 13. **PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope** (v2.0.0)
 14. **Shared Property Accessor with ALinq** (v2.0.0)
-15. **Concurrent Data Resolution for I/O-Bound Specifications** (v2.0.0)
+15. **Concurrent Data Resolution for I/O-Bound Specifications** (core shipped in v1.10.0)
+15b. **Fibers/Revolt Adapter for Non-HTTP Sources** (satellite package `antevemus/aspecification-async`)
 16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
 17. **GraphQL AST & OpenAPI 3.1 Query Compilers**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**

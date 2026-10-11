@@ -9,6 +9,8 @@ use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ASpecification\Linq\Exceptions\NonTranslatableLinqException;
+use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
@@ -40,6 +42,8 @@ use Closure;
  * - Case-insensitive equality compared with `mb_strtolower(..., 'UTF-8')`, as the leaf (1.5.0)
  * - Declarative method call (MethodParameterizedSpecification, 1.6.0) compiled to the call of the
  *   method on the item, the result filtered by the compiled result specification
+ * - External data (ExternalDataSpecification, 1.10.0) is refused with NonTranslatableLinqException:
+ *   its data is resolved per candidate by a DataResolver, never once per item of a filter
  *
  * Parity contract: for the same candidate, the compiled predicate returns exactly what the
  * specification's own isSatisfiedBy()/evaluate() would decide, and throws the same typed
@@ -47,7 +51,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.6.0
+ * @version    1.10.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -141,6 +145,16 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     {
         if ($specification instanceof RuleBoundSpecification) {
             return $this->visit($specification->getInnerSpecification());
+        }
+
+        if ($specification instanceof ExternalDataSpecification) {
+            throw new NonTranslatableLinqException(
+                $specification,
+                sprintf(
+                    "external data (source '%s') is resolved for one candidate by a DataResolver; a compiled filter would call the source once per item",
+                    $specification->getSource()
+                )
+            );
         }
 
         return match (true) {

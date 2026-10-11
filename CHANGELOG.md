@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-11
+
+One addition (MINOR, additive): concurrent data resolution for I/O-bound specifications, the core part of roadmap milestone 15. A specification that depends on external data declares it instead of calling the service; a resolver fetches the data of the whole tree concurrently and then evaluates the tree, synchronously, as before. Code that does not use the new leaf behaves as in 1.9. No new Composer dependency: `ext-curl` is suggested, not required.
+
+### Changed
+
+- **`suggest` for `antevemus/alinq-collection`: `^1.4.2` → `^1.5.0`**, the latest ALinq release (the floor between the two packages follows the latest published version of the other).
+
+### Added
+
+- **`Antevemus\ASpecification\Resolution`**, a new namespace (directory `src/Resolution/`) with the whole feature, so that it can be read, and left out, as one unit.
+- **`ExternalDataSpecification`** and **`Spec::external(string $source, array $parameters, ISpecification $specification)`**: "the data the source returns for these parameters satisfies the specification". Parameters are dot paths into the candidate (`['document' => 'customer.cpf']`, the `PropertyAccessor` notation); the inner specification is an ordinary one and decides, with its own `because()`/`withCode()`; an annotation on the leaf itself reports one failure with the inner failures as causes. A candidate that is not an object or an array, or a parameter whose path resolves to `null`, does not satisfy (no request is made); a missing path, an unknown source and any fetch failure are evaluation errors. `createRequest()` exposes the request a candidate produces; `isContradiction()` follows the inner specification.
+- **`DataRequest`**: source name plus parameters already read from the candidate (strings, integers, finite floats, booleans; `Stringable` and `BackedEnum` converted). Its canonical key (`<source>#<sha-256 of the sorted parameters>`) is the same for the same data in any order, deduplicates fetches within a resolution and is the cache key; the hash keeps parameter values out of cache keys and logs.
+- **Data sources**: `IDataSource` (`fetch()`, `getCost()`, `getTtl()`), `IHttpDataSource` (`createCall()`, `parseResponse()`), and two implementations:
+  - `HttpDataSource`: fixed base URL, a path template with `{placeholders}` (in the path or in the query), method, headers (authentication included), optional body builder, its own time limit, cost and cache TTL; a 2xx response goes to `parse(int $status, array $headers, string $body)` (JSON decoded by default). Parameter values are percent-encoded (`.` included), so `/`, `?`, `#`, `..` or a whole URL cannot change the scheme, host, port or path, and the expanded URL is checked against the base URL before the call. Redirects are not followed and only `http`/`https` are allowed. `HttpCall` is the call it builds.
+  - `CallableDataSource`: any synchronous callable receiving the parameters (a repository, an SDK, a gRPC client).
+- **`DataSourceRegistry`**: sources by name (`register()`, `has()`, `get()`, `getNames()`); a name is registered once; `DataSourceRegistry::default()`/`setDefault()` is the registry the leaves use outside a resolver. Registering an `HttpDataSource` without `ext-curl` is refused.
+- **`DataResolver`** (`new DataResolver(?DataSourceRegistry, ?IDataCache)`): `resolve(ISpecification, mixed $candidate, ?ResolutionPolicy): ResolvedData` collects the requests of the whole tree and fetches them; `evaluate(...)` resolves and evaluates. The HTTP calls of a stage run together in one `curl_multi`; callable sources run one after the other within the stage. `ResolvedData` holds each value, failure or skip by request (`isResolved()`, `get()`, `getError()`, `isSkipped()`, `getSkippedRequests()`, `getFailedRequests()`, `getFetchCount()`, `getStageCount()`, `getCacheHitCount()`) and evaluates inside its scope (`evaluate()`, `isSatisfiedBy()`, `run()`).
+- **`ResolutionPolicy`** (`ResolutionMode`): `concurrent()`, the default, fetches every request in one stage and reports every failure, as an evaluation outside the resolver does; `tiered()`, an explicit choice when calls cost money, fetches by cost, cheapest first, and after each stage evaluates the tree in three-valued logic (satisfied, failed, unknown), skipping the remaining sources once the verdict can no longer change; `sequential()` fetches nothing beforehand and each leaf fetches when the evaluation reaches it. An optional `timeout` bounds the whole resolution (`ResolutionPolicy::tiered(timeout: 3.0)`, `withTimeout()`). A call is never started with less than 10 ms of that budget left (`CurlMultiTransport::MIN_START_BUDGET`): it ends as a time-limit failure without reaching the source, so no request (possibly a paid one) is spent on a call that cannot finish.
+- **`ResolutionScope`**: the stack (reentrant, closed even when the code throws) through which the leaves read the resolved data. Outside every scope a leaf fetches its own data synchronously through the default registry: every specification keeps working without the resolver, only without concurrency.
+- **Errors**: `DataResolutionException` (base), `DataFetchException` (`getSourceName()`, `getStatusCode()`: an HTTP status outside 2xx, a transport error, the time limit of the source or of the resolution, a parser or callable failure kept as previous exception) and `DataSourceNotFoundException`. A failed fetch is an evaluation error of its leaf with the 1.8.0 rule: failure with the generic message, `evaluation_error = true`, the exception in `$result->exception`; its message never carries the response body, the URL or a parameter value. No retry.
+- **Cache between resolutions**: the `IDataCache` port (`has()`, `get()`, `set()`) and `InMemoryDataCache` (injectable clock). Only successful values of sources with a positive TTL are stored.
+- **The SQL, TCriteria and ALinq visitors refuse the leaf** (negated or not, nested in a property restriction or not): `NonTranslatableSpecificationException`, `NonTranslatableCriteriaException` and the new `Linq\Exceptions\NonTranslatableLinqException` (an `InvalidArgumentException`; the ALinq visitor had no "non translatable" exception, and compiling the leaf would call the source once per item).
+- **`composer.json`**: `ext-curl` in `suggest`.
+
+### Notes
+
+- **Same verdict, possibly fewer failures under `tiered()`.** For any tree, `isSatisfied` is the same under every policy and outside the resolver. A branch that `tiered()` did not fetch, because it could not change the verdict, reports no failure (it answers with the neutral outcome of its position), so its failures are the ones the other policies report minus those of the skipped branches; `isError` can also differ when a skipped source would have failed. `concurrent()`, `sequential()` and the evaluation outside a resolver report the same failures.
+- **An `or` stops early only on its left operand.** In the core, an evaluation error on the left operand of an `or` aborts the disjunction (existing behaviour, unchanged), so an unknown left operand can never be skipped; an `and` with a false operand stops whatever its position.
+- **A failed fetch never decides on its own**: it counts as unknown for the three-valued logic, so the next stage is still fetched.
+- **`sequential()` does not skip operands of an `and`**: `evaluate()` evaluates both operands of a conjunction to report every failure (notification pattern), so every leaf it reaches fetches its data; it differs from the evaluation outside a resolver only by deduplication, cache and time limit.
+- **Node types the resolver does not know** (anything but `and`, `or`, `not`, `nor`, property restrictions, the new leaf and ordinary leaves; subclasses included) are never guessed: they count as unknown until the data below them is fetched, and a leaf hidden inside a node that does not expose its operands is fetched when the evaluation reaches it.
+- **Outside a resolver** there is no deduplication, no cache and no resolution time limit; the leaf uses `DataSourceRegistry::default()`, whatever registry a resolver was built with.
+- **State machine guards stay pure**: a use case that needs external data resolves it before sending the event and passes it in the payload.
+
+### Documentation
+
+- **Continuous integration on GitHub Actions** (`.github/workflows/tests.yml`): PHPUnit and the module runner on PHP 8.2, 8.3 and 8.4, plus a PHP 8.4 job with the optional ALinq package installed (Module 14 integration); CI badge in the README.
+
+- README (EN and pt-BR): new example 16, "Concurrent Data Resolution for I/O-Bound Specifications" (a bureau score, a fraud check and a balance with costs; `concurrent()` against `tiered()`; the same rule outside the resolver; a failing source; the visitors refusing the leaf), with the two blocks identical in both languages except comments and transcribed as tests against a local server (Module 21). Core Features, Requirements (`ext-curl`), directory tree, roadmap list (milestone 15 core shipped, 15b planned), release badge v1.10.0, runner block (21 suites, 6 006 assertions) and PHPUnit counts (242 tests, 8 140 assertions; Domian Parity unchanged, 219 tests, 2 106 assertions).
+- ROADMAP: new "v1.10.0" section with milestone 15 (core); the Fibers/Revolt adapter becomes milestone 15b, unscheduled; the v2.0.0 section keeps milestones 13 and 14.
+
 ## [1.9.0] - 2026-10-11
 
 Two additions (MINOR, additive): `simplify()`, which returns an equivalent, smaller specification (roadmap milestone 12), and state machine deadlines read from the context (a duration or an absolute instant) that can pause while a condition holds and resume with the balance kept. Code that does not use the new features behaves as in 1.8; the reference DDL gains one nullable column (see *Upgrading*). No new Composer dependency.
@@ -554,7 +596,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.7.0...v1.8.0
