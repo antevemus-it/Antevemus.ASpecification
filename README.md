@@ -5,7 +5,7 @@
 </p>
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.8.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.8.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.8.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.8.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-19%2F19%20Suites%20Pass%20(4760%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
@@ -84,7 +84,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-json` (for JSON entity serialization; required)
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
-- **Optional package**: `antevemus/alinq-collection` `^1.3` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4).
+- **Optional package**: `antevemus/alinq-collection` `^1.4.1` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
 
 ---
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-10-10
+
+Patch: the optional ALinq integration points to the release that follows this package's rule for non-public properties. No code changes.
+
+### Changed
+- **`suggest` for `antevemus/alinq-collection`: `^1.3` → `^1.4.1`** (`composer.json` and README). `^1.3` admitted ALinq 1.4.0, whose property accessor read any non-public property by name; since ALinq 1.4.1 it reads one only when marked `#[Specifiable]`, the rule this package has followed since 1.6.1, so filters and orderings built on both libraries agree and neither works as a read oracle.
+
 ## [1.8.0] - 2026-10-10
 
 Two new namespaces, one security hardening and one fix (MINOR): a state machine whose guards are specifications (`StateMachine\*`, with its runner, persistence ports and reference DDL), and use cases whose result has the same shape as the machine's (`UseCase\*`, `Results\IOutcome`). No existing signature changes and no new Composer dependency. `RequirementState`, the document requirement state machine announced by 1.0.0 and reserved since 1.5.0, ships as what it always was: a machine definition (README example 14.4).
@@ -500,7 +507,8 @@ composer require antevemus/aspecification
 
 ---
 
-[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/antevemus-it/Antevemus.ASpecification/compare/v1.6.0...v1.6.1
