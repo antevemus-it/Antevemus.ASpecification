@@ -20,8 +20,13 @@ use WeakReference;
  * through another of the same table is known as loaded). Read it through
  * EntityMapping::isRelationLoaded() or PdoRepository::isLoaded().
  *
+ * Since 1.14.0 (forward 032, D2): a collection marked by PdoRepository::markLoaded() is DECLARED: the
+ * caller states that it is the whole stored collection, so its next write removes every stored child
+ * (or link) it does not hold, not only those loaded with it. A load or a write records it again as
+ * loaded (not declared).
+ *
  * @internal
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -30,7 +35,7 @@ use WeakReference;
  */
 final class LoadedRelations
 {
-    /** @var WeakMap<object, array<string, array{ids: array<string, WeakReference<object>|null>, present: bool}>>|null */
+    /** @var WeakMap<object, array<string, array{ids: array<string, WeakReference<object>|null>, present: bool, declared?: bool}>>|null */
     private static ?WeakMap $loaded = null;
 
     private function __construct()
@@ -47,14 +52,21 @@ final class LoadedRelations
      * Records a loaded collection: the text form of each child identifier, with the child object.
      *
      * @param array<string, object> $children Identifier text => child
+     * @param bool $declared True when the caller declares it the whole stored collection (since 1.14.0)
      */
-    public static function markCollection(object $entity, string $property, array $children): void
+    public static function markCollection(object $entity, string $property, array $children, bool $declared = false): void
     {
         $ids = [];
         foreach ($children as $key => $child) {
             $ids[(string) $key] = WeakReference::create($child);
         }
-        self::store($entity, $property, ['ids' => $ids, 'present' => $ids !== []]);
+        self::store($entity, $property, ['ids' => $ids, 'present' => $ids !== [], 'declared' => $declared]);
+    }
+
+    /** True when the collection was declared whole by PdoRepository::markLoaded() (since 1.14.0). */
+    public static function isDeclared(object $entity, string $property): bool
+    {
+        return (self::map()[$entity][$property]['declared'] ?? false) === true;
     }
 
     /** Records a loaded reference (present = it was not null). */
@@ -101,7 +113,7 @@ final class LoadedRelations
     }
 
     /**
-     * @param array{ids: array<string, WeakReference<object>|null>, present: bool} $state
+     * @param array{ids: array<string, WeakReference<object>|null>, present: bool, declared?: bool} $state
      */
     private static function store(object $entity, string $property, array $state): void
     {

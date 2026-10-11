@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnMapping;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
@@ -50,9 +51,15 @@ use PDO;
  *   the dialect's literal (since 1.13.0, forward 031, D2: `smallint = TRUE` is an error in PostgreSQL)
  * - Spec::inQuery() compiles to a subquery of the other repository on the same connection (since
  *   1.13.0, forward 031, D6), with parameters prefixed apart (`:ps1_1`, nested `:ps1_s1_1`)
+ * - a boolean compared with a column stored as BooleanStorage::Char compiles to the declared text in
+ *   every case form, `col IN ('Y', 'y')` (since 1.14.0, forward 032, D4: a read accepts any case, so
+ *   the database must find any case too; past 4 case forms, `LOWER(col) = 'false'`); the texts are
+ *   letters and digits, validated by the mapping
+ * - whereRelation() through a #[ManyToMany] join table compiles to `id IN (SELECT owner FROM join
+ *   WHERE target IN (SELECT ...))` (since 1.14.0, forward 032, D1)
  *
  * @internal Used by PdoRepository; not part of the public API.
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -66,8 +73,8 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
 
     private int $identityCounter = 0;
 
-    /** Whether the column of the property clause being compiled stores booleans as 1/0. */
-    private bool $integerBooleans = false;
+    /** The column of the property clause being compiled, when it is a Boolean column. */
+    private ?ColumnMapping $booleanColumn = null;
 
     private int $subqueryCounter = 0;
 
@@ -124,12 +131,12 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
             throw new NonTranslatableSpecificationException($specification, (string) $reason);
         }
 
-        $previous = $this->integerBooleans;
-        $this->integerBooleans = $column->type === ColumnType::Boolean && $column->booleanStorage === BooleanStorage::Integer;
+        $previous = $this->booleanColumn;
+        $this->booleanColumn = $column->type === ColumnType::Boolean ? $column : null;
         try {
             $clause = parent::visitComposite($specification);
         } finally {
-            $this->integerBooleans = $previous;
+            $this->booleanColumn = $previous;
         }
         $parameters = $clause->getParameters();
         foreach ($parameters as $name => $value) {
@@ -148,11 +155,57 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
     /**
      * {@inheritdoc}
      *
-     * 1/0 for a column stored as BooleanStorage::Integer (since 1.13.0).
+     * 1/0 for a column stored as BooleanStorage::Integer (since 1.13.0); the quoted text for
+     * BooleanStorage::Char (since 1.14.0; formatBooleanComparison() answers first).
      */
     protected function formatBooleanLiteral(bool $value): string
     {
-        return $this->integerBooleans ? ($value ? '1' : '0') : parent::formatBooleanLiteral($value);
+        return match ($this->booleanColumn?->booleanStorage) {
+            BooleanStorage::Integer => $value ? '1' : '0',
+            BooleanStorage::Char => self::quoteText($value ? $this->booleanColumn->trueValue : $this->booleanColumn->falseValue),
+            default => parent::formatBooleanLiteral($value),
+        };
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * BooleanStorage::Char (since 1.14.0): every case form of the declared text, `col IN ('Y', 'y')`,
+     * since a read accepts the text whatever its case; `LOWER(col) = 'false'` past 4 forms (more than two letters).
+     */
+    protected function formatBooleanComparison(string $column, bool $value): ?string
+    {
+        if ($this->booleanColumn === null || $this->booleanColumn->booleanStorage !== BooleanStorage::Char) {
+            return null;
+        }
+        $text = $value ? $this->booleanColumn->trueValue : $this->booleanColumn->falseValue;
+        $forms = [''];
+        foreach (str_split($text) as $character) {
+            $cases = array_unique([strtoupper($character), strtolower($character)]);
+            $next = [];
+            foreach ($forms as $prefix) {
+                foreach ($cases as $case) {
+                    $next[] = $prefix . $case;
+                }
+            }
+            $forms = $next;
+            if (count($forms) > 4) {
+                return 'LOWER(' . $column . ') = ' . self::quoteText(strtolower($text));
+            }
+        }
+        if (count($forms) === 1) {
+            return $column . ' = ' . self::quoteText($forms[0]);
+        }
+        // The declared form first
+        usort($forms, static fn(string $a, string $b): int => ($b === $text) <=> ($a === $text));
+
+        return $column . ' IN (' . implode(', ', array_map(self::quoteText(...), $forms)) . ')';
+    }
+
+    /** A text literal (the texts are letters and digits, validated by the mapping; quotes doubled anyway). */
+    private static function quoteText(string $text): string
+    {
+        return "'" . str_replace("'", "''", $text) . "'";
     }
 
     /**
@@ -183,13 +236,22 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
             );
         }
 
+        $through = $specification->getThrough();
+        if ($through !== null && $through->owner->getConnection() !== $this->connection) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                'the join table of the association is on another connection (a subquery is one statement)'
+            );
+        }
+
         $prefix = $this->parameterPrefix . 's' . (++$this->subqueryCounter) . '_';
         $subquery = $other->toSubquery($specification->getWhere(), $specification->getProperty(), $prefix);
         foreach (array_keys($subquery->getParameters()) as $name) {
             $this->converted[$name] = true;
         }
+        $sql = $through !== null ? $through->wrap($this->sqlDialect, $subquery->toSql()) : $subquery->toSql();
 
-        return new SqlWhereClause($column . ' IN (' . $subquery->toSql() . ')', $subquery->getParameters());
+        return new SqlWhereClause($column . ' IN (' . $sql . ')', $subquery->getParameters());
     }
 
     /**

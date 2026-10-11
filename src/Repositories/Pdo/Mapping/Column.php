@@ -23,7 +23,11 @@ use Attribute;
  * (BooleanStorage::Integer), whatever the default of the mapping (D2); `timezone:` wins over the
  * default zone of the mapping and of the repository (D3).
  *
- * @version    1.13.0
+ * Since 1.14.0 (forward 032, D4): `booleanAs: BooleanStorage::Char` stores a Boolean column as text,
+ * with `trueValue:`/`falseValue:` ('Y'/'N' by default; letters and digits, 1 to 16 characters, distinct
+ * whatever the case).
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -40,6 +44,8 @@ final class Column
      * @param class-string<\UnitEnum>|null $enumClass Enum of an Enum column whose property has no enum type
      * @param string|null $timezone Time zone of a Date/DateTime column (default: the mapping's, the repository's, UTC)
      * @param BooleanStorage|null $booleanAs Storage of a Boolean column (default: the mapping's, Native); since 1.13.0
+     * @param string|null $trueValue Stored text of true of a Char boolean (default: the mapping's, 'Y'); since 1.14.0
+     * @param string|null $falseValue Stored text of false of a Char boolean (default: the mapping's, 'N'); since 1.14.0
      */
     public function __construct(
         public readonly ?string $name = null,
@@ -47,7 +53,9 @@ final class Column
         public readonly ?string $property = null,
         public readonly ?string $enumClass = null,
         public readonly ?string $timezone = null,
-        public readonly ?BooleanStorage $booleanAs = null
+        public readonly ?BooleanStorage $booleanAs = null,
+        public readonly ?string $trueValue = null,
+        public readonly ?string $falseValue = null
     ) {
     }
 }

@@ -40,10 +40,15 @@ use UnitEnum;
  * The SQL, TCriteria and ALinq visitors of the library (outside a PdoRepository) cannot translate it:
  * the first two refuse it, ALinq evaluates it in PHP.
  *
+ * Through a join table (since 1.14.0, forward 032, D1): PdoRepository::whereRelation() on a
+ * #[ManyToMany] builds the leaf with a JoinTableHop, so the set is the owners LINKED to the targets the
+ * subquery finds: `id IN (SELECT owner FROM join WHERE target IN (SELECT id FROM target WHERE ...))` in
+ * SQL; in memory the targets are read once, then their links.
+ *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -70,13 +75,16 @@ final class InQuerySpecification extends AbstractSpecification implements ILeafS
      * @param PdoRepository $repository Repository whose entities the subquery reads
      * @param ISpecification $where Specification of the subquery
      * @param string $property Property of the subquery's entities whose values form the set
+     * @param JoinTableHop|null $through Join table step of a #[ManyToMany] filter (since 1.14.0; built
+     *                                   by PdoRepository::whereRelation())
      * @throws InvalidArgumentException When the property is not a readable mapped property of the
      *                                  repository's entity
      */
     public function __construct(
         private readonly PdoRepository $repository,
         private readonly ISpecification $where,
-        private readonly string $property
+        private readonly string $property,
+        private readonly ?JoinTableHop $through = null
     ) {
         $reason = null;
         if ($repository->getMapping()->findQueryColumn($property, $reason) === null) {
@@ -100,6 +108,12 @@ final class InQuerySpecification extends AbstractSpecification implements ILeafS
     public function getProperty(): string
     {
         return $this->property;
+    }
+
+    /** The join table step of a #[ManyToMany] filter, or null (since 1.14.0). */
+    public function getThrough(): ?JoinTableHop
+    {
+        return $this->through;
     }
 
     /** How many times the subquery ran in memory (0 or 1). */
@@ -162,12 +176,17 @@ final class InQuerySpecification extends AbstractSpecification implements ILeafS
             && $other->property === $this->property
             && $other->customReason === $this->customReason
             && $other->customCode === $this->customCode
+            && ($other->through === null ? $this->through === null : ($this->through !== null && $this->through->equals($other->through)))
             && $this->where->equals($other->where);
     }
 
     /** {@inheritdoc} */
     public function __toString(): string
     {
+        if ($this->through !== null) {
+            return sprintf('inQuery(%s.%s via %s)', (string) $this->repository->getMapping()->getTable(), $this->property, $this->through->table);
+        }
+
         return sprintf('inQuery(%s.%s)', (string) $this->repository->getMapping()->getTable(), $this->property);
     }
 
@@ -183,8 +202,21 @@ final class InQuerySpecification extends AbstractSpecification implements ILeafS
         $others = [];
         $kinds = [];
         $sample = null;
-        foreach ($this->repository->select($this->where, [$this->property]) as $row) {
-            $value = $row[$this->property];
+        $values = (function (): \Generator {
+            foreach ($this->repository->select($this->where, [$this->property]) as $row) {
+                yield $row[$this->property];
+            }
+        })();
+        if ($this->through !== null) {
+            $targets = [];
+            foreach ($values as $value) {
+                if ($value !== null) {
+                    $targets[] = $value;
+                }
+            }
+            $values = $this->through->ownersOf($targets);
+        }
+        foreach ($values as $value) {
             if ($value === null) {
                 continue;
             }

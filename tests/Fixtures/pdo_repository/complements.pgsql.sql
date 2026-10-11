@@ -1,4 +1,4 @@
--- Forward 031 (PdoRepository complements) test schema, PostgreSQL 17. Runs only in a disposable container.
+-- Forward 031 (PdoRepository complements) and forward 032, D4 (CHAR booleans) test schema, PostgreSQL 17. Runs only in a disposable container.
 -- aspec_flag.active is SMALLINT (the Adianti flag columns): only BooleanStorage::Integer can compare it.
 -- The lifecycle columns are TIMESTAMP(0): the repository stamps whole seconds.
 DROP TABLE IF EXISTS aspec_flag;
@@ -13,3 +13,6 @@ DROP TABLE IF EXISTS aspec_sale;
 CREATE TABLE aspec_sale (id INTEGER NOT NULL PRIMARY KEY, region VARCHAR(10) NULL, product VARCHAR(20) NULL, qty INTEGER NULL, amount NUMERIC(12,2) NULL, weight DOUBLE PRECISION NULL, sold_on DATE NULL, version INTEGER NULL, updated_at TIMESTAMP(0) NULL, deleted_at TIMESTAMP(0) NULL);
 DROP TABLE IF EXISTS aspec_region;
 CREATE TABLE aspec_region (code VARCHAR(10) NOT NULL PRIMARY KEY, zone VARCHAR(10) NULL, deleted_at TIMESTAMP(0) NULL);
+-- Forward 032, D4: booleans stored as text.
+DROP TABLE IF EXISTS aspec_char_flag;
+CREATE TABLE aspec_char_flag (id INTEGER NOT NULL PRIMARY KEY, active CHAR(1) NULL, removed CHAR(1) NULL, answer VARCHAR(5) NULL);

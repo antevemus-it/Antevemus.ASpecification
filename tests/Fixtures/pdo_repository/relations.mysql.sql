@@ -1,4 +1,7 @@
--- Forward 031, E3 (relationships) test schema, MySQL 8.4. Runs only in a disposable container.
+-- Forward 031, E3 (relationships) and forward 032, D1 (ManyToMany) test schema, MySQL 8.4. Runs only in a disposable container.
+DROP TABLE IF EXISTS aspec_rel_post_tag;
+DROP TABLE IF EXISTS aspec_rel_post;
+DROP TABLE IF EXISTS aspec_rel_tag;
 DROP TABLE IF EXISTS aspec_rel_invoice_payment;
 DROP TABLE IF EXISTS aspec_rel_invoice_line;
 DROP TABLE IF EXISTS aspec_rel_invoice;
@@ -13,3 +16,6 @@ CREATE TABLE aspec_rel_order_item (id INT AUTO_INCREMENT PRIMARY KEY, order_id I
 CREATE TABLE aspec_rel_invoice (code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, customer_name VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE aspec_rel_invoice_line (id INT NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL, description VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, FOREIGN KEY (invoice_code) REFERENCES aspec_rel_invoice (code)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE aspec_rel_invoice_payment (id VARCHAR(26) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL, cents INT NOT NULL, deleted_at DATETIME NULL, CHECK (cents > 0), FOREIGN KEY (invoice_code) REFERENCES aspec_rel_invoice (code)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_tag (id INT NOT NULL PRIMARY KEY, name VARCHAR(30) COLLATE utf8mb4_bin NOT NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_post (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_post_tag (post_id INT NOT NULL, tag_id INT NOT NULL, PRIMARY KEY (post_id, tag_id), KEY aspec_rel_post_tag_tag (tag_id), FOREIGN KEY (post_id) REFERENCES aspec_rel_post (id), FOREIGN KEY (tag_id) REFERENCES aspec_rel_tag (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

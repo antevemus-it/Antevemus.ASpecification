@@ -130,7 +130,15 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 ### 21b. `PdoRepository` Follow-ups 🗄️ (Shipped in v1.13.0)
 - **Description:** What v1.11.0 (milestone 21) left out on purpose, in three parts, all optional. **Lifecycle and types:** a SQL log behind `Persistence\IQueryLogger` (parameter values only when asked for, since they can be personal data); booleans stored as 1/0 on every driver (`BooleanStorage::Integer`, for the `SMALLINT` flags of legacy schemas); default time zones per mapping and per repository, for tables holding local time without an offset; `#[CreatedAt]`, `#[UpdatedAt]` and `#[SoftDelete]` with `withTrashed()`/`onlyTrashed()`/`forceRemove()`; `beforePut`/`afterPut`/`beforeRemove`/`afterRemove` hooks on the repository, inside the write's transaction (the entity stays a plain object); `EntityMapping::extract()`/`hydrate()`; `insertAll()` with multi-row `INSERT`s and `putAll()` with one existence `SELECT` per batch. **Set-based operations:** `updateWhere()` (one `UPDATE` by specification that stamps the modification time and increments the version counter, without per-entity hooks), `select()` projections, `aggregate()->groupBy()->sum()/avg()/min()/max()/count()->get()` with SQL's null rules, and `Spec::inQuery()` subqueries over another repository on the same connection. **Relationships:** `#[ManyToOne]` references (never cascaded) and `#[OneToMany]` collections (composition opt-in with `cascade: true`), loaded explicitly with `with('items', 'items.product')`, one query per relation and batch instead of one per entity (1 000 orders with 10 items each: 2 queries instead of 1 001), `isLoaded()`, `whereRelation()`, and cascades that never take an unloaded collection as empty and remove only orphans that were loaded with their parent. Checked in SQLite, PostgreSQL 17 and MySQL 8.4.
 - **Goal:** The data layer of an application built on Adianti's `TRecord` (logs, integer flags, local time, timestamps, soft delete, hooks, `toArray()`/`fromArray()`, master-detail compositions) can move to the repository without hand-written SQL beside it.
-- **Not in this release:** see milestone 21c.
+- **Not in this release:** see milestone 21c (shipped in v1.14.0).
+
+---
+
+## ✅ v1.14.0 — `PdoRepository` Follow-ups II (Shipped in v1.14.0)
+
+### 21c. `PdoRepository` Follow-ups II 🗄️ (Shipped in v1.14.0)
+- **Description:** What v1.13.0 (milestone 21b) left out, all optional. `#[ManyToMany(target, joinTable, joinColumn, inverseJoinColumn)]` (and `EntityMapping::manyToMany()`): an association, never a composition; loaded in batch with `with('tags')` (the join table, then the targets: a fixed number of queries per batch, 3 for 1 000 owners of 5 targets each), a soft-removed target left out of the collection while its link stays; `put()` of an owner whose collection was loaded synchronizes only the join table (links added and removed, no target ever written or deleted, a target without identifier refused), a collection that was not loaded never touches it; a hard removal of the owner deletes its links, a soft one keeps them; `whereRelation('tags', $spec)` through the join table. `markLoaded()`/`markUnloaded()`: a collection built by hand can be declared loaded and whole, so its next `put()` removes the orphans or links it lacks (documented danger: an incomplete collection deletes what it lacks). `iterate()` with relations pages by key and closes each page's cursor before loading its relations, so it works on MySQL unbuffered queries with the memory of one page (10 000 rows: about 1 MB at the peak against 20 MB for `find()`). `BooleanStorage::Char` for the `CHAR(1)` flags of legacy schemas (`'Y'`/`'N'` unless declared otherwise), read strictly: any other stored value is a `DataIntegrityException`, never a silent false. Checked in SQLite, PostgreSQL 17 and MySQL 8.4 (unbuffered for `iterate()`).
+- **Goal:** Close the remaining cases of the relationship and column options without a lazy-loading proxy, so that the Adianti flag columns and master-detail aggregates with associations move to the repository.
 
 ---
 
@@ -164,9 +172,9 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.
 
-### 21c. `PdoRepository` Follow-ups II 🗄️
-- **Description:** What v1.13.0 (milestone 21b) left out: `#[ManyToMany]` (today the association entity is mapped with two references); a public way to declare as loaded the collection of an aggregate built by hand, so that its first `put()` may remove orphans; `iterate()` with relations over MySQL unbuffered queries (the relation queries run while the cursor is open; today `find()` or a second connection is the way); other storage forms of legacy booleans, such as `CHAR(1)`.
-- **Goal:** Close the remaining cases of the relationship and column options without a lazy-loading proxy.
+### 22. Accent-Insensitive Text Comparison 🔤
+- **Description:** Since v1.14.0 the case-insensitive text operators ignore case only, in memory and in every database, so `contains('jose', false)` does not match `José`. An explicit comparison option that also ignores accents (the .NET `CompareOptions.IgnoreCase | IgnoreNonSpace`; note that .NET's `InvariantCultureIgnoreCase` still distinguishes `e` and `é`), with the same answer in memory (Unicode decomposition without combining marks) and in SQL (accent-insensitive collations on MySQL/MariaDB, `unaccent` or a nondeterministic ICU collation on PostgreSQL; refused where the database cannot answer it, such as SQLite).
+- **Goal:** Accent-insensitive search as a declared choice, never as a side effect of the column collation.
 
 ---
 

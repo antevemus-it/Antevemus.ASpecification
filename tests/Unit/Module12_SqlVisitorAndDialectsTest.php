@@ -208,7 +208,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertEquals('(([active] IS NOT NULL AND [active] = 1) AND (([salary] IS NOT NULL AND [salary] > :p1) OR ([city] IS NOT NULL AND [city] LIKE :p2)))', $whereSqlServer->getSql());
 
         $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
-        $this->assertEquals('((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND BINARY `city` LIKE :p2)))', $whereMySql->getSql());
+        $this->assertEquals('((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND CONVERT(`city` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p2)))', $whereMySql->getSql());
         $this->assertEquals([':p1' => 5000, ':p2' => 'New%'], $whereMySql->getBindings());
 
         // Cláusula vazia também responde aos aliases
@@ -481,7 +481,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // MySQL usa LIKE
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specCase);
-        $this->assertEquals('(`code` IS NOT NULL AND `code` LIKE :p1)', $clauseMy->toSql());
+        $this->assertEquals('(`code` IS NOT NULL AND LOWER(CONVERT(`code` USING utf8mb4)) COLLATE utf8mb4_bin LIKE LOWER(:p1))', $clauseMy->toSql());
     }
 
     private function testRegexSupportAndExceptions(): void
@@ -495,9 +495,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $clausePg = (new SqlQueryVisitor('pgsql'))->translate($specRegex);
         $this->assertEquals('("phone" IS NOT NULL AND "phone" ~ :p1)', $clausePg->toSql());
 
-        // MySQL suporta REGEXP BINARY
+        // MySQL/MariaDB: a caixa vai como flag inline na regex (1.14.0; REGEXP BINARY dava erro 3995 no MySQL 8)
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specRegex);
-        $this->assertEquals('(`phone` IS NOT NULL AND `phone` REGEXP BINARY :p1)', $clauseMy->toSql());
+        $this->assertEquals('(`phone` IS NOT NULL AND `phone` REGEXP CONCAT(\'(?-i)\', :p1))', $clauseMy->toSql());
 
         // Oracle suporta REGEXP_LIKE
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specRegex);
@@ -640,9 +640,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $spec = Spec::property('name', Spec::startsWith('Ab'));
         $expected = [
             'pgsql' => '("name" IS NOT NULL AND "name" LIKE :p1)',
-            'mysql' => '(`name` IS NOT NULL AND BINARY `name` LIKE :p1)',
+            'mysql' => '(`name` IS NOT NULL AND CONVERT(`name` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p1)',
             'sqlsrv' => '([name] IS NOT NULL AND [name] LIKE :p1)',
-            'sqlite' => '("name" IS NOT NULL AND "name" LIKE :p1)',
+            'sqlite' => '("name" IS NOT NULL AND "name" GLOB :p1)',
             'ansi' => '("name" IS NOT NULL AND "name" LIKE :p1)',
             'oracle' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1)',
             'firebird' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1)',
@@ -650,8 +650,14 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         foreach ($expected as $d => $sql) {
             $clause = Spec::toSql($spec, $d);
             $this->assertEquals($sql, $clause->getSql(), "$d: startsWith vira LIKE");
-            $this->assertEquals([':p1' => 'Ab%'], $clause->getBindings(), "$d: bind é o prefixo com %");
+            $this->assertEquals([':p1' => $d === 'sqlite' ? 'Ab*' : 'Ab%'], $clause->getBindings(), "$d: bind é o prefixo com % (* no GLOB do SQLite)");
         }
+
+        // 1b. (1.14.0) SQLite: a forma sensível vira GLOB; %, _ e ! do literal são texto, e *, ? e [ viram classe de um caractere
+        $glob = Spec::toSql(Spec::property('name', Spec::contains('5%_!*?[x')), 'sqlite');
+        $this->assertEquals('("name" IS NOT NULL AND "name" GLOB :p1)', $glob->getSql());
+        $this->assertEquals([':p1' => '*5%_![*][?][[]x*'], $glob->getBindings());
+        $this->assertEquals('("name" IS NOT NULL AND LOWER("name") LIKE LOWER(:p1))', Spec::toSql(Spec::property('name', Spec::startsWith('ab', false)), 'sqlite')->getSql(), 'sqlite: a forma insensível continua LIKE');
 
         // 2. Sufixo e substring
         $this->assertEquals([':p1' => '%Ab'], Spec::toSql(Spec::property('name', Spec::endsWith('Ab')), 'pgsql')->getBindings());
@@ -660,7 +666,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         // 3. Case-insensitive usa o LIKE insensível de cada dialeto
         $ci = Spec::property('name', Spec::startsWith('ab', false));
         $this->assertEquals('("name" IS NOT NULL AND "name" ILIKE :p1)', Spec::toSql($ci, 'pgsql')->getSql());
-        $this->assertEquals('(`name` IS NOT NULL AND `name` LIKE :p1)', Spec::toSql($ci, 'mysql')->getSql());
+        $this->assertEquals('(`name` IS NOT NULL AND LOWER(CONVERT(`name` USING utf8mb4)) COLLATE utf8mb4_bin LIKE LOWER(:p1))', Spec::toSql($ci, 'mysql')->getSql());
         $this->assertEquals('("NAME" IS NOT NULL AND LOWER("NAME") LIKE LOWER(:p1))', Spec::toSql($ci, 'oracle')->getSql());
         $this->assertEquals('([name] IS NOT NULL AND LOWER([name]) LIKE LOWER(:p1))', Spec::toSql($ci, 'sqlsrv')->getSql());
 
@@ -671,7 +677,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Barra invertida é escape padrão do LIKE no MySQL: a cláusula ESCAPE explícita a neutraliza
         $clause = Spec::toSql(Spec::property('path', Spec::startsWith('C:\\')), 'mysql');
-        $this->assertEquals('(`path` IS NOT NULL AND BINARY `path` LIKE :p1 ESCAPE \'!\')', $clause->getSql());
+        $this->assertEquals('(`path` IS NOT NULL AND CONVERT(`path` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p1 ESCAPE \'!\')', $clause->getSql());
         $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
 
         // 5. NOT continua sendo tratado pelo visitor
@@ -718,7 +724,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         // Modificador i: REGEX insensível de cada dialeto
         $ci = new PropertySpecification($base, 'code', new RegexSpecification('/^abc/i'));
         $this->assertEquals('("code" IS NOT NULL AND "code" ~* :p1)', (new SqlQueryVisitor('pgsql'))->translate($ci)->toSql());
-        $this->assertEquals('(`code` IS NOT NULL AND `code` REGEXP :p1)', (new SqlQueryVisitor('mysql'))->translate($ci)->toSql());
+        $this->assertEquals('(`code` IS NOT NULL AND `code` REGEXP CONCAT(\'(?i)\', :p1))', (new SqlQueryVisitor('mysql'))->translate($ci)->toSql());
         $this->assertEquals('("CODE" IS NOT NULL AND REGEXP_LIKE("CODE", :p1, \'i\'))', (new SqlQueryVisitor('oracle'))->translate($ci)->toSql());
         $this->assertEquals([':p1' => '^abc'], (new SqlQueryVisitor('oracle'))->translate($ci)->getParameters());
 
@@ -748,9 +754,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $spec = Spec::property('name', Spec::like('100%*'));
         $expected = [
             'pgsql' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
-            'mysql' => '(`name` IS NOT NULL AND BINARY `name` LIKE :p1 ESCAPE \'!\')',
+            'mysql' => '(`name` IS NOT NULL AND CONVERT(`name` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p1 ESCAPE \'!\')',
             'sqlsrv' => '([name] IS NOT NULL AND [name] LIKE :p1 ESCAPE \'!\')',
-            'sqlite' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
+            'sqlite' => '("name" IS NOT NULL AND "name" GLOB :p1)',
             'ansi' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
             'oracle' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1 ESCAPE \'!\')',
             'firebird' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1 ESCAPE \'!\')',
@@ -758,7 +764,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         foreach ($expected as $d => $sql) {
             $clause = Spec::toSql($spec, $d);
             $this->assertEquals($sql, $clause->getSql(), "$d: like com % literal leva ESCAPE");
-            $this->assertEquals([':p1' => '100!%%'], $clause->getBindings(), "$d: % literal escapado, * vira %");
+            // SQLite (1.14.0): GLOB, onde % é texto e * é o curinga, sem ESCAPE
+            $this->assertEquals([':p1' => $d === 'sqlite' ? '100%*' : '100!%%'], $clause->getBindings(), "$d: % literal escapado, * vira %");
         }
 
         // 2. _ e ! literais; ? vira _ sem escape
@@ -767,7 +774,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // 3. Barra invertida: escape padrão do LIKE no MySQL, neutralizada pela cláusula ESCAPE explícita
         $clause = Spec::toSql(Spec::property('path', Spec::like('C:\\*')), 'mysql');
-        $this->assertEquals('(`path` IS NOT NULL AND BINARY `path` LIKE :p1 ESCAPE \'!\')', $clause->getSql());
+        $this->assertEquals('(`path` IS NOT NULL AND CONVERT(`path` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p1 ESCAPE \'!\')', $clause->getSql());
         $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
 
         // 4. Ignore-case usa o LIKE insensível do dialeto, com o mesmo escape

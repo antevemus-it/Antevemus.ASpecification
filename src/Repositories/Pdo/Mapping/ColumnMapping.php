@@ -23,7 +23,11 @@ namespace Antevemus\ASpecification\Repositories\Pdo\Mapping;
  *   whose property is the empty string (EntityMapping::getSoftDelete()); it never appears among the
  *   mapped columns
  *
- * @version    1.13.0
+ * Since 1.14.0 (forward 032, D4): $trueValue and $falseValue are the stored texts of a Boolean column
+ * kept as BooleanStorage::Char (declared on the column, else the defaults of the mapping, else 'Y' and
+ * 'N'); $booleanValuesDeclared tells whether the column declared them.
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -47,6 +51,9 @@ final class ColumnMapping
      * @param bool $isCreatedAt Whether the column is the creation timestamp (since 1.13.0)
      * @param bool $isUpdatedAt Whether the column is the modification timestamp (since 1.13.0)
      * @param bool $isSoftDelete Whether the column is the soft delete instant (since 1.13.0)
+     * @param string $trueValue Stored text of true for BooleanStorage::Char (since 1.14.0)
+     * @param string $falseValue Stored text of false for BooleanStorage::Char (since 1.14.0)
+     * @param bool $booleanValuesDeclared Whether the column declared its texts (since 1.14.0)
      */
     public function __construct(
         public readonly string $property,
@@ -62,7 +69,10 @@ final class ColumnMapping
         public readonly bool $timezoneDeclared = false,
         public readonly bool $isCreatedAt = false,
         public readonly bool $isUpdatedAt = false,
-        public readonly bool $isSoftDelete = false
+        public readonly bool $isSoftDelete = false,
+        public readonly string $trueValue = 'Y',
+        public readonly string $falseValue = 'N',
+        public readonly bool $booleanValuesDeclared = false
     ) {
     }
 
@@ -83,15 +93,23 @@ final class ColumnMapping
     }
 
     /**
-     * Copy with the defaults of a mapping applied: the time zone and the boolean storage the column
-     * did not declare (since 1.13.0).
+     * Copy with the defaults of a mapping applied: the time zone, the boolean storage and (since
+     * 1.14.0) the texts of a Char boolean the column did not declare (since 1.13.0).
      */
-    public function withDefaults(string $timezone, BooleanStorage $booleanStorage): self
+    public function withDefaults(string $timezone, BooleanStorage $booleanStorage, string $trueValue = 'Y', string $falseValue = 'N'): self
     {
         return $this->copy([
             'timezone' => $this->timezoneDeclared ? $this->timezone : $timezone,
             'booleanStorage' => $this->booleanStorageDeclared ? $this->booleanStorage : $booleanStorage,
+            'trueValue' => $this->booleanValuesDeclared ? $this->trueValue : $trueValue,
+            'falseValue' => $this->booleanValuesDeclared ? $this->falseValue : $falseValue,
         ]);
+    }
+
+    /** True for a Boolean column stored as text (BooleanStorage::Char; since 1.14.0). */
+    public function isCharBoolean(): bool
+    {
+        return $this->type === ColumnType::Boolean && $this->booleanStorage === BooleanStorage::Char;
     }
 
     /** True when the column holds a lifecycle value managed by the repository (since 1.13.0). */
@@ -122,6 +140,9 @@ final class ColumnMapping
             'createdAt' => $this->isCreatedAt,
             'updatedAt' => $this->isUpdatedAt,
             'softDelete' => $this->isSoftDelete,
+            'trueValue' => $this->trueValue,
+            'falseValue' => $this->falseValue,
+            'booleanValuesDeclared' => $this->booleanValuesDeclared,
         ];
     }
 
@@ -145,6 +166,9 @@ final class ColumnMapping
             'isCreatedAt' => $this->isCreatedAt,
             'isUpdatedAt' => $this->isUpdatedAt,
             'isSoftDelete' => $this->isSoftDelete,
+            'trueValue' => $this->trueValue,
+            'falseValue' => $this->falseValue,
+            'booleanValuesDeclared' => $this->booleanValuesDeclared,
         ];
 
         return new self(...array_replace($arguments, $changes));

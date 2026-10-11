@@ -25,18 +25,24 @@ use Antevemus\ASpecification\Repositories\Pdo\Mapping\RelationMapping;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\Table;
 use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ASpecification\Tests\Support\PdoCursorTrackingPdo;
 use Antevemus\ASpecification\Tests\Support\PdoShopCustomer;
 use Antevemus\ASpecification\Tests\Support\PdoShopInvoice;
 use Antevemus\ASpecification\Tests\Support\PdoShopInvoiceLine;
 use Antevemus\ASpecification\Tests\Support\PdoShopInvoicePayment;
 use Antevemus\ASpecification\Tests\Support\PdoShopOrder;
 use Antevemus\ASpecification\Tests\Support\PdoShopOrderItem;
+use Antevemus\ASpecification\Tests\Support\PdoShopPost;
 use Antevemus\ASpecification\Tests\Support\PdoShopProduct;
+use Antevemus\ASpecification\Tests\Support\PdoShopTag;
+use Antevemus\ASpecification\Tests\Support\ReadmeArticle;
 use Antevemus\ASpecification\Tests\Support\ReadmeBlocks;
 use Antevemus\ASpecification\Tests\Support\ReadmeCustomer;
 use Antevemus\ASpecification\Tests\Support\ReadmeOrder;
 use Antevemus\ASpecification\Tests\Support\ReadmeOrderLine;
+use Antevemus\ASpecification\Tests\Support\ReadmeTag;
 use Antevemus\ASpecification\Tests\TestCase;
 use DateTimeImmutable;
 use InvalidArgumentException;
@@ -116,7 +122,28 @@ final class Module26UnmappedJoin extends AbstractEntity
  * chaves estrangeiras de verdade, que provam a ordem filho-antes-do-pai) e as suas entidades, e o
  * Módulo 25, já com 1 700 linhas, segue provando E1/E2 sem mudar.
  *
- * @version    1.13.0
+ * 1.14.0 (forward 032), aqui porque usa o mesmo esquema e as mesmas lojas (posts e etiquetas entram em
+ * relations.*.sql com chave estrangeira na junção):
+ * - D1 ManyToMany: atributo = builder e recusas (tabela/colunas que não são identificadores, colunas
+ *   iguais, propriedade que não é array, outra conexão); vínculos de donos novos; with('tags') em 3
+ *   consultas; sincronização da coleção carregada (entra/sai vínculo, alvo nunca escrito nem apagado,
+ *   nenhum comando de escrita na tabela do alvo); coleção não carregada nunca toca a junção; alvo sem id
+ *   ou de outra classe recusado sem gravar o dono; alvo com soft delete fora da coleção e vínculo
+ *   mantido; whereRelation() pela junção, memória = SQL (com NOT e OR); insertAll(); soft delete do dono
+ *   mantém vínculos, remoção física (remove, forceRemove, removeBy em um comando e com gancho) apaga;
+ *   rollback desfaz os vínculos.
+ * - D2 markLoaded()/markUnloaded(): sem marcar nada é removido; declarada inteira, o que sai é órfão; o
+ *   PERIGO documentado (coleção incompleta apaga o que falta, inclusive o acrescentado por outro);
+ *   depois da gravação volta ao "carregado" comum; ManyToMany declarada (vínculo de alvo marcado fica);
+ *   markUnloaded() não remove nem toca a junção; erros claros.
+ * - D3 iterate() com relações por chave: = find() em páginas de 1, 2, 3 e 100, com filtro em SQL e em
+ *   PHP, soft delete, ManyToMany; SQLite rastreado (PdoCursorTrackingPdo) prova que nenhum comando roda
+ *   com cursor aberto (controle positivo incluído); MySQL com PDO::MYSQL_ATTR_USE_BUFFERED_QUERY = false
+ *   (controle positivo: sem a paginação o MySQL recusa); sem relações continua um cursor só.
+ * - RN-02: with('tags') em 1 000 donos × 5 alvos = 3 consultas; pico de memória de iterate() com
+ *   relações em 2 000 e 10 000 linhas no mesmo patamar, contra find() (impressos).
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -140,6 +167,9 @@ class Module26_PdoRelationshipsTest extends TestCase
         $this->runPortableSuite($this->sqlite(), 'sqlite');
         $this->testRegistry();
         $this->testEagerBenchmark($this->sqlite(), 'sqlite');
+        $this->testNoOpenCursorWhileLoading();
+        $this->testManyToManyBenchmark($this->sqlite(), 'sqlite');
+        $this->testIterateMemory($this->sqlite(), 'sqlite');
         $this->testReadme173RunsAsWritten();
 
         foreach (['pgsql' => 'PostgreSQL', 'mysql' => 'MySQL'] as $family => $label) {
@@ -151,7 +181,12 @@ class Module26_PdoRelationshipsTest extends TestCase
             $this->loadSchema($pdo, $family);
             $this->runPortableSuite($pdo, $family);
             $this->testEagerBenchmark($pdo, $family);
-            fwrite(STDOUT, "    [RN-04] {$label} " . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION) . ": suíte de relacionamentos do 031/E3 OK\n");
+            $this->testManyToManyBenchmark($pdo, $family);
+            $this->testIterateMemory($pdo, $family);
+            if ($family === 'mysql') {
+                $this->testIterateUnbufferedMySql();
+            }
+            fwrite(STDOUT, "    [RN-04] {$label} " . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION) . ": suíte de relacionamentos do 031/E3 e do 032 OK\n");
         }
     }
 
@@ -164,6 +199,10 @@ class Module26_PdoRelationshipsTest extends TestCase
         $this->testCascadeRemoval($pdo, $family);
         $this->testRollback($pdo, $family);
         $this->testDomainEvents($pdo, $family);
+        // 1.14.0 (forward 032)
+        $this->testManyToMany($pdo, $family);
+        $this->testMarkLoaded($pdo, $family);
+        $this->testIterateWithRelations($pdo, $family);
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -224,6 +263,36 @@ class Module26_PdoRelationshipsTest extends TestCase
         $this->assertThrows(EntityMappingException::class, fn() => $related->column('customer'), 'relação não vira coluna');
         $this->assertThrows(EntityMappingException::class, fn() => $related->manyToOne('customer', PdoShopCustomer::class, 'customer_id'), 'relação mapeada duas vezes');
         $this->assertThrows(EntityMappingException::class, fn() => $base->manyToOne('customer', PdoShopCustomer::class, 'other_id')->assertComplete(), 'junção numa coluna não mapeada');
+
+        // 1.14.0 (forward 032, D1): #[ManyToMany] = manyToMany()
+        $posts = EntityMapping::fromAttributes(PdoShopPost::class);
+        $postsBuilder = EntityMapping::for(PdoShopPost::class)->table('aspec_rel_post')->id('id', IdStrategy::Auto)->column('title')->softDelete('deleted_at')
+            ->manyToMany('tags', PdoShopTag::class, 'aspec_rel_post_tag', 'post_id', 'tag_id');
+        $this->assertTrue($posts->equals($postsBuilder), 'ManyToMany: atributos = builder');
+        $tags = $posts->getRelation('tags');
+        $this->assertTrue($tags instanceof RelationMapping && $tags->isManyToMany() && $tags->isCollection() && !$tags->isComposition() && !$tags->isOneToMany());
+        $this->assertEquals(['aspec_rel_post_tag', 'post_id', 'tag_id'], [$tags->joinTable, $tags->joinColumn, $tags->inverseJoinColumn]);
+        $this->assertFalse($posts->equals(EntityMapping::for(PdoShopPost::class)->table('aspec_rel_post')->id('id', IdStrategy::Auto)->column('title')->softDelete('deleted_at')
+            ->manyToMany('tags', PdoShopTag::class, 'aspec_rel_post_tag', 'tag_id', 'post_id')), 'as colunas da junção fazem parte do mapeamento');
+        $this->assertEquals(['id', 'title'], array_keys($posts->getColumns()), 'associação não é coluna');
+        $hydratedPost = $posts->hydrate(['id' => 1, 'title' => 't']);
+        $this->assertTrue($hydratedPost instanceof PdoShopPost && $hydratedPost->tags === [] && !$posts->isRelationLoaded($hydratedPost, 'tags'), 'hydrate(): associação não carregada, []');
+        $reason = null;
+        $this->assertTrue($posts->findQueryColumn('tags', $reason) === null && str_contains((string) $reason, 'whereRelation'));
+        $postBase = EntityMapping::for(PdoShopPost::class)->table('aspec_rel_post')->id('id', IdStrategy::Auto);
+        foreach ([
+            'tabela inválida' => fn() => $postBase->manyToMany('tags', PdoShopTag::class, 'post tag', 'post_id', 'tag_id'),
+            'tabela com injeção' => fn() => $postBase->manyToMany('tags', PdoShopTag::class, 'post_tag; DROP TABLE x', 'post_id', 'tag_id'),
+            'coluna inválida' => fn() => $postBase->manyToMany('tags', PdoShopTag::class, 'post_tag', 'post-id', 'tag_id'),
+            'coluna inversa inválida' => fn() => $postBase->manyToMany('tags', PdoShopTag::class, 'post_tag', 'post_id', '"tag_id"'),
+            'colunas iguais' => fn() => $postBase->manyToMany('tags', PdoShopTag::class, 'post_tag', 'post_id', 'POST_ID'),
+            'propriedade que não é array' => fn() => $postBase->manyToMany('title', PdoShopTag::class, 'post_tag', 'post_id', 'tag_id'),
+            'alvo que não é entidade' => fn() => $postBase->manyToMany('tags', \stdClass::class, 'post_tag', 'post_id', 'tag_id'),
+            'propriedade que é coluna' => fn() => $postBase->column('title')->manyToMany('title', PdoShopTag::class, 'post_tag', 'post_id', 'tag_id'),
+        ] as $label => $refused) {
+            $this->assertThrows(EntityMappingException::class, $refused, "ManyToMany recusado: {$label}");
+        }
+        $this->assertTrue($postBase->manyToMany('tags', PdoShopTag::class, 'blog.post_tag', 'post_id', 'tag_id')->getRelation('tags')?->joinTable === 'blog.post_tag', 'tabela de junção com esquema');
     }
 
     private function invoiceMapping(): EntityMapping
@@ -242,7 +311,7 @@ class Module26_PdoRelationshipsTest extends TestCase
     ///////////////////////////////////////////////////////////////////////////
 
     /**
-     * @return object{customers: PdoRepository, products: PdoRepository, orders: PdoRepository, items: PdoRepository, invoices: PdoRepository, lines: PdoRepository, payments: PdoRepository}
+     * @return object{customers: PdoRepository, products: PdoRepository, orders: PdoRepository, items: PdoRepository, invoices: PdoRepository, lines: PdoRepository, payments: PdoRepository, tags: PdoRepository, posts: PdoRepository}
      */
     private function shop(PDO $pdo, ?InMemoryQueryLogger $log = null): object
     {
@@ -255,7 +324,9 @@ class Module26_PdoRelationshipsTest extends TestCase
             ->id('id', IdStrategy::Max)->column('invoiceCode')->column('description'));
         $payments = new PdoRepository($pdo, EntityMapping::for(PdoShopInvoicePayment::class)->table('aspec_rel_invoice_payment')
             ->id('id', IdStrategy::Ulid)->column('invoiceCode')->column('cents')->softDelete('deleted_at'));
-        $all = compact('customers', 'products', 'orders', 'items', 'invoices', 'lines', 'payments');
+        $tags = PdoRepository::forEntity($pdo, PdoShopTag::class);
+        $posts = PdoRepository::forEntity($pdo, PdoShopPost::class);
+        $all = compact('customers', 'products', 'orders', 'items', 'invoices', 'lines', 'payments', 'tags', 'posts');
         if ($log !== null) {
             foreach ($all as $repository) {
                 $repository->withQueryLogger($log);
@@ -265,13 +336,14 @@ class Module26_PdoRelationshipsTest extends TestCase
         $orders->withRelated($customers, $items);
         $items->withRelated($orders, $products);
         $invoices->withRelated($lines, $payments);
+        $posts->withRelated($tags);
 
         return (object) $all;
     }
 
     private function reset(PDO $pdo): void
     {
-        foreach (['aspec_rel_invoice_payment', 'aspec_rel_invoice_line', 'aspec_rel_invoice', 'aspec_rel_order_item', 'aspec_rel_order', 'aspec_rel_product', 'aspec_rel_customer'] as $table) {
+        foreach (['aspec_rel_post_tag', 'aspec_rel_post', 'aspec_rel_tag', 'aspec_rel_invoice_payment', 'aspec_rel_invoice_line', 'aspec_rel_invoice', 'aspec_rel_order_item', 'aspec_rel_order', 'aspec_rel_product', 'aspec_rel_customer'] as $table) {
             $pdo->exec('DELETE FROM ' . $table);
         }
     }
@@ -405,7 +477,9 @@ class Module26_PdoRelationshipsTest extends TestCase
             $count++;
         }
         $this->assertEquals(5, $count);
-        $this->assertCount(4, $log->statements(), "{$family}: 1 de pedidos + 3 lotes de itens (2+2+1)");
+        // 1.14.0 (forward 032, D3): páginas por chave, cada uma lida inteira e fechada antes dos itens dela
+        $this->assertCount(6, $log->statements(), "{$family}: 3 páginas de pedidos (2+2+1) + 3 lotes de itens: " . implode(' | ', $log->statements()));
+        $this->assertTrue(str_contains($log->statements()[2], ':ks_after') && str_contains($log->statements()[0], 'LIMIT'), "{$family}: a página seguinte começa depois da última chave: {$log->statements()[2]}");
 
         // Erros claros
         $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->with('nope'), 'relação desconhecida');
@@ -778,6 +852,588 @@ class Module26_PdoRelationshipsTest extends TestCase
     }
 
     ///////////////////////////////////////////////////////////////////////////
+    // 1.14.0 (forward 032, D1): ManyToMany — associação pela tabela de junção
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Os vínculos gravados, como "post:tag" em ordem.
+     *
+     * @return list<string>
+     */
+    private function links(PDO $pdo): array
+    {
+        $rows = $pdo->query('SELECT post_id, tag_id FROM aspec_rel_post_tag ORDER BY post_id, tag_id')->fetchAll(PDO::FETCH_NUM);
+
+        return array_map(static fn(array $r): string => (int) $r[0] . ':' . (int) $r[1], $rows);
+    }
+
+    /** As linhas da tabela de etiquetas, cruas (prova de que nenhum alvo foi escrito). */
+    private function tagRows(PDO $pdo): array
+    {
+        return array_map(
+            static fn(array $r): string => (int) $r[0] . '=' . $r[1] . ($r[2] === null ? '' : '†'),
+            $pdo->query('SELECT id, name, deleted_at FROM aspec_rel_tag ORDER BY id')->fetchAll(PDO::FETCH_NUM)
+        );
+    }
+
+    /** @param list<PdoShopTag> $tags */
+    private function tagNames(array $tags): array
+    {
+        return array_map(static fn(PdoShopTag $t): string => $t->name, $tags);
+    }
+
+    private function testManyToMany(PDO $pdo, string $family): void
+    {
+        $this->reset($pdo);
+        $log = new InMemoryQueryLogger();
+        $shop = $this->shop($pdo, $log);
+        [$php, $sql, $go, $rust] = [new PdoShopTag(1, 'php'), new PdoShopTag(2, 'sql'), new PdoShopTag(3, 'go'), new PdoShopTag(4, 'rust')];
+        $shop->tags->putAll([$php, $sql, $go, $rust]);
+        $tagsBefore = $this->tagRows($pdo);
+
+        // Dono novo com coleção: os vínculos entram; os alvos não são escritos
+        $log->clear();
+        $p1 = new PdoShopPost('p1', [$php, $sql]);
+        $p2 = new PdoShopPost('p2', [$sql, $sql]);
+        $p3 = new PdoShopPost('p3');
+        $shop->posts->putAll([$p1, $p2, $p3]);
+        $this->assertEquals(["{$p1->id}:1", "{$p1->id}:2", "{$p2->id}:2"], $this->links($pdo), "{$family}: vínculos dos donos novos (alvo repetido vira um vínculo)");
+        $this->assertEquals($tagsBefore, $this->tagRows($pdo), "{$family}: nenhuma etiqueta escrita");
+        $touchedTags = array_filter($log->statements(), static fn(string $q): bool => str_contains($q, 'aspec_rel_tag"') && !str_starts_with($q, 'SELECT'));
+        $this->assertEquals([], array_values($touchedTags), "{$family}: nenhum comando de escrita na tabela dos alvos");
+        $this->assertTrue($shop->posts->isLoaded($p1, 'tags') && $shop->posts->isLoaded($p3, 'tags'), 'dono inserido: coleção conhecida');
+
+        // with('tags'): consulta de donos + junção + alvos (número fixo)
+        $log->clear();
+        $loaded = $shop->posts->with('tags')->find(Spec::alwaysTrue());
+        $this->assertCount(3, $log->statements(), "{$family}: 3 consultas: " . implode(' | ', $log->statements()));
+        [$q0, $q1, $q2] = $log->statements();
+        $this->assertTrue(str_contains($q1, 'aspec_rel_post_tag') && str_contains($q1, 'IN (?, ?, ?)') && str_contains($q1, 'ORDER BY'), "{$family}: junção por IN: {$q1}");
+        $this->assertTrue(str_contains($q2, 'aspec_rel_tag') && str_contains($q2, 'IN (?, ?)') && str_contains($q2, 'deleted_at'), "{$family}: alvos por IN, no escopo do soft delete: {$q2}");
+        $by = [];
+        foreach ($loaded as $post) {
+            $by[$post->title] = $post;
+        }
+        $this->assertEquals(['php', 'sql'], $this->tagNames($by['p1']->tags));
+        $this->assertEquals(['sql'], $this->tagNames($by['p2']->tags));
+        $this->assertTrue($by['p3']->tags === [] && $shop->posts->isLoaded($by['p3'], 'tags'), 'p3: carregada e vazia de verdade');
+        $this->assertTrue($by['p1']->tags[1] === $by['p2']->tags[0], "{$family}: uma instância por alvo no lote");
+
+        // Sincronização de coleção carregada: entra go, sai php; alvo alterado não é gravado
+        $post = $by['p1'];
+        $post->tags = [$post->tags[1], $go];
+        $go->name = 'golang';
+        $log->clear();
+        $shop->posts->put($post);
+        $go->name = 'go';
+        $this->assertEquals(["{$p1->id}:2", "{$p1->id}:3", "{$p2->id}:2"], $this->links($pdo), "{$family}: vínculo novo inserido, o que saiu apagado");
+        $this->assertEquals($tagsBefore, $this->tagRows($pdo), "{$family}: alvos nunca escritos nem apagados (nem o nome alterado)");
+        $writes = array_values(array_filter($log->statements(), static fn(string $q): bool => !str_starts_with($q, 'SELECT')));
+        $this->assertEquals(3, count($writes), "{$family}: UPDATE do dono + DELETE + INSERT na junção: " . implode(' | ', $writes));
+        $this->assertTrue(str_starts_with($writes[1], 'DELETE FROM') && str_contains($writes[1], 'aspec_rel_post_tag') && str_starts_with($writes[2], 'INSERT INTO') && str_contains($writes[2], 'aspec_rel_post_tag'));
+
+        // Coleção NÃO carregada: nunca toca a junção (nem vazia, nem com itens)
+        $bare = $shop->posts->findById($p1->id);
+        $this->assertTrue($bare->tags === [] && !$shop->posts->isLoaded($bare, 'tags'), 'sem with(): não carregada');
+        $log->clear();
+        $bare->title = 'p1b';
+        $shop->posts->put($bare);
+        $bare->tags = [$rust];
+        $shop->posts->put($bare);
+        $this->assertEquals(["{$p1->id}:2", "{$p1->id}:3", "{$p2->id}:2"], $this->links($pdo), "{$family}: coleção não carregada não remove nem acrescenta vínculo");
+        $joinStatements = array_filter($log->statements(), static fn(string $q): bool => str_contains($q, 'aspec_rel_post_tag'));
+        $this->assertEquals([], array_values($joinStatements), "{$family}: nenhum comando na tabela de junção");
+
+        // Alvo sem id ou de outra classe: recusado, nada gravado
+        $loaded = $shop->posts->with('tags')->findById($p1->id);
+        $loaded->tags[] = new PdoShopTag(null, 'new');
+        $e = $this->assertThrows(InvalidArgumentException::class, fn() => $shop->posts->put($loaded), 'alvo sem id');
+        $this->assertTrue(str_contains($e->getMessage(), 'no identifier'), $e->getMessage());
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->posts->put(new PdoShopPost('n', [new PdoShopTag(null, 'x')])), 'dono novo com alvo sem id');
+        $this->assertEquals(0, (int) $this->raw($pdo, "SELECT COUNT(*) FROM aspec_rel_post WHERE title = 'n'"), "{$family}: o dono não ficou gravado");
+        $loaded->tags = [new PdoShopProduct('z', 'z')];
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->posts->put($loaded), 'alvo de outra classe');
+
+        // Alvo com soft delete: fora da coleção carregada, o vínculo fica (e não é apagado ao regravar)
+        $shop->tags->remove($sql);
+        $p2loaded = $shop->posts->with('tags')->findById($p2->id);
+        $this->assertEquals([], $p2loaded->tags, "{$family}: alvo marcado fora da coleção");
+        $shop->posts->put($p2loaded);
+        $this->assertTrue(in_array("{$p2->id}:2", $this->links($pdo), true), "{$family}: o vínculo ao alvo marcado permanece");
+        $this->assertEquals(['go'], $this->tagNames($shop->posts->with('tags')->findById($p1->id)->tags));
+        $this->assertEquals(['sql', 'go'], $this->tagNames($shop->posts->withRelated($shop->tags->withTrashed())->with('tags')->findById($p1->id)->tags), "{$family}: a visão withTrashed() do alvo vê o marcado");
+        $shop->posts->withRelated($shop->tags);
+
+        // whereRelation(): subconsulta pela junção; memória = SQL; alvo marcado não casa
+        $byTag = fn(string $name) => $shop->posts->whereRelation('tags', Spec::property('name', Spec::equalTo($name)));
+        $where = $shop->posts->toWhereClause($byTag('go'))->toSql();
+        $this->assertTrue(str_contains($where, 'IN (SELECT "post_id" FROM "aspec_rel_post_tag" WHERE "tag_id" IN (SELECT') || str_contains($where, 'IN (SELECT `post_id` FROM `aspec_rel_post_tag` WHERE `tag_id` IN (SELECT'), "{$family}: {$where}");
+        $this->assertEquals(['p1b'], array_map(static fn(PdoShopPost $p): string => $p->title, $shop->posts->find($byTag('go'))));
+        $this->assertEquals(0, $shop->posts->count($byTag('sql')), "{$family}: alvo marcado não casa");
+        $all = $shop->posts->find(Spec::alwaysTrue());
+        foreach ([$byTag('go'), Spec::not($byTag('go')), $byTag('php')->or($byTag('go')), Spec::not($byTag('sql'))] as $spec) {
+            $memory = array_values(array_map(static fn(PdoShopPost $p): int => (int) $p->id, array_filter($all, static fn(PdoShopPost $p): bool => $spec->isSatisfiedBy($p))));
+            $found = array_map(static fn(PdoShopPost $p): int => (int) $p->id, $shop->posts->find($spec));
+            $this->assertEquals($memory, $found, "{$family}: whereRelation() memória = SQL: {$spec}");
+        }
+        $this->assertTrue($byTag('go')->equals($byTag('go')) && !$byTag('go')->equals($byTag('php')), 'equals() da folha pela junção');
+
+        // insertAll(): vínculos dos novos donos
+        $batch = [new PdoShopPost('i1', [$php]), new PdoShopPost('i2', [$php, $rust])];
+        $shop->posts->insertAll($batch);
+        $this->assertEquals([1, 4], array_map(static fn(PdoShopTag $t): int => (int) $t->id, $shop->posts->with('tags')->findById($batch[1]->id)->tags), "{$family}: insertAll() grava os vínculos");
+
+        // Remoção do dono: soft delete mantém os vínculos; remoção física os apaga; alvos intactos
+        $before = count($this->links($pdo));
+        $this->assertTrue($shop->posts->remove($batch[1]));
+        $this->assertEquals($before, count($this->links($pdo)), "{$family}: soft delete do dono mantém os vínculos");
+        $this->assertTrue($shop->posts->forceRemove($batch[1]));
+        $this->assertEquals($before - 2, count($this->links($pdo)), "{$family}: remoção física apaga os vínculos dele");
+        $this->assertEquals(4, (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_tag'), "{$family}: nenhuma etiqueta apagada");
+
+        // Dono SEM soft delete: remove() e removeBy() (um comando e com gancho) apagam os vínculos antes
+        $hard = new PdoRepository($pdo, EntityMapping::for(PdoShopPost::class)->table('aspec_rel_post')->id('id', IdStrategy::Auto)->column('title')
+            ->manyToMany('tags', PdoShopTag::class, 'aspec_rel_post_tag', 'post_id', 'tag_id'));
+        $hard->withRelated($shop->tags);
+        $h = [new PdoShopPost('h1', [$php, $go]), new PdoShopPost('h2', [$go]), new PdoShopPost('h3', [$rust])];
+        $hard->putAll($h);
+        $this->assertTrue($hard->remove($h[0]));
+        $this->assertEquals(0, (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_post_tag WHERE post_id = ' . $h[0]->id), "{$family}: remove() sem soft delete apaga os vínculos");
+        $log->clear();
+        $hard->withQueryLogger($log);
+        $this->assertEquals(1, $hard->removeAllEntitiesSpecifiedBy(Spec::property('title', Spec::equalTo('h2'))));
+        $this->assertEquals(0, (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_post_tag WHERE post_id = ' . $h[1]->id), "{$family}: removeBy() em um comando por tabela");
+        $this->assertTrue(str_contains($log->statements()[0], 'DELETE FROM') && str_contains($log->statements()[0], 'IN (SELECT'), "{$family}: vínculos pelo mesmo filtro: {$log->statements()[0]}");
+        $hard->beforeRemove(static function (): void {
+        });
+        $this->assertEquals(1, $hard->removeAllEntitiesSpecifiedBy(Spec::property('title', Spec::equalTo('h3'))));
+        $this->assertEquals(0, (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_post_tag WHERE post_id = ' . $h[2]->id), "{$family}: removeBy() com gancho (por entidade) também");
+
+        // A transação desfaz os vínculos com o dono
+        $versioned = $shop->posts->with('tags')->findById($p1->id);
+        $versioned->tags = [$php, $go, $rust];
+        $shop->posts->afterPut(static function (): void {
+            throw new \RuntimeException('afterPut recusa');
+        });
+        $linksBefore = $this->links($pdo);
+        $this->assertThrows(\RuntimeException::class, fn() => $shop->posts->put($versioned), 'gancho depois dos vínculos');
+        $this->assertEquals($linksBefore, $this->links($pdo), "{$family}: rollback desfaz os vínculos");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // 1.14.0 (forward 032, D2): markLoaded() / markUnloaded()
+    ///////////////////////////////////////////////////////////////////////////
+
+    private function testMarkLoaded(PDO $pdo, string $family): void
+    {
+        $data = $this->seed($pdo);
+        $shop = $data['shop'];
+        $o1 = $shop->orders->with('items')->findById($data['o1']->id);
+        [$i3, $i7] = $o1->items;
+        $live = fn(int $orderId): array => array_map('intval', array_column(
+            $pdo->query('SELECT qty FROM aspec_rel_order_item WHERE deleted_at IS NULL AND order_id = ' . $orderId . ' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC),
+            'qty'
+        ));
+
+        // Agregado montado à mão SEM markLoaded: nenhum órfão (coleção não carregada)
+        $hand = $shop->orders->findById($o1->id);
+        $hand->items = [$this->itemCopy($i3)];
+        $shop->orders->put($hand);
+        $this->assertEquals([3, 7], $live((int) $o1->id), "{$family}: sem markLoaded() nada é removido");
+
+        // markLoaded() com a coleção completa; o que sair dela depois é órfão (relativo a ela)
+        $hand = $shop->orders->findById($o1->id);
+        $hand->items = [$this->itemCopy($i3), $this->itemCopy($i7)];
+        $shop->orders->markLoaded($hand, 'items');
+        $this->assertTrue($shop->orders->isLoaded($hand, 'items'));
+        array_pop($hand->items);
+        $shop->orders->put($hand);
+        $this->assertEquals([3], $live((int) $o1->id), "{$family}: o filho que saiu da coleção declarada é órfão");
+
+        // O PERIGO documentado: coleção incompleta declarada apaga o que falta
+        $o5 = $shop->orders->with('items')->findById($data['o5']->id);
+        $extra = new PdoShopOrderItem(4);
+        $extra->order = $o5;
+        $shop->items->put($extra);   // agora o5 tem os itens 2 e 4
+        $partial = $shop->orders->findById($o5->id);
+        $partial->items = [$this->itemCopy($o5->items[0])];   // só o 2: o 4 não está aqui
+        $shop->orders->markLoaded($partial, 'items');
+        $shop->orders->put($partial);
+        $this->assertEquals([2], $live((int) $o5->id), "{$family}: PERIGO — a coleção declarada incompleta removeu o 4");
+
+        // Depois do put() a coleção volta a ser "carregada" comum: o que outro acrescentar fica
+        $late = new PdoShopOrderItem(9);
+        $late->orderId = $o5->id;
+        $shop->items->put($late);
+        $shop->orders->put($partial);
+        $this->assertEquals([2, 9], $live((int) $o5->id), "{$family}: depois da gravação, só o que foi carregado com ela pode sair");
+
+        // markUnloaded(): a coleção volta a não dizer nada
+        $o4 = $shop->orders->with('items')->findById($data['o4']->id);
+        $shop->orders->markUnloaded($o4, 'items');
+        $this->assertFalse($shop->orders->isLoaded($o4, 'items'));
+        $o4->items = [];
+        $shop->orders->put($o4);
+        $this->assertEquals([9], $live((int) $o4->id), "{$family}: markUnloaded(): coleção vazia não remove");
+
+        // ManyToMany: declarada inteira (o vínculo ao alvo marcado fica); markUnloaded não toca a junção
+        $php = new PdoShopTag(1, 'php');
+        $sql = new PdoShopTag(2, 'sql');
+        $go = new PdoShopTag(3, 'go');
+        $shop->tags->putAll([$php, $sql, $go]);
+        $post = new PdoShopPost('m', [$php, $sql, $go]);
+        $shop->posts->put($post);
+        $shop->tags->remove($go);   // marcada: o vínculo fica
+        $pdo->exec('INSERT INTO aspec_rel_tag (id, name) VALUES (4, \'rust\')');
+        $pdo->exec('INSERT INTO aspec_rel_post_tag (post_id, tag_id) VALUES (' . $post->id . ', 4)');   // acrescentado por outro
+        $handPost = $shop->posts->findById($post->id);
+        $handPost->tags = [new PdoShopTag(1, 'php')];
+        $shop->posts->markLoaded($handPost, 'tags');
+        $shop->posts->put($handPost);
+        $this->assertEquals(["{$post->id}:1", "{$post->id}:3"], $this->links($pdo), "{$family}: declarada inteira: sai o sql e o rust (visíveis), fica o go (marcado)");
+        $this->assertEquals(4, (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_tag'), 'nenhum alvo apagado');
+        $loaded = $shop->posts->with('tags')->findById($post->id);
+        $shop->posts->markUnloaded($loaded, 'tags');
+        $loaded->tags = [];
+        $shop->posts->put($loaded);
+        $this->assertEquals(["{$post->id}:1", "{$post->id}:3"], $this->links($pdo), "{$family}: markUnloaded(): a junção não é tocada");
+
+        // Erros claros
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markLoaded($o1, 'customer'), 'referência não é coleção');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markLoaded($o1, 'nope'), 'relação desconhecida');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markLoaded($o1), 'sem relação');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markLoaded($handPost, 'items'), 'entidade de outra classe');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markUnloaded($o1, 'customer'), 'markUnloaded só de coleção');
+        $wrong = $shop->orders->findById($o1->id);
+        $wrong->items = [new PdoShopProduct('z', 'z')];
+        $this->assertThrows(InvalidArgumentException::class, fn() => $shop->orders->markLoaded($wrong, 'items'), 'coleção com outra classe');
+        $this->assertThrows(InvalidArgumentException::class, fn() => PdoRepository::forEntity($pdo, PdoShopOrder::class)->markLoaded($o1, 'items'), 'sem withRelated()');
+    }
+
+    /** Uma cópia "montada à mão" de um item gravado (mesmo id, mesma versão de soft delete). */
+    private function itemCopy(PdoShopOrderItem $item): PdoShopOrderItem
+    {
+        $copy = new PdoShopOrderItem($item->qty);
+        $copy->id = $item->id;
+        $copy->productSku = $item->productSku;
+
+        return $copy;
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // 1.14.0 (forward 032, D3): iterate() com relações, paginado por chave
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * A conexão rastreada (SQLite) prova a propriedade que o MySQL sem buffer exige: nenhum comando
+     * executa enquanto outro tem um cursor aberto. No MySQL, a mesma bateria roda numa conexão SEM
+     * buffer (testIterateUnbufferedMySql()).
+     */
+    private function testIterateWithRelations(PDO $pdo, string $family): void
+    {
+        $data = $this->seed($pdo);
+        $shop = $data['shop'];
+        $tags = [new PdoShopTag(1, 'a'), new PdoShopTag(2, 'b')];
+        $shop->tags->putAll($tags);
+        $shop->posts->putAll([new PdoShopPost('x', $tags), new PdoShopPost('y', [$tags[1]]), new PdoShopPost('z')]);
+        $all = Spec::alwaysTrue();
+
+        $expected = [];
+        foreach ($shop->orders->with('items.product', 'customer')->find($all) as $order) {
+            $expected[] = $order->number . ':' . implode(',', $this->qtys($order->items)) . ':' . ($order->customer?->name ?? '-');
+        }
+        foreach ([1, 2, 3, 100] as $size) {
+            $view = $shop->orders->with('items.product', 'customer');
+            $view->withBatchSize($size);
+            $got = [];
+            foreach ($view->iterate($all) as $order) {
+                $got[] = $order->number . ':' . implode(',', $this->qtys($order->items)) . ':' . ($order->customer?->name ?? '-');
+                $this->assertTrue($order->items === [] || $order->items[0]->product !== null, 'items.product carregado');
+            }
+            $this->assertEquals($expected, $got, "{$family}: iterate() em páginas de {$size} = find()");
+        }
+
+        // Filtro em SQL e filtro avaliado em PHP (fallback): páginas cortadas nas linhas lidas
+        $filtered = $shop->orders->with('items');
+        $filtered->withBatchSize(2);
+        $this->assertEquals(['o1', 'o5'], $this->numbers(iterator_to_array($filtered->iterate(Spec::property('customerId', Spec::equalTo(1))), false)));
+        $php = $shop->orders->withInMemoryFallback()->with('items');
+        $php->withBatchSize(2);
+        $odd = new PredicateSpecification(static fn(PdoShopOrder $o): bool => in_array($o->number, ['o1', 'o3', 'o5'], true));
+        $this->assertEquals(['o1', 'o3', 'o5'], $this->numbers(iterator_to_array($php->iterate($odd), false)), "{$family}: fallback em memória com relações");
+        $shop->orders->withInMemoryFallback(false);
+
+        // Soft delete fica fora das páginas; ManyToMany também por página
+        $shop->posts->remove($shop->posts->find(Spec::property('title', Spec::equalTo('y')))[0]);
+        $posts = $shop->posts->with('tags');
+        $posts->withBatchSize(1);
+        $titles = [];
+        foreach ($posts->iterate($all) as $post) {
+            $titles[] = $post->title . ':' . implode(',', $this->tagNames($post->tags));
+        }
+        $this->assertEquals(['x:a,b', 'z:'], $titles, "{$family}: páginas sem o marcado, com as etiquetas");
+
+        // Sem relações: streaming puro como antes (uma consulta, sem LIMIT)
+        $log = new InMemoryQueryLogger();
+        $shop->orders->withQueryLogger($log);
+        $count = 0;
+        foreach ($shop->orders->iterate($all) as $_) {
+            $count++;
+        }
+        $this->assertTrue($count === 5 && count($log->statements()) === 1 && !str_contains($log->statements()[0], 'LIMIT'), "{$family}: sem with() continua um cursor só: " . implode(' | ', $log->statements()));
+        $shop->orders->withQueryLogger(null);
+    }
+
+    /** SQLite rastreado: com relações, nenhum comando roda com outro cursor aberto (find, iterate, findPage). */
+    private function testNoOpenCursorWhileLoading(): void
+    {
+        $pdo = new PdoCursorTrackingPdo('sqlite::memory:');
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        $this->loadSchema($pdo, 'sqlite');
+        $data = $this->seed($pdo);
+        $shop = $data['shop'];
+        $shop->tags->putAll([new PdoShopTag(1, 'a')]);
+        $shop->posts->putAll([new PdoShopPost('x', [new PdoShopTag(1, 'a')]), new PdoShopPost('y')]);
+        $all = Spec::alwaysTrue();
+
+        // Controle positivo: o rastreador vê um comando dentro de um cursor aberto
+        $pdo->reset();
+        foreach ($shop->orders->iterate($all) as $_) {
+            $shop->items->count($all);
+            break;
+        }
+        $this->assertTrue($pdo->violations !== [], 'sqlite rastreado: controle positivo (iterate sem relações é um cursor aberto)');
+
+        $pdo->reset();
+        $view = $shop->orders->with('items.product', 'customer');
+        $view->withBatchSize(2);
+        $n = 0;
+        foreach ($view->iterate($all) as $_) {
+            $n++;
+        }
+        $view->find($all);
+        $view->findPage($all, 3, 1);
+        $posts = $shop->posts->with('tags');
+        $posts->withBatchSize(1);
+        foreach ($posts->iterate($all) as $_) {
+            $n++;
+        }
+        $this->assertEquals(7, $n);
+        $this->assertEquals([], $pdo->violations, 'sqlite rastreado: nenhum comando com cursor aberto ao carregar relações: ' . implode(PHP_EOL, array_slice($pdo->violations, 0, 3)));
+    }
+
+    /**
+     * MySQL com PDO::MYSQL_ATTR_USE_BUFFERED_QUERY = false: iterate() com relações funciona; o controle
+     * positivo prova que a conexão é mesmo sem buffer (um comando com cursor aberto falha).
+     */
+    private function testIterateUnbufferedMySql(): void
+    {
+        $dsn = getenv('ASPEC_PDO_MYSQL_DSN');
+        if ($dsn === false || $dsn === '' || !extension_loaded('pdo_mysql')) {
+            return;
+        }
+        $user = getenv('ASPEC_PDO_MYSQL_USER');
+        $password = getenv('ASPEC_PDO_MYSQL_PASSWORD');
+        $buffered = $this->connectFromEnvironment('mysql');
+        $this->loadSchema($buffered, 'mysql');
+        $this->seed($buffered);
+        $tags = [new PdoShopTag(1, 'a'), new PdoShopTag(2, 'b')];
+        $seedShop = $this->shop($buffered);
+        $seedShop->tags->putAll($tags);
+        $posts = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $posts[] = new PdoShopPost('t' . $i, $i % 3 === 0 ? [] : ($i % 2 === 0 ? $tags : [$tags[0]]));
+        }
+        $seedShop->posts->putAll($posts);
+
+        $pdo = new PDO($dsn, $user === false ? null : $user, $password === false ? null : $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
+        ]);
+        $shop = $this->shop($pdo);
+        $all = Spec::alwaysTrue();
+
+        // Controle positivo: sem buffer, um comando com outro cursor aberto falha
+        $e = $this->assertThrows(PdoRepositoryException::class, function () use ($shop, $all): void {
+            foreach ($shop->orders->iterate($all) as $_) {
+                $shop->items->count($all);
+            }
+        }, 'mysql sem buffer: controle positivo');
+        $this->assertTrue(str_contains($e->getMessage(), 'unbuffered') || str_contains($e->getMessage(), '2014'), $e->getMessage());
+
+        $view = $shop->orders->with('items.product', 'customer');
+        $view->withBatchSize(2);
+        $got = [];
+        foreach ($view->iterate($all) as $order) {
+            $got[] = $order->number . ':' . implode(',', $this->qtys($order->items)) . ':' . ($order->customer?->name ?? '-');
+        }
+        $this->assertEquals(['o1:3,7:Ana', 'o2:1:Bob', 'o3::-', 'o4:9:Caio', 'o5:2:Ana'], $got, 'mysql sem buffer: iterate() com relações em páginas de 2');
+        $this->assertCount(5, $view->find($all), 'mysql sem buffer: find() com relações');
+        $this->assertCount(2, $view->findPage($all, 2, 3), 'mysql sem buffer: findPage() com relações');
+        $postView = $shop->posts->with('tags');
+        $postView->withBatchSize(4);
+        $links = 0;
+        $count = 0;
+        foreach ($postView->iterate($all) as $post) {
+            $links += count($post->tags);
+            $count++;
+        }
+        $this->assertTrue($count === 25 && $links === (int) $this->raw($buffered, 'SELECT COUNT(*) FROM aspec_rel_post_tag'), "mysql sem buffer: ManyToMany por página ({$count} posts, {$links} vínculos)");
+        fwrite(STDOUT, "    [D3] MySQL " . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION) . " sem buffer: iterate()/find()/findPage() com relações OK (controle positivo: comando com cursor aberto falha)\n");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // RN-02 (forward 032): ManyToMany em lote e memória de iterate() com relações
+    ///////////////////////////////////////////////////////////////////////////
+
+    private function testManyToManyBenchmark(PDO $pdo, string $family, int $owners = 1000, int $perOwner = 5): void
+    {
+        $this->reset($pdo);
+        $rows = [];
+        for ($t = 1; $t <= 50; $t++) {
+            $rows[] = sprintf("(%d, 'tag%d')", $t, $t);
+        }
+        $pdo->exec('INSERT INTO aspec_rel_tag (id, name) VALUES ' . implode(', ', $rows));
+        $rows = [];
+        for ($p = 1; $p <= $owners; $p++) {
+            $rows[] = sprintf("(%d, 'post%d')", $p, $p);
+        }
+        foreach (array_chunk($rows, 500) as $chunk) {
+            $pdo->exec('INSERT INTO aspec_rel_post (id, title) VALUES ' . implode(', ', $chunk));
+        }
+        $rows = [];
+        for ($p = 1; $p <= $owners; $p++) {
+            for ($k = 0; $k < $perOwner; $k++) {
+                $rows[] = sprintf('(%d, %d)', $p, 1 + ($p + $k * 7) % 50);
+            }
+        }
+        foreach (array_chunk($rows, 1000) as $chunk) {
+            $pdo->exec('INSERT INTO aspec_rel_post_tag (post_id, tag_id) VALUES ' . implode(', ', $chunk));
+        }
+
+        $log = new InMemoryQueryLogger(20000);
+        $shop = $this->shop($pdo, $log);
+        $all = Spec::alwaysTrue();
+        $started = hrtime(true);
+        $posts = $shop->posts->with('tags')->find($all);
+        $eagerMs = (hrtime(true) - $started) / 1e6;
+        $eagerQueries = count($log->statements());
+        $linked = array_sum(array_map(static fn(PdoShopPost $p): int => count($p->tags), $posts));
+        $this->assertEquals($owners * $perOwner, $linked, "{$family}: {$owners}×{$perOwner} vínculos carregados");
+        $this->assertEquals(3, $eagerQueries, "{$family}: RN-02 — donos + junção + alvos = 3 consultas (houve {$eagerQueries})");
+
+        // Sincronização em lote: cada dono troca um vínculo, um putAll()
+        foreach ($posts as $post) {
+            array_shift($post->tags);
+            $post->tags[] = $posts[0]->tags[0] ?? null;
+            $post->tags = array_values(array_filter($post->tags));
+        }
+        $log->clear();
+        $started = hrtime(true);
+        $shop->posts->putAll($posts);
+        $syncMs = (hrtime(true) - $started) / 1e6;
+        $syncStatements = count($log->statements());
+
+        $log->clear();
+        $started = hrtime(true);
+        $naive = 0;
+        foreach ($shop->posts->find($all) as $post) {
+            $naive += (int) $this->raw($pdo, 'SELECT COUNT(*) FROM aspec_rel_post_tag WHERE post_id = ' . (int) $post->id);
+        }
+        $naiveMs = (hrtime(true) - $started) / 1e6;
+
+        fwrite(STDOUT, sprintf(
+            "    [RN-02] %s, %d donos × %d alvos: with('tags') %d consultas %.0f ms; putAll() sincronizando %d donos %d comandos %.0f ms; laço por dono %d consultas %.0f ms\n",
+            $family,
+            $owners,
+            $perOwner,
+            $eagerQueries,
+            $eagerMs,
+            count($posts),
+            $syncStatements,
+            $syncMs,
+            $owners + 1,
+            $naiveMs
+        ));
+        $this->assertTrue($naive >= $owners, 'o laço ingênuo leu os vínculos');
+        $this->reset($pdo);
+    }
+
+    /**
+     * RN-02: iterate() com relações sobre 10 000 linhas guarda uma página por vez. Mede o pico de
+     * memória (memory_reset_peak_usage()) de iterate() com with('tags') em 2 000 e em 10 000 posts
+     * (deve ficar no mesmo patamar) contra find() nos 10 000 (cresce com o resultado). Posts e
+     * etiquetas não têm referência de volta: sem ciclos, o pico mede o que fica vivo, não o atraso do
+     * coletor de ciclos.
+     */
+    private function testIterateMemory(PDO $pdo, string $family, int $rows = 10000, int $batch = 500): void
+    {
+        $this->reset($pdo);
+        $values = [];
+        for ($t = 1; $t <= 20; $t++) {
+            $values[] = sprintf("(%d, 'tag%d')", $t, $t);
+        }
+        $pdo->exec('INSERT INTO aspec_rel_tag (id, name) VALUES ' . implode(', ', $values));
+        $values = [];
+        $links = [];
+        for ($p = 1; $p <= $rows; $p++) {
+            $values[] = sprintf("(%d, 'a post with a title of some length, number %d')", $p, $p);
+            $links[] = sprintf('(%d, %d)', $p, 1 + $p % 20);
+            $links[] = sprintf('(%d, %d)', $p, 1 + ($p + 7) % 20);
+        }
+        foreach (array_chunk($values, 1000) as $chunk) {
+            $pdo->exec('INSERT INTO aspec_rel_post (id, title) VALUES ' . implode(', ', $chunk));
+        }
+        foreach (array_chunk($links, 1000) as $chunk) {
+            $pdo->exec('INSERT INTO aspec_rel_post_tag (post_id, tag_id) VALUES ' . implode(', ', $chunk));
+        }
+        $shop = $this->shop($pdo);
+
+        $measure = function (callable $read): array {
+            gc_collect_cycles();
+            $base = memory_get_usage();
+            memory_reset_peak_usage();
+            $started = hrtime(true);
+            $count = $read();
+            return [(memory_get_peak_usage() - $base) / 1048576, (hrtime(true) - $started) / 1e6, $count];
+        };
+        $iterate = function (int $limit) use ($shop, $batch): int {
+            $view = $shop->posts->with('tags');
+            $view->withBatchSize($batch);
+            $linked = 0;
+            foreach ($view->iterate(Spec::property('id', Spec::lessThanOrEqualTo($limit))) as $post) {
+                $linked += count($post->tags);
+            }
+            return $linked;
+        };
+        [$small, $smallMs, $smallLinks] = $measure(fn(): int => $iterate((int) ($rows / 5)));
+        [$large, $largeMs, $largeLinks] = $measure(fn(): int => $iterate($rows));
+        [$found, $foundMs, $foundLinks] = $measure(function () use ($shop, $rows): int {
+            $all = $shop->posts->with('tags')->find(Spec::property('id', Spec::lessThanOrEqualTo($rows)));
+            return array_sum(array_map(static fn(PdoShopPost $p): int => count($p->tags), $all));
+        });
+        $this->assertEquals(2 * $rows / 5, $smallLinks);
+        $this->assertEquals(2 * $rows, $largeLinks);
+        $this->assertEquals(2 * $rows, $foundLinks);
+        $this->assertTrue($large < $small * 1.5 + 0.5, sprintf('%s: RN-02 — iterate() em %d linhas (%.2f MB) no patamar de %d linhas (%.2f MB)', $family, $rows, $large, $rows / 5, $small));
+        $this->assertTrue($large * 3 < $found, sprintf('%s: RN-02 — iterate() %.2f MB contra find() %.2f MB', $family, $large, $found));
+        fwrite(STDOUT, sprintf(
+            "    [RN-02] %s, iterate() com with('tags') em páginas de %d: pico %.2f MB em %d linhas (%.0f ms), %.2f MB em %d linhas (%.0f ms); find() %.2f MB (%.0f ms)\n",
+            $family,
+            $batch,
+            $small,
+            $rows / 5,
+            $smallMs,
+            $large,
+            $rows,
+            $largeMs,
+            $found,
+            $foundMs
+        ));
+        $this->reset($pdo);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
     // Registro (SQLite)
     ///////////////////////////////////////////////////////////////////////////
 
@@ -809,6 +1465,16 @@ class Module26_PdoRelationshipsTest extends TestCase
         $this->assertTrue(str_contains($e->getMessage(), 'withRelated()'), $e->getMessage());
         $this->assertEquals(0, (int) $this->raw($pdo, "SELECT COUNT(*) FROM aspec_rel_order WHERE number = 'm'"), 'e nada ficou');
         $this->assertThrows(InvalidArgumentException::class, fn() => $lonely->remove($n), 'remover pai com composição pede o registro');
+
+        // ManyToMany (1.14.0): a junção é desta conexão, o repositório do alvo também tem de ser
+        $posts = PdoRepository::forEntity($pdo, PdoShopPost::class);
+        $e = $this->assertThrows(InvalidArgumentException::class, fn() => $posts->withRelated(PdoRepository::forEntity($elsewhere, PdoShopTag::class)), 'ManyToMany em outra conexão');
+        $this->assertTrue(str_contains($e->getMessage(), 'join table') && str_contains($e->getMessage(), 'same PDO connection'), $e->getMessage());
+        $this->assertThrows(InvalidArgumentException::class, fn() => $posts->with('tags'), 'with() de ManyToMany sem registro');
+        $loose = new PdoShopPost('solta');
+        $posts->put($loose);
+        $this->assertTrue($posts->isLoaded($loose, 'tags'), 'dono novo sem alvos: sem registro, sem junção');
+        $this->assertThrows(InvalidArgumentException::class, fn() => $posts->put(new PdoShopPost('com', [new PdoShopTag(1, 'a')])), 'dono com alvos pede o registro');
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -871,7 +1537,7 @@ class Module26_PdoRelationshipsTest extends TestCase
         $iterateMs = (hrtime(true) - $started) / 1e6;
         $iterateQueries = count($log->statements());
         $this->assertEquals($parents * $children, $iterated);
-        $this->assertEquals(1 + (int) ceil($parents / PdoRepository::DEFAULT_BATCH_SIZE), $iterateQueries, "{$family}: iterate() — uma consulta de itens por lote");
+        $this->assertEquals(2 * (int) ceil($parents / PdoRepository::DEFAULT_BATCH_SIZE), $iterateQueries, "{$family}: iterate() — por lote, uma página de pedidos e uma consulta de itens (1.14.0)");
 
         // Laço ingênuo: uma consulta de itens por pedido
         $log->clear();
@@ -954,14 +1620,14 @@ class Module26_PdoRelationshipsTest extends TestCase
     // recriados aqui.
     ///////////////////////////////////////////////////////////////////////////
 
-    /** Os três blocos do exemplo 17.3 são iguais nos dois idiomas, fora os comentários. */
+    /** Os cinco blocos do exemplo 17.3 (três até 1.13.0) são iguais nos dois idiomas, fora os comentários. */
     private function testReadme173BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
         $english = ReadmeBlocks::of($root . '/README.md', '17.3');
         $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '17.3');
-        $this->assertCount(3, $english, 'três blocos PHP no exemplo 17.3 (EN)');
-        $this->assertCount(3, $portuguese, 'três blocos PHP no exemplo 17.3 (pt-BR)');
+        $this->assertCount(5, $english, 'cinco blocos PHP no exemplo 17.3 (EN)');
+        $this->assertCount(5, $portuguese, 'cinco blocos PHP no exemplo 17.3 (pt-BR)');
         foreach ($english as $i => $block) {
             $this->assertEquals(ReadmeBlocks::codeTokens($block), ReadmeBlocks::codeTokens($portuguese[$i]), "README 17.3: bloco {$i} igual fora os comentários");
         }
@@ -1031,5 +1697,52 @@ class Module26_PdoRelationshipsTest extends TestCase
         $orders->forceRemove($first);
         $this->assertEquals(0, $lines->count(Spec::property('orderId', Spec::equalTo(1))));
         $this->assertEquals(0, (int) $pdo->query('SELECT COUNT(*) FROM orders WHERE id = 1')->fetchColumn(), 'README 17.3: o pedido também se foi');
+
+        // --- bloco 4 (1.14.0): ManyToMany ---
+        $pdo->exec('CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(30) NOT NULL)');
+        $pdo->exec('CREATE TABLE article (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(80) NOT NULL)');
+        $pdo->exec('CREATE TABLE article_tag (article_id INTEGER NOT NULL REFERENCES article (id),
+    tag_id INTEGER NOT NULL REFERENCES tag (id), PRIMARY KEY (article_id, tag_id))');
+
+        $tags = PdoRepository::forEntity($pdo, ReadmeTag::class);
+        $articles = PdoRepository::forEntity($pdo, ReadmeArticle::class)->withRelated($tags);
+        [$php, $sql, $orm] = [new ReadmeTag(1, 'php'), new ReadmeTag(2, 'sql'), new ReadmeTag(3, 'orm')];
+        $tags->putAll([$php, $sql, $orm]);
+
+        $article = new ReadmeArticle('Specifications over PDO');
+        $article->tags = [$php, $sql];
+        $articles->put($article);
+        $this->assertEquals(2, (int) $pdo->query('SELECT COUNT(*) FROM article_tag WHERE article_id = 1')->fetchColumn(), 'README 17.3: duas linhas de article_tag');
+
+        $log->clear();
+        $tags->withQueryLogger($log);
+        $articles->withQueryLogger($log);
+        $loaded = $articles->with('tags')->findById(1);
+        $this->assertEquals(3, count($log->statements()), 'README 17.3: 3 consultas: ' . implode(' | ', $log->statements()));
+        $loaded->tags = [$sql, $orm];
+        $tagRows = $pdo->query('SELECT id, name FROM tag ORDER BY id')->fetchAll(PDO::FETCH_NUM);
+        $articles->put($loaded);
+        $this->assertEquals([[1, 2], [1, 3]], $pdo->query('SELECT article_id, tag_id FROM article_tag ORDER BY 1, 2')->fetchAll(PDO::FETCH_NUM), 'README 17.3: desvincula php, vincula orm');
+        $this->assertEquals($tagRows, $pdo->query('SELECT id, name FROM tag ORDER BY id')->fetchAll(PDO::FETCH_NUM), 'README 17.3: nenhuma etiqueta gravada');
+        $this->assertEquals(1, $articles->count($articles->whereRelation('tags', Spec::property('name', Spec::equalTo('orm')))));
+
+        // --- bloco 5 (1.14.0): markLoaded() e iterate() com relações ---
+        $edited = $articles->findById(1);
+        $this->assertFalse($articles->isLoaded($edited, 'tags'), 'README 17.3: sem with() não carregada');
+        $edited->tags = [$php];
+        $articles->markLoaded($edited, 'tags');
+        $articles->put($edited);
+        $this->assertEquals([[1, 1]], $pdo->query('SELECT article_id, tag_id FROM article_tag ORDER BY 1, 2')->fetchAll(PDO::FETCH_NUM), 'README 17.3: vincula php, desvincula sql e orm');
+        $this->assertEquals(1, count($articles->with('tags')->findById(1)->tags));
+
+        $log->clear();
+        $view = $articles->with('tags')->withBatchSize(500);
+        $names = [];
+        foreach ($view->iterate(Spec::alwaysTrue()) as $one) {
+            $names[] = $one->tags[0]->name;
+        }
+        $this->assertEquals(['php'], $names, 'README 17.3: iterate() com relações');
+        $this->assertTrue(str_contains($log->statements()[0], 'LIMIT 501'), 'README 17.3: páginas de 500 por id: ' . $log->statements()[0]);
+        $this->assertEquals(3, (int) $pdo->query('SELECT COUNT(*) FROM tag')->fetchColumn(), 'README 17.3: as etiquetas ficam');
     }
 }

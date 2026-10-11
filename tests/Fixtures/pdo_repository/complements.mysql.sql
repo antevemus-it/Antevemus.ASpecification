@@ -1,4 +1,4 @@
--- Forward 031 (PdoRepository complements) test schema, MySQL 8.4. Runs only in a disposable container.
+-- Forward 031 (PdoRepository complements) and forward 032, D4 (CHAR booleans) test schema, MySQL 8.4. Runs only in a disposable container.
 -- The lifecycle columns are DATETIME without fractional seconds: the repository stamps whole seconds.
 DROP TABLE IF EXISTS aspec_flag;
 CREATE TABLE aspec_flag (id INT NOT NULL PRIMARY KEY, active SMALLINT NULL, native TINYINT(1) NULL, label VARCHAR(50) COLLATE utf8mb4_bin NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -12,3 +12,6 @@ DROP TABLE IF EXISTS aspec_sale;
 CREATE TABLE aspec_sale (id INT NOT NULL PRIMARY KEY, region VARCHAR(10) COLLATE utf8mb4_bin NULL, product VARCHAR(20) COLLATE utf8mb4_bin NULL, qty INT NULL, amount DECIMAL(12,2) NULL, weight DOUBLE NULL, sold_on DATE NULL, version INT NULL, updated_at DATETIME NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 DROP TABLE IF EXISTS aspec_region;
 CREATE TABLE aspec_region (code VARCHAR(10) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, zone VARCHAR(10) COLLATE utf8mb4_bin NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- Forward 032, D4: booleans stored as text (aspec_char_flag; MySQL with a binary collation, so case is not folded by the database).
+DROP TABLE IF EXISTS aspec_char_flag;
+CREATE TABLE aspec_char_flag (id INT NOT NULL PRIMARY KEY, active CHAR(1) COLLATE utf8mb4_bin NULL, removed CHAR(1) COLLATE utf8mb4_bin NULL, answer VARCHAR(5) COLLATE utf8mb4_bin NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

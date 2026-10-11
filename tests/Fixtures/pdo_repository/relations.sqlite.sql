@@ -1,4 +1,7 @@
--- Forward 031, E3 (relationships) test schema, SQLite (foreign keys enforced by the test connection).
+-- Forward 031, E3 (relationships) and forward 032, D1 (ManyToMany) test schema, SQLite (foreign keys enforced by the test connection).
+DROP TABLE IF EXISTS aspec_rel_post_tag;
+DROP TABLE IF EXISTS aspec_rel_post;
+DROP TABLE IF EXISTS aspec_rel_tag;
 DROP TABLE IF EXISTS aspec_rel_invoice_payment;
 DROP TABLE IF EXISTS aspec_rel_invoice_line;
 DROP TABLE IF EXISTS aspec_rel_invoice;
@@ -14,3 +17,7 @@ CREATE INDEX aspec_rel_order_item_order ON aspec_rel_order_item (order_id);
 CREATE TABLE aspec_rel_invoice (code VARCHAR(20) NOT NULL PRIMARY KEY, customer_name VARCHAR(50) NOT NULL, deleted_at TEXT NULL);
 CREATE TABLE aspec_rel_invoice_line (id INTEGER NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) NOT NULL REFERENCES aspec_rel_invoice (code), description VARCHAR(50) NOT NULL);
 CREATE TABLE aspec_rel_invoice_payment (id VARCHAR(26) NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) NOT NULL REFERENCES aspec_rel_invoice (code), cents INTEGER NOT NULL CHECK (cents > 0), deleted_at TEXT NULL);
+CREATE TABLE aspec_rel_tag (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(30) NOT NULL, deleted_at TEXT NULL);
+CREATE TABLE aspec_rel_post (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(50) NOT NULL, deleted_at TEXT NULL);
+CREATE TABLE aspec_rel_post_tag (post_id INTEGER NOT NULL REFERENCES aspec_rel_post (id), tag_id INTEGER NOT NULL REFERENCES aspec_rel_tag (id), PRIMARY KEY (post_id, tag_id));
+CREATE INDEX aspec_rel_post_tag_tag ON aspec_rel_post_tag (tag_id);

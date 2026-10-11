@@ -88,7 +88,7 @@ final class ModuleSuitesTest extends TestCase
         yield 'Módulo 23: Eventos de Domínio por Especificação' => [Module23_DomainEventTriggersTest::class];
         yield 'Módulo 24: Eventos de Domínio pela Passagem do Tempo' => [Module24_TimeBasedDomainEventsTest::class];
         yield 'Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)' => [Module25_PdoRepositoryComplementsTest::class];
-        yield 'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, carga ansiosa, composição)' => [Module26_PdoRelationshipsTest::class];
+        yield 'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, ManyToMany, carga ansiosa, composição)' => [Module26_PdoRelationshipsTest::class];
     }
 
     /**

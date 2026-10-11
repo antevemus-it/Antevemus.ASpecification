@@ -70,7 +70,14 @@ use UnitEnum;
  *   repository; here the foreign key column of a reference must be mapped to a property
  *   (assertComplete()). isRelationLoaded() tells whether a relation of an entity object was loaded
  *
- * @version    1.13.0
+ * Since 1.14.0 (forward 032), all optional:
+ * - manyToMany() (#[ManyToMany]): an association through a join table whose name and two columns come
+ *   only from the mapping (validated as identifiers); a collection like oneToMany(), never a column
+ * - Char booleans (D4): BooleanStorage::Char with the texts of true and false per column
+ *   (column(..., trueValue:, falseValue:), #[Column]) or as defaults (booleanAs(Char, 'S', 'N'),
+ *   #[Table]); 'Y'/'N' unless given
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -82,6 +89,9 @@ final class EntityMapping
     private const COLUMN_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
     private const TABLE_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/';
+
+    /** Texts of a Char boolean (since 1.14.0): literals of the compiled SQL, so letters and digits only. */
+    private const BOOLEAN_TEXT_PATTERN = '/^[A-Za-z0-9]{1,16}$/';
 
     /** Spec property that always means the identifier (IEntity::getEntityId()). */
     public const ENTITY_ID_ALIAS = 'entityId';
@@ -104,6 +114,11 @@ final class EntityMapping
 
     /** Default storage of the Boolean columns that declare none (since 1.13.0). */
     private ?BooleanStorage $defaultBooleanStorage = null;
+
+    /** Default texts of the Char booleans that declare none (since 1.14.0; null = 'Y'/'N'). */
+    private ?string $defaultTrueValue = null;
+
+    private ?string $defaultFalseValue = null;
 
     private ?string $createdAtProperty = null;
 
@@ -197,7 +212,9 @@ final class EntityMapping
             $mapping = $mapping->timezone($table->timezone);
         }
         if ($table->booleanAs !== null) {
-            $mapping = $mapping->booleanAs($table->booleanAs);
+            $mapping = $mapping->booleanAs($table->booleanAs, $table->trueValue, $table->falseValue);
+        } elseif ($table->trueValue !== null || $table->falseValue !== null) {
+            throw new EntityMappingException(sprintf('The #[Table] of %s gives trueValue/falseValue without booleanAs: BooleanStorage::Char.', $entityClass));
         }
 
         $roles = [
@@ -270,7 +287,7 @@ final class EntityMapping
                 } elseif ($version !== null) {
                     $mapping = $mapping->version($property, $version->column ?? $column?->name);
                 } elseif ($column !== null) {
-                    $mapping = $mapping->column($property, $column->name, $column->type, $column->enumClass, $column->timezone, $column->booleanAs);
+                    $mapping = $mapping->column($property, $column->name, $column->type, $column->enumClass, $column->timezone, $column->booleanAs, $column->trueValue, $column->falseValue);
                 }
 
                 /** @var CreatedAt|null $createdAt */
@@ -307,6 +324,10 @@ final class EntityMapping
                 foreach ($property->getAttributes(OneToMany::class) as $attribute) {
                     $collection = $attribute->newInstance();
                     $mapping = $mapping->oneToMany($property->getName(), $collection->target, $collection->mappedBy, $collection->cascade);
+                }
+                foreach ($property->getAttributes(ManyToMany::class) as $attribute) {
+                    $association = $attribute->newInstance();
+                    $mapping = $mapping->manyToMany($property->getName(), $association->target, $association->joinTable, $association->joinColumn, $association->inverseJoinColumn);
                 }
             }
         }
@@ -349,6 +370,10 @@ final class EntityMapping
      *                              repository's, UTC)
      * @param BooleanStorage|null $booleanAs Storage of a Boolean column (default: the mapping's,
      *                                       Native); since 1.13.0
+     * @param string|null $trueValue Stored text of true of a Char boolean (default: the mapping's,
+     *                               'Y'); since 1.14.0
+     * @param string|null $falseValue Stored text of false of a Char boolean (default: the mapping's,
+     *                                'N'); since 1.14.0
      * @throws EntityMappingException
      */
     public function column(
@@ -357,10 +382,12 @@ final class EntityMapping
         ColumnType $type = ColumnType::Auto,
         ?string $enumClass = null,
         ?string $timezone = null,
-        ?BooleanStorage $booleanAs = null
+        ?BooleanStorage $booleanAs = null,
+        ?string $trueValue = null,
+        ?string $falseValue = null
     ): self {
         $existing = $this->columns[$property] ?? null;
-        $mapped = $this->resolveColumn($property, $column, $type, $enumClass, $timezone, $booleanAs)
+        $mapped = $this->resolveColumn($property, $column, $type, $enumClass, $timezone, $booleanAs, $trueValue, $falseValue)
             ->withRole($existing?->isId ?? false, $existing?->isVersion ?? false)
             ->withLifecycle($existing?->isCreatedAt ?? false, $existing?->isUpdatedAt ?? false, $existing?->isSoftDelete ?? false);
         if ($mapped->isId) {
@@ -416,7 +443,9 @@ final class EntityMapping
             $type !== ColumnType::Auto ? $type : ($existing?->type ?? ColumnType::Auto),
             $existing?->enumClass,
             $existing?->timezoneDeclared ? $existing->timezone : null,
-            $existing?->booleanStorageDeclared ? $existing->booleanStorage : null
+            $existing?->booleanStorageDeclared ? $existing->booleanStorage : null,
+            $existing?->booleanValuesDeclared ? $existing->trueValue : null,
+            $existing?->booleanValuesDeclared ? $existing->falseValue : null
         )->withRole(true, false);
         $this->assertIdType($mapped, $strategy);
 
@@ -462,7 +491,7 @@ final class EntityMapping
         }
 
         $existing = $this->columns[$property] ?? null;
-        $mapped = $this->resolveColumn($property, $column ?? $existing?->column, ColumnType::Integer, null, null, null)
+        $mapped = $this->resolveColumn($property, $column ?? $existing?->column, ColumnType::Integer, null, null, null, null, null)
             ->withRole(false, true);
 
         $copy = $this->withColumn($mapped);
@@ -490,12 +519,23 @@ final class EntityMapping
     }
 
     /**
-     * Default storage of the Boolean columns that declare none (since 1.13.0, forward 031, D2).
+     * Default storage of the Boolean columns that declare none (since 1.13.0, forward 031, D2) and,
+     * for BooleanStorage::Char (since 1.14.0, forward 032, D4), the default texts of true and false
+     * ('Y' and 'N' unless given).
+     *
+     * @throws EntityMappingException When texts are given for another storage, or are not 1 to 16
+     *                                letters or digits, or are equal whatever the case
      */
-    public function booleanAs(BooleanStorage $storage): self
+    public function booleanAs(BooleanStorage $storage, ?string $trueValue = null, ?string $falseValue = null): self
     {
+        if (($trueValue !== null || $falseValue !== null) && $storage !== BooleanStorage::Char) {
+            throw new EntityMappingException(sprintf('trueValue/falseValue of %s apply only to BooleanStorage::Char, %s given.', $this->entityClass, $storage->name));
+        }
+        self::assertBooleanTexts($trueValue ?? 'Y', $falseValue ?? 'N', sprintf('the default of %s', $this->entityClass));
         $copy = clone $this;
         $copy->defaultBooleanStorage = $storage;
+        $copy->defaultTrueValue = $trueValue;
+        $copy->defaultFalseValue = $falseValue;
         $copy->refreshDefaults();
 
         return $copy;
@@ -629,22 +669,47 @@ final class EntityMapping
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $mappedBy) !== 1) {
             throw new EntityMappingException(sprintf('The mappedBy "%s" of the collection "%s" of %s is not a property name.', $mappedBy, $property, $this->entityClass));
         }
-
-        $declared = $this->reflectionOf($property)->getType();
-        if ($declared !== null) {
-            $name = $declared instanceof ReflectionNamedType ? $declared->getName() : null;
-            if (!in_array($name, ['array', 'iterable', 'mixed'], true)) {
-                throw new EntityMappingException(sprintf(
-                    'The collection "%s" of %s must be an array property (array, iterable or untyped), %s declared.',
-                    $property,
-                    $this->entityClass,
-                    (string) $declared
-                ));
-            }
-        }
+        $this->assertCollectionProperty($property);
 
         $copy = clone $this;
         $copy->relations[$property] = new RelationMapping($property, RelationMapping::ONE_TO_MANY, $target, mappedBy: $mappedBy, cascade: $cascade);
+
+        return $copy;
+    }
+
+    /**
+     * Maps an association through a join table (since 1.14.0, forward 032, D1; #[ManyToMany]): never
+     * cascaded to the targets; putting this entity with the collection loaded synchronizes the links.
+     *
+     * @param string $property Array property holding the targets (typed array, iterable, or untyped); not a column
+     * @param class-string<IEntity> $target Associated entity class
+     * @param string $joinTable Join table, a plain SQL identifier, optionally `schema.table`
+     * @param string $joinColumn Column of the join table holding this entity's identifier
+     * @param string $inverseJoinColumn Column of the join table holding the target's identifier
+     * @throws EntityMappingException When the property, the target, the table or a column does not fit
+     */
+    public function manyToMany(string $property, string $target, string $joinTable, string $joinColumn, string $inverseJoinColumn): self
+    {
+        $target = $this->assertRelation($property, $target, 'ManyToMany');
+        if (preg_match(self::TABLE_PATTERN, $joinTable) !== 1) {
+            throw new EntityMappingException(sprintf('The join table "%s" of "%s" of %s is not a plain SQL identifier (optionally schema-qualified).', $joinTable, $property, $this->entityClass));
+        }
+        self::assertColumnName($joinColumn, sprintf('the join column of "%s"', $property), $this->entityClass);
+        self::assertColumnName($inverseJoinColumn, sprintf('the inverse join column of "%s"', $property), $this->entityClass);
+        if (strcasecmp($joinColumn, $inverseJoinColumn) === 0) {
+            throw new EntityMappingException(sprintf('The two columns of the join table of "%s" of %s must differ, "%s" given twice.', $property, $this->entityClass, $joinColumn));
+        }
+        $this->assertCollectionProperty($property);
+
+        $copy = clone $this;
+        $copy->relations[$property] = new RelationMapping(
+            $property,
+            RelationMapping::MANY_TO_MANY,
+            $target,
+            joinColumn: $joinColumn,
+            joinTable: $joinTable,
+            inverseJoinColumn: $inverseJoinColumn
+        );
 
         return $copy;
     }
@@ -723,6 +788,17 @@ final class EntityMapping
     public function getBooleanStorage(): BooleanStorage
     {
         return $this->defaultBooleanStorage ?? BooleanStorage::Native;
+    }
+
+    /**
+     * Default texts of the Char booleans that declare none, `[true, false]` ('Y' and 'N' unless set;
+     * since 1.14.0).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function getBooleanValues(): array
+    {
+        return [$this->defaultTrueValue ?? 'Y', $this->defaultFalseValue ?? 'N'];
     }
 
     /** The creation timestamp column, or null (since 1.13.0). */
@@ -821,7 +897,7 @@ final class EntityMapping
         foreach ($this->relations as $relation) {
             $reflection = $this->reflection[$relation->property];
             if (!$reflection->isInitialized($entity)) {
-                $reflection->setValue($entity, $relation->isOneToMany() ? [] : null);
+                $reflection->setValue($entity, $relation->isCollection() ? [] : null);
             }
         }
     }
@@ -833,7 +909,9 @@ final class EntityMapping
     }
 
     /**
-     * @throws EntityMappingException When the table or the identifier is missing
+     * @throws EntityMappingException When the table or the identifier is missing, the join column of a
+     *                                reference is not mapped, or (since 1.14.0) a column declares the
+     *                                texts of a Char boolean without being stored as BooleanStorage::Char
      */
     public function assertComplete(): void
     {
@@ -846,6 +924,15 @@ final class EntityMapping
         foreach ($this->relations as $relation) {
             if ($relation->isManyToOne()) {
                 $this->getJoinColumn($relation->property);
+            }
+        }
+        foreach ($this->columns as $property => $column) {
+            if ($column->booleanValuesDeclared && !$column->isCharBoolean()) {
+                throw new EntityMappingException(sprintf(
+                    'Property "%s" of %s declares trueValue/falseValue, which apply only to a Boolean column stored as BooleanStorage::Char (give booleanAs: BooleanStorage::Char to the column or the mapping).',
+                    $property,
+                    $this->entityClass
+                ));
             }
         }
     }
@@ -870,6 +957,7 @@ final class EntityMapping
             'columns' => $columns,
             'timezone' => $this->defaultTimezone,
             'booleanAs' => $this->defaultBooleanStorage?->value,
+            'booleanValues' => $this->getBooleanValues(),
             'softDelete' => $this->getSoftDelete()?->describe(),
             'relations' => $relations,
         ];
@@ -1086,7 +1174,9 @@ final class EntityMapping
         ColumnType $type,
         ?string $enumClass,
         ?string $timezone,
-        ?BooleanStorage $booleanAs
+        ?BooleanStorage $booleanAs,
+        ?string $trueValue = null,
+        ?string $falseValue = null
     ): ColumnMapping {
         $reflection = $this->reflectionOf($property);
 
@@ -1134,6 +1224,23 @@ final class EntityMapping
 
         $dateClass = $declaredName === DateTime::class ? DateTime::class : DateTimeImmutable::class;
 
+        $storage = $booleanAs ?? $this->defaultBooleanStorage ?? BooleanStorage::Native;
+        $valuesDeclared = $trueValue !== null || $falseValue !== null;
+        [$defaultTrue, $defaultFalse] = $this->getBooleanValues();
+        $trueValue ??= $defaultTrue;
+        $falseValue ??= $defaultFalse;
+        if ($valuesDeclared) {
+            // The storage may still come from a default set later (booleanAs()): assertComplete() checks it
+            if ($type !== ColumnType::Boolean || ($booleanAs !== null && $booleanAs !== BooleanStorage::Char)) {
+                throw new EntityMappingException(sprintf(
+                    'trueValue/falseValue of property "%s" of %s apply only to a Boolean column stored as BooleanStorage::Char.',
+                    $property,
+                    $this->entityClass
+                ));
+            }
+            self::assertBooleanTexts($trueValue, $falseValue, sprintf('property "%s" of %s', $property, $this->entityClass));
+        }
+
         return new ColumnMapping(
             $property,
             $column,
@@ -1141,9 +1248,12 @@ final class EntityMapping
             $enumClass,
             $timezone ?? $this->defaultTimezone ?? 'UTC',
             $dateClass,
-            booleanStorage: $booleanAs ?? $this->defaultBooleanStorage ?? BooleanStorage::Native,
+            booleanStorage: $storage,
             booleanStorageDeclared: $booleanAs !== null,
-            timezoneDeclared: $timezone !== null
+            timezoneDeclared: $timezone !== null,
+            trueValue: $trueValue,
+            falseValue: $falseValue,
+            booleanValuesDeclared: $valuesDeclared
         );
     }
 
@@ -1198,7 +1308,9 @@ final class EntityMapping
             $existing?->type ?? ColumnType::Auto,
             $existing?->enumClass,
             $existing?->timezoneDeclared ? $existing->timezone : null,
-            $existing?->booleanStorageDeclared ? $existing->booleanStorage : null
+            $existing?->booleanStorageDeclared ? $existing->booleanStorage : null,
+            $existing?->booleanValuesDeclared ? $existing->trueValue : null,
+            $existing?->booleanValuesDeclared ? $existing->falseValue : null
         )->withLifecycle($flags['createdAt'], $flags['updatedAt'], $flags['softDelete']);
         $this->assertLifecycleType($mapped, $role === 'softDelete');
 
@@ -1210,6 +1322,25 @@ final class EntityMapping
         };
 
         return $copy;
+    }
+
+    /**
+     * A collection property is an array (typed array, iterable, mixed or untyped).
+     */
+    private function assertCollectionProperty(string $property): void
+    {
+        $declared = $this->reflectionOf($property)->getType();
+        if ($declared !== null) {
+            $name = $declared instanceof ReflectionNamedType ? $declared->getName() : null;
+            if (!in_array($name, ['array', 'iterable', 'mixed'], true)) {
+                throw new EntityMappingException(sprintf(
+                    'The collection "%s" of %s must be an array property (array, iterable or untyped), %s declared.',
+                    $property,
+                    $this->entityClass,
+                    (string) $declared
+                ));
+            }
+        }
     }
 
     /**
@@ -1277,13 +1408,14 @@ final class EntityMapping
     {
         $timezone = $this->defaultTimezone ?? 'UTC';
         $storage = $this->defaultBooleanStorage ?? BooleanStorage::Native;
+        [$true, $false] = $this->getBooleanValues();
         foreach ($this->columns as $property => $column) {
-            $this->columns[$property] = $column->withDefaults($timezone, $storage);
+            $this->columns[$property] = $column->withDefaults($timezone, $storage, $true, $false);
         }
         if ($this->softDelete !== null) {
             $this->softDelete = $this->softDelete->property !== ''
                 ? $this->columns[$this->softDelete->property]
-                : $this->softDelete->withDefaults($timezone, $storage);
+                : $this->softDelete->withDefaults($timezone, $storage, $true, $false);
         }
     }
 
@@ -1301,6 +1433,22 @@ final class EntityMapping
                 $owner,
                 $entityClass
             ));
+        }
+    }
+
+    /**
+     * The texts of a Char boolean: 1 to 16 letters or digits each (they are written into the SQL of a
+     * comparison as literals), different whatever the case (they are read whatever the case).
+     */
+    private static function assertBooleanTexts(string $trueValue, string $falseValue, string $owner): void
+    {
+        foreach ([$trueValue, $falseValue] as $text) {
+            if (preg_match(self::BOOLEAN_TEXT_PATTERN, $text) !== 1) {
+                throw new EntityMappingException(sprintf('The boolean text "%s" of %s must be 1 to 16 letters or digits.', $text, $owner));
+            }
+        }
+        if (strcasecmp($trueValue, $falseValue) === 0) {
+            throw new EntityMappingException(sprintf('The boolean texts of %s must differ whatever the case, "%s" and "%s" given.', $owner, $trueValue, $falseValue));
         }
     }
 

@@ -123,6 +123,16 @@ class Module22_PdoRepositoryTest extends TestCase
         // Semântica de nulo (1.11.0): memória = SQL = PdoRepository = TCriteria, árvore a árvore
         $this->testNullSemanticsParity($sqlite, 'sqlite');
 
+        // Operadores de texto (1.14.0): memória = SQL em cada collation da coluna
+        $this->testTextOperatorParity($sqlite, 'sqlite');
+
+        // 1.14.0: MariaDB usa o dialeto do MySQL; a paridade de texto roda nele também
+        $mariadb = $this->connectMariaDbFromEnvironment();
+        if ($mariadb !== null) {
+            $this->testTextOperatorParity($mariadb, 'mysql');
+            fwrite(STDOUT, "    [1.14.0] MariaDB " . $mariadb->getAttribute(PDO::ATTR_SERVER_VERSION) . ": paridade de texto OK\n");
+        }
+
         // RN-03
         foreach (['pgsql' => 'PostgreSQL', 'mysql' => 'MySQL'] as $family => $label) {
             $pdo = $this->connectFromEnvironment($family);
@@ -136,6 +146,7 @@ class Module22_PdoRepositoryTest extends TestCase
             $this->runPortableSuite($pdo, $family);
             $this->testQueryExposureFollowsSpecifiable($pdo, $family);
             $this->testNullSemanticsParity($pdo, $family);
+            $this->testTextOperatorParity($pdo, $family);
             fwrite(STDOUT, "    [RN-03] {$label} " . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION) . ": bateria e suíte portável OK\n");
         }
     }
@@ -920,6 +931,108 @@ class Module22_PdoRepositoryTest extends TestCase
         return new PDO($dsn, $user === false ? null : $user, $password === false ? null : $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     }
 
+    private function connectMariaDbFromEnvironment(): ?PDO
+    {
+        $dsn = getenv('ASPEC_PDO_MARIADB_DSN');
+        if ($dsn === false || $dsn === '' || !extension_loaded('pdo_mysql')) {
+            return null;
+        }
+        $user = getenv('ASPEC_PDO_MARIADB_USER');
+        $password = getenv('ASPEC_PDO_MARIADB_PASSWORD');
+
+        return new PDO($dsn, $user === false ? null : $user, $password === false ? null : $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    }
+
+    /**
+     * 1.14.0: each text operator selects in the database the same rows the in-memory evaluation
+     * accepts, on every column collation the family offers (MySQL/MariaDB: unicode_ci, the server
+     * default, utf8mb4_bin, latin1_swedish_ci, latin1_bin; PostgreSQL: default and "C"; SQLite:
+     * BINARY and NOCASE). Before, MySQL failed with error 3995 on case-sensitive regex, compared
+     * bytes in case-sensitive LIKE, and ignored the case flag on `_bin` columns.
+     */
+    private function testTextOperatorParity(PDO $pdo, string $family): void
+    {
+        $columns = match ($family) {
+            'mysql' => [
+                'ai' => 'VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+                'df' => 'VARCHAR(20) CHARACTER SET utf8mb4',
+                'bn' => 'VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin',
+                'l1' => 'VARCHAR(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci',
+                'lb' => 'VARCHAR(20) CHARACTER SET latin1 COLLATE latin1_bin',
+            ],
+            'pgsql' => ['df' => 'VARCHAR(20)', 'bn' => 'VARCHAR(20) COLLATE "C"'],
+            default => ['df' => 'TEXT', 'nc' => 'TEXT COLLATE NOCASE'],
+        };
+        $values = ['Café', 'café', 'CAFÉ', 'ca_é', 'cafe', 'Cafe', '50%', 'a_b', 'axb', 'a!b', 'Ab'];
+        $pdo->exec('DROP TABLE IF EXISTS aspec_text_parity');
+        $definition = implode(', ', array_map(fn(string $c, string $t): string => "{$c} {$t}", array_keys($columns), $columns));
+        $pdo->exec("CREATE TABLE aspec_text_parity (id INT PRIMARY KEY, {$definition})");
+        $insert = $pdo->prepare('INSERT INTO aspec_text_parity VALUES (?' . str_repeat(', ?', count($columns)) . ')');
+        foreach ($values as $i => $value) {
+            $insert->execute(array_merge([$i + 1], array_fill(0, count($columns), $value)));
+        }
+
+        $specs = [
+            "startsWith('Caf')" => Spec::startsWith('Caf'),
+            "startsWith('caf', ci)" => Spec::startsWith('caf', false),
+            "endsWith('É', ci)" => Spec::endsWith('É', false),
+            "contains('_')" => Spec::contains('_'),
+            "contains('%')" => Spec::contains('%'),
+            "contains('!')" => Spec::contains('!'),
+            "wildcard('caf?')" => Spec::wildcard('caf?'),
+            "wildcard('Ca*')" => Spec::wildcard('Ca*'),
+            "wildcardExpressionMatcherIgnoreCase('CAF?')" => Spec::wildcardExpressionMatcherIgnoreCase('CAF?'),
+            "equalIgnoreCase('CAFE')" => Spec::equalIgnoreCase('CAFE'),
+            "equalIgnoreCase('CAFÉ')" => Spec::equalIgnoreCase('CAFÉ'),
+            "equalIgnoreCase('A_B')" => Spec::equalIgnoreCase('A_B'),
+            "equalIgnoreCase('50%')" => Spec::equalIgnoreCase('50%'),
+            "regex('/^caf.$/u')" => Spec::regex('/^caf.$/u'),
+            "regex('/^caf.$/iu')" => Spec::regex('/^caf.$/iu'),
+            "regex('/^cafe$/i')" => Spec::regex('/^cafe$/i'),
+            "regex('/a_b|^Ca/')" => Spec::regex('/a_b|^Ca/'),
+            "not(startsWith('Caf'))" => Spec::not(Spec::startsWith('Caf')),
+            "not(equalIgnoreCase('CAFÉ'))" => Spec::not(Spec::equalIgnoreCase('CAFÉ')),
+        ];
+        $regexFamilies = ['mysql', 'pgsql'];
+        // Documented limit: SQLite and PostgreSQL's "C" collation fold the case of ASCII letters
+        // only, so a case-insensitive comparison with a non-ASCII letter follows the database.
+        $nonAsciiCaseInsensitive = ["endsWith('É', ci)", "equalIgnoreCase('CAFÉ')", "not(equalIgnoreCase('CAFÉ'))"];
+        $asciiFoldingColumns = match ($family) {
+            'sqlite' => array_keys($columns),
+            'pgsql' => ['bn'],
+            default => [],
+        };
+        $limited = [];
+        $mismatches = [];
+        foreach ($specs as $label => $spec) {
+            if (str_starts_with($label, 'regex') && !in_array($family, $regexFamilies, true)) {
+                continue;
+            }
+            $expected = [];
+            foreach ($values as $i => $value) {
+                if ($spec->isSatisfiedBy($value)) {
+                    $expected[] = $i + 1;
+                }
+            }
+            foreach (array_keys($columns) as $column) {
+                $clause = Spec::toSql(Spec::property($column, $spec), $family);
+                $statement = $pdo->prepare("SELECT id FROM aspec_text_parity WHERE {$clause->getSql()} ORDER BY id");
+                $statement->execute($clause->getParameters());
+                $actual = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
+                $line = "{$label} on {$column}: memory [" . implode(',', $expected) . '] SQL [' . implode(',', $actual) . ']';
+                if (in_array($label, $nonAsciiCaseInsensitive, true) && in_array($column, $asciiFoldingColumns, true)) {
+                    $limited[] = $actual !== $expected;
+                } elseif ($actual !== $expected) {
+                    $mismatches[] = $line;
+                }
+            }
+        }
+        $pdo->exec('DROP TABLE aspec_text_parity');
+        // Positive control of the documented limit: where it applies, it is observed on every case.
+        $this->assertEquals(array_fill(0, count($limited), true), $limited, "1.14.0: the ASCII-only case folding of {$family} is still the documented one");
+        $this->assertEquals([], $mismatches, "1.14.0: text operators follow the in-memory evaluation on every collation ({$family}):\n  " . implode("\n  ", $mismatches));
+    }
+
     /** Repositório de PdoArticle sobre a tabela limpa. */
     private function articleRepository(PDO $pdo): PdoRepository
     {
@@ -1069,8 +1182,8 @@ class Module22_PdoRepositoryTest extends TestCase
         $products = new PdoRepository($pdo, $mapping);
         $this->assertEquals(3, $products->count(Spec::alwaysTrue()));
 
-        // Prosa: o LIKE do SQLite ignora maiúsculas ASCII, a memória não
-        $this->assertEquals(1, $products->count(Spec::property('name', Spec::startsWith('mo'))));
+        // Prosa (1.14.0): operadores de texto seguem a memória também no SQLite (GLOB na forma sensível)
+        $this->assertEquals(0, $products->count(Spec::property('name', Spec::startsWith('mo'))));
         $this->assertFalse(Spec::property('name', Spec::startsWith('mo'))->isSatisfiedBy(new ReadmeProduct('Mouse', '1.00')));
         // Prosa: makePartition() é recusado
         $this->assertThrows(PartitioningNotSupportedException::class, fn() => $products->makePartition());

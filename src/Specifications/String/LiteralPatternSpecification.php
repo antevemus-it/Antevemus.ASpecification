@@ -17,7 +17,7 @@ namespace Antevemus\ASpecification\Specifications\String;
  *
  * @template T
  * @extends RegexSpecification<T>
- * @version    1.4.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,7 +34,10 @@ abstract class LiteralPatternSpecification extends RegexSpecification
         private readonly string $literal,
         private readonly bool $caseSensitive = true
     ) {
-        parent::__construct($this->buildPattern(preg_quote($literal, '/')) . ($caseSensitive ? '' : 'i'));
+        // 1.14.0: the case-insensitive form folds Unicode letters ('É' matches 'é'), like
+        // equalIgnoreCase() and the wildcard matcher; `i` alone folded ASCII only.
+        $modifiers = $caseSensitive ? '' : (mb_check_encoding($literal, 'UTF-8') ? 'iu' : 'i');
+        parent::__construct($this->buildPattern(preg_quote($literal, '/')) . $modifiers);
     }
 
     /**

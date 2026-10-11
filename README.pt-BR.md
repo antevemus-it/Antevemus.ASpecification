@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.13.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.13.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.14.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.14.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(8056%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(8277%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -54,7 +54,7 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
 - 🧭 **Casos de Uso (Módulo 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, validação do request em que só `ERROR` bloqueia), `UseCaseResult` com status de domínio fechado e HTTP só na borda (`toHttpStatus()`), nenhuma exceção ou stack trace no resultado, e `StateMachineEventUseCase` expondo um evento da máquina como caso de uso pelo `IOutcome` comum (exemplo 15).
 - ⚡ **Resolução Concorrente de Dados (Módulo 21)**: uma regra que depende de dado externo (score de bureau, checagem de fraude, saldo) o declara com `Spec::external()` em vez de chamar o serviço; um `DataResolver` junta as declarações da árvore inteira, busca os dados em concorrência por `curl_multi` (sem dependência, funciona no PHP-FPM) e então avalia a árvore de forma síncrona. Uma política de custo (`concurrent()`, `tiered()` com lógica de três valores, `sequential()`) pula as fontes pagas que já não mudam o veredito; os pedidos são deduplicados; uma busca que falha é erro de avaliação da folha; parâmetros não mudam o host nem o caminho da chamada (exemplo 16).
 - 🗄️ **Repositório Sobre PDO (Módulo 22)**: o `PdoRepository` implementa o `IRepository` sobre uma tabela: a consulta é uma especificação compilada para SQL parametrizado pelo visitor de SQL (qualquer dialeto), a escrita é um statement preparado numa transação, o `iterate()` lê o cursor em memória constante e o `count()` não monta entidade. Mapeamento por atributos (`#[Table]`, `#[Column]`, `#[Id]`, `#[Version]`) ou por builder; identificadores `auto`, `ulid`, `uuid7`, `assigned` e `max`; bloqueio otimista; especificação não traduzível é recusada em vez de filtrar a tabela em memória (`withInMemoryFallback()` é o opt-in explícito); só se consultam propriedades que uma especificação pode ler por nome. A porta de transação (`Persistence\ITransactionManager`) é compartilhada com os stores da máquina de estados (exemplo 17).
-- 🧱 **Continuações do Repositório Sobre PDO (Módulos 25 e 26)**: colunas de ciclo de vida (`#[CreatedAt]`, `#[UpdatedAt]`, `#[SoftDelete]` com `withTrashed()`/`onlyTrashed()`/`forceRemove()`), ganchos no repositório (`beforePut`, `afterPut`, `beforeRemove`, `afterRemove`), log de SQL sem os valores dos parâmetros por padrão (`IQueryLogger`), booleanos gravados como 1/0 e fusos padrão por mapeamento e por repositório; `insertAll()` com `INSERT` de várias linhas e `putAll()` com um `SELECT` de existência por lote; `updateWhere()`, projeções com `select()`, `aggregate()->groupBy()->sum()/avg()/min()/max()/count()` e subconsultas com `Spec::inQuery()`; relacionamentos `#[ManyToOne]`/`#[OneToMany]` carregados explicitamente em lote com `with()` (uma consulta por relação, nunca N+1), composições gravadas e removidas com o pai, e órfãos removidos só de coleções que foram carregadas (exemplos 17.1 a 17.3).
+- 🧱 **Continuações do Repositório Sobre PDO (Módulos 25 e 26)**: colunas de ciclo de vida (`#[CreatedAt]`, `#[UpdatedAt]`, `#[SoftDelete]` com `withTrashed()`/`onlyTrashed()`/`forceRemove()`), ganchos no repositório (`beforePut`, `afterPut`, `beforeRemove`, `afterRemove`), log de SQL sem os valores dos parâmetros por padrão (`IQueryLogger`), booleanos gravados como 1/0 e fusos padrão por mapeamento e por repositório; `insertAll()` com `INSERT` de várias linhas e `putAll()` com um `SELECT` de existência por lote; `updateWhere()`, projeções com `select()`, `aggregate()->groupBy()->sum()/avg()/min()/max()/count()` e subconsultas com `Spec::inQuery()`; relacionamentos `#[ManyToOne]`/`#[OneToMany]` carregados explicitamente em lote com `with()` (uma consulta por relação, nunca N+1), composições gravadas e removidas com o pai, e órfãos removidos só de coleções que foram carregadas; associações `#[ManyToMany]` por tabela de junção (só os vínculos são gravados), `markLoaded()` para agregados montados à mão, `iterate()` com relações em páginas que funcionam com consultas sem buffer do MySQL, e booleanos `CHAR(1)` `'Y'`/`'N'` lidos de forma estrita (exemplos 17.1 a 17.3).
 - 📡 **Eventos de Domínio a Partir de Especificações (Módulo 23)**: o `SpecificationTrigger` liga uma especificação a um evento de entrada e um de saída; o `TriggeringRepository` decora qualquer repositório e publica as travessias de cada escrita numa outbox (em memória ou PDO, DDL de referência `resources/sql/domain_events.ansi.sql`) gravada na mesma transação, entregue depois do commit pelo `DomainEventDispatcher` com chave de idempotência determinística e payload sem dado pessoal; o `MachineEventBridge` envia um evento à máquina de estados (exemplo 18).
 - ⏰ **Eventos de Domínio pela Passagem do Tempo (Módulo 24)**: o `SpecificationTrigger::timed()` monta a especificação a partir do "agora"; o `TriggerSweeper`, chamado por um cron, acha as entidades que cruzaram desde o último estado gravado (`ITriggerStateStore`, em memória ou PDO, tabela `domain_event_trigger_state`) e publica pela mesma outbox, uma transação e um compare-and-set por travessia; o `baseline()` introduz um gatilho sobre dados antigos sem uma enxurrada de eventos; o `TriggeringRepository` mantém o mesmo estado, então escrita e varredura nunca publicam a mesma travessia duas vezes (exemplo 18.1).
 
@@ -1249,13 +1249,13 @@ $products = new PdoRepository($pdo, $mapping);
 - **Escritas** rodam numa transação do `ITransactionManager` do repositório (por padrão um `PdoTransactionManager` na mesma conexão, que entra numa transação já aberta): `put()`/`update()` inserem ou atualizam pela presença do id e da linha, `putAll()` é tudo ou nada, `removeBy()` é um `DELETE ... WHERE`. Atualização ou remoção a partir de cópia desatualizada lança `OptimisticLockException` e não grava nada; uma cópia versionada cuja linha sumiu nunca é reinserida.
 - **Identificadores**: `auto` (identity, serial, auto-increment; no PostgreSQL `INSERT ... RETURNING`, ou `lastInsertId()` da sequência declarada), `ulid`, `uuid7`, `assigned` e `max` (`SELECT COALESCE(MAX(id), 0) + 1` dentro da transação da escrita, compatível com o `IDPOLICY = 'max'` do `TRecord` do Adianti). O `max` está sujeito a corrida entre escritores concorrentes: duas transações podem ler o mesmo máximo e a chave primária recusa o segundo `INSERT`. Prefira `auto`, `ulid` ou `uuid7` em tabelas novas.
 - **Valores nulos.** Uma coluna `NULL` é um valor nulo, e o banco responde para ela o que a avaliação em memória responde: `property('note', isNull())` casa com as linhas cuja `note` é `NULL`; uma comparação (`greaterThan()`, `startsWith()`, `equalTo('x')`, `in('a', 'b')`, ...) nunca casa com elas, e a sua negação `not(property('views', greaterThan(10)))` casa. Cada comparação é compilada como `(coluna IS NOT NULL AND ...)`, então é falsa ali, nunca o desconhecido do SQL, e um `NOT` sobre ela mantém a resposta da memória. Um `and`/`or`/`not` escrito *dentro* de uma propriedade recusa o valor nulo, como recusa qualquer candidato nulo: "sem nota, ou nota n2" é `anyOf(property('note', isNull()), property('note', equalTo('n2')))`, não `property('note', anyOf(isNull(), equalTo('n2')))`. O `Spec::toSql()` e o `Spec::toCriteria()` seguem a mesma regra (mudou na 1.11.0, ver o CHANGELOG).
-- **O banco compara texto do jeito dele.** O `LIKE` do SQLite ignora maiúsculas ASCII (`startsWith('mo')` casa com `Mouse` lá e não em memória), e as collations `_ci` padrão do MySQL ignoram maiúsculas e acentos em `=` e `LIKE`: declare as colunas de texto com collation binária (`utf8mb4_bin`) para ter a paridade sensível a maiúsculas. O SQLite dá afinidade numérica a uma coluna `DECIMAL` (`'59.90'` volta como `'59.9'`), por isso o exemplo a declara `TEXT`; comparações nessa coluna passam a ser textuais.
+- **Operadores de texto seguem a memória; a igualdade simples segue a coluna.** Desde a v1.14.0, `startsWith`/`endsWith`/`contains`, os curingas, `equalIgnoreCase` e `regex` selecionam no banco as linhas que a avaliação em memória aceita, em qualquer collation da coluna: no SQLite a forma sensível a maiúsculas usa `GLOB` (o `LIKE` dele ignora maiúsculas ASCII), e MySQL/MariaDB comparam por `utf8mb4_bin` e passam ao `REGEXP` a regra de maiúsculas como flag embutida; assim `startsWith('mo')` não casa com `Mouse` em lugar nenhum. Restam dois limites. A comparação sem distinção de maiúsculas de letras não ASCII (`É` e `é`) segue o banco onde ele só dobra ASCII (SQLite, colunas PostgreSQL com a collation `"C"`). O `=` simples (`equals`) é a comparação do próprio banco, então as collations `_ci` padrão do MySQL ignoram maiúsculas e acentos ali: declare a coluna com collation binária (`utf8mb4_bin`) para igualdade exata. Escreva a regex com o modificador `u` quando ela casar texto não ASCII (em memória, `.` sem `u` é um byte). O SQLite dá afinidade numérica a uma coluna `DECIMAL` (`'59.90'` volta como `'59.9'`), por isso o exemplo a declara `TEXT`; comparações nessa coluna passam a ser textuais.
 - **A porta de transação é compartilhada** (`Persistence\ITransactionManager`): o `PdoTransactionManager` da máquina de estados é uma delas, então uma instância dá a mesma transação ao repositório, à outbox de eventos de domínio (exemplo 18) e aos stores da máquina.
 - **Fora desta versão:** joins (relacionamentos carregam em lote por `IN`, exemplo 17.3), geração de DDL, cache de segundo nível, partições (`makePartition()` lança `PartitioningNotSupportedException`). Colunas de ciclo de vida, exclusão lógica, ganchos e o log de SQL estão no exemplo 17.1, operações em lote e sobre conjuntos no 17.2.
 
 ### 17.1. Ciclo de Vida: Carimbos de Tempo, Exclusão Lógica, Ganchos e o Log de SQL (Módulo 25)
 
-A contabilidade que uma aplicação costuma escrever à mão em volta de uma tabela, como opções do mapeamento e do repositório: carimbos de criação e de alteração, uma remoção que marca a linha em vez de apagá-la, callables em volta de cada escrita, o log de cada comando, booleanos gravados como inteiros e o fuso de colunas que guardam hora local sem deslocamento (as tabelas do Adianti, por exemplo). Sem elas nada muda.
+A contabilidade que uma aplicação costuma escrever à mão em volta de uma tabela, como opções do mapeamento e do repositório: carimbos de criação e de alteração, uma remoção que marca a linha em vez de apagá-la, callables em volta de cada escrita, o log de cada comando, booleanos gravados como inteiros ou como texto e o fuso de colunas que guardam hora local sem deslocamento (as tabelas do Adianti, por exemplo). Sem elas nada muda.
 
 ```php
 use Antevemus\ASpecification\Persistence\InMemoryQueryLogger;
@@ -1332,12 +1332,49 @@ $tickets->forceRemove($ticket);                   // DELETE: some de verdade
 $tickets->withTrashed()->count(Spec::alwaysTrue());   // 0
 ```
 
+Flags legados gravados como texto, como as colunas `CHAR(1)` `'Y'`/`'N'` das tabelas do Adianti, são lidos de forma estrita:
+
+```php
+use Antevemus\ASpecification\Repositories\Pdo\Exceptions\DataIntegrityException;
+
+#[Table('member')]
+class Member extends AbstractEntity
+{
+    public function __construct(
+        #[Id(strategy: IdStrategy::Assigned)] private int $id,
+        #[Column(booleanAs: BooleanStorage::Char)] public bool $active = true,   // 'Y' / 'N'
+        #[Column(booleanAs: BooleanStorage::Char, trueValue: 'S', falseValue: 'N')] public ?bool $admin = null,
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): int
+    {
+        return $this->id;
+    }
+}
+
+$pdo->exec('CREATE TABLE member (id INTEGER PRIMARY KEY, active CHAR(1) NOT NULL, admin CHAR(1))');
+$members = PdoRepository::forEntity($pdo, Member::class);
+$members->putAll([new Member(1), new Member(2, active: false, admin: true)]);
+$pdo->query('SELECT active, admin FROM member WHERE id = 2')->fetch(PDO::FETCH_NUM);   // ['N', 'S']
+$members->toWhereClause(Spec::property('active', Spec::isTrue()))->toSql();
+// ("active" IS NOT NULL AND "active" IN ('Y', 'y')): toda forma de caixa que a leitura aceita
+
+$pdo->exec("UPDATE member SET active = 'X' WHERE id = 1");   // um valor que o mapeamento não declara
+try {
+    $members->findById(1);
+} catch (DataIntegrityException $e) {
+    $e->getStoredValue();                         // 'X': erro de integridade, nunca lido como false
+}
+```
+
 - **Fusos.** Uma coluna temporal é gravada e lida no fuso que ela declara (`#[Column(timezone: ...)]`), senão no padrão do mapeamento (`#[Table(timezone: ...)]`, `EntityMapping::timezone()`), senão no padrão do repositório (`withTimezone()`), senão em UTC.
 - **Carimbos.** `#[CreatedAt]` é preenchido pelo `INSERT` quando a entidade não traz valor (um valor importado é mantido) e nunca é atualizado; `#[UpdatedAt]` é carimbado pelo `INSERT`, por todo `UPDATE` e pela remoção lógica. O instante vem do relógio do repositório (`withClock()`, lido uma vez por chamada) e é truncado ao segundo, então a entidade guarda exatamente o que qualquer coluna de data e hora guarda.
 - **Exclusão lógica.** `#[SoftDelete('deleted_at')]` na classe (só a coluna; acrescente `property:` para hidratá-la) ou numa propriedade de data anulável. `remove()` e `removeBy()` marcam só linhas vivas e incrementam o contador `#[Version]` como qualquer escrita; `withTrashed()` e `onlyTrashed()` devolvem visões (cópias do repositório); `forceRemove()` apaga. Uma linha marcada está removida para todo leitor: o `TriggeringRepository` publica a saída e o `TriggerSweeper` a vê sumir. `put()` de uma entidade cuja linha está marcada se comporta como depois de um `DELETE`: uma cópia versionada lança `OptimisticLockException`, uma sem versão é gravada de volta e volta a ser visível. O `toWhereClause()` não mostra a condição da exclusão lógica.
 - **Ganchos** pertencem ao repositório (a entidade continua um objeto simples) e rodam dentro da transação da escrita: uma exceção num gancho `before*` ou `after*` desfaz a escrita e se propaga. O `beforePut` roda antes de o identificador ser gerado e de os carimbos serem preenchidos. Com um gancho de remoção, o `removeBy()` carrega as entidades que casam e as remove uma a uma, então um gancho nunca é contornado; sem gancho continua um comando só.
 - **Log de SQL.** `IQueryLogger::log(string $sql, int $parameterCount, float $milliseconds, ?array $parameters)` recebe cada comando depois que ele rodou ou falhou; os valores só são passados com `withQueryLogger($logger, logParameters: true)`. Uma exceção lançada pelo logger é ignorada. O `InMemoryQueryLogger` guarda no máximo 10 000 entradas por padrão (`entries()`, `statements()`, `clear()`).
-- **Booleanos.** `BooleanStorage::Integer`, por coluna (`#[Column(booleanAs: ...)]`) ou como padrão do mapeamento, grava 1/0 em todo driver, PostgreSQL inclusive (os flags `SMALLINT` de esquemas legados), e uma especificação compila para `"urgent" = 1`; a leitura aceita as duas formas. `Native` continua o padrão.
+- **Booleanos.** `BooleanStorage::Integer`, por coluna (`#[Column(booleanAs: ...)]`) ou como padrão do mapeamento, grava 1/0 em todo driver, PostgreSQL inclusive (os flags `SMALLINT` de esquemas legados), e uma especificação compila para `"urgent" = 1`; a leitura aceita as duas formas. `BooleanStorage::Char` grava texto, `'Y'`/`'N'` a menos que `trueValue:`/`falseValue:` digam outro (na coluna, ou em `#[Table]`/`EntityMapping::booleanAs()` como padrão; de 1 a 16 letras ou dígitos, diferentes em qualquer caixa). Lê os dois textos em qualquer caixa (e sem os espaços com que uma coluna `CHAR` completa o valor) e `NULL` como `null`; qualquer outro valor gravado lança `DataIntegrityException` com a coluna e o valor. Uma comparação compila para toda forma de caixa do texto (`IN ('Y', 'y')`; `LOWER(col) = 'false'` para um texto de mais de duas letras), então o banco acha exatamente as linhas que a leitura aceita, e a semântica de nulos da 1.11.0 continua valendo. `Native` continua o padrão.
 - **`extract()` e `hydrate()`.** `EntityMapping::extract($entity)` dá a linha de uma entidade (coluna => valor da propriedade) e `hydrate($row)` monta uma entidade a partir de uma linha sem chamar o construtor, ambos sem banco: o `toArray()`/`fromArray()` de um active record.
 
 ### 17.2. Escrita em Lote e Operações Sobre Conjuntos (Módulo 25)
@@ -1395,7 +1432,7 @@ $sales->count(Spec::inQuery('productId', $products, Spec::property('active', Spe
 
 ### 17.3. Relacionamentos: Referências, Composições e Carga Ansiosa (Módulo 26)
 
-Relacionamentos são declarados na entidade e carregados **explicitamente**, nunca de forma preguiçosa e sem proxies. Uma referência (`#[ManyToOne]`) é uma agregação: nunca é gravada junto com a entidade. Uma coleção (`#[OneToMany]`) é só leitura, a não ser que `cascade: true` a torne uma composição, gravada e removida com o pai. Os repositórios das classes relacionadas são dados com `withRelated()`.
+Relacionamentos são declarados na entidade e carregados **explicitamente**, nunca de forma preguiçosa e sem proxies. Uma referência (`#[ManyToOne]`) é uma agregação: nunca é gravada junto com a entidade. Uma coleção (`#[OneToMany]`) é só leitura, a não ser que `cascade: true` a torne uma composição, gravada e removida com o pai. Uma associação (`#[ManyToMany]`) passa por uma tabela de junção: gravar o dono grava só os vínculos. Os repositórios das classes relacionadas são dados com `withRelated()`.
 
 ```php
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ManyToOne;
@@ -1519,14 +1556,97 @@ $orders->forceRemove($first);                     // uma remoção física apaga
 $lines->count(Spec::property('orderId', Spec::equalTo(1)));   // 0
 ```
 
-- **Carga ansiosa.** `with('lines', 'customer', 'lines.product')` devolve uma visão cujas leituras (`find*()`, `iterate*()`, `findSingle()`, `findPage()`, `findById()`) carregam essas relações para cada lote de `withBatchSize()` entidades com um `SELECT ... WHERE fk IN (...)` por relação (mais só além do limite de parâmetros do driver), no escopo de leitura do repositório relacionado (as linhas dele removidas logicamente não são carregadas). Um caminho com pontos vai tão fundo quanto as relações vão, uma consulta a mais por segmento e lote. Com 1 000 pedidos de 10 itens cada: 2 consultas para `with('items')` e 4 para `with('items.product', 'customer')`, contra 1 001 de um laço por pedido, no SQLite, no PostgreSQL e no MySQL.
+Uma associação nunca é composição: os alvos vivem por conta própria, e uma coleção carregada só acrescenta e tira vínculos:
+
+```php
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\ManyToMany;
+
+#[Table('tag')]
+class Tag extends AbstractEntity
+{
+    public function __construct(
+        #[Id(strategy: IdStrategy::Assigned)] private int $id,
+        #[Column] public string $name,
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): int
+    {
+        return $this->id;
+    }
+}
+
+#[Table('article')]
+class Article extends AbstractEntity
+{
+    #[Id(strategy: IdStrategy::Auto)]
+    private ?int $id = null;
+
+    /** @var list<Tag> */
+    #[ManyToMany(Tag::class, 'article_tag', joinColumn: 'article_id', inverseJoinColumn: 'tag_id')]
+    public array $tags = [];                          // associação: só os vínculos são gravados
+
+    public function __construct(#[Column] public string $title)
+    {
+        parent::__construct();
+    }
+
+    public function getEntityId(): ?int
+    {
+        return $this->id;
+    }
+}
+
+$pdo->exec('CREATE TABLE tag (id INTEGER PRIMARY KEY, name VARCHAR(30) NOT NULL)');
+$pdo->exec('CREATE TABLE article (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(80) NOT NULL)');
+$pdo->exec('CREATE TABLE article_tag (article_id INTEGER NOT NULL REFERENCES article (id),
+    tag_id INTEGER NOT NULL REFERENCES tag (id), PRIMARY KEY (article_id, tag_id))');
+
+$tags = PdoRepository::forEntity($pdo, Tag::class);
+$articles = PdoRepository::forEntity($pdo, Article::class)->withRelated($tags);
+[$php, $sql, $orm] = [new Tag(1, 'php'), new Tag(2, 'sql'), new Tag(3, 'orm')];
+$tags->putAll([$php, $sql, $orm]);                // os alvos são gravados pelo repositório deles
+
+$article = new Article('Specifications over PDO');
+$article->tags = [$php, $sql];
+$articles->put($article);                         // o artigo, depois duas linhas de article_tag
+
+$log->clear();
+$tags->withQueryLogger($log);
+$articles->withQueryLogger($log);
+$loaded = $articles->with('tags')->findById(1);
+count($log->statements());                        // 3: o artigo, os vínculos, as etiquetas
+$loaded->tags = [$sql, $orm];
+$articles->put($loaded);                          // desvincula php, vincula orm: nenhuma etiqueta é gravada
+$articles->count($articles->whereRelation('tags', Spec::property('name', Spec::equalTo('orm'))));   // 1
+```
+
+Uma coleção montada à mão pode ser declarada carregada, e `iterate()` carrega relações página a página:
+
+```php
+$edited = $articles->findById(1);                 // sem with(): etiquetas não carregadas, put() não as tocaria
+$edited->tags = [$php];
+$articles->markLoaded($edited, 'tags');           // PERIGO: declarada INTEIRA, o que faltar é removido
+$articles->put($edited);                          // vincula php, desvincula sql e orm
+count($articles->with('tags')->findById(1)->tags);   // 1
+
+$view = $articles->with('tags')->withBatchSize(500);
+foreach ($view->iterate(Spec::alwaysTrue()) as $one) {
+    $one->tags[0]->name;                          // 'php': páginas de 500 por id, cada uma lida antes das etiquetas dela
+}
+```
+
+- **Carga ansiosa.** `with('lines', 'customer', 'lines.product')` devolve uma visão cujas leituras (`find*()`, `iterate*()`, `findSingle()`, `findPage()`, `findById()`) carregam essas relações para cada lote de `withBatchSize()` entidades com um `SELECT ... WHERE fk IN (...)` por relação (dois numa associação: a tabela de junção, depois os alvos; mais só além do limite de parâmetros do driver), no escopo de leitura do repositório relacionado (as linhas dele removidas logicamente não são carregadas). Um caminho com pontos vai tão fundo quanto as relações vão, uma consulta a mais por segmento e lote. Com 1 000 pedidos de 10 itens cada: 2 consultas para `with('items')` e 4 para `with('items.product', 'customer')`, contra 1 001 de um laço por pedido, no SQLite, no PostgreSQL e no MySQL.
 - **Não carregado não é vazio.** Uma relação não carregada mantém o seu padrão (`[]`, `null`) e o repositório sabe disso (`isLoaded()`; o estado fica fora da entidade). O `put()` de um pai cuja coleção não foi carregada não remove filho nenhum, e uma referência não carregada nunca limpa a chave estrangeira: só uma referência carregada não nula e depois posta em `null` a limpa.
 - **Referências** nunca vão em cascata: o `put()` grava o identificador do objeto referenciado na propriedade da chave estrangeira e recusa objeto sem identificador.
 - **Composições.** `put()`, `putAll()` e `insertAll()` gravam os filhos depois do pai, na transação dele (mesma conexão obrigatória), preenchendo a chave estrangeira (e a referência de volta do filho quando o `mappedBy` nomeia uma). Órfãos só são removidos quando a coleção foi carregada (ou o pai acabou de ser inserido), e só os filhos carregados com ela que ainda pertencem a ele, cada um com a versão conferida: um filho acrescentado por outro nesse meio-tempo nunca é removido. Mover um filho entre dois pais carregados é seguro dentro de um `putAll()`.
 - **Remover um pai** remove antes os filhos. Um pai com `#[SoftDelete]` marca os filhos que têm `#[SoftDelete]` e mantém os outros (a linha dele fica, então, se o pai for revivido, eles continuam lá); uma remoção física (`forceRemove()`, ou um pai sem exclusão lógica) apaga todas as linhas dos filhos, marcadas ou não, já que nenhuma linha filha pode sobreviver à do pai.
 - **Eventos de domínio.** Registre um `TriggeringRepository` com `withRelated()` e as cascatas e os órfãos passam por ele, publicando as entradas e saídas dos filhos (ele lê pelo seu `PdoRepository`); um `PdoRepository` sem decorador não publica nada e um `TriggerSweeper` percebe. Um `TriggeringRepository` sobre o pai lê o "antes" sem relações: os gatilhos dele devem ler colunas.
 - **`whereRelation('customer', $spec)`** é `customer_id IN (SELECT id FROM customer WHERE ...)` e **`whereRelation('lines', $spec)`** é `id IN (SELECT order_id FROM order_line WHERE ...)`, com o escopo de leitura do repositório relacionado; a propriedade da chave estrangeira precisa ser legível por uma especificação. Uma propriedade de relação não é coluna: uma especificação não a lê.
-- **Fora desta versão:** `#[ManyToMany]` (mapeie a entidade de associação com duas referências), uma forma pública de declarar como carregada a coleção de um agregado montado à mão, e `iterate()` com relações sobre consultas sem buffer do MySQL (as consultas das relações rodam com o cursor dele aberto: use `find()`, ou dê às relações repositórios com conexão própria).
+- **Associações.** `#[ManyToMany(Tag::class, 'article_tag', joinColumn: 'article_id', inverseJoinColumn: 'tag_id')]` (ou `EntityMapping::manyToMany()`); os nomes da tabela e das colunas vêm só do mapeamento, validados como identificadores, e o repositório do alvo tem de usar a mesma conexão. `put()`, `putAll()` e `insertAll()` de um dono cuja coleção foi carregada (ou que acabou de ser inserido) leem os vínculos gravados dele uma vez por lote, inserem os novos (várias linhas por comando) e apagam os dos alvos que saíram da coleção (só alvos carregados com ela), sem nunca gravar nem apagar um alvo; um alvo sem identificador é recusado. Uma coleção **não** carregada nunca toca a tabela de junção, mesmo trazendo alvos. Um alvo removido logicamente fica fora da coleção carregada e o vínculo dele permanece. A remoção física do dono apaga antes os vínculos dele; a remoção lógica os mantém. `whereRelation('tags', $spec)` é `id IN (SELECT article_id FROM article_tag WHERE tag_id IN (SELECT id FROM tag WHERE ...))`. Com 1 000 donos de 5 alvos cada, `with('tags')` são 3 consultas no SQLite, no PostgreSQL e no MySQL.
+- **`markLoaded($entity, 'lines', 'tags')`** declara coleções montadas à mão (de um formulário, de um cache) como carregadas e **inteiras**: o próximo `put()` remove os órfãos (composição `#[OneToMany]`) ou os vínculos (`#[ManyToMany]`, fora os alvos removidos logicamente) que faltam na coleção, relativos ao que ela traz nesse `put()`. **Declarar uma coleção incompleta apaga o que falta nela**, inclusive um filho ou vínculo que outro acrescentou: uma coleção carregada por `with()` nunca remove esses. Depois da gravação a coleção fica carregada como de costume. `markUnloaded()` faz uma coleção voltar a não dizer nada.
+- **`iterate()` com relações** pagina por chave, `WHERE ... AND id > :last ORDER BY id LIMIT lote`: cada página é lida inteira e o cursor dela fechado antes de as relações dela carregarem, então funciona com consultas sem buffer do MySQL (`PDO::MYSQL_ATTR_USE_BUFFERED_QUERY = false`) e guarda uma página de entidades por vez (10 000 linhas com `with('tags')` em páginas de 500: cerca de 1 MB no pico, contra 20 MB do `find()`, no SQLite). `find*()` e `findPage()` terminam a leitura antes de carregar. Sem relações, `iterate()` lê um cursor só, como antes.
 
 ### 18. Eventos de Domínio a Partir de Especificações (Módulo 23)
 
@@ -1785,6 +1905,7 @@ src/
 │   ├── File/                 # SingleFileRepository, FilePerEntityRepository
 │   ├── Pdo/                  # PdoRepository; Mapping/ (Table, Column, Id, Version, EntityMapping, IdStrategy, ColumnType) (Módulo 22, v1.11.0)
 │   │                         # v1.13.0: PdoAggregateQuery, InQuerySpecification; Mapping/ CreatedAt, UpdatedAt, SoftDelete, BooleanStorage, ManyToOne, OneToMany, RelationMapping (Módulos 25 e 26)
+│   │                         # v1.14.0: JoinTableHop; Mapping/ ManyToMany; Exceptions/ DataIntegrityException (Módulos 25 e 26)
 │   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
 ├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
@@ -1843,7 +1964,7 @@ A biblioteca possui ampla cobertura de testes unitários e de integração, gara
 php tests/run_all.php
 ```
 
-Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 22 também imprime o seu benchmark (10 000 linhas no SQLite) e, sem as variáveis `ASPEC_PDO_*`, que as rodadas em PostgreSQL e MySQL foram puladas, o Módulo 24 as suas varreduras sobre 1 000 e 10 000 linhas, o Módulo 25 as suas medições de lote, de `updateWhere()` e a paridade de nulos e subconsultas e o Módulo 26 o benchmark de carga ansiosa (1 000 pais × 10 filhos); essas linhas foram omitidas aqui:
+Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 22 também imprime o seu benchmark (10 000 linhas no SQLite) e, sem as variáveis `ASPEC_PDO_*`, que as rodadas em PostgreSQL e MySQL foram puladas, o Módulo 24 as suas varreduras sobre 1 000 e 10 000 linhas, o Módulo 25 as suas medições de lote, de `updateWhere()` e as paridades de nulos com subconsultas e com `Char` e o Módulo 26 os benchmarks de carga ansiosa (1 000 pais × 10 filhos, 1 000 donos × 5 alvos) e o pico de memória de `iterate()` com relações em 2 000 e 10 000 linhas; essas linhas foram omitidas aqui:
 
 ```text
 ====================================================================
@@ -1861,8 +1982,8 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 
 • [SUITE] Módulo 9: Facade Spec, Chaining Fluente & DSL... ✅ PASS (204 asserções)
 • [SUITE] Módulo 10: Paridade Java, Telemetria & Remainder... ✅ PASS (65 asserções)
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (409 asserções)
-• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (513 asserções)
-• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (207 asserções)
+• [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (516 asserções)
+• [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (209 asserções)
 • [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (270 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (221 asserções)
 • [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (550 asserções)
@@ -1871,19 +1992,19 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 
 • [SUITE] Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)... ✅ PASS (408 asserções)
 • [SUITE] Módulo 20: Simplificação de Especificações (simplify)... ✅ PASS (116 asserções)
 • [SUITE] Módulo 21: Resolução Concorrente de Dados (DataResolver)... ✅ PASS (864 asserções)
-• [SUITE] Módulo 22: Repositório sobre PDO (PdoRepository)... ✅ PASS (569 asserções)
+• [SUITE] Módulo 22: Repositório sobre PDO (PdoRepository)... ✅ PASS (571 asserções)
 • [SUITE] Módulo 23: Eventos de Domínio por Especificação... ✅ PASS (331 asserções)
 • [SUITE] Módulo 24: Eventos de Domínio pela Passagem do Tempo... ✅ PASS (310 asserções)
-• [SUITE] Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)... ✅ PASS (535 asserções)
-• [SUITE] Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, carga ansiosa, composição)... ✅ PASS (214 asserções)
+• [SUITE] Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)... ✅ PASS (608 asserções)
+• [SUITE] Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, ManyToMany, carga ansiosa, composição)... ✅ PASS (355 asserções)
 
 ====================================================================
  RESULTADO FINAL: 26/26 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 8056 | TEMPO: ~18s | REGRESSÕES: 0
+ TOTAL DE ASSERÇÕES: 8277 | TEMPO: ~21s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 247 testes e 10.195 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 247 testes e 10.416 asserções no total). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
@@ -1927,7 +2048,8 @@ Principais destaques:
 20. **Sintetizador de Especificações Assistido por IA**
 21. **Repositório sobre PDO** (o `HibernateRepository` do Domian) (entregue na v1.11.0)
 21b. **Continuações do `PdoRepository`** (colunas de ciclo de vida e exclusão lógica, ganchos, log de SQL, inserção em lote, atualização em lote por especificação, projeções e agregações, subconsultas, relacionamentos `ManyToOne`/`OneToMany` com carga ansiosa em lote) (entregue na v1.13.0)
-21c. **Continuações do `PdoRepository` II** (`ManyToMany`, declarar como carregada uma coleção montada à mão, `iterate()` com relações sobre MySQL sem buffer, booleanos `CHAR(1)`)
+21c. **Continuações do `PdoRepository` II** (`ManyToMany`, declarar como carregada uma coleção montada à mão, `iterate()` com relações sobre MySQL sem buffer, booleanos `CHAR(1)`) (entregue na v1.14.0)
+22. **Comparação de Texto Sem Acento** (opção explícita que ignora maiúsculas e acentos, com a mesma resposta em memória e no SQL)
 
 ---
 

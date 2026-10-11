@@ -21,7 +21,7 @@ use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
  * - Glob translation `*` -> `%`, `?` -> `_` applied after the literal characters are escaped
  *
  * @internal Implementation detail of the translators; not part of the public API.
- * @version    1.4.1
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -61,6 +61,20 @@ final class LikePattern
     }
 
     /**
+     * Pattern for an exact text (no wildcard): `%`, `_` and the escape character are escaped, so
+     * a case-insensitive equality translated to LIKE matches the text itself and nothing else (1.14.0).
+     *
+     * @param string $text
+     * @return self
+     */
+    public static function exact(string $text): self
+    {
+        $escaped = self::needsEscape($text);
+
+        return new self($escaped ? self::escape($text) : $text, $escaped);
+    }
+
+    /**
      * Pattern for a glob where `*` means any sequence and `?` any single character; every other
      * character, including `%` and `_`, is literal (fnmatch semantics of WildcardSpecification).
      *
@@ -73,6 +87,38 @@ final class LikePattern
         $text = $escaped ? self::escape($glob) : $glob;
 
         return new self(str_replace(['*', '?'], ['%', '_'], $text), $escaped);
+    }
+
+    /**
+     * The same pattern in SQLite GLOB syntax (1.14.0), used for the case-sensitive form on SQLite,
+     * whose LIKE ignores the case of ASCII letters: `%` becomes `*`, `_` becomes `?`, an escaped
+     * character and a literal `*`, `?` or `[` are written as a one-character class.
+     *
+     * @return string
+     */
+    public function toGlob(): string
+    {
+        $glob = '';
+        $characters = mb_str_split($this->pattern, 1, 'UTF-8');
+        for ($i = 0, $n = count($characters); $i < $n; $i++) {
+            $character = $characters[$i];
+            if ($this->escaped && $character === self::ESCAPE && $i + 1 < $n) {
+                $glob .= self::globLiteral($characters[++$i]);
+            } elseif ($character === '%') {
+                $glob .= '*';
+            } elseif ($character === '_') {
+                $glob .= '?';
+            } else {
+                $glob .= self::globLiteral($character);
+            }
+        }
+
+        return $glob;
+    }
+
+    private static function globLiteral(string $character): string
+    {
+        return in_array($character, ['*', '?', '['], true) ? "[{$character}]" : $character;
     }
 
     /**

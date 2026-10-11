@@ -61,7 +61,7 @@ $suites = [
     'Módulo 23: Eventos de Domínio por Especificação' => new Module23_DomainEventTriggersTest(),
     'Módulo 24: Eventos de Domínio pela Passagem do Tempo' => new Module24_TimeBasedDomainEventsTest(),
     'Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)' => new Module25_PdoRepositoryComplementsTest(),
-    'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, carga ansiosa, composição)' => new Module26_PdoRelationshipsTest(),
+    'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, ManyToMany, carga ansiosa, composição)' => new Module26_PdoRelationshipsTest(),
 ];
 
 $startTime = microtime(true);

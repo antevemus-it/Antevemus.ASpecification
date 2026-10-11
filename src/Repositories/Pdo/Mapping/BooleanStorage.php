@@ -12,12 +12,22 @@ namespace Antevemus\ASpecification\Repositories\Pdo\Mapping;
  *   the boolean type (the Adianti tables in PostgreSQL); written values, bound specification values
  *   and the boolean literals a specification compiles to (`col = 1`) all follow it
  *
- * Reading accepts both forms whatever the storage (true/false, t/f, 1/0, yes/no, on/off). Chosen per
- * column (`#[Column(booleanAs: BooleanStorage::Integer)]`, `EntityMapping::column(..., booleanAs:)`)
- * or as the default of a mapping (`#[Table('t', booleanAs: ...)]`, `EntityMapping::booleanAs()`);
- * the column wins over the mapping (forward 031, D2).
+ * - Char (since 1.14.0, forward 032, D4): text values on every driver, 'Y'/'N' unless the column or
+ *   the mapping declares others (`#[Column(booleanAs: BooleanStorage::Char, trueValue: 'S',
+ *   falseValue: 'N')]`), for the CHAR(1) flags of legacy schemas (the Adianti `active`, `checked`,
+ *   `removed`). Writes store the declared value; reads accept the declared values in any case (and
+ *   the trailing spaces a CHAR column pads with) and NULL as null, and refuse ANY other stored value
+ *   with a DataIntegrityException naming the column and the value, never a silent false; a
+ *   specification compiles a boolean comparison to `col IN ('Y', 'y')` (every case form of the
+ *   declared value, so the database finds exactly what a read accepts; `LOWER(col) = 'false'` for a
+ *   text of more than two letters)
  *
- * @version    1.13.0
+ * Native and Integer columns read both forms whatever the storage (true/false, t/f, 1/0, yes/no,
+ * on/off). Chosen per column (`#[Column(booleanAs: BooleanStorage::Integer)]`,
+ * `EntityMapping::column(..., booleanAs:)`) or as the default of a mapping (`#[Table('t', booleanAs:
+ * ...)]`, `EntityMapping::booleanAs()`); the column wins over the mapping (forward 031, D2).
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -28,4 +38,5 @@ enum BooleanStorage: string
 {
     case Native = 'native';
     case Integer = 'integer';
+    case Char = 'char';
 }

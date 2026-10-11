@@ -74,7 +74,7 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   greaterThan(18)))` was `(age <= 18)` and left out a row whose age was NULL
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.11.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -503,7 +503,8 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Translate case-insensitive equality via LIKE with case-insensitive flag enabled.
+     * Translate case-insensitive equality via LIKE with case-insensitive flag enabled; `%` and `_` in
+     * the value are escaped (1.14.0), so they match themselves only.
      *
      * @param string $col
      * @param mixed $value
@@ -511,11 +512,12 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateEqualIgnoreCase(string $col, mixed $value): TFilter
     {
-        return $this->likeFilter($col, 'LIKE', $value, true);
+        return $this->likeFilter($col, 'LIKE', LikePattern::exact((string) $value), true);
     }
 
     /**
-     * Translate case-insensitive inequality via NOT LIKE with case-insensitive flag enabled.
+     * Translate case-insensitive inequality via NOT LIKE with case-insensitive flag enabled; `%` and
+     * `_` in the value are escaped (1.14.0).
      *
      * @param string $col
      * @param mixed $value
@@ -523,7 +525,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function translateNotEqualIgnoreCase(string $col, mixed $value): TFilter
     {
-        return $this->likeFilter($col, 'NOT LIKE', $value, true);
+        return $this->likeFilter($col, 'NOT LIKE', LikePattern::exact((string) $value), true);
     }
 
     /**

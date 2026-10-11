@@ -18,7 +18,10 @@ use Attribute;
  * none (D3; for tables holding local time without offset, as the Adianti ones), `booleanAs:` the
  * default storage of the Boolean columns that declare none (D2).
  *
- * @version    1.13.0
+ * Since 1.14.0 (forward 032, D4): with `booleanAs: BooleanStorage::Char`, `trueValue:`/`falseValue:`
+ * are the default texts of the Char booleans ('Y'/'N' unless given).
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -32,11 +35,15 @@ final class Table
      * @param string $name Table name, optionally `schema.table`
      * @param string|null $timezone Default time zone of the temporal columns (since 1.13.0)
      * @param BooleanStorage|null $booleanAs Default storage of the Boolean columns (since 1.13.0)
+     * @param string|null $trueValue Default text of true of the Char booleans (since 1.14.0)
+     * @param string|null $falseValue Default text of false of the Char booleans (since 1.14.0)
      */
     public function __construct(
         public readonly string $name,
         public readonly ?string $timezone = null,
-        public readonly ?BooleanStorage $booleanAs = null
+        public readonly ?BooleanStorage $booleanAs = null,
+        public readonly ?string $trueValue = null,
+        public readonly ?string $falseValue = null
     ) {
     }
 }

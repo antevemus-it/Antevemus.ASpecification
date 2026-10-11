@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories\Pdo;
 
+use Antevemus\ASpecification\Repositories\Pdo\Exceptions\DataIntegrityException;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnMapping;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
@@ -33,8 +34,12 @@ use UnitEnum;
  * toProperty() (since 1.13.0) is the lenient read behind EntityMapping::hydrate(): a value already of
  * the property's PHP type is kept, any other is converted like a fetched value.
  *
+ * A Boolean column stored as BooleanStorage::Char (since 1.14.0, forward 032, D4) is written as its
+ * declared text and read STRICTLY: its true or false text in any case (trailing spaces of a CHAR
+ * column ignored), NULL as null, and any other value is a DataIntegrityException, never a false.
+ *
  * @internal Used by PdoRepository and EntityMapping; not part of the public API.
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -116,7 +121,7 @@ final class PdoValueConverter
                 ColumnType::String, ColumnType::Decimal => is_float($raw) ? $this->floatText($raw) : (string) $raw,
                 ColumnType::Integer => (int) $raw,
                 ColumnType::Float => (float) $raw,
-                ColumnType::Boolean => $this->readBoolean($raw),
+                ColumnType::Boolean => $column->booleanStorage === BooleanStorage::Char ? $this->readCharBoolean($column, $raw) : $this->readBoolean($raw),
                 ColumnType::Date => $this->readDate($column, (string) $raw, true),
                 ColumnType::DateTime => $this->readDate($column, (string) $raw, false),
                 ColumnType::Json => json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR),
@@ -258,11 +263,44 @@ final class PdoValueConverter
         throw $this->mismatch($column, $value);
     }
 
-    private function toBoolean(ColumnMapping $column, mixed $value): bool|int
+    private function toBoolean(ColumnMapping $column, mixed $value): bool|int|string
     {
+        if ($column->booleanStorage === BooleanStorage::Char) {
+            if (!is_bool($value)) {
+                $value = (is_string($value) || is_int($value)) ? $this->readCharBoolean($column, $value) : throw $this->mismatch($column, $value);
+            }
+
+            return $value ? $column->trueValue : $column->falseValue;
+        }
         $bool = is_bool($value) ? $value : $this->readBoolean($value);
 
         return ($this->family === 'pgsql' && $column->booleanStorage === BooleanStorage::Native) ? $bool : ($bool ? 1 : 0);
+    }
+
+    /**
+     * Strict read of a Char boolean (since 1.14.0): the declared texts whatever the case, without the
+     * trailing spaces a CHAR column pads with; anything else is an integrity error.
+     *
+     * @throws DataIntegrityException When the value is neither text
+     */
+    private function readCharBoolean(ColumnMapping $column, mixed $raw): bool
+    {
+        if (is_string($raw) || is_int($raw)) {
+            $text = rtrim((string) $raw, ' ');
+            if (strcasecmp($text, $column->trueValue) === 0) {
+                return true;
+            }
+            if (strcasecmp($text, $column->falseValue) === 0) {
+                return false;
+            }
+        }
+
+        throw new DataIntegrityException(
+            $column->column,
+            $column->property,
+            $raw,
+            sprintf("'%s' (true), '%s' (false) or NULL", $column->trueValue, $column->falseValue)
+        );
     }
 
     private function readBoolean(mixed $raw): bool

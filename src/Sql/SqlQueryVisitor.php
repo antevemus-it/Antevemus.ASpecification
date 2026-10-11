@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Sql;
 
+use Antevemus\ASpecification\Sql\Dialects\SqliteDialect;
 use Closure;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
@@ -73,9 +74,13 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - An extension point for leaves known only to a subclass, translateExtensionLeaf() (1.13.0): the
  *   PdoRepository compiler uses it for the subquery leaf of Spec::inQuery(); here such a leaf is refused
  *   with NonTranslatableSpecificationException
+ * - A second extension point, formatBooleanComparison() (1.14.0): a subclass bound to a mapping may
+ *   answer a boolean comparison with a whole condition instead of `col = <literal>` (the PdoRepository
+ *   compiler emits `col IN ('Y', 'y')` for a boolean stored as text); here it answers null and the
+ *   dialect's literal is used, as before
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -245,6 +250,22 @@ class SqlQueryVisitor implements ISpecificationVisitor
     protected function formatBooleanLiteral(bool $value): string
     {
         return $this->dialect->formatBoolean($value);
+    }
+
+    /**
+     * The condition "the current column holds $value" for a boolean compared with it (equality,
+     * inequality, set membership), or null to use `col = <formatBooleanLiteral()>` (the default). A
+     * subclass bound to a mapping answers for the columns whose stored form is not a literal (the
+     * PdoRepository compiler: `col IN ('Y', 'y')` for BooleanStorage::Char; since 1.14.0). The condition
+     * is guarded against NULL like any comparison.
+     *
+     * @param string $column Escaped column
+     * @param bool $value
+     * @return string|null
+     */
+    protected function formatBooleanComparison(string $column, bool $value): ?string
+    {
+        return null;
     }
 
     /**
@@ -482,6 +503,10 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return new SqlWhereClause("{$col} IS NULL");
         }
         if (is_bool($val)) {
+            $condition = $this->formatBooleanComparison($col, $val);
+            if ($condition !== null) {
+                return new SqlWhereClause($condition);
+            }
             $formattedBool = $this->formatBooleanLiteral($val);
             return new SqlWhereClause("{$col} = {$formattedBool}");
         }
@@ -511,12 +536,18 @@ class SqlQueryVisitor implements ISpecificationVisitor
         $hasNull = false;
         $items = [];
         $bindings = [];
+        $conditions = [];
         foreach ($values as $value) {
             if ($value === null) {
                 $hasNull = true;
                 continue;
             }
             if (is_bool($value)) {
+                $condition = $this->formatBooleanComparison($col, $value);
+                if ($condition !== null) {
+                    $conditions[$condition] = true;
+                    continue;
+                }
                 $items[] = $this->formatBooleanLiteral($value);
                 continue;
             }
@@ -526,11 +557,14 @@ class SqlQueryVisitor implements ISpecificationVisitor
         }
 
         $isNull = new SqlWhereClause("{$col} IS NULL");
-        if ($items === []) {
+        if ($items === [] && $conditions === []) {
             return $isNull;
         }
 
-        $in = new SqlWhereClause("{$col} IN (" . implode(', ', $items) . ")", $bindings);
+        $in = $items === [] ? SqlWhereClause::empty() : new SqlWhereClause("{$col} IN (" . implode(', ', $items) . ")", $bindings);
+        foreach (array_keys($conditions) as $condition) {
+            $in = $in->or(new SqlWhereClause($condition));
+        }
 
         return $hasNull ? $in->or($isNull) : $in;
     }
@@ -549,6 +583,10 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return new SqlWhereClause("{$col} IS NOT NULL");
         }
         if (is_bool($val)) {
+            $condition = $this->formatBooleanComparison($col, !$val);
+            if ($condition !== null) {
+                return new SqlWhereClause($condition);
+            }
             $opposite = $this->formatBooleanLiteral(!$val);
             return new SqlWhereClause("{$col} = {$opposite}");
         }
@@ -586,7 +624,8 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Translate case-insensitive string equality via LIKE.
+     * Translate case-insensitive string equality via LIKE over the escaped text (1.14.0: `%` and `_`
+     * in the value are literal; before, `a_b` also matched `axb`).
      *
      * @param string $col
      * @param mixed $value
@@ -594,9 +633,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     private function translateEqualIgnoreCase(string $col, mixed $value): SqlWhereClause
     {
-        $param = $this->createParameter($value);
-        $sql = $this->dialect->formatLike($col, $param['name'], false);
-        return new SqlWhereClause($sql, $param['binding']);
+        return $this->likeClause($col, LikePattern::exact((string) $value), false);
     }
 
     /**
@@ -625,6 +662,13 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     private function likeClause(string $col, LikePattern $pattern, bool $caseSensitive): SqlWhereClause
     {
+        if ($caseSensitive && $this->dialect instanceof SqliteDialect) {
+            // 1.14.0: SQLite's LIKE ignores the case of ASCII letters; GLOB compares exactly.
+            $param = $this->createParameter($pattern->toGlob());
+
+            return new SqlWhereClause("{$col} GLOB {$param['name']}", $param['binding']);
+        }
+
         $param = $this->createParameter($pattern->pattern);
         $sql = $this->dialect->formatLike($col, $param['name'], $caseSensitive) . $pattern->escapeClause();
 

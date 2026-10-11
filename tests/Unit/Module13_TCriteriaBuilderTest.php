@@ -424,6 +424,10 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $c1->dump());
         $this->assertEquals("(UPPER(sigla) LIKE UPPER(:p))", preg_replace('/:par_\d+/', ':p', $c1->dump(true)));
 
+        // 1.14.0: % e _ no valor são texto (antes 'a_b' também casava 'axb')
+        $this->assertEquals("(UPPER(code) LIKE UPPER('a!_b') ESCAPE '!')", Spec::toCriteria(Spec::property('code', Spec::equalIgnoreCase('a_b')))->dump());
+        $this->assertEquals("(code IS NULL OR UPPER(code) NOT LIKE UPPER('50!%') ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::equalIgnoreCase('50%'))))->dump());
+
         // Critério raiz com o flag explicitamente desligado: a folha continua insensível
         $c1->setCaseInsensitive(false);
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $c1->dump());

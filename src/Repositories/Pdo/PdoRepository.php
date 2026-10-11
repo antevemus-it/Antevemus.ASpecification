@@ -80,7 +80,8 @@ use Throwable;
  * Since 1.13.0 (forward 031), all optional; without them nothing changes (D8):
  * - SQL log (D1): withQueryLogger() receives every statement with its parameter count and duration;
  *   the parameter VALUES only with `logParameters: true` (RN-02: they can be personal data)
- * - booleans stored as 1/0 (D2, BooleanStorage) and default time zones (D3): a temporal column is
+ * - booleans stored as 1/0 (D2, BooleanStorage; since 1.14.0 also as text, BooleanStorage::Char, read
+ *   strictly: an unknown stored value is a DataIntegrityException) and default time zones (D3): a temporal column is
  *   written and read in the zone it declares, else the mapping's default, else the repository's
  *   (withTimezone()), else UTC
  * - lifecycle (D4), with the instant of the repository's clock (withClock(); system clock by default;
@@ -134,9 +135,11 @@ use Throwable;
  *   relations go, each segment one more query per batch, each level resolved in the registry of its
  *   own repository, then in the one of the repository with() was called on. A relation that was not
  *   loaded keeps its "not loaded" value (the empty array, null) and the repository knows it was not
- *   loaded (isLoaded(), EntityMapping::isRelationLoaded(): a WeakMap outside the entity). iterate()
- *   runs the relation queries while its own cursor is open (as the sweeper does): on MySQL with
- *   unbuffered queries use find(), or give the related repositories their own connection
+ *   loaded (isLoaded(), EntityMapping::isRelationLoaded(): a WeakMap outside the entity). Since 1.14.0
+ *   no relation query runs while a cursor is open: find*()/findPage() finish their read first, and
+ *   iterate*() with relations pages by key (`id > :last ORDER BY id LIMIT batch`), each page read
+ *   whole and its cursor closed before its relations load, so it works on MySQL unbuffered queries
+ *   with the memory of one page; without relations iterate() still streams one cursor
  * - a reference (ManyToOne) is never cascaded: put() writes the identifier of the referenced object
  *   into the foreign key property (an object without identifier is refused: put it first); a null
  *   reference clears the foreign key only when it was loaded non-null, never when it was not loaded
@@ -157,11 +160,24 @@ use Throwable;
  *   PdoRepository publishes nothing (a TriggerSweeper notices the exits). A TriggeringRepository
  *   over the PARENT reads its "before" without relations: its triggers should read columns. Moving a
  *   child between two loaded parents is safe within ONE putAll() (a child present in any collection
- *   of the call is never an orphan). The ManyToMany of other ORMs is out of scope: map the
- *   association entity with two references
+ *   of the call is never an orphan)
+ * - an association (#[ManyToMany], since 1.14.0, forward 032, D1; target repository on the same
+ *   connection): with('tags') loads it in batch (`SELECT owner, target FROM join WHERE owner IN (...)`,
+ *   then the targets by IN in their repository's read scope: a soft-removed target is left out, its
+ *   link stays); put()/putAll()/insertAll() of an owner whose collection was LOADED (or that was just
+ *   inserted) synchronize only the join table (links added: one multi-row INSERT; links of targets that
+ *   left the collection: `DELETE ... WHERE (owner = ? AND target = ?) OR ...`), never writing or
+ *   deleting a target, and a target without identifier is refused; a collection that was NOT loaded
+ *   never touches the join table. A hard removal of an owner deletes its links first; a soft removal
+ *   keeps them. Link changes do not change the owner's row: a TriggeringRepository over the owner sees
+ *   no crossing from them
+ * - markLoaded($entity, 'items', 'tags') declares a collection built by hand as loaded and WHOLE, so the
+ *   next put() removes the stored children (or links) it lacks: an incomplete one deletes what it
+ *   lacks; markUnloaded() makes a collection say nothing again (since 1.14.0, D2)
  * - whereRelation('customer', $spec) / whereRelation('items', $spec) is the filter through a
  *   relationship: Spec::inQuery() on the foreign key (one statement; the foreign key property must be
- *   readable by a specification)
+ *   readable by a specification); whereRelation('tags', $spec) goes through the join table (since
+ *   1.14.0): `id IN (SELECT owner FROM join WHERE target IN (SELECT id FROM tag WHERE ...))`
  *
  * Every value goes through a prepared parameter; table and column names come only from the mapping,
  * validated as identifiers and quoted by the dialect (RN-04). Driver errors surface as
@@ -175,7 +191,7 @@ use Throwable;
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
- * @version    1.13.0
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -255,6 +271,9 @@ class PdoRepository extends AbstractRepository
 
     /** @var list<RelationMapping> References of the mapping */
     private array $references = [];
+
+    /** @var list<RelationMapping> Associations (ManyToMany) of the mapping (since 1.14.0) */
+    private array $associations = [];
 
     private bool $hasRelations = false;
 
@@ -521,11 +540,13 @@ class PdoRepository extends AbstractRepository
      * repository: do not give it a non-reentrant synchronizer). The repository of a cascaded collection must use
      * the same PDO connection as this one: its writes join this repository's transaction (its
      * transaction manager must join an open transaction of the connection, as PdoTransactionManager
-     * does). Views made before this call (with(), withTrashed()) keep their own registry.
+     * does); so must the repository of a #[ManyToMany] target, whose join table is on this connection
+     * (since 1.14.0). Views made before this call (with(), withTrashed()) keep their own registry.
      *
      * @return static
      * @throws InvalidArgumentException When an item is not (a decorator of) a PdoRepository, or the
-     *                                  repository of a cascaded collection is on another connection
+     *                                  repository of a cascaded collection or of an association is on
+     *                                  another connection
      */
     public function withRelated(IRepository ...$repositories): static
     {
@@ -541,7 +562,7 @@ class PdoRepository extends AbstractRepository
                 ));
             }
             $class = $reader->mapping->getEntityClass();
-            foreach ($this->compositions as $relation) {
+            foreach ([...$this->compositions, ...$this->associations] as $relation) {
                 if ($relation->target === $class) {
                     $this->assertSameConnection($relation, $reader);
                 }
@@ -556,7 +577,8 @@ class PdoRepository extends AbstractRepository
      * A VIEW whose reads (find*, iterate*, findSingle, findPage, findById) also load the given
      * relations (since 1.13.0, forward 031, D7): `with('items', 'customer', 'items.product')`. For each
      * batch of withBatchSize() entities read, each relation costs ONE `SELECT ... WHERE fk IN (...)`
-     * (more only past the driver's parameter limit), never one per entity; the related repository's
+     * (a #[ManyToMany] two: the join table, then the targets; since 1.14.0) (more only past the
+     * driver's parameter limit), never one per entity; the related repository's
      * read scope applies (its soft-removed rows are not loaded). A dotted path loads the relation of the
      * loaded entities, as deep as the relations go (each segment one more query per batch). The view
      * is a copy of this repository with its configuration of the moment; with() on a view adds paths.
@@ -588,6 +610,8 @@ class PdoRepository extends AbstractRepository
                 $related = $repository->related($relation, $this)['reader'];
                 if ($relation->isOneToMany()) {
                     $repository->childKey($relation, $related);
+                } elseif ($relation->isManyToMany()) {
+                    $repository->assertSameConnection($relation, $related);
                 } else {
                     $repository->mapping->getJoinColumn($relation->property);
                 }
@@ -639,6 +663,51 @@ class PdoRepository extends AbstractRepository
         }
 
         return LoadedRelations::isLoaded($entity, $relation);
+    }
+
+    /**
+     * Declares the collections of an entity built by hand (or kept since an earlier load) as LOADED,
+     * with what they hold now as the WHOLE stored collection (since 1.14.0, forward 032, D2), for a
+     * #[OneToMany] or a #[ManyToMany]. Its next put() then removes, relative to that collection, every
+     * stored child it does not hold (a cascaded #[OneToMany]: orphan removal, each removal through the
+     * related repository) or every link to a target it does not hold (#[ManyToMany], soft-removed
+     * targets aside), and adds what it holds. A later load or write records the collection as loaded
+     * again, with its usual safety.
+     *
+     * DANGER: marking an INCOMPLETE collection deletes what it lacks. A collection loaded by with()
+     * only removes the children (or links) loaded with it, so a child added by someone else since the
+     * load survives; a declared one does not have that protection: declare only a collection known to
+     * be complete. The related repository must be registered (withRelated()).
+     *
+     * @param object $entity Entity of the mapped class
+     * @param string ...$relations Collection properties (#[OneToMany] or #[ManyToMany])
+     * @throws InvalidArgumentException When the entity is not of the mapped class, no relation is given,
+     *                                  one is not a collection of the mapping, holds something else than
+     *                                  its target, or its repository is not registered
+     */
+    public function markLoaded(object $entity, string ...$relations): void
+    {
+        foreach ($this->collectionRelations($entity, $relations, 'markLoaded') as $relation) {
+            $reader = $this->related($relation)['reader'];
+            LoadedRelations::markCollection($entity, $relation->property, $reader->keyed($this->collectionOf($entity, $relation)), true);
+        }
+    }
+
+    /**
+     * Forgets that collections of an entity were loaded (since 1.14.0, forward 032, D2): their value
+     * says nothing about the database again, so the next put() removes no child and touches no link
+     * (the children a #[OneToMany] composition holds are still upserted).
+     *
+     * @param object $entity Entity of the mapped class
+     * @param string ...$relations Collection properties (#[OneToMany] or #[ManyToMany])
+     * @throws InvalidArgumentException When the entity is not of the mapped class, no relation is given,
+     *                                  or one is not a collection of the mapping
+     */
+    public function markUnloaded(object $entity, string ...$relations): void
+    {
+        foreach ($this->collectionRelations($entity, $relations, 'markUnloaded') as $relation) {
+            LoadedRelations::forget($entity, $relation->property);
+        }
     }
 
     /**
@@ -716,8 +785,10 @@ class PdoRepository extends AbstractRepository
         // Compiled now, so that a non-translatable specification fails at the call, not at the first pull
         return $this->readConcurrently(function () use ($specification): Generator {
             $where = $this->compileOrFallback($specification);
+            $memoryFilter = $where === null ? $specification : null;
 
-            return $this->eagerly($this->stream($where, $where === null ? $specification : null));
+            // With relations: pages by key, each read whole and its cursor closed before its relations load
+            return $this->eager === [] ? $this->stream($where, $memoryFilter) : $this->pagedWithRelations($where, $memoryFilter);
         });
     }
 
@@ -729,7 +800,7 @@ class PdoRepository extends AbstractRepository
         return $this->readConcurrently(function () use ($specification): array {
             $where = $this->compileOrFallback($specification);
 
-            return iterator_to_array($this->eagerly($this->stream($where, $where === null ? $specification : null)), false);
+            return $this->withRelationsLoaded(iterator_to_array($this->stream($where, $where === null ? $specification : null), false));
         });
     }
 
@@ -799,14 +870,14 @@ class PdoRepository extends AbstractRepository
                         break;
                     }
                 }
-                return iterator_to_array($this->eagerly((static fn(): Generator => yield from $page)()), false);
+                return $this->withRelationsLoaded($page);
             }
 
             if (!$this->dialect instanceof ISqlPagination) {
                 throw new UnsupportedSqlOperationException('LIMIT/OFFSET', $this->family);
             }
 
-            return iterator_to_array($this->eagerly($this->stream($where, null, $limit, $offset, $orderBy)), false);
+            return $this->withRelationsLoaded(iterator_to_array($this->stream($where, null, $limit, $offset, $orderBy), false));
         });
     }
 
@@ -940,6 +1011,18 @@ class PdoRepository extends AbstractRepository
             }
 
             return Spec::inQuery($foreignKey->property, $related, $where, EntityMapping::ENTITY_ID_ALIAS);
+        }
+        if ($mapped->isManyToMany()) {
+            $hop = new JoinTableHop(
+                $this,
+                $relation,
+                (string) $mapped->joinTable,
+                (string) $mapped->joinColumn,
+                (string) $mapped->inverseJoinColumn,
+                fn(array $targets): array => $this->ownersLinkedTo($mapped, $related, $targets)
+            );
+
+            return Spec::property(EntityMapping::ENTITY_ID_ALIAS, new InQuerySpecification($related, $where, EntityMapping::ENTITY_ID_ALIAS, $hop));
         }
 
         return Spec::inQuery(EntityMapping::ENTITY_ID_ALIAS, $related, $where, $this->childKey($mapped, $related)['column']->property);
@@ -1434,6 +1517,7 @@ class PdoRepository extends AbstractRepository
         $this->hasRelations = $relations !== [];
         $this->compositions = array_values(array_filter($relations, static fn(RelationMapping $r): bool => $r->isComposition()));
         $this->references = array_values(array_filter($relations, static fn(RelationMapping $r): bool => $r->isManyToOne()));
+        $this->associations = array_values(array_filter($relations, static fn(RelationMapping $r): bool => $r->isManyToMany()));
         $this->selectSql = 'SELECT ' . implode(', ', array_map(
             fn(ColumnMapping $c): string => $this->dialect->escapeIdentifier($c->column),
             $this->columnList
@@ -1575,36 +1659,85 @@ class PdoRepository extends AbstractRepository
     ///////////////////////////////////////////////////////////////////////////
 
     /**
-     * The entities of a read, with the relations of this view loaded per batch of withBatchSize().
+     * The entities of a read already complete (its cursor closed), with the relations of this view
+     * loaded per batch of withBatchSize() (since 1.14.0 the read is finished first, so no relation query
+     * runs while a cursor is open: MySQL unbuffered queries allow one open statement per connection).
      *
-     * @param Generator<int, T> $entities
+     * @param list<T> $entities
+     * @return list<T>
+     */
+    private function withRelationsLoaded(array $entities): array
+    {
+        if ($this->eager !== []) {
+            foreach (array_chunk($entities, $this->batchSize) as $batch) {
+                $this->loadRelations($batch, $this->eager, $this);
+            }
+        }
+
+        return $entities;
+    }
+
+    /**
+     * iterate() with relations (since 1.14.0, forward 032, D3): keyset pagination on the identifier,
+     * `WHERE <filter> AND id > :last ORDER BY id LIMIT <batch + 1>`, each page fetched whole and its
+     * cursor CLOSED before the relations of its entities load, then yielded. Works on every driver,
+     * MySQL unbuffered queries included, and holds one page of entities (withBatchSize()) at a time.
+     * The extra row only tells whether another page follows; it is read again by the next page. With a
+     * specification evaluated in PHP (fallback), the pages are cut on the rows read and filtered after.
+     *
      * @return Generator<int, T>
      */
-    private function eagerly(Generator $entities): Generator
+    private function pagedWithRelations(?SqlWhereClause $where, ?ISpecification $memoryFilter): Generator
     {
-        if ($this->eager === []) {
-            foreach ($entities as $entity) {
-                yield $entity;
-            }
+        if (!$this->dialect instanceof ISqlPagination) {
+            // No LIMIT in the dialect: the whole read first, then the relations by batch
+            yield from $this->withRelationsLoaded(iterator_to_array($this->stream($where, $memoryFilter), false));
             return;
         }
-        $batch = [];
-        foreach ($entities as $entity) {
-            $batch[] = $entity;
-            if (count($batch) >= $this->batchSize) {
-                $this->loadRelations($batch, $this->eager, $this);
-                foreach ($batch as $loaded) {
-                    yield $loaded;
+
+        $idIndex = 0;
+        foreach ($this->columnList as $i => $column) {
+            if ($column->isId) {
+                $idIndex = $i;
+            }
+        }
+        $id = $this->quote($this->idColumn->column);
+        $after = null;
+        do {
+            $page = $this->scoped($where);
+            if ($after !== null) {
+                $page = $page->and(new SqlWhereClause($id . ' > :ks_after', [':ks_after' => $after]));
+            }
+            $sql = $this->dialect->paginate($this->selectSql . $this->whereSql($page) . ' ORDER BY ' . $id . ' ASC', $this->batchSize + 1, null);
+            $statement = $this->run($sql, $page->getParameters());
+            try {
+                $rows = $statement->fetchAll(PDO::FETCH_NUM);
+            } finally {
+                $statement->closeCursor();
+            }
+            $more = count($rows) > $this->batchSize;
+            if ($more) {
+                array_pop($rows);
+            }
+            $batch = [];
+            foreach ($rows as $row) {
+                $entity = $this->hydrate($row);
+                if ($memoryFilter === null || $memoryFilter->isSatisfiedBy($entity)) {
+                    $batch[] = $entity;
                 }
-                $batch = [];
             }
-        }
-        if ($batch !== []) {
-            $this->loadRelations($batch, $this->eager, $this);
-            foreach ($batch as $loaded) {
-                yield $loaded;
+            if ($rows !== []) {
+                $after = $this->rawBindable($rows[count($rows) - 1][$idIndex]);
             }
-        }
+            $rows = [];
+            if ($batch !== []) {
+                $this->loadRelations($batch, $this->eager, $this);
+                foreach ($batch as $entity) {
+                    yield $entity;
+                }
+            }
+            $batch = [];
+        } while ($more);
     }
 
     /**
@@ -1626,9 +1759,11 @@ class PdoRepository extends AbstractRepository
                 continue;   // validated by with()
             }
             $related = $this->related($relation, $root)['reader'];
-            $loaded = $relation->isOneToMany()
-                ? $this->loadCollection($entities, $relation, $related)
-                : $this->loadReference($entities, $relation, $related);
+            $loaded = match (true) {
+                $relation->isOneToMany() => $this->loadCollection($entities, $relation, $related),
+                $relation->isManyToMany() => $this->loadAssociation($entities, $relation, $related),
+                default => $this->loadReference($entities, $relation, $related),
+            };
             if ($subtree !== []) {
                 $related->loadRelations($loaded, $subtree, $root);
             }
@@ -1717,6 +1852,184 @@ class PdoRepository extends AbstractRepository
     }
 
     /**
+     * Loads an association for every owner (since 1.14.0, forward 032, D1): `SELECT owner, target FROM
+     * join WHERE owner IN (owner ids)`, then `SELECT ... FROM target WHERE id IN (linked ids)` in the
+     * target repository's read scope (a soft-removed target is left out; its link stays), one query of
+     * each per chunk of the driver's parameter limit; each collection in the order of the target
+     * identifier. Returns the distinct targets loaded.
+     *
+     * @param list<IEntity> $owners
+     * @return list<IEntity>
+     */
+    private function loadAssociation(array $owners, RelationMapping $relation, PdoRepository $target): array
+    {
+        $ids = [];
+        foreach ($owners as $owner) {
+            $id = $this->identifierOf($owner);
+            if ($id !== null) {
+                $ids[(string) $id] = $id;
+            }
+        }
+
+        $links = [];
+        $targetIds = [];
+        foreach ($this->linksOf($relation, $target, array_values($ids), true) as $ownerKey => $linked) {
+            foreach ($linked as $targetKey => $targetId) {
+                $links[$ownerKey][] = $targetKey;
+                $targetIds[$targetKey] = $targetId;
+            }
+        }
+
+        $found = [];
+        foreach (array_chunk(array_values($targetIds), max(1, $target->maxParameters())) as $chunk) {
+            foreach ($target->stream($target->inClause($target->idColumn, $chunk), null) as $loaded) {
+                $found[(string) $target->identifierOf($loaded)] = $loaded;
+            }
+        }
+
+        foreach ($owners as $owner) {
+            $id = $this->identifierOf($owner);
+            $children = [];
+            foreach ($id === null ? [] : ($links[(string) $id] ?? []) as $targetKey) {
+                if (isset($found[$targetKey])) {
+                    $children[] = $found[$targetKey];
+                }
+            }
+            $this->mapping->writeValue($owner, $relation->property, $children);
+            LoadedRelations::markCollection($owner, $relation->property, $target->keyed($children));
+        }
+
+        return array_values($found);
+    }
+
+    /**
+     * The links of some owners in the join table of an association: owner identifier text => (target
+     * identifier text => bindable target identifier). One statement per chunk of the parameter limit.
+     *
+     * @param list<mixed> $ownerIds Bindable owner identifiers
+     * @param bool $ordered True = ordered by owner and target (a load); false = any order (a sync)
+     * @return array<string, array<string, mixed>>
+     */
+    private function linksOf(RelationMapping $relation, PdoRepository $target, array $ownerIds, bool $ordered = false): array
+    {
+        $owner = $this->quote((string) $relation->joinColumn);
+        $inverse = $this->quote((string) $relation->inverseJoinColumn);
+        $head = 'SELECT ' . $owner . ', ' . $inverse . ' FROM ' . $this->quote((string) $relation->joinTable) . ' WHERE ' . $owner;
+        $links = [];
+        foreach (array_chunk($ownerIds, max(1, $this->maxParameters())) as $chunk) {
+            $sql = $head . (count($chunk) === 1 ? ' = ?' : ' IN (' . implode(', ', array_fill(0, count($chunk), '?')) . ')')
+                . ($ordered ? ' ORDER BY ' . $owner . ', ' . $inverse : '');
+            $statement = $this->run($sql, array_values($chunk));
+            try {
+                while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                    $targetId = $target->rawBindable($row[1]);
+                    $links[(string) $this->rawBindable($row[0])][(string) $targetId] = $targetId;
+                }
+            } finally {
+                $statement->closeCursor();
+            }
+        }
+
+        return $links;
+    }
+
+    /**
+     * The identifiers (property values) of the owners linked to some targets in the join table of an
+     * association: the in-memory side of whereRelation() on a #[ManyToMany] (since 1.14.0).
+     *
+     * @param list<mixed> $targetValues Identifier values of the targets (property values)
+     * @return list<mixed>
+     */
+    private function ownersLinkedTo(RelationMapping $relation, PdoRepository $target, array $targetValues): array
+    {
+        $bindable = [];
+        foreach ($targetValues as $value) {
+            $id = $target->converter->toDatabase($target->idColumn, $value);
+            $bindable[(string) $id] = $id;
+        }
+        $owner = $this->quote((string) $relation->joinColumn);
+        $inverse = $this->quote((string) $relation->inverseJoinColumn);
+        $owners = [];
+        foreach (array_chunk(array_values($bindable), max(1, $this->maxParameters())) as $chunk) {
+            $statement = $this->run(
+                'SELECT DISTINCT ' . $owner . ' FROM ' . $this->quote((string) $relation->joinTable) . ' WHERE ' . $inverse
+                    . ' IN (' . implode(', ', array_fill(0, count($chunk), '?')) . ')',
+                array_values($chunk)
+            );
+            try {
+                while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                    $owners[(string) $this->rawBindable($row[0])] = $this->converter->fromDatabase($this->idColumn, $row[0]);
+                }
+            } finally {
+                $statement->closeCursor();
+            }
+        }
+
+        return array_values($owners);
+    }
+
+    /**
+     * The bindable form of an identifier value as fetched from the driver (a join table, a key column),
+     * the same as identifierOf() gives for an entity with that identifier.
+     */
+    private function rawBindable(mixed $raw): mixed
+    {
+        return $this->converter->toDatabase($this->idColumn, $this->converter->fromDatabase($this->idColumn, $raw));
+    }
+
+    /**
+     * The identifier texts of the rows the reads of this repository see among some identifiers (since
+     * 1.14.0: the targets a declared association may unlink).
+     *
+     * @param list<mixed> $ids Bindable identifiers
+     * @return array<string, true>
+     */
+    private function visibleKeys(array $ids): array
+    {
+        $visible = [];
+        foreach (array_chunk($ids, max(1, $this->maxParameters())) as $chunk) {
+            $where = $this->scoped($this->inClause($this->idColumn, $chunk));
+            $statement = $this->run('SELECT ' . $this->quote($this->idColumn->column) . ' FROM ' . $this->tableSql . $this->whereSql($where), $where->getParameters());
+            try {
+                while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                    $visible[(string) $this->rawBindable($row[0])] = true;
+                }
+            } finally {
+                $statement->closeCursor();
+            }
+        }
+
+        return $visible;
+    }
+
+    /**
+     * The relations given to markLoaded()/markUnloaded(), checked: collections of the mapping.
+     *
+     * @param list<string> $relations
+     * @return list<RelationMapping>
+     */
+    private function collectionRelations(object $entity, array $relations, string $operation): array
+    {
+        $class = $this->mapping->getEntityClass();
+        if (!$entity instanceof $class) {
+            throw new InvalidArgumentException(sprintf('%s() takes a %s, %s given.', $operation, $class, get_debug_type($entity)));
+        }
+        if ($relations === []) {
+            throw new InvalidArgumentException(sprintf('%s() needs at least one relation.', $operation));
+        }
+        $mapped = [];
+        foreach ($relations as $name) {
+            $relation = $this->mapping->getRelation($name);
+            if ($relation === null || !$relation->isCollection()) {
+                throw new InvalidArgumentException(sprintf('%s(): "%s" is not a OneToMany or ManyToMany collection of %s.', $operation, $name, $class));
+            }
+            $mapped[] = $relation;
+        }
+
+        return $mapped;
+    }
+
+    /**
      * The registered repositories of a relation's target: this repository's registry, then the root's
      * (eager loading), then this repository itself for a relation to its own class.
      *
@@ -1777,7 +2090,9 @@ class PdoRepository extends AbstractRepository
     {
         if ($child->pdo !== $this->pdo) {
             throw new InvalidArgumentException(sprintf(
-                'The collection "%s" of %s is cascaded inside one transaction, so the repository of %s must use the same PDO connection; it uses another one.',
+                $relation->isManyToMany()
+                    ? 'The association "%s" of %s goes through a join table of this connection, so the repository of %s must use the same PDO connection; it uses another one.'
+                    : 'The collection "%s" of %s is cascaded inside one transaction, so the repository of %s must use the same PDO connection; it uses another one.',
                 $relation->property,
                 $this->mapping->getEntityClass(),
                 $relation->target
@@ -2033,8 +2348,8 @@ class PdoRepository extends AbstractRepository
                     continue;
                 }
                 $loaded = LoadedRelations::loadedChildren($parent, $relation->property);
-                if ($loaded !== null && !array_key_exists($childKey, $loaded)) {
-                    continue;   // added by someone else after the load
+                if ($loaded !== null && !array_key_exists($childKey, $loaded) && !LoadedRelations::isDeclared($parent, $relation->property)) {
+                    continue;   // added by someone else after the load (a collection declared whole by markLoaded() has no such child)
                 }
                 $orphans[] = $loaded[$childKey] ?? $stored;
             }
@@ -2057,6 +2372,9 @@ class PdoRepository extends AbstractRepository
         if ($parentIds === []) {
             return;
         }
+        if ($hard) {
+            $this->deleteLinks($parentIds);
+        }
         foreach ($this->compositions as $relation) {
             ['reader' => $reader, 'writer' => $writer] = $this->related($relation);
             $this->assertSameConnection($relation, $reader);
@@ -2077,6 +2395,188 @@ class PdoRepository extends AbstractRepository
                     }
                 }
                 $reader->writeExclusively(fn(): int => $reader->removeMatching($where, null, $hard, $reader->now()));
+            }
+        }
+    }
+
+    /**
+     * Before a write: every target of an association that will be synchronized must have an identifier
+     * (an association never writes its targets). Checked for the collections that were loaded and for
+     * the owners without an identifier yet (new).
+     *
+     * @param list<IEntity> $batch
+     * @throws InvalidArgumentException When a target is of another class or has no identifier
+     */
+    private function assertLinkable(array $batch): void
+    {
+        foreach ($this->associations as $relation) {
+            foreach ($batch as $owner) {
+                if (!LoadedRelations::isLoaded($owner, $relation->property) && $this->identifierOf($owner) !== null) {
+                    continue;
+                }
+                foreach ($this->collectionOf($owner, $relation) as $target) {
+                    if ($target->getEntityId() === null) {
+                        throw new InvalidArgumentException(sprintf(
+                            'The %s linked by "%s" of %s has no identifier yet: put it first (a ManyToMany association never writes its targets).',
+                            $relation->target,
+                            $relation->property,
+                            $this->mapping->getEntityClass()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * After the owners of a batch were written (inside the transaction): for each association, the
+     * join table is synchronized with the collections that were loaded (or whose owner was inserted by
+     * this call): one read of the stored links of those owners per chunk, then the links of the targets
+     * added are inserted (multi-row) and the links of the targets that left the collection deleted (one
+     * `DELETE ... WHERE (owner = ? AND target = ?) OR ...` per chunk of links). A
+     * collection loaded by with() unlinks only the targets loaded with it; one declared by markLoaded()
+     * unlinks every stored link to a target the target repository sees (a soft-removed target keeps its
+     * link). A collection that was not loaded is skipped: the join table is not touched. No target row
+     * is ever written or deleted.
+     *
+     * @param list<IEntity> $batch
+     * @param array<int, true> $inserted Owners inserted by this call, by object id
+     */
+    private function syncLinks(array $batch, array $inserted): void
+    {
+        foreach ($this->associations as $relation) {
+            $plan = [];
+            $ownerIds = [];
+            $reader = null;
+            foreach ($batch as $owner) {
+                $loaded = LoadedRelations::isLoaded($owner, $relation->property);
+                if (!$loaded && !isset($inserted[spl_object_id($owner)])) {
+                    continue;   // a collection that was not loaded never touches the join table
+                }
+                $targets = $this->collectionOf($owner, $relation);
+                if (!$loaded && $targets === []) {
+                    // A new owner without targets: known to have no link, nothing to write
+                    LoadedRelations::markCollection($owner, $relation->property, []);
+                    continue;
+                }
+                $reader ??= $this->related($relation)['reader'];
+                $ownerId = $this->identifierOf($owner);
+                $current = [];
+                foreach ($targets as $target) {
+                    $targetId = $reader->identifierOf($target);
+                    if ($targetId === null) {
+                        throw new InvalidArgumentException(sprintf(
+                            'The %s linked by "%s" of %s has no identifier yet: put it first (a ManyToMany association never writes its targets).',
+                            $relation->target,
+                            $relation->property,
+                            $this->mapping->getEntityClass()
+                        ));
+                    }
+                    $current[(string) $targetId] = $targetId;
+                }
+                $plan[] = [
+                    'owner' => $owner,
+                    'id' => $ownerId,
+                    'targets' => $targets,
+                    'current' => $current,
+                    'baseline' => $loaded ? (LoadedRelations::loadedChildren($owner, $relation->property) ?? []) : null,
+                    'declared' => $loaded && LoadedRelations::isDeclared($owner, $relation->property),
+                ];
+                $ownerIds[(string) $ownerId] = $ownerId;
+            }
+            if ($plan === [] || $reader === null) {
+                continue;
+            }
+            $this->assertSameConnection($relation, $reader);
+
+            $stored = $this->linksOf($relation, $reader, array_values($ownerIds));
+            $inserts = [];
+            $deletes = [];
+            $toCheck = [];
+            foreach ($plan as $entry) {
+                $key = (string) $entry['id'];
+                $links = $stored[$key] ?? [];
+                if ($entry['baseline'] !== null) {
+                    $gone = array_diff_key($links, $entry['current']);
+                    if (!$entry['declared']) {
+                        $gone = array_intersect_key($gone, $entry['baseline']);   // only the targets loaded with it
+                    } else {
+                        $toCheck += $gone;
+                    }
+                    if ($gone !== []) {
+                        $deletes[$key] = ['id' => $entry['id'], 'targets' => $gone, 'declared' => $entry['declared']];
+                    }
+                }
+                foreach ($entry['current'] as $targetKey => $targetId) {
+                    if (!isset($links[$targetKey])) {
+                        $inserts[] = [$entry['id'], $targetId];
+                        $links[$targetKey] = $targetId;
+                    }
+                }
+                $stored[$key] = $links;
+            }
+            if ($toCheck !== []) {
+                // A declared collection speaks for the targets a read sees: a soft-removed one keeps its link
+                $visible = $reader->visibleKeys(array_values($toCheck));
+                foreach ($deletes as $key => $delete) {
+                    if ($delete['declared']) {
+                        $deletes[$key]['targets'] = array_intersect_key($delete['targets'], $visible);
+                    }
+                }
+            }
+
+            $table = $this->quote((string) $relation->joinTable);
+            $ownerColumn = $this->quote((string) $relation->joinColumn);
+            $targetColumn = $this->quote((string) $relation->inverseJoinColumn);
+            $pairs = [];
+            foreach ($deletes as $delete) {
+                foreach ($delete['targets'] as $targetId) {
+                    $pairs[] = [$delete['id'], $targetId];
+                }
+            }
+            // One statement per chunk of links, whatever the number of owners
+            foreach (array_chunk($pairs, max(1, min(self::DELETE_CHUNK, intdiv($this->maxParameters(), 2)))) as $chunk) {
+                $this->run(
+                    'DELETE FROM ' . $table . ' WHERE '
+                    . implode(' OR ', array_fill(0, count($chunk), '(' . $ownerColumn . ' = ? AND ' . $targetColumn . ' = ?)')),
+                    array_merge(...$chunk)
+                );
+            }
+            if ($inserts !== []) {
+                $perStatement = $this->multiRowInsert() ? max(1, min($this->batchSize, intdiv($this->maxParameters(), 2))) : 1;
+                if (in_array($this->family, ['sqlsrv', 'mssql', 'dblib'], true)) {
+                    $perStatement = min($perStatement, 1000);
+                }
+                foreach (array_chunk($inserts, $perStatement) as $chunk) {
+                    $this->run(
+                        'INSERT INTO ' . $table . ' (' . $ownerColumn . ', ' . $targetColumn . ') VALUES '
+                        . implode(', ', array_fill(0, count($chunk), '(?, ?)')),
+                        array_merge(...$chunk)
+                    );
+                }
+            }
+
+            foreach ($plan as $entry) {
+                LoadedRelations::markCollection($entry['owner'], $relation->property, $reader->keyed($entry['targets']));
+            }
+        }
+    }
+
+    /**
+     * Deletes every link of some owners from the join tables of their associations (a hard removal of
+     * the owners; since 1.14.0). Positional placeholders, one statement per chunk.
+     *
+     * @param list<mixed> $ownerIds Bindable owner identifiers
+     */
+    private function deleteLinks(array $ownerIds): void
+    {
+        foreach ($this->associations as $relation) {
+            foreach (array_chunk($ownerIds, self::DELETE_CHUNK) as $chunk) {
+                $this->run(
+                    'DELETE FROM ' . $this->quote((string) $relation->joinTable) . ' WHERE ' . $this->quote((string) $relation->joinColumn)
+                    . (count($chunk) === 1 ? ' = ?' : ' IN (' . implode(', ', array_fill(0, count($chunk), '?')) . ')'),
+                    array_values($chunk)
+                );
             }
         }
     }
@@ -2115,7 +2615,8 @@ class PdoRepository extends AbstractRepository
         foreach ($this->references !== [] ? $batch : [] as $entity) {
             $this->syncReferences($entity);
         }
-        $cascade = $this->compositions !== [];
+        $this->assertLinkable($batch);
+        $cascade = $this->compositions !== [] || $this->associations !== [];
         /** @var array<int, true> $inserted Parents inserted by this call, by object id */
         $inserted = [];
 
@@ -2165,7 +2666,10 @@ class PdoRepository extends AbstractRepository
         }
 
         if ($cascade) {
-            $this->cascadeSave($batch, $inserted, false);
+            if ($this->compositions !== []) {
+                $this->cascadeSave($batch, $inserted, false);
+            }
+            $this->syncLinks($batch, $inserted);
             foreach ($batch as $entity) {
                 $this->runHooks('afterPut', $entity);
             }
@@ -2273,6 +2777,7 @@ class PdoRepository extends AbstractRepository
         foreach ($this->references !== [] ? $batch : [] as $entity) {
             $this->syncReferences($entity);
         }
+        $this->assertLinkable($batch);
 
         $strategy = $this->mapping->getIdStrategy();
         $withId = [];
@@ -2312,12 +2817,15 @@ class PdoRepository extends AbstractRepository
             }
         }
 
-        if ($this->compositions !== []) {
+        if ($this->compositions !== [] || $this->associations !== []) {
             $new = [];
             foreach ($batch as $entity) {
                 $new[spl_object_id($entity)] = true;
             }
-            $this->cascadeSave($batch, $new, true);
+            if ($this->compositions !== []) {
+                $this->cascadeSave($batch, $new, true);
+            }
+            $this->syncLinks($batch, $new);
         }
         foreach ($batch as $entity) {
             $this->runHooks('afterPut', $entity);
@@ -2584,6 +3092,16 @@ class PdoRepository extends AbstractRepository
 
         if ($where !== null && $this->hooks['beforeRemove'] === [] && $this->hooks['afterRemove'] === [] && $this->compositions === []) {
             $where = $this->scoped($where, $scope);
+            if (!$soft && $this->associations !== []) {
+                // The links first (no link may outlive its owner's row), by the same filter
+                foreach ($this->associations as $relation) {
+                    $this->run(
+                        'DELETE FROM ' . $this->quote((string) $relation->joinTable) . ' WHERE ' . $this->quote((string) $relation->joinColumn)
+                        . ' IN (SELECT ' . $this->quote($this->idColumn->column) . ' FROM ' . $this->tableSql . $this->whereSql($where) . ')',
+                        $where->getParameters()
+                    );
+                }
+            }
             if ($soft) {
                 [$sets, $params] = $this->softRemovalSets($now);
 
@@ -2644,7 +3162,7 @@ class PdoRepository extends AbstractRepository
 
             return $this->transactions->transactional(function () use ($entity, $id, $hard): bool {
                 $this->runHooks('beforeRemove', $entity);
-                if ($this->compositions !== []) {
+                if ($this->compositions !== [] || ($hard && $this->associations !== [])) {
                     // The children go first (a hard removal must not leave rows that refer to the parent),
                     // so the parent is checked first: nothing is cascaded for a row that is not removable
                     $state = $this->rowStates([$id])[(string) $id] ?? null;

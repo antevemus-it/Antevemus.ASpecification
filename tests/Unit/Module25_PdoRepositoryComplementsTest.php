@@ -15,6 +15,7 @@ use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Persistence\InMemoryQueryLogger;
 use Antevemus\ASpecification\Persistence\IQueryLogger;
 use Antevemus\ASpecification\Persistence\PdoTransactionManager;
+use Antevemus\ASpecification\Repositories\Pdo\Exceptions\DataIntegrityException;
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\EntityMappingException;
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\OptimisticLockException;
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\PdoRepositoryException;
@@ -33,6 +34,7 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Tests\Support\PdoArticle;
 use Antevemus\ASpecification\Tests\Support\PdoArticleStatus;
 use Antevemus\ASpecification\Tests\Support\PdoAuditedNote;
+use Antevemus\ASpecification\Tests\Support\PdoCharFlagRecord;
 use Antevemus\ASpecification\Tests\Support\PdoCounter;
 use Antevemus\ASpecification\Tests\Support\PdoFlagDefaultRecord;
 use Antevemus\ASpecification\Tests\Support\PdoFlagRecord;
@@ -46,6 +48,7 @@ use Antevemus\ASpecification\Tests\Support\PdoTag;
 use Antevemus\ASpecification\Tests\Support\PdoTrashableDocument;
 use Antevemus\ASpecification\Tests\Support\PdoTypedRecord;
 use Antevemus\ASpecification\Tests\Support\ReadmeBlocks;
+use Antevemus\ASpecification\Tests\Support\ReadmeMember;
 use Antevemus\ASpecification\Tests\Support\ReadmeProduct;
 use Antevemus\ASpecification\Tests\Support\ReadmeSale;
 use Antevemus\ASpecification\Tests\Support\ReadmeTicket;
@@ -129,7 +132,16 @@ final class Module25BrokenLogger implements IQueryLogger
  * (D8); este concentra as tabelas e fixtures novas (complements.*.sql) e é onde as etapas E2 e E3 do
  * forward 031 crescem.
  *
- * @version    1.13.0
+ * 1.14.0 (forward 032, D4): BooleanStorage::Char (aspec_char_flag em complements.*.sql; no MySQL com
+ * colação binária, para o banco não dobrar a caixa): atributo = builder, padrões do mapeamento e
+ * precedência da coluna, recusas (textos sem Char, vazios, com aspas, espaço, não ASCII, longos,
+ * iguais sem caixa); escrita do texto declarado (put, insertAll, update, updateWhere); leitura em
+ * qualquer caixa e com o preenchimento do CHAR; comparações (isTrue/isFalse/equal/notEqual/in/not)
+ * achando toda caixa, com LOWER() para texto longo; erro de integridade (DataIntegrityException com
+ * coluna e valor) em findById, find, iterate, select e hydrate, nunca false; e a paridade de nulos com
+ * 200 árvores sobre linhas com NULL e textos em outra caixa (memória = PdoRepository = SQL).
+ *
+ * @version    1.14.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -145,6 +157,7 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
         $this->testMappingLifecycleAndDefaults();
         $this->testMappingValidation();
         $this->testExtractAndHydrate();
+        $this->testCharBooleanMapping();
         $this->testReadme171And172BlocksAreTheSameInBothLanguages();
 
         if (!extension_loaded('pdo_sqlite')) {
@@ -201,6 +214,9 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
         $this->testUpdateWhere($pdo, $family);
         $this->testInQuery($pdo, $family);
         $this->testInQueryNullParity($pdo, $family);
+        // 1.14.0 (forward 032, D4)
+        $this->testCharBooleans($pdo, $family);
+        $this->testCharNullParity($pdo, $family);
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -474,6 +490,212 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
             $this->assertEquals(1, $legacy->count(Spec::property('active', Spec::isTrue())), "{$family}: Native já é 1/0");
         }
         $this->assertEquals(1, PdoRepository::forEntity($pdo, PdoFlagRecord::class)->count(Spec::property('active', Spec::isTrue())), "{$family}: com Integer a mesma consulta funciona");
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // 1.14.0 (forward 032, D4): booleano guardado como texto (BooleanStorage::Char)
+    ///////////////////////////////////////////////////////////////////////////
+
+    /** Mapeamento: atributos = builder, padrões e precedência, recusas, leitura estrita sem banco. */
+    private function testCharBooleanMapping(): void
+    {
+        $attributes = EntityMapping::fromAttributes(PdoCharFlagRecord::class);
+        $builder = EntityMapping::for(PdoCharFlagRecord::class)->table('aspec_char_flag')->id('id', IdStrategy::Assigned)
+            ->column('active')
+            ->column('removed', trueValue: 'S', falseValue: 'N')
+            ->column('answer', trueValue: 'True', falseValue: 'False')
+            ->booleanAs(BooleanStorage::Char);
+        $this->assertTrue($attributes->equals($builder), 'Char: atributos = builder (padrão do mapeamento aplicado depois às colunas)');
+        $active = $attributes->getColumn('active');
+        $removed = $attributes->getColumn('removed');
+        $this->assertTrue($active?->isCharBoolean() === true && $active->trueValue === 'Y' && $active->falseValue === 'N' && !$active->booleanValuesDeclared, 'padrão Y/N');
+        $this->assertTrue($removed?->trueValue === 'S' && $removed->booleanValuesDeclared, 'a coluna vence o padrão');
+        $this->assertEquals(['Y', 'N'], $attributes->getBooleanValues());
+        $sim = EntityMapping::for(PdoCharFlagRecord::class)->table('aspec_char_flag')->id('id', IdStrategy::Assigned)
+            ->column('active')->column('removed', trueValue: 'T', falseValue: 'F')->booleanAs(BooleanStorage::Char, 'S', 'N');
+        $this->assertTrue($sim->getColumn('active')?->trueValue === 'S' && $sim->getColumn('removed')?->trueValue === 'T', 'textos padrão do mapeamento; a coluna declarada mantém os seus');
+        $this->assertFalse($sim->equals($builder), 'os textos fazem parte do mapeamento');
+        $this->assertEquals(BooleanStorage::Native, EntityMapping::fromAttributes(PdoFlagRecord::class)->getColumn('native')?->booleanStorage, 'sem a opção nada muda');
+
+        $base = EntityMapping::for(PdoCharFlagRecord::class)->table('aspec_char_flag')->id('id', IdStrategy::Assigned);
+        foreach ([
+            'textos sem Char' => fn() => $base->column('active', trueValue: 'S')->assertComplete(),
+            'textos sem Char pelo PdoRepository' => fn() => new PdoRepository(new PDO('sqlite::memory:'), $base->column('active', trueValue: 'S')),
+            'textos com Integer' => fn() => $base->column('active', booleanAs: BooleanStorage::Integer, trueValue: 'S', falseValue: 'N'),
+            'texto vazio' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: ''),
+            'texto com aspas' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: "Y' OR '1"),
+            'texto com espaço' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: 'Y N'),
+            'texto não ASCII' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: 'É'),
+            'texto longo' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: str_repeat('Y', 17)),
+            'iguais sem caixa' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: 'y', falseValue: 'Y'),
+            'iguais ao padrão' => fn() => $base->column('active', booleanAs: BooleanStorage::Char, trueValue: 'n'),
+            'textos em coluna não booleana' => fn() => $base->column('id', booleanAs: BooleanStorage::Char, trueValue: 'S', falseValue: 'N'),
+            'padrão com textos sem Char' => fn() => $base->booleanAs(BooleanStorage::Integer, 'S', 'N'),
+            'padrão com textos iguais' => fn() => $base->booleanAs(BooleanStorage::Char, 'S', 's'),
+            'coluna com textos e padrão que deixa de ser Char' => fn() => $base->booleanAs(BooleanStorage::Char)->column('active', trueValue: 'S', falseValue: 'N')->booleanAs(BooleanStorage::Native)->assertComplete(),
+        ] as $label => $refused) {
+            $this->assertThrows(EntityMappingException::class, $refused, "Char recusado: {$label}");
+        }
+
+        // hydrate() é estrito também (sem banco): textos em qualquer caixa e preenchimento de CHAR; outro valor é erro
+        $row = $attributes->hydrate(['id' => 1, 'active' => 'y', 'removed' => 'S ', 'answer' => 'FALSE']);
+        $this->assertTrue($row instanceof PdoCharFlagRecord && $row->active === true && $row->removed === true && $row->answer === false, 'hydrate(): caixa e espaços do CHAR');
+        $this->assertTrue($attributes->hydrate(['id' => 2, 'active' => null, 'removed' => false])->removed === false, 'null e bool mantidos');
+        $e = $this->assertThrows(DataIntegrityException::class, fn() => $attributes->hydrate(['id' => 3, 'active' => 'X']), 'hydrate() com valor desconhecido');
+        $this->assertTrue($e->getColumn() === 'active' && $e->getProperty() === 'active' && $e->getStoredValue() === 'X' && str_contains($e->getMessage(), "'X'") && str_contains($e->getMessage(), "'Y' (true), 'N' (false) or NULL"), $e->getMessage());
+        $this->assertThrows(DataIntegrityException::class, fn() => $attributes->hydrate(['id' => 3, 'removed' => 'Y']), "'Y' não é texto de removed (S/N)");
+        $this->assertThrows(DataIntegrityException::class, fn() => $attributes->hydrate(['id' => 3, 'active' => '']), 'texto vazio');
+        $this->assertThrows(DataIntegrityException::class, fn() => $attributes->hydrate(['id' => 3, 'active' => 1]), 'inteiro 1 não é Y');
+        $this->assertTrue($e instanceof InvalidArgumentException, 'é um InvalidArgumentException, como as outras falhas de conversão');
+    }
+
+    /** Escrita, leitura, comparação, updateWhere, select, aggregate e o erro de integridade. */
+    private function testCharBooleans(PDO $pdo, string $family): void
+    {
+        $pdo->exec('DELETE FROM aspec_char_flag');
+        $repo = PdoRepository::forEntity($pdo, PdoCharFlagRecord::class);
+        $repo->putAll([new PdoCharFlagRecord(1, true, true, true), new PdoCharFlagRecord(2, false, false, false), new PdoCharFlagRecord(3)]);
+        $raw = fn(int $id): array => array_map(
+            static fn(mixed $v): ?string => $v === null ? null : rtrim((string) $v),
+            $pdo->query('SELECT active, removed, answer FROM aspec_char_flag WHERE id = ' . $id)->fetch(PDO::FETCH_NUM)
+        );
+        $this->assertEquals(['Y', 'S', 'True'], $raw(1), "{$family}: true gravado com o texto declarado");
+        $this->assertEquals(['N', 'N', 'False'], $raw(2), "{$family}: false gravado com o texto declarado");
+        $this->assertEquals([null, null, null], $raw(3), "{$family}: null é NULL");
+        $repo->insertAll([new PdoCharFlagRecord(4, true, false, null)]);
+        $this->assertEquals(['Y', 'N', null], $raw(4), "{$family}: insertAll() também");
+
+        // Linhas gravadas por outro sistema, em outra caixa
+        $pdo->exec("INSERT INTO aspec_char_flag (id, active, removed, answer) VALUES (5, 'y', 's', 'TRUE'), (6, 'n', 'n', 'false')");
+        $one = $repo->findById(1);
+        $this->assertTrue($one->active === true && $one->removed === true && $one->answer === true, "{$family}: lidos como bool");
+        $five = $repo->findById(5);
+        $this->assertTrue($five->active === true && $five->removed === true && $five->answer === true, "{$family}: caixa diferente lida igual");
+        $this->assertTrue($repo->findById(6)->answer === false && $repo->findById(3)->active === null);
+
+        $ids = fn(ISpecification $spec): array => array_map(static fn(PdoCharFlagRecord $r): int => $r->id, $repo->find($spec));
+        $this->assertEquals([1, 4, 5], $ids(Spec::property('active', Spec::isTrue())), "{$family}: isTrue() acha toda caixa (o banco acha o que a leitura aceita)");
+        $this->assertEquals([2, 6], $ids(Spec::property('active', Spec::isFalse())));
+        $this->assertEquals([2, 6], $ids(Spec::property('active', Spec::notEqual(true))), "{$family}: notEqual(true) = o texto de false");
+        $this->assertEquals([1, 2, 4, 5, 6], $ids(Spec::property('active', Spec::in(true, false))));
+        $this->assertEquals([1, 3, 4, 5], $ids(Spec::property('active', Spec::in(true, null))));
+        $this->assertEquals([3], $ids(Spec::property('active', Spec::isNull())));
+        $this->assertEquals([2, 3, 6], $ids(Spec::not(Spec::property('active', Spec::isTrue()))), "{$family}: NOT inclui o NULL, como em memória");
+        $this->assertEquals([1, 5], $ids(Spec::property('removed', Spec::isTrue())), "{$family}: S/N");
+        $this->assertEquals([1, 5], $ids(Spec::property('answer', Spec::isTrue())));
+        $this->assertEquals([2, 6], $ids(Spec::property('answer', Spec::isFalse())), "{$family}: True/False por LOWER()");
+        $this->assertEquals([1, 5], $ids(Spec::property('active', Spec::isTrue())->and(Spec::property('removed', Spec::isTrue()))->and(Spec::property('answer', Spec::isTrue()))));
+        $sql = $repo->toWhereClause(Spec::property('active', Spec::isTrue()))->toSql();
+        $this->assertTrue(str_contains($sql, "IN ('Y', 'y')"), "{$family}: {$sql}");
+        $this->assertTrue(str_contains($repo->toWhereClause(Spec::property('answer', Spec::isFalse()))->toSql(), "LOWER("), 'texto longo: LOWER()');
+        $this->assertEquals([], $repo->toWhereClause(Spec::property('active', Spec::isTrue()))->getParameters(), 'literais validados, nenhum parâmetro');
+
+        // update, updateWhere, select, aggregate
+        $one->active = false;
+        $repo->update($one);
+        $this->assertEquals('N', $raw(1)[0], "{$family}: UPDATE grava o texto");
+        $this->assertEquals(2, $repo->updateWhere(Spec::property('id', Spec::in(2, 6)), ['removed' => true]));
+        $this->assertEquals(['S', 'S'], [$raw(2)[1], $raw(6)[1]], "{$family}: updateWhere() converte pelo texto da coluna");
+        $this->assertEquals(
+            [['id' => 5, 'active' => true], ['id' => 6, 'active' => false]],
+            iterator_to_array($repo->select(Spec::property('id', Spec::greaterThan(4)), ['id', 'active']), false),
+            "{$family}: select() lê estrito"
+        );
+        $groups = $repo->aggregate(Spec::property('id', Spec::lessThan(5)))->groupBy('removed')->count()->get();
+        $this->assertEquals([null, false, true], array_column($groups, 'removed'), "{$family}: groupBy por Char: " . json_encode($groups));
+
+        // Erro de integridade: valor fora dos textos nunca vira false
+        $pdo->exec("INSERT INTO aspec_char_flag (id, active) VALUES (7, 'X')");
+        $e = $this->assertThrows(DataIntegrityException::class, fn() => $repo->findById(7), "{$family}: findById() de valor desconhecido");
+        $this->assertTrue($e->getColumn() === 'active' && rtrim((string) $e->getStoredValue()) === 'X', $e->getMessage());
+        $this->assertThrows(DataIntegrityException::class, fn() => $repo->find(Spec::alwaysTrue()), "{$family}: find()");
+        $this->assertThrows(DataIntegrityException::class, fn() => iterator_to_array($repo->select(Spec::property('id', Spec::equalTo(7)), ['active'])), "{$family}: select()");
+        $this->assertThrows(DataIntegrityException::class, fn() => iterator_to_array($repo->iterate(Spec::property('id', Spec::equalTo(7)))), "{$family}: iterate()");
+        $this->assertEquals(1, $repo->count(Spec::property('id', Spec::equalTo(7))), "{$family}: contar não lê o valor");
+        $this->assertEquals(0, $repo->count(Spec::property('active', Spec::in(true, false))->and(Spec::property('id', Spec::equalTo(7)))), "{$family}: e nenhuma comparação o aceita");
+        $pdo->exec("UPDATE aspec_char_flag SET active = '1' WHERE id = 7");
+        $this->assertThrows(DataIntegrityException::class, fn() => $repo->findById(7), "{$family}: '1' não é texto de Char Y/N");
+        $pdo->exec('DELETE FROM aspec_char_flag WHERE id = 7');
+    }
+
+    /**
+     * Paridade de nulos com booleano em texto: árvores aleatórias (semente fixa) sobre aspec_char_flag
+     * com NULL e textos em caixas diferentes gravados por fora; memória = PdoRepository = SQL de
+     * toWhereClause(), como a paridade de 1.11.0.
+     */
+    private function testCharNullParity(PDO $pdo, string $family, int $trees = 200): void
+    {
+        $pdo->exec('DELETE FROM aspec_char_flag');
+        $id = 0;
+        $values = [];
+        foreach ([null, 'Y', 'y', 'N', 'n'] as $a) {
+            foreach ([null, 'S', 's', 'N'] as $r) {
+                foreach ([null, 'True', 'TRUE', 'false', 'FALSE'] as $w) {
+                    $quote = static fn(?string $v): string => $v === null ? 'NULL' : "'{$v}'";
+                    $values[] = sprintf('(%d, %s, %s, %s)', ++$id, $quote($a), $quote($r), $quote($w));
+                }
+            }
+        }
+        $pdo->exec('INSERT INTO aspec_char_flag (id, active, removed, answer) VALUES ' . implode(', ', $values));
+        $repository = PdoRepository::forEntity($pdo, PdoCharFlagRecord::class);
+        $rows = $repository->find(Spec::alwaysTrue());
+        $this->assertCount($id, $rows);
+
+        mt_srand(20261011);
+        $violations = [];
+        $nonTrivial = 0;
+        for ($i = 0; $i < $trees; $i++) {
+            $tree = $this->charParityTree(3);
+            $memory = [];
+            foreach ($rows as $row) {
+                if ($tree->isSatisfiedBy($row)) {
+                    $memory[] = $row->id;
+                }
+            }
+            $found = array_map(static fn(PdoCharFlagRecord $r): int => $r->id, $repository->find($tree));
+            sort($found);
+            $where = $repository->toWhereClause($tree);
+            $statement = $pdo->prepare('SELECT id FROM aspec_char_flag WHERE ' . $where->toSql() . ' ORDER BY id');
+            $statement->execute($where->getParameters());
+            $sql = array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
+            foreach (['PdoRepository' => $found, 'SQL' => $sql] as $leg => $legIds) {
+                if ($legIds !== $memory) {
+                    $violations[] = sprintf('%s %s ≠ memória: #%d %s | %s', $family, $leg, $i, (string) $tree, $where->toSql());
+                }
+            }
+            if ($memory !== [] && count($memory) < count($rows)) {
+                $nonTrivial++;
+            }
+        }
+        $this->assertEquals([], $violations, implode(PHP_EOL, array_slice($violations, 0, 5)));
+        $this->assertTrue($nonTrivial > $trees / 2, "{$family}: árvores triviais demais ({$nonTrivial})");
+        fwrite(STDOUT, sprintf("    [NULOS+Char] %s: %d árvores × %d linhas (NULL e textos em outra caixa); memória = PdoRepository = SQL (%d não triviais)\n", $family, $trees, count($rows), $nonTrivial));
+    }
+
+    private function charParityTree(int $depth): ISpecification
+    {
+        if ($depth === 0 || mt_rand(0, 9) < 3) {
+            $property = ['active', 'removed', 'answer'][mt_rand(0, 2)];
+            $bool = (bool) mt_rand(0, 1);
+
+            return Spec::property($property, match (mt_rand(0, 6)) {
+                0 => Spec::isTrue(),
+                1 => Spec::isFalse(),
+                2 => Spec::equal($bool),
+                3 => Spec::notEqual($bool),
+                4 => Spec::in($bool, null),
+                5 => Spec::in(true, false),
+                default => mt_rand(0, 1) === 1 ? Spec::isNull() : Spec::not(Spec::equal($bool)),
+            });
+        }
+        $d = $depth - 1;
+
+        return match (mt_rand(0, 3)) {
+            0 => Spec::not($this->charParityTree($d)),
+            1 => $this->charParityTree($d)->and($this->charParityTree($d)),
+            2 => $this->charParityTree($d)->or($this->charParityTree($d)),
+            default => Spec::nor($this->charParityTree($d), $this->charParityTree($d)),
+        };
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -1697,11 +1919,11 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
     // escritas iguais; o $pdo e o $products do exemplo 17 são recriados aqui (os três produtos dele).
     ///////////////////////////////////////////////////////////////////////////
 
-    /** Os blocos dos exemplos 17.1 (dois) e 17.2 (um) são iguais nos dois idiomas, fora os comentários. */
+    /** Os blocos dos exemplos 17.1 (três desde 1.14.0) e 17.2 (um) são iguais nos dois idiomas, fora os comentários. */
     private function testReadme171And172BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        foreach (['17.1' => 2, '17.2' => 1] as $example => $blocks) {
+        foreach (['17.1' => 3, '17.2' => 1] as $example => $blocks) {
             $english = ReadmeBlocks::of($root . '/README.md', $example);
             $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', $example);
             $this->assertCount($blocks, $english, "{$blocks} bloco(s) PHP no exemplo {$example} (EN)");
@@ -1792,6 +2014,27 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
         $this->assertEquals(['id', 'created_at', 'updated_at', 'subject', 'urgent'], array_keys($row));
         $hydrated = $mapping->hydrate(['id' => 7, 'subject' => 'Toner', 'urgent' => '1']);
         $this->assertTrue($hydrated instanceof ReadmeTicket && $hydrated->getEntityId() === 7 && $hydrated->urgent === true);
+
+        // --- bloco 3 (1.14.0): booleano em texto ---
+        $pdo->exec('CREATE TABLE member (id INTEGER PRIMARY KEY, active CHAR(1) NOT NULL, admin CHAR(1))');
+        $members = PdoRepository::forEntity($pdo, ReadmeMember::class);
+        $members->putAll([new ReadmeMember(1), new ReadmeMember(2, active: false, admin: true)]);
+        $this->assertEquals(['N', 'S'], $pdo->query('SELECT active, admin FROM member WHERE id = 2')->fetch(PDO::FETCH_NUM), 'README 17.1: textos gravados');
+        $this->assertEquals('("active" IS NOT NULL AND "active" IN (\'Y\', \'y\'))', $members->toWhereClause(Spec::property('active', Spec::isTrue()))->toSql());
+        $this->assertEquals(['Y', null], $pdo->query('SELECT active, admin FROM member WHERE id = 1')->fetch(PDO::FETCH_NUM), "README 17.1: padrão 'Y', null é NULL");
+
+        $pdo->exec("UPDATE member SET active = 'X' WHERE id = 1");
+        $caught = null;
+        try {
+            $members->findById(1);
+        } catch (DataIntegrityException $e) {
+            $caught = $e->getStoredValue();
+        }
+        $this->assertEquals('X', $caught, 'README 17.1: erro de integridade, nunca false');
+        // Prosa: lê em qualquer caixa; texto de mais de duas letras compila com LOWER()
+        $pdo->exec("UPDATE member SET active = 'y', admin = 'n' WHERE id = 1");
+        $this->assertTrue($members->findById(1)?->active === true && $members->findById(1)?->admin === false, 'README 17.1: qualquer caixa');
+        $this->assertEquals([1], array_map(static fn(ReadmeMember $m): int => $m->getEntityId(), $members->find(Spec::property('active', Spec::isTrue()))));
     }
 
     /** README 17.2: insertAll num INSERT, updateWhere, select, aggregate com groupBy, Spec::inQuery. */
