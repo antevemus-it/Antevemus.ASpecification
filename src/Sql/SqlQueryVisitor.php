@@ -70,9 +70,12 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   checks (`IS NULL`, `IS NOT NULL`, equality to null, a set holding null) already are two-valued and
  *   are not guarded. An AND/OR/NOT/NOR node directly inside a property rejects a null value in memory,
  *   so it is emitted as `(col IS NOT NULL AND (...))` and its own comparisons need no further guard
+ * - An extension point for leaves known only to a subclass, translateExtensionLeaf() (1.13.0): the
+ *   PdoRepository compiler uses it for the subquery leaf of Spec::inQuery(); here such a leaf is refused
+ *   with NonTranslatableSpecificationException
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.11.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -232,6 +235,34 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
+     * The SQL literal of a boolean compared with the current column (equality, inequality, set
+     * membership): the dialect's literal. A subclass bound to a mapping answers per column (the
+     * PdoRepository compiler writes 1/0 for a boolean stored as an integer; since 1.13.0).
+     *
+     * @param bool $value
+     * @return string
+     */
+    protected function formatBooleanLiteral(bool $value): string
+    {
+        return $this->dialect->formatBoolean($value);
+    }
+
+    /**
+     * Translation of a leaf this visitor does not know, inside a property clause (since 1.13.0): null
+     * (the default) lets the visitor translate it or refuse it as usual. A subclass bound to more
+     * context answers for its own leaves (the PdoRepository compiler turns Spec::inQuery() into
+     * `col IN (SELECT ...)`). The returned clause is guarded against NULL like any comparison.
+     *
+     * @param ISpecification $specification Leaf inside a property clause
+     * @param string $column Escaped column of the enclosing property
+     * @return SqlWhereClause|null
+     */
+    protected function translateExtensionLeaf(ISpecification $specification, string $column): ?SqlWhereClause
+    {
+        return null;
+    }
+
+    /**
      * Whether a node is one of the logical composites that reject a null candidate in memory.
      */
     private static function isLogicalNode(ISpecification $specification): bool
@@ -382,7 +413,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
             );
         }
 
-        $clause = match (true) {
+        $clause = $this->translateExtensionLeaf($specification, $col) ?? match (true) {
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($specification, $col),
 
@@ -451,7 +482,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return new SqlWhereClause("{$col} IS NULL");
         }
         if (is_bool($val)) {
-            $formattedBool = $this->dialect->formatBoolean($val);
+            $formattedBool = $this->formatBooleanLiteral($val);
             return new SqlWhereClause("{$col} = {$formattedBool}");
         }
         $param = $this->createParameter($val);
@@ -486,7 +517,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
                 continue;
             }
             if (is_bool($value)) {
-                $items[] = $this->dialect->formatBoolean($value);
+                $items[] = $this->formatBooleanLiteral($value);
                 continue;
             }
             $param = $this->createParameter($value);
@@ -518,7 +549,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return new SqlWhereClause("{$col} IS NOT NULL");
         }
         if (is_bool($val)) {
-            $opposite = $this->dialect->formatBoolean(!$val);
+            $opposite = $this->formatBooleanLiteral(!$val);
             return new SqlWhereClause("{$col} = {$opposite}");
         }
         $param = $this->createParameter($val);

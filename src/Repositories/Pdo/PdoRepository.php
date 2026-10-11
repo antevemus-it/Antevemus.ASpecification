@@ -8,10 +8,11 @@ use Antevemus\ASpecification\Contracts\Concurrent\ISynchronizer;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\IPartitionRepository;
+use Antevemus\ASpecification\Contracts\Repositories\IRepository;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
-use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ASpecification\Persistence\IQueryLogger;
 use Antevemus\ASpecification\Persistence\ITransactionManager;
 use Antevemus\ASpecification\Persistence\PdoTransactionManager;
 use Antevemus\ASpecification\Repositories\AbstractRepository;
@@ -20,8 +21,13 @@ use Antevemus\ASpecification\Repositories\Pdo\Exceptions\OptimisticLockException
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\PartitioningNotSupportedException;
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\PdoRepositoryException;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnMapping;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\IdStrategy;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\LoadedRelations;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\RelationMapping;
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
@@ -29,14 +35,18 @@ use Antevemus\ASpecification\Sql\SqlDialect;
 use Antevemus\ASpecification\Sql\SqlWhereClause;
 use Antevemus\ASpecification\Util\UlidGenerator;
 use Antevemus\ASpecification\Util\UuidV7Generator;
+use Closure;
+use DateTime;
 use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Generator;
 use InvalidArgumentException;
 use PDO;
 use PDOException;
 use PDOStatement;
-use ReflectionProperty;
 use RuntimeException;
+use Throwable;
 
 /**
  * PdoRepository - IRepository over a Relational Table through PDO
@@ -67,11 +77,97 @@ use RuntimeException;
  *   matches the version the entity carries; a stale update or removal throws OptimisticLockException
  *   and writes nothing
  *
+ * Since 1.13.0 (forward 031), all optional; without them nothing changes (D8):
+ * - SQL log (D1): withQueryLogger() receives every statement with its parameter count and duration;
+ *   the parameter VALUES only with `logParameters: true` (RN-02: they can be personal data)
+ * - booleans stored as 1/0 (D2, BooleanStorage) and default time zones (D3): a temporal column is
+ *   written and read in the zone it declares, else the mapping's default, else the repository's
+ *   (withTimezone()), else UTC
+ * - lifecycle (D4), with the instant of the repository's clock (withClock(); system clock by default;
+ *   read once per call and truncated to the second, so the entity holds exactly what any column type
+ *   stores): #[CreatedAt] is filled on the INSERT when empty and never updated; #[UpdatedAt] is set
+ *   by every write of the row (INSERT, UPDATE, soft removal)
+ * - soft delete (D4, #[SoftDelete]): remove() and removeAll*() write the instant into the column
+ *   instead of deleting (and increment the version counter, as any write of the row); every read
+ *   (find, iterate, count, findSingle, findPage, findById, contains) leaves the marked rows out, so a
+ *   soft-removed entity is removed for every reader: TriggeringRepository publishes its exit and
+ *   TriggerSweeper sees it gone. withTrashed() and onlyTrashed() return VIEWS (copies of this
+ *   repository with the configuration of the moment) whose reads also see, or only see, the marked
+ *   rows; removals in any view only mark live rows. forceRemove() deletes the row for real. put() of
+ *   an entity whose row is marked behaves as after a hard delete: a versioned copy throws
+ *   OptimisticLockException, an unversioned one is written back and revived (the mark is cleared, the
+ *   creation time filled when empty), so the row is visible again (an entry for the triggers)
+ * - hooks (D4): beforePut(), afterPut(), beforeRemove(), afterRemove() register callables
+ *   `fn(IEntity $entity, PdoRepository $repository): void`, run inside the write's transaction: an
+ *   exception in a hook (before or after) rolls the write back and propagates. beforePut runs before
+ *   the identifier is generated and the timestamps are stamped; beforeRemove runs for each removal
+ *   attempted, afterRemove only when a row was removed. removeAll*() with remove hooks loads the
+ *   matching entities, runs the hooks for each and removes them by identifier (without hooks it stays
+ *   one statement); putAll() runs beforePut for every entity of a batch, then the writes, each
+ *   followed by its afterPut; insertAll() runs beforePut for every entity of a batch, the batch's
+ *   INSERT statements, then afterPut for every entity. Hooks run under the repository's synchronizer: with a
+ *   non-reentrant one, a hook must not write through the same repository
+ * - batches (D5): insertAll() writes NEW entities with multi-row INSERTs, without any existence
+ *   SELECT (a row that already exists fails on its key and nothing of the call is kept); putAll()
+ *   keeps the upsert but reads the existence of a whole batch with ONE `SELECT ... IN`. A statement
+ *   holds at most withBatchSize() rows (default 1000) and never more parameters than the driver
+ *   accepts (PostgreSQL and MySQL 65535, SQLite 32766 from 3.32 and 999 before, SQL Server 2000 and
+ *   1000 rows, 999 elsewhere). Database-generated (Auto) identifiers come back in batch only on
+ *   PostgreSQL (`RETURNING`, assigned in ascending order); on every other driver the rows that need a
+ *   generated identifier are inserted one by one (MySQL does not guarantee consecutive values for a
+ *   multi-row INSERT under innodb_autoinc_lock_mode = 2, its default, nor with an
+ *   auto_increment_increment other than 1). Drivers without multi-row VALUES (Oracle, Firebird,
+ *   Informix, ANSI) insert one row per statement
+ * - set-based reads and writes (D6): select() projects properties into arrays without building
+ *   entities; aggregate() returns a PdoAggregateQuery (groupBy, count, sum, avg, min, max) computed by
+ *   the database; both apply the read scope. updateWhere() is one UPDATE over the matching live rows,
+ *   stamping #[UpdatedAt] and incrementing #[Version] on every touched row, WITHOUT the per-entity
+ *   hooks. Spec::inQuery('prop', $other, $where, 'otherProp') compiles to `col IN (SELECT ...)` over
+ *   another repository on the same connection (its own read scope; toSubquery() shows the statement)
+ * - relationships (D7; #[ManyToOne] and #[OneToMany], or EntityMapping::manyToOne()/oneToMany()); the
+ *   related repositories are given with withRelated() (a decorator such as TriggeringRepository is
+ *   accepted: it reads through its PdoRepository and writes through the decorator). No lazy loading,
+ *   no proxy: with('items', 'customer', 'items.product') returns a VIEW whose reads load those
+ *   relations for each batch of withBatchSize() entities with ONE `SELECT ... WHERE fk IN (...)` per
+ *   relation and batch (more only when the IN list exceeds the driver's parameter limit), applying the
+ *   related repository's read scope (its soft-removed rows stay out); paths go as deep as the
+ *   relations go, each segment one more query per batch, each level resolved in the registry of its
+ *   own repository, then in the one of the repository with() was called on. A relation that was not
+ *   loaded keeps its "not loaded" value (the empty array, null) and the repository knows it was not
+ *   loaded (isLoaded(), EntityMapping::isRelationLoaded(): a WeakMap outside the entity). iterate()
+ *   runs the relation queries while its own cursor is open (as the sweeper does): on MySQL with
+ *   unbuffered queries use find(), or give the related repositories their own connection
+ * - a reference (ManyToOne) is never cascaded: put() writes the identifier of the referenced object
+ *   into the foreign key property (an object without identifier is refused: put it first); a null
+ *   reference clears the foreign key only when it was loaded non-null, never when it was not loaded
+ * - a composition (OneToMany with cascade, same connection, inside the parent's transaction): put(),
+ *   putAll() and insertAll() write the children the collection holds after their parents (foreign
+ *   key, and the child's back reference, set to the parent), then run afterPut. When the collection
+ *   was loaded (or written by this repository as a whole: the parent was inserted), the children that
+ *   left it are removed (orphan removal, before the upsert): only children that still belong to the
+ *   parent in the database and that were loaded with it (a child added by someone else since is
+ *   never removed), each with the object loaded (its version). A collection that was NOT loaded is
+ *   never taken as empty: its children are upserted, nothing is removed. remove() of a parent removes
+ *   its children first; a soft removal marks the children that have #[SoftDelete] and KEEPS the others
+ *   (the parent's row stays, a revival brings them back); a hard removal (forceRemove(), or a parent
+ *   without #[SoftDelete]) deletes every child row, marked or not, since no child row may outlive its
+ *   parent's. removeAll*() of a parent with compositions loads the matching parents (as with hooks).
+ *   Children are written through the registered repository: a TriggeringRepository publishes their
+ *   entries and exits (each cascaded removal of a live child is a remove() through it), a bare
+ *   PdoRepository publishes nothing (a TriggerSweeper notices the exits). A TriggeringRepository
+ *   over the PARENT reads its "before" without relations: its triggers should read columns. Moving a
+ *   child between two loaded parents is safe within ONE putAll() (a child present in any collection
+ *   of the call is never an orphan). The ManyToMany of other ORMs is out of scope: map the
+ *   association entity with two references
+ * - whereRelation('customer', $spec) / whereRelation('items', $spec) is the filter through a
+ *   relationship: Spec::inQuery() on the foreign key (one statement; the foreign key property must be
+ *   readable by a specification)
+ *
  * Every value goes through a prepared parameter; table and column names come only from the mapping,
  * validated as identifiers and quoted by the dialect (RN-04). Driver errors surface as
  * PdoRepositoryException whatever the error mode of the connection, which is left untouched.
  *
- * Out of v1 (D9): relationships and joins, DDL generation, second-level cache, partitions
+ * Out of v1 (D9): joins (relations load by batched IN, D7), DDL generation, second-level cache, partitions
  * (isNativelyPartitioned() is false; makePartition() throws PartitioningNotSupportedException).
  *
  * MySQL streams only with unbuffered queries (PDO::MYSQL_ATTR_USE_BUFFERED_QUERY = false on the
@@ -79,7 +175,7 @@ use RuntimeException;
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
- * @version    1.11.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -90,6 +186,18 @@ class PdoRepository extends AbstractRepository
 {
     private const DELETE_CHUNK = 500;
 
+    /** Default number of rows per batch of insertAll()/putAll() (since 1.13.0). */
+    public const DEFAULT_BATCH_SIZE = 1000;
+
+    private const SCOPE_LIVE = 'live';
+
+    private const SCOPE_WITH_TRASHED = 'with';
+
+    private const SCOPE_ONLY_TRASHED = 'only';
+
+    /** Families whose INSERT accepts several rows in VALUES. */
+    private const MULTI_ROW_FAMILIES = ['pgsql', 'mysql', 'sqlite', 'sqlsrv', 'mssql', 'dblib', 'db2', 'duckdb'];
+
     private readonly ISqlDialect $dialect;
 
     private readonly string $family;
@@ -98,18 +206,57 @@ class PdoRepository extends AbstractRepository
 
     private readonly PdoValueConverter $converter;
 
+    /** The mapping given to the constructor (the effective one adds the repository's zone). */
+    private readonly EntityMapping $declaredMapping;
+
+    /** The mapping in use: the declared one with the repository's default zone applied. */
+    private EntityMapping $mapping;
+
     /** @var list<ColumnMapping> Mapped columns in SELECT order */
-    private readonly array $columnList;
+    private array $columnList;
 
     private readonly string $tableSql;
 
-    private readonly string $selectSql;
+    private string $selectSql;
 
-    private readonly ColumnMapping $idColumn;
+    private ColumnMapping $idColumn;
+
+    /** Soft delete column (mapped or not), or null. */
+    private ?ColumnMapping $softDelete = null;
 
     private bool $inMemoryFallback = false;
 
-    private static ?ReflectionProperty $timeOfCreation = null;
+    private ?IQueryLogger $logger = null;
+
+    private bool $logParameters = false;
+
+    private ?string $timezone = null;
+
+    /** @var (Closure(): DateTimeInterface)|null */
+    private ?Closure $clock = null;
+
+    private int $batchSize = self::DEFAULT_BATCH_SIZE;
+
+    /** @var array{beforePut: list<Closure>, afterPut: list<Closure>, beforeRemove: list<Closure>, afterRemove: list<Closure>} */
+    private array $hooks = ['beforePut' => [], 'afterPut' => [], 'beforeRemove' => [], 'afterRemove' => []];
+
+    private string $scope = self::SCOPE_LIVE;
+
+    private ?int $maxParameters = null;
+
+    /** @var array<class-string, array{reader: PdoRepository, writer: IRepository}> Related repositories, by entity class */
+    private array $related = [];
+
+    /** @var array<string, array<string, mixed>> Relations loaded by the reads of this view, as a tree */
+    private array $eager = [];
+
+    /** @var list<RelationMapping> Cascaded collections of the mapping */
+    private array $compositions = [];
+
+    /** @var list<RelationMapping> References of the mapping */
+    private array $references = [];
+
+    private bool $hasRelations = false;
 
     /**
      * @param PDO $pdo Connection to the database holding the table (its attributes are left untouched)
@@ -122,7 +269,7 @@ class PdoRepository extends AbstractRepository
      */
     public function __construct(
         private readonly PDO $pdo,
-        private readonly EntityMapping $mapping,
+        EntityMapping $mapping,
         ?ITransactionManager $transactions = null,
         ISqlDialect|SqlDialect|string|null $dialect = null,
         ?ISynchronizer $synchronizer = null
@@ -135,13 +282,9 @@ class PdoRepository extends AbstractRepository
         $this->family = $this->dialect->getFamily();
         $this->transactions = $transactions ?? new PdoTransactionManager($pdo);
         $this->converter = new PdoValueConverter($this->family);
-        $this->columnList = array_values($mapping->getColumns());
-        $this->idColumn = $mapping->getId();
+        $this->declaredMapping = $mapping;
         $this->tableSql = $this->dialect->escapeIdentifier((string) $mapping->getTable());
-        $this->selectSql = 'SELECT ' . implode(', ', array_map(
-            fn(ColumnMapping $c): string => $this->dialect->escapeIdentifier($c->column),
-            $this->columnList
-        )) . ' FROM ' . $this->tableSql;
+        $this->applyMapping();
 
         if ($synchronizer !== null) {
             $this->setSynchronizer($synchronizer);
@@ -190,7 +333,318 @@ class PdoRepository extends AbstractRepository
         return $this->inMemoryFallback;
     }
 
-    /** The mapping in use. */
+    /**
+     * Sends every statement to a logger (since 1.13.0, forward 031, D1), or stops logging (null).
+     * The parameter values are logged only when $logParameters is true: they can be personal data,
+     * so they stay out of the log unless asked for (RN-02).
+     *
+     * @return static
+     */
+    public function withQueryLogger(?IQueryLogger $logger, bool $logParameters = false): static
+    {
+        $this->logger = $logger;
+        $this->logParameters = $logger !== null && $logParameters;
+
+        return $this;
+    }
+
+    /** The query logger, or null (since 1.13.0). */
+    public function getQueryLogger(): ?IQueryLogger
+    {
+        return $this->logger;
+    }
+
+    /** True when the logger receives the parameter values (since 1.13.0). */
+    public function logsParameterValues(): bool
+    {
+        return $this->logParameters;
+    }
+
+    /**
+     * Default time zone of the temporal columns when neither the column nor the mapping declares one
+     * (since 1.13.0, forward 031, D3); null restores UTC. Precedence: column > mapping > repository > UTC.
+     *
+     * @return static
+     * @throws InvalidArgumentException When the zone is unknown
+     */
+    public function withTimezone(?string $timezone): static
+    {
+        if ($timezone !== null) {
+            try {
+                new DateTimeZone($timezone);
+            } catch (Throwable $e) {
+                throw new InvalidArgumentException(sprintf('Unknown time zone "%s".', $timezone), 0, $e);
+            }
+        }
+        $this->timezone = $timezone;
+        $this->applyMapping();
+
+        return $this;
+    }
+
+    /** The repository's default time zone, or null (since 1.13.0). */
+    public function getTimezone(): ?string
+    {
+        return $this->timezone;
+    }
+
+    /**
+     * The clock of the lifecycle columns (since 1.13.0, forward 031, D4): read once per write call;
+     * null restores the system clock. The instant is truncated to the second.
+     *
+     * @param (Closure(): DateTimeInterface)|null $clock
+     * @return static
+     */
+    public function withClock(?Closure $clock): static
+    {
+        $this->clock = $clock;
+
+        return $this;
+    }
+
+    /**
+     * Maximum number of rows per batch of insertAll() and putAll() (since 1.13.0, forward 031, D5);
+     * the driver's parameter limit can lower it per statement.
+     *
+     * @return static
+     * @throws InvalidArgumentException When the size is below 1
+     */
+    public function withBatchSize(int $rows): static
+    {
+        if ($rows < 1) {
+            throw new InvalidArgumentException(sprintf('The batch size must be at least 1, %d given.', $rows));
+        }
+        $this->batchSize = $rows;
+
+        return $this;
+    }
+
+    /** Maximum number of rows per batch (since 1.13.0). */
+    public function getBatchSize(): int
+    {
+        return $this->batchSize;
+    }
+
+    /**
+     * Registers a callable run before each entity is written by put(), putAll(), update() or
+     * insertAll(), inside the transaction; an exception aborts the write (since 1.13.0, D4).
+     *
+     * @param callable(T, static): void $hook
+     * @return static
+     */
+    public function beforePut(callable $hook): static
+    {
+        $this->hooks['beforePut'][] = Closure::fromCallable($hook);
+
+        return $this;
+    }
+
+    /**
+     * Registers a callable run after each entity was written (identifier, version and timestamps
+     * set), inside the transaction; an exception rolls the write back (since 1.13.0, D4).
+     *
+     * @param callable(T, static): void $hook
+     * @return static
+     */
+    public function afterPut(callable $hook): static
+    {
+        $this->hooks['afterPut'][] = Closure::fromCallable($hook);
+
+        return $this;
+    }
+
+    /**
+     * Registers a callable run before each removal (remove(), removeAll*(), forceRemove()), inside the
+     * transaction; an exception aborts the removal (since 1.13.0, D4).
+     *
+     * @param callable(T, static): void $hook
+     * @return static
+     */
+    public function beforeRemove(callable $hook): static
+    {
+        $this->hooks['beforeRemove'][] = Closure::fromCallable($hook);
+
+        return $this;
+    }
+
+    /**
+     * Registers a callable run after each entity was removed (marked or deleted), inside the
+     * transaction; an exception rolls the removal back (since 1.13.0, D4).
+     *
+     * @param callable(T, static): void $hook
+     * @return static
+     */
+    public function afterRemove(callable $hook): static
+    {
+        $this->hooks['afterRemove'][] = Closure::fromCallable($hook);
+
+        return $this;
+    }
+
+    /**
+     * A view whose reads also see the soft-removed rows (since 1.13.0, D4). The view is a copy of
+     * this repository with its configuration of the moment; removals through it still only mark live
+     * rows.
+     *
+     * @return static
+     * @throws EntityMappingException When the mapping has no soft delete column
+     */
+    public function withTrashed(): static
+    {
+        return $this->view(self::SCOPE_WITH_TRASHED);
+    }
+
+    /**
+     * A view whose reads see ONLY the soft-removed rows (since 1.13.0, D4); see withTrashed().
+     *
+     * @return static
+     * @throws EntityMappingException When the mapping has no soft delete column
+     */
+    public function onlyTrashed(): static
+    {
+        return $this->view(self::SCOPE_ONLY_TRASHED);
+    }
+
+    /** True when the reads of this repository (or view) see the soft-removed rows (since 1.13.0). */
+    public function seesTrashed(): bool
+    {
+        return $this->scope !== self::SCOPE_LIVE;
+    }
+
+    /**
+     * Registers the repositories of the related entities (since 1.13.0, forward 031, D7), one per
+     * entity class (a later one replaces an earlier one of the same class). Each is a PdoRepository or
+     * a decorator of one that exposes getInner() (TriggeringRepository): the relations are READ
+     * through the PdoRepository and the cascaded children are WRITTEN through the repository given, so
+     * a decorator sees (and publishes) them. A relation of an entity to its own class uses this
+     * repository unless another one is registered (a cascade then writes through this very
+     * repository: do not give it a non-reentrant synchronizer). The repository of a cascaded collection must use
+     * the same PDO connection as this one: its writes join this repository's transaction (its
+     * transaction manager must join an open transaction of the connection, as PdoTransactionManager
+     * does). Views made before this call (with(), withTrashed()) keep their own registry.
+     *
+     * @return static
+     * @throws InvalidArgumentException When an item is not (a decorator of) a PdoRepository, or the
+     *                                  repository of a cascaded collection is on another connection
+     */
+    public function withRelated(IRepository ...$repositories): static
+    {
+        foreach ($repositories as $repository) {
+            $reader = $repository;
+            for ($depth = 0; !$reader instanceof self && $depth < 8 && method_exists($reader, 'getInner'); $depth++) {
+                $reader = $reader->getInner();
+            }
+            if (!$reader instanceof self) {
+                throw new InvalidArgumentException(sprintf(
+                    'withRelated() takes PdoRepository instances or decorators of one exposing getInner() (as TriggeringRepository); %s given.',
+                    get_debug_type($repository)
+                ));
+            }
+            $class = $reader->mapping->getEntityClass();
+            foreach ($this->compositions as $relation) {
+                if ($relation->target === $class) {
+                    $this->assertSameConnection($relation, $reader);
+                }
+            }
+            $this->related[$class] = ['reader' => $reader, 'writer' => $repository];
+        }
+
+        return $this;
+    }
+
+    /**
+     * A VIEW whose reads (find*, iterate*, findSingle, findPage, findById) also load the given
+     * relations (since 1.13.0, forward 031, D7): `with('items', 'customer', 'items.product')`. For each
+     * batch of withBatchSize() entities read, each relation costs ONE `SELECT ... WHERE fk IN (...)`
+     * (more only past the driver's parameter limit), never one per entity; the related repository's
+     * read scope applies (its soft-removed rows are not loaded). A dotted path loads the relation of the
+     * loaded entities, as deep as the relations go (each segment one more query per batch). The view
+     * is a copy of this repository with its configuration of the moment; with() on a view adds paths.
+     *
+     * @param string ...$paths Relation property names, dotted for nested relations
+     * @return static
+     * @throws InvalidArgumentException When a segment is not a relationship of its entity, or its
+     *                                  repository is not registered (withRelated())
+     */
+    public function with(string ...$paths): static
+    {
+        if ($paths === []) {
+            throw new InvalidArgumentException('with() needs at least one relation path.');
+        }
+        $tree = $this->eager;
+        foreach ($paths as $path) {
+            $segments = explode('.', $path);
+            $repository = $this;
+            foreach ($segments as $segment) {
+                $relation = $repository->mapping->getRelation($segment);
+                if ($relation === null) {
+                    throw new InvalidArgumentException(sprintf(
+                        'Cannot load "%s": "%s" is not a relationship of %s.',
+                        $path,
+                        $segment,
+                        $repository->mapping->getEntityClass()
+                    ));
+                }
+                $related = $repository->related($relation, $this)['reader'];
+                if ($relation->isOneToMany()) {
+                    $repository->childKey($relation, $related);
+                } else {
+                    $repository->mapping->getJoinColumn($relation->property);
+                }
+                $repository = $related;
+            }
+            $node = &$tree;
+            foreach ($segments as $segment) {
+                $node[$segment] ??= [];
+                $node = &$node[$segment];
+            }
+            unset($node);
+        }
+
+        $view = clone $this;
+        $view->eager = $tree;
+
+        return $view;
+    }
+
+    /**
+     * The relation paths the reads of this view load (since 1.13.0), dotted, in declaration order.
+     *
+     * @return list<string>
+     */
+    public function getEagerRelations(): array
+    {
+        $paths = [];
+        $walk = static function (array $tree, string $prefix) use (&$walk, &$paths): void {
+            foreach ($tree as $segment => $children) {
+                $paths[] = $prefix . $segment;
+                $walk($children, $prefix . $segment . '.');
+            }
+        };
+        $walk($this->eager, '');
+
+        return $paths;
+    }
+
+    /**
+     * True when the relation of this entity OBJECT was loaded by a with() read, or written as a whole
+     * by a cascade (since 1.13.0): its value is then the stored truth; otherwise it says nothing.
+     *
+     * @throws InvalidArgumentException When the relation is not a relationship of the mapping
+     */
+    public function isLoaded(IEntity $entity, string $relation): bool
+    {
+        if ($this->mapping->getRelation($relation) === null) {
+            throw new InvalidArgumentException(sprintf('"%s" is not a relationship of %s.', $relation, $this->mapping->getEntityClass()));
+        }
+
+        return LoadedRelations::isLoaded($entity, $relation);
+    }
+
+    /**
+     * The mapping in use: the one given to the constructor, with the repository's default time zone
+     * applied to the temporal columns that declare none (the same object when there is no such zone).
+     */
     public function getMapping(): EntityMapping
     {
         return $this->mapping;
@@ -216,6 +670,7 @@ class PdoRepository extends AbstractRepository
 
     /**
      * The WHERE clause a specification compiles to over this mapping (diagnostics, custom statements).
+     * The soft delete condition of the reads is not part of it.
      *
      * @throws NonTranslatableSpecificationException When the specification cannot be translated
      * @throws UnsupportedSqlOperationException When the dialect lacks an operation the specification needs
@@ -244,6 +699,7 @@ class PdoRepository extends AbstractRepository
                 return $count;
             }
 
+            $where = $this->scoped($where);
             $statement = $this->run('SELECT COUNT(*) FROM ' . $this->tableSql . $this->whereSql($where), $where->getParameters());
             $count = $statement->fetchColumn();
             $statement->closeCursor();
@@ -261,7 +717,7 @@ class PdoRepository extends AbstractRepository
         return $this->readConcurrently(function () use ($specification): Generator {
             $where = $this->compileOrFallback($specification);
 
-            return $this->stream($where, $where === null ? $specification : null);
+            return $this->eagerly($this->stream($where, $where === null ? $specification : null));
         });
     }
 
@@ -273,7 +729,7 @@ class PdoRepository extends AbstractRepository
         return $this->readConcurrently(function () use ($specification): array {
             $where = $this->compileOrFallback($specification);
 
-            return iterator_to_array($this->stream($where, $where === null ? $specification : null), false);
+            return iterator_to_array($this->eagerly($this->stream($where, $where === null ? $specification : null)), false);
         });
     }
 
@@ -296,6 +752,9 @@ class PdoRepository extends AbstractRepository
                 if (count($found) > 1) {
                     throw new RuntimeException('Expected a single entity result, but found at least 2');
                 }
+            }
+            if ($found !== [] && $this->eager !== []) {
+                $this->loadRelations($found, $this->eager, $this);
             }
 
             return $found[0] ?? null;
@@ -340,14 +799,14 @@ class PdoRepository extends AbstractRepository
                         break;
                     }
                 }
-                return $page;
+                return iterator_to_array($this->eagerly((static fn(): Generator => yield from $page)()), false);
             }
 
             if (!$this->dialect instanceof ISqlPagination) {
                 throw new UnsupportedSqlOperationException('LIMIT/OFFSET', $this->family);
             }
 
-            return iterator_to_array($this->stream($where, null, $limit, $offset, $orderBy), false);
+            return iterator_to_array($this->eagerly($this->stream($where, null, $limit, $offset, $orderBy)), false);
         });
     }
 
@@ -369,11 +828,15 @@ class PdoRepository extends AbstractRepository
                 $this->dialect->escapeIdentifier($this->idColumn->column) . ' = ' . $name,
                 [$name => $this->converter->toDatabase($this->idColumn, $id)]
             );
+            $found = null;
             foreach ($this->stream($where, null, null, null, []) as $entity) {
-                return $entity;
+                $found = $entity;
+            }
+            if ($found !== null && $this->eager !== []) {
+                $this->loadRelations([$found], $this->eager, $this);
             }
 
-            return null;
+            return $found;
         });
     }
 
@@ -388,8 +851,123 @@ class PdoRepository extends AbstractRepository
         return $this->readConcurrently(function () use ($entity): bool {
             $id = $this->identifierOf($entity);
 
-            return $id !== null && $this->rowExists($id);
+            return $id !== null && $this->rowExists($id, true);
         });
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Projections, aggregates and subqueries (since 1.13.0, forward 031, D6)
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Some properties of the entities satisfying the specification, as arrays, without building any
+     * entity: `SELECT "a", "b" FROM ... WHERE ...` ordered by the identifier, streamed (one row at a
+     * time; the query runs on the first pull, the specification is compiled at the call).
+     *
+     * Each row is keyed by the property names given, in that order, each value converted like a read
+     * value of its column (a NULL column gives null). Only readable mapped properties (the rule of the
+     * specifications) can be selected. The read scope applies (soft delete: live rows only, or what a
+     * withTrashed()/onlyTrashed() view sees). With the in-memory fallback on, a specification that
+     * cannot be translated reads the entities and projects them in PHP.
+     *
+     * @param ISpecification $specification Filter
+     * @param list<string> $properties Properties to read (at least one, no repetition)
+     * @return iterable<int, array<string, mixed>>
+     * @throws InvalidArgumentException When a property is not readable or repeated, or none is given
+     * @throws NonTranslatableSpecificationException When the specification cannot be translated (and no fallback)
+     */
+    public function select(ISpecification $specification, array $properties): iterable
+    {
+        $this->validateSpecification($specification);
+        $columns = $this->readableColumns($properties, 'select');
+
+        return $this->readConcurrently(function () use ($specification, $columns): Generator {
+            $where = $this->compileOrFallback($specification);
+
+            return $this->project($where, $where === null ? $specification : null, $columns);
+        });
+    }
+
+    /**
+     * Grouped aggregates of the entities satisfying the specification, computed by the database:
+     * `aggregate($spec)->groupBy('region')->sum('amount')->count()->get()`. The specification is
+     * compiled now (it must be translatable: the in-memory fallback does not apply); the read scope of
+     * this repository (or view) applies. See PdoAggregateQuery for the result shape, the conversions
+     * and the NULL semantics.
+     *
+     * @throws NonTranslatableSpecificationException When the specification cannot be translated
+     * @throws UnsupportedSqlOperationException When the dialect lacks an operation the specification needs
+     */
+    public function aggregate(ISpecification $specification): PdoAggregateQuery
+    {
+        $this->validateSpecification($specification);
+        $where = $this->scoped($this->compiler()->translate($specification));
+
+        return new PdoAggregateQuery(
+            $this->mapping,
+            fn(array $groups, array $aggregates): array => $this->readConcurrently(
+                fn(): array => $this->runAggregate($where, $groups, $aggregates)
+            )
+        );
+    }
+
+    /**
+     * The filter through a relationship (since 1.13.0, forward 031, D7), a Spec::inQuery() on the
+     * foreign key, one statement over the same connection:
+     * - a reference: `whereRelation('customer', $spec)` = the entities whose referenced entity
+     *   satisfies $spec, `customer_id IN (SELECT id FROM customer WHERE ...)`
+     * - a collection: `whereRelation('items', $spec)` = the entities with at least one child that
+     *   satisfies $spec, `id IN (SELECT order_id FROM item WHERE ...)`
+     * The read scope of the related repository applies (its soft-removed rows never match). Combine
+     * it like any specification (and(), or(), Spec::not()); the foreign key property must be readable
+     * by a specification (public, a public getter or #[Specifiable]).
+     *
+     * @throws InvalidArgumentException When the relation is not a relationship of the mapping, its
+     *                                  repository is not registered, or the foreign key is not readable
+     */
+    public function whereRelation(string $relation, ISpecification $where): PropertySpecification
+    {
+        $mapped = $this->mapping->getRelation($relation);
+        if ($mapped === null) {
+            throw new InvalidArgumentException(sprintf('"%s" is not a relationship of %s.', $relation, $this->mapping->getEntityClass()));
+        }
+        $related = $this->related($mapped)['reader'];
+        if ($mapped->isManyToOne()) {
+            $foreignKey = $this->mapping->getJoinColumn($relation);
+            $reason = null;
+            if ($this->mapping->findQueryColumn($foreignKey->property, $reason) === null) {
+                throw new InvalidArgumentException(sprintf('Cannot filter through "%s": %s.', $relation, (string) $reason));
+            }
+
+            return Spec::inQuery($foreignKey->property, $related, $where, EntityMapping::ENTITY_ID_ALIAS);
+        }
+
+        return Spec::inQuery(EntityMapping::ENTITY_ID_ALIAS, $related, $where, $this->childKey($mapped, $related)['column']->property);
+    }
+
+    /**
+     * The subquery of Spec::inQuery() over this repository: `SELECT "column" FROM "table" WHERE <spec>
+     * AND <read scope> AND "column" IS NOT NULL`, its parameters named with the prefix (diagnostics, and
+     * the compiler of another repository on the same connection). NULL values are left out so that a
+     * NOT over `col IN (subquery)` answers what memory answers (SQL makes `x NOT IN (..., NULL)` unknown).
+     *
+     * @param ISpecification $specification Filter of the subquery (must be translatable)
+     * @param string $property Readable mapped property whose column is selected
+     * @param string $parameterPrefix Prefix of the parameter names (letters, digits, underscore)
+     * @throws InvalidArgumentException When the property is not readable or the prefix is invalid
+     * @throws NonTranslatableSpecificationException When the specification cannot be translated
+     */
+    public function toSubquery(ISpecification $specification, string $property, string $parameterPrefix = 'q'): SqlWhereClause
+    {
+        $this->validateSpecification($specification);
+        $column = $this->readableColumns([$property], 'select')[$property];
+        $where = $this->compiler($parameterPrefix)->translate($specification);
+        $where = $this->scoped($where)->and(new SqlWhereClause($this->quote($column->column) . ' IS NOT NULL'));
+
+        return new SqlWhereClause(
+            'SELECT ' . $this->quote($column->column) . ' FROM ' . $this->tableSql . $this->whereSql($where),
+            $where->getParameters()
+        );
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -402,7 +980,7 @@ class PdoRepository extends AbstractRepository
         $this->assertMappedEntity($entity);
         $this->writeExclusively(function () use ($entity): void {
             $this->transactions->transactional(function () use ($entity): void {
-                $this->save($entity);
+                $this->saveBatch([$entity], $this->now());
             });
         });
     }
@@ -410,22 +988,52 @@ class PdoRepository extends AbstractRepository
     /**
      * {@inheritdoc}
      *
-     * All entities are written in one transaction: when one write fails, none is kept.
+     * All entities are written in one transaction: when one write fails, none is kept. The existence
+     * of the rows is read with one `SELECT ... IN` per batch of withBatchSize() entities (since 1.13.0).
      */
     public function putAll(array $collectionOfEntities): void
     {
-        foreach ($collectionOfEntities as $entity) {
-            if (!$entity instanceof IEntity) {
-                throw new InvalidArgumentException('All items must implement IEntity.');
-            }
-            $this->assertMappedEntity($entity);
+        $entities = $this->assertMappedEntities($collectionOfEntities);
+
+        $this->writeExclusively(function () use ($entities): void {
+            $this->transactions->transactional(function () use ($entities): void {
+                $now = $this->now();
+                foreach (array_chunk($entities, $this->batchSize) as $batch) {
+                    $this->saveBatch($batch, $now);
+                }
+            });
+        });
+    }
+
+    /**
+     * Inserts NEW entities with multi-row INSERT statements, without reading whether their rows exist
+     * (since 1.13.0, forward 031, D5): one transaction, batches of withBatchSize() rows bounded by the
+     * driver's parameter limit. Identifiers are generated as by put(); Auto identifiers come back by
+     * `RETURNING` on PostgreSQL and one INSERT per row elsewhere (see the class description). An
+     * entity whose row already exists (soft-removed rows included) fails on the key: nothing of the
+     * call is kept. Hooks beforePut/afterPut run for every entity.
+     *
+     * @param array<T> $entities
+     * @return int Number of rows inserted
+     * @throws InvalidArgumentException When an item is not an entity of the mapped class, or an Assigned identifier is missing
+     * @throws PdoRepositoryException When the driver refuses a statement (a duplicate key, for one)
+     */
+    public function insertAll(array $entities): int
+    {
+        $entities = $this->assertMappedEntities($entities);
+        if ($entities === []) {
+            return 0;
         }
 
-        $this->writeExclusively(function () use ($collectionOfEntities): void {
-            $this->transactions->transactional(function () use ($collectionOfEntities): void {
-                foreach ($collectionOfEntities as $entity) {
-                    $this->save($entity);
+        return $this->writeExclusively(function () use ($entities): int {
+            return $this->transactions->transactional(function () use ($entities): int {
+                $now = $this->now();
+                $inserted = 0;
+                foreach (array_chunk($entities, $this->batchSize) as $batch) {
+                    $inserted += $this->insertBatch($batch, $now);
                 }
+
+                return $inserted;
             });
         });
     }
@@ -442,43 +1050,34 @@ class PdoRepository extends AbstractRepository
         $this->put($entity);
     }
 
-    /** {@inheritdoc} */
+    /**
+     * {@inheritdoc}
+     *
+     * With #[SoftDelete] the row is marked (only a live row: a marked one gives false), otherwise
+     * deleted. Hooks beforeRemove (always) and afterRemove (when removed) run in the transaction.
+     */
     public function remove(IEntity $entity): bool
     {
-        return $this->writeExclusively(function () use ($entity): bool {
-            $id = $this->identifierOf($entity);
-            if ($id === null) {
-                return false;
-            }
-
-            return $this->transactions->transactional(function () use ($entity, $id): bool {
-                $sql = 'DELETE FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column) . ' = :id';
-                $params = [':id' => $id];
-
-                $version = $this->mapping->getVersion();
-                $expected = $version !== null ? $this->mapping->readValue($entity, $version->property) : null;
-                if ($version !== null && $expected !== null) {
-                    $sql .= ' AND ' . $this->quote($version->column) . ' = :version';
-                    $params[':version'] = (int) $expected;
-                }
-
-                $deleted = $this->run($sql, $params)->rowCount();
-                if ($deleted > 0) {
-                    return true;
-                }
-                if ($version !== null && $expected !== null) {
-                    $actual = $this->currentVersion($id);
-                    if ($actual !== false) {
-                        throw new OptimisticLockException($this->mapping->getEntityClass(), $id, (int) $expected, $actual);
-                    }
-                }
-
-                return false;
-            });
-        });
+        return $this->removeEntity($entity, $this->softDelete === null);
     }
 
-    /** {@inheritdoc} */
+    /**
+     * Deletes the row of the entity for real, soft-removed or not (since 1.13.0, forward 031, D4).
+     * Without #[SoftDelete] it is remove(). The version is checked as by remove(); the hooks run.
+     */
+    public function forceRemove(IEntity $entity): bool
+    {
+        return $this->removeEntity($entity, true);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * With #[SoftDelete], marks the matching live rows. With remove hooks, cascaded collections (since
+     * 1.13.0) or an in-memory evaluated specification the matching entities are loaded, the hooks run
+     * for each, their children are removed, and they are removed by identifier; otherwise it is one
+     * compiled statement.
+     */
     public function removeAllEntitiesSpecifiedBy(ISpecification $specification): int
     {
         $this->validateSpecification($specification);
@@ -486,30 +1085,108 @@ class PdoRepository extends AbstractRepository
         return $this->writeExclusively(function () use ($specification): int {
             $where = $this->compileOrFallback($specification);
 
-            return $this->transactions->transactional(function () use ($where, $specification): int {
+            return $this->transactions->transactional(
+                fn(): int => $this->removeMatching($where, $where === null ? $specification : null, false, $this->now())
+            );
+        });
+    }
+
+    /**
+     * Mass UPDATE (since 1.13.0, forward 031, D6): sets the given properties on every row satisfying
+     * the specification, in one statement and one transaction, without loading any entity.
+     *
+     * - values are converted by the type of their column, as a written value (an invalid one fails
+     *   before any statement); the identifier, the version counter and the lifecycle columns
+     *   (#[CreatedAt], #[UpdatedAt], #[SoftDelete]) cannot be set
+     * - #[UpdatedAt] is stamped with the instant of the repository's clock; a #[Version] counter is
+     *   incremented on every touched row (`COALESCE(version, 0) + 1`), so a copy loaded before is stale
+     *   and its put() throws OptimisticLockException, as after any other write of the row
+     * - with #[SoftDelete] only live rows are touched, whatever the view (onlyTrashed() touches none)
+     * - NO hook runs (beforePut/afterPut are per entity, and no entity is loaded), and the decorators of
+     *   the contract (TriggeringRepository) do not see it: a TriggerSweeper notices the changes; use
+     *   putAll() when the hooks or the triggers must run
+     * - with the in-memory fallback on, a specification that cannot be translated loads the matching
+     *   live entities and updates their rows by identifier
+     * - the returned count is the driver's: MySQL reports the rows whose values CHANGED (unless the
+     *   connection sets PDO::MYSQL_ATTR_FOUND_ROWS), the others the rows matched; with #[UpdatedAt] or
+     *   #[Version] every matched row changes. MySQL also refuses a subquery (Spec::inQuery()) on the
+     *   table being updated
+     *
+     * @param ISpecification $specification Rows to update
+     * @param array<string, mixed> $values Property => new value (at least one)
+     * @return int Number of rows updated (see above for MySQL)
+     * @throws InvalidArgumentException When a property is not mapped, cannot be set, or its value does not fit
+     * @throws NonTranslatableSpecificationException When the specification cannot be translated (and no fallback)
+     * @throws PdoRepositoryException When the driver refuses the statement
+     */
+    public function updateWhere(ISpecification $specification, array $values): int
+    {
+        $this->validateSpecification($specification);
+        if ($values === []) {
+            throw new InvalidArgumentException('updateWhere() needs at least one property to set.');
+        }
+        $sets = [];
+        $params = [];
+        $i = 0;
+        foreach ($values as $property => $value) {
+            $column = is_string($property) ? $this->mapping->getColumn($property) : null;
+            if ($column === null) {
+                throw new InvalidArgumentException(sprintf('Cannot update "%s": not a mapped property of %s.', (string) $property, $this->mapping->getEntityClass()));
+            }
+            $role = match (true) {
+                $column->isId => 'the identifier',
+                $column->isVersion => 'the version counter (incremented by every write)',
+                $column->isCreatedAt => 'the creation time (#[CreatedAt])',
+                $column->isUpdatedAt => 'the modification time (#[UpdatedAt], stamped by every write)',
+                $column->isSoftDelete => 'the soft delete mark (use removeBy())',
+                default => null,
+            };
+            if ($role !== null) {
+                throw new InvalidArgumentException(sprintf('Cannot update "%s": it is %s.', $property, $role));
+            }
+            $name = ':set' . $i++;
+            $sets[] = $this->quote($column->column) . ' = ' . $name;
+            $params[$name] = $this->converter->toDatabase($column, $value);
+        }
+
+        return $this->writeExclusively(function () use ($specification, $sets, $params): int {
+            $where = $this->compileOrFallback($specification);
+
+            return $this->transactions->transactional(function () use ($where, $specification, $sets, $params): int {
+                if ($this->softDelete !== null && $this->scope === self::SCOPE_ONLY_TRASHED) {
+                    return 0;   // writes only touch live rows: none is visible here
+                }
+                $updatedAt = $this->mapping->getUpdatedAt();
+                if ($updatedAt !== null) {
+                    $sets[] = $this->quote($updatedAt->column) . ' = :lc_updated_at';
+                    $params[':lc_updated_at'] = $this->converter->toDatabase($updatedAt, $this->stamp($updatedAt, $this->now()));
+                }
+                $version = $this->mapping->getVersion();
+                if ($version !== null) {
+                    $quoted = $this->quote($version->column);
+                    $sets[] = $quoted . ' = COALESCE(' . $quoted . ', 0) + 1';
+                }
+                $head = 'UPDATE ' . $this->tableSql . ' SET ' . implode(', ', $sets);
+
                 if ($where !== null) {
-                    return $this->run('DELETE FROM ' . $this->tableSql . $this->whereSql($where), $where->getParameters())->rowCount();
+                    $where = $this->liveOnly($where);
+
+                    return $this->run($head . $this->whereSql($where), $params + $where->getParameters())->rowCount();
                 }
 
-                // Evaluated in PHP: collect the identifiers first, then delete them in chunks
+                // Evaluated in PHP: the matching live rows, then UPDATE by identifier
                 $ids = [];
-                foreach ($this->stream(null, $specification) as $entity) {
+                foreach ($this->stream(null, $specification, null, null, [], self::SCOPE_LIVE) as $entity) {
                     $ids[] = $this->identifierOf($entity);
                 }
-                $removed = 0;
+                $updated = 0;
                 foreach (array_chunk($ids, self::DELETE_CHUNK) as $chunk) {
-                    $params = [];
-                    foreach ($chunk as $i => $id) {
-                        $params[':id' . $i] = $id;
-                    }
-                    $removed += $this->run(
-                        'DELETE FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column)
-                        . ' IN (' . implode(', ', array_keys($params)) . ')',
-                        $params
-                    )->rowCount();
+                    $in = $this->inList($chunk, 'd');
+                    $where = $this->liveOnly(new SqlWhereClause($this->quote($this->idColumn->column) . ' IN (' . $in['sql'] . ')', $in['params']));
+                    $updated += $this->run($head . $this->whereSql($where), $params + $where->getParameters())->rowCount();
                 }
 
-                return $removed;
+                return $updated;
             });
         });
     }
@@ -542,13 +1219,10 @@ class PdoRepository extends AbstractRepository
         foreach ($this->columnList as $i => $column) {
             $this->mapping->writeValue($entity, $column->property, $this->converter->fromDatabase($column, $row[$i] ?? null));
         }
-
-        if ($entity instanceof AbstractEntity) {
-            $property = self::$timeOfCreation ??= new ReflectionProperty(AbstractEntity::class, 'timeOfCreation');
-            if (!$property->isInitialized($entity)) {
-                $property->setValue($entity, new DateTimeImmutable());
-            }
+        if ($this->hasRelations) {
+            $this->mapping->initializeRelations($entity);
         }
+        EntityMapping::initializeCreationTime($entity);
 
         return $entity;
     }
@@ -557,9 +1231,230 @@ class PdoRepository extends AbstractRepository
     // Internals
     ///////////////////////////////////////////////////////////////////////////
 
-    private function compiler(): PdoSpecificationCompiler
+    private function compiler(string $parameterPrefix = 'p'): PdoSpecificationCompiler
     {
-        return new PdoSpecificationCompiler($this->mapping, $this->dialect, $this->converter);
+        return new PdoSpecificationCompiler($this->mapping, $this->dialect, $this->converter, $this->pdo, $parameterPrefix);
+    }
+
+    /**
+     * The columns of readable mapped properties (the rule of the specifications), keyed by property.
+     *
+     * @param array<mixed> $properties
+     * @return array<string, ColumnMapping>
+     * @throws InvalidArgumentException When none is given, one is repeated or one is not readable
+     */
+    private function readableColumns(array $properties, string $operation): array
+    {
+        if ($properties === []) {
+            throw new InvalidArgumentException(sprintf('Nothing to %s: give at least one property.', $operation));
+        }
+        $columns = [];
+        foreach ($properties as $property) {
+            $reason = null;
+            $column = is_string($property) ? $this->mapping->findQueryColumn($property, $reason) : null;
+            if ($column === null) {
+                throw new InvalidArgumentException(sprintf('Cannot %s "%s": %s.', $operation, is_scalar($property) ? (string) $property : get_debug_type($property), (string) ($reason ?? 'not a property name')));
+            }
+            if (isset($columns[$property])) {
+                throw new InvalidArgumentException(sprintf('Cannot %s "%s" twice.', $operation, $property));
+            }
+            $columns[$property] = $column;
+        }
+
+        return $columns;
+    }
+
+    /**
+     * Streams the projection of select(): the columns of the rows (SQL filter), or the properties of the
+     * entities evaluated in PHP (fallback).
+     *
+     * @param array<string, ColumnMapping> $columns
+     * @return Generator<int, array<string, mixed>>
+     */
+    private function project(?SqlWhereClause $where, ?ISpecification $memoryFilter, array $columns): Generator
+    {
+        if ($memoryFilter !== null) {
+            foreach ($this->stream(null, $memoryFilter) as $entity) {
+                $row = [];
+                foreach ($columns as $property => $column) {
+                    $row[$property] = $this->mapping->readValue($entity, $column->property);
+                }
+                yield $row;
+            }
+            return;
+        }
+
+        $where = $this->scoped($where);
+        $sql = 'SELECT ' . implode(', ', array_map(fn(ColumnMapping $c): string => $this->quote($c->column), array_values($columns)))
+            . ' FROM ' . $this->tableSql . $this->whereSql($where) . $this->orderSql([]);
+        $statement = $this->run($sql, $where->getParameters());
+        try {
+            while (($raw = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                $row = [];
+                $i = 0;
+                foreach ($columns as $property => $column) {
+                    $row[$property] = $this->converter->fromDatabase($column, $raw[$i++] ?? null);
+                }
+                yield $row;
+            }
+        } finally {
+            $statement->closeCursor();
+        }
+    }
+
+    /**
+     * Runs an aggregate query (PdoAggregateQuery::get()).
+     *
+     * @param array<string, ColumnMapping> $groups
+     * @param list<array{function: string, alias: string, column: ?ColumnMapping}> $aggregates
+     * @return list<array<string, mixed>>
+     */
+    private function runAggregate(SqlWhereClause $where, array $groups, array $aggregates): array
+    {
+        $select = [];
+        foreach ($groups as $column) {
+            $select[] = $this->quote($column->column);
+        }
+        foreach ($aggregates as $aggregate) {
+            $column = $aggregate['column'];
+            if ($column === null) {
+                $select[] = 'COUNT(*)';
+                continue;
+            }
+            $expression = $this->quote($column->column);
+            if ($this->family === 'sqlite' && $column->type === ColumnType::Decimal && $aggregate['function'] !== 'count') {
+                // SQLite has no decimal type: compare and add numbers, never the stored text
+                $expression = 'CAST(' . $expression . ' AS REAL)';
+            }
+            $select[] = strtoupper($aggregate['function']) . '(' . $expression . ')';
+        }
+
+        $sql = 'SELECT ' . implode(', ', $select) . ' FROM ' . $this->tableSql . $this->whereSql($where);
+        if ($groups !== []) {
+            $keys = array_map(fn(ColumnMapping $c): string => $this->quote($c->column), array_values($groups));
+            $sql .= ' GROUP BY ' . implode(', ', $keys);
+            $order = [];
+            foreach ($keys as $key) {
+                // NULL group first on every database (they disagree on where NULL sorts)
+                $order[] = 'CASE WHEN ' . $key . ' IS NULL THEN 0 ELSE 1 END';
+                $order[] = $key;
+            }
+            $sql .= ' ORDER BY ' . implode(', ', $order);
+        }
+
+        $statement = $this->run($sql, $where->getParameters());
+        $rows = [];
+        try {
+            while (($raw = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                $row = [];
+                $i = 0;
+                foreach ($groups as $property => $column) {
+                    $row[$property] = $this->converter->fromDatabase($column, $raw[$i++] ?? null);
+                }
+                foreach ($aggregates as $aggregate) {
+                    $row[$aggregate['alias']] = $this->aggregateValue($aggregate['function'], $aggregate['column'], $raw[$i++] ?? null);
+                }
+                $rows[] = $row;
+            }
+        } finally {
+            $statement->closeCursor();
+        }
+
+        return $rows;
+    }
+
+    /**
+     * PHP value of an aggregate (see PdoAggregateQuery).
+     */
+    private function aggregateValue(string $function, ?ColumnMapping $column, mixed $raw): mixed
+    {
+        if ($function === 'count') {
+            return (int) $raw;
+        }
+        if ($raw === null || $column === null) {
+            return null;
+        }
+        if ($column->type === ColumnType::Decimal) {
+            return self::canonicalDecimal($raw);
+        }
+        if ($function === 'sum' && $column->type === ColumnType::Integer) {
+            if (is_int($raw)) {
+                return $raw;
+            }
+            $text = is_float($raw) ? sprintf('%.0F', $raw) : self::canonicalDecimal($raw);
+            return preg_match('/^-?[0-9]+$/', $text) === 1 && (string) (int) $text === $text ? (int) $text : $text;
+        }
+        if ($function === 'sum' || $function === 'avg') {
+            return (float) $raw;
+        }
+
+        return $this->converter->fromDatabase($column, $raw);
+    }
+
+    /**
+     * Canonical decimal text of a numeric aggregate: no trailing fractional zeros; a float (SQLite)
+     * rounded to 15 significant digits first.
+     */
+    private static function canonicalDecimal(mixed $raw): string
+    {
+        if (is_float($raw)) {
+            $text = sprintf('%.15G', $raw);
+            if (stripos($text, 'E') !== false) {
+                $text = rtrim(rtrim(sprintf('%.15F', (float) $text), '0'), '.');
+            }
+        } else {
+            $text = trim((string) $raw);
+        }
+        if (str_contains($text, '.')) {
+            $text = rtrim(rtrim($text, '0'), '.');
+        }
+        if (str_starts_with($text, '.')) {
+            $text = '0' . $text;
+        } elseif (str_starts_with($text, '-.')) {
+            $text = '-0' . substr($text, 1);
+        }
+
+        return ($text === '' || $text === '-0') ? '0' : $text;
+    }
+
+    /**
+     * Builds the mapping in use (the declared one with the repository's zone) and what derives from it.
+     */
+    private function applyMapping(): void
+    {
+        $mapping = $this->declaredMapping;
+        if ($this->timezone !== null && $mapping->getTimezone() === null) {
+            $mapping = $mapping->timezone($this->timezone);
+        }
+        $this->mapping = $mapping;
+        $this->columnList = array_values($mapping->getColumns());
+        $this->idColumn = $mapping->getId();
+        $this->softDelete = $mapping->getSoftDelete();
+        $relations = $mapping->getRelations();
+        $this->hasRelations = $relations !== [];
+        $this->compositions = array_values(array_filter($relations, static fn(RelationMapping $r): bool => $r->isComposition()));
+        $this->references = array_values(array_filter($relations, static fn(RelationMapping $r): bool => $r->isManyToOne()));
+        $this->selectSql = 'SELECT ' . implode(', ', array_map(
+            fn(ColumnMapping $c): string => $this->dialect->escapeIdentifier($c->column),
+            $this->columnList
+        )) . ' FROM ' . $this->tableSql;
+    }
+
+    /**
+     * A copy of this repository whose reads use another soft delete scope.
+     */
+    private function view(string $scope): static
+    {
+        if ($this->softDelete === null) {
+            throw new EntityMappingException(sprintf(
+                '%s has no soft delete column: there is no removed row to see (map one with #[SoftDelete] or EntityMapping::softDelete()).',
+                $this->mapping->getEntityClass()
+            ));
+        }
+        $view = clone $this;
+        $view->scope = $scope;
+
+        return $view;
     }
 
     /**
@@ -579,9 +1474,41 @@ class PdoRepository extends AbstractRepository
     }
 
     /**
+     * The read filter: the clause AND the soft delete condition of the scope (the clause itself when
+     * the mapping has no soft delete column).
+     */
+    private function scoped(?SqlWhereClause $where, ?string $scope = null): SqlWhereClause
+    {
+        $where ??= SqlWhereClause::empty();
+        $scope ??= $this->scope;
+        if ($this->softDelete === null || $scope === self::SCOPE_WITH_TRASHED) {
+            return $where;
+        }
+
+        return $where->and(new SqlWhereClause(
+            $this->quote($this->softDelete->column) . ($scope === self::SCOPE_ONLY_TRASHED ? ' IS NOT NULL' : ' IS NULL')
+        ));
+    }
+
+    /**
+     * The clause AND "the row is live" (removals only touch live rows).
+     */
+    private function liveOnly(?SqlWhereClause $where): SqlWhereClause
+    {
+        $where ??= SqlWhereClause::empty();
+        if ($this->softDelete === null) {
+            return $where;
+        }
+
+        return $where->and(new SqlWhereClause($this->quote($this->softDelete->column) . ' IS NULL'));
+    }
+
+    /**
      * Streams the entities of a SELECT, filtering in PHP when a specification is given.
      *
      * @param array<string, string> $orderBy
+     * @param string|null $scope Soft delete scope of this read (SCOPE_LIVE for removals, SCOPE_WITH_TRASHED
+     *                           for every row); null = the read scope of this repository or view
      * @return Generator<int, T>
      */
     private function stream(
@@ -589,14 +1516,16 @@ class PdoRepository extends AbstractRepository
         ?ISpecification $memoryFilter,
         ?int $limit = null,
         ?int $offset = null,
-        array $orderBy = []
+        array $orderBy = [],
+        ?string $scope = null
     ): Generator {
-        $sql = $this->selectSql . ($where !== null ? $this->whereSql($where) : '') . $this->orderSql($orderBy);
+        $where = $this->scoped($where, $scope);
+        $sql = $this->selectSql . $this->whereSql($where) . $this->orderSql($orderBy);
         if (($limit !== null || $offset !== null) && $this->dialect instanceof ISqlPagination) {
             $sql = $this->dialect->paginate($sql, $limit, $offset);
         }
 
-        $statement = $this->run($sql, $where?->getParameters() ?? []);
+        $statement = $this->run($sql, $where->getParameters());
         try {
             while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
                 $entity = $this->hydrate($row);
@@ -641,85 +1570,673 @@ class PdoRepository extends AbstractRepository
         return ' ORDER BY ' . implode(', ', $terms);
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    // Internals: relationships (since 1.13.0, forward 031, D7)
+    ///////////////////////////////////////////////////////////////////////////
+
     /**
-     * Inserts or updates one entity (inside the caller's transaction).
+     * The entities of a read, with the relations of this view loaded per batch of withBatchSize().
+     *
+     * @param Generator<int, T> $entities
+     * @return Generator<int, T>
      */
-    private function save(IEntity $entity): void
+    private function eagerly(Generator $entities): Generator
     {
-        $id = $this->identifierOf($entity);
-        if ($id === null) {
-            $this->insert($entity, true);
-            return;
-        }
-
-        $version = $this->mapping->getVersion();
-        $current = $this->currentVersion($id);
-        if ($current === false) {
-            if ($version !== null && $this->mapping->readValue($entity, $version->property) !== null) {
-                // A versioned copy whose row is gone: removed by someone else, never resurrected
-                throw new OptimisticLockException(
-                    $this->mapping->getEntityClass(),
-                    $id,
-                    (int) $this->mapping->readValue($entity, $version->property),
-                    null
-                );
+        if ($this->eager === []) {
+            foreach ($entities as $entity) {
+                yield $entity;
             }
-            $this->insert($entity, false);
             return;
         }
-
-        $this->updateRow($entity, $id, $current);
+        $batch = [];
+        foreach ($entities as $entity) {
+            $batch[] = $entity;
+            if (count($batch) >= $this->batchSize) {
+                $this->loadRelations($batch, $this->eager, $this);
+                foreach ($batch as $loaded) {
+                    yield $loaded;
+                }
+                $batch = [];
+            }
+        }
+        if ($batch !== []) {
+            $this->loadRelations($batch, $this->eager, $this);
+            foreach ($batch as $loaded) {
+                yield $loaded;
+            }
+        }
     }
 
-    private function insert(IEntity $entity, bool $generateId): void
+    /**
+     * Loads a tree of relations for entities of this repository: per relation, one query per chunk of
+     * the driver's parameter limit, then the subtree on the loaded entities.
+     *
+     * @param list<IEntity> $entities
+     * @param array<string, array<string, mixed>> $tree
+     * @param PdoRepository $root The repository with() was called on (fallback registry)
+     */
+    private function loadRelations(array $entities, array $tree, PdoRepository $root): void
     {
-        $returning = false;
-        $id = $this->idColumn;
+        if ($entities === []) {
+            return;
+        }
+        foreach ($tree as $property => $subtree) {
+            $relation = $this->mapping->getRelation((string) $property);
+            if ($relation === null) {
+                continue;   // validated by with()
+            }
+            $related = $this->related($relation, $root)['reader'];
+            $loaded = $relation->isOneToMany()
+                ? $this->loadCollection($entities, $relation, $related)
+                : $this->loadReference($entities, $relation, $related);
+            if ($subtree !== []) {
+                $related->loadRelations($loaded, $subtree, $root);
+            }
+        }
+    }
 
-        if ($generateId) {
-            $generated = match ($this->mapping->getIdStrategy()) {
-                IdStrategy::Auto => null,
-                IdStrategy::Ulid => UlidGenerator::shared()->generate(),
-                IdStrategy::Uuid7 => UuidV7Generator::shared()->generate(),
-                IdStrategy::Max => $this->nextMaxId(),
-                IdStrategy::Assigned => throw new InvalidArgumentException(sprintf(
-                    '%s uses assigned identifiers: set "%s" before putting it.',
-                    $this->mapping->getEntityClass(),
-                    $id->property
-                )),
-            };
-            if ($generated !== null) {
-                $this->mapping->writeValue($entity, $id->property, $generated);
+    /**
+     * Loads a collection for every parent: `SELECT ... FROM child WHERE fk IN (parent ids)` in the
+     * child repository's read scope, ordered by the child identifier; returns every child loaded.
+     *
+     * @param list<IEntity> $parents
+     * @return list<IEntity>
+     */
+    private function loadCollection(array $parents, RelationMapping $relation, PdoRepository $child): array
+    {
+        ['column' => $foreignKey, 'back' => $back] = $this->childKey($relation, $child);
+        $ids = [];
+        foreach ($parents as $parent) {
+            $id = $this->identifierOf($parent);
+            if ($id !== null) {
+                $ids[(string) $id] = $id;
             }
         }
 
-        $version = $this->mapping->getVersion();
-        $newVersion = null;
-        if ($version !== null) {
-            $carried = $this->mapping->readValue($entity, $version->property);
-            $newVersion = $carried !== null ? (int) $carried : 1;
+        $byParent = [];
+        $all = [];
+        foreach (array_chunk(array_values($ids), max(1, $child->maxParameters())) as $chunk) {
+            foreach ($child->stream($child->inClause($foreignKey, $chunk), null) as $loaded) {
+                $byParent[$child->keyOf($foreignKey, $child->mapping->readValue($loaded, $foreignKey->property))][] = $loaded;
+                $all[] = $loaded;
+            }
         }
 
-        $columns = [];
-        $params = [];
-        foreach ($this->columnList as $i => $column) {
-            if ($column->isId && $generateId && $this->mapping->getIdStrategy() === IdStrategy::Auto) {
+        foreach ($parents as $parent) {
+            $id = $this->identifierOf($parent);
+            $children = $id === null ? [] : ($byParent[(string) $id] ?? []);
+            $this->mapping->writeValue($parent, $relation->property, $children);
+            if ($back !== null) {
+                foreach ($children as $loaded) {
+                    $child->mapping->writeValue($loaded, $back, $parent);
+                    LoadedRelations::markReference($loaded, $back, true);
+                }
+            }
+            LoadedRelations::markCollection($parent, $relation->property, $child->keyed($children));
+        }
+
+        return $all;
+    }
+
+    /**
+     * Loads a reference for every entity: `SELECT ... FROM target WHERE id IN (foreign keys)` in the
+     * target repository's read scope (a soft-removed target is not loaded: the reference stays null);
+     * returns the distinct targets loaded.
+     *
+     * @param list<IEntity> $entities
+     * @return list<IEntity>
+     */
+    private function loadReference(array $entities, RelationMapping $relation, PdoRepository $target): array
+    {
+        $foreignKey = $this->mapping->getJoinColumn($relation->property);
+        $targetId = $target->idColumn;
+        $values = [];
+        foreach ($entities as $entity) {
+            $value = $this->mapping->readValue($entity, $foreignKey->property);
+            if ($value !== null) {
+                $bindable = $target->converter->toDatabase($targetId, $value);
+                $values[(string) $bindable] = $bindable;
+            }
+        }
+
+        $found = [];
+        foreach (array_chunk(array_values($values), max(1, $target->maxParameters())) as $chunk) {
+            foreach ($target->stream($target->inClause($targetId, $chunk), null) as $loaded) {
+                $found[(string) $target->identifierOf($loaded)] = $loaded;
+            }
+        }
+
+        foreach ($entities as $entity) {
+            $value = $this->mapping->readValue($entity, $foreignKey->property);
+            $loaded = $value === null ? null : ($found[(string) $target->converter->toDatabase($targetId, $value)] ?? null);
+            $this->mapping->writeValue($entity, $relation->property, $loaded);
+            LoadedRelations::markReference($entity, $relation->property, $loaded !== null);
+        }
+
+        return array_values($found);
+    }
+
+    /**
+     * The registered repositories of a relation's target: this repository's registry, then the root's
+     * (eager loading), then this repository itself for a relation to its own class.
+     *
+     * @return array{reader: PdoRepository, writer: IRepository}
+     * @throws InvalidArgumentException When no repository of the target is registered
+     */
+    private function related(RelationMapping $relation, ?PdoRepository $root = null): array
+    {
+        $entry = $this->related[$relation->target] ?? ($root?->related[$relation->target] ?? null);
+        if ($entry !== null) {
+            return $entry;
+        }
+        if ($relation->target === $this->mapping->getEntityClass()) {
+            return ['reader' => $this, 'writer' => $this];
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'No repository of %s is registered for the relationship "%s" of %s: give one to withRelated().',
+            $relation->target,
+            $relation->property,
+            $this->mapping->getEntityClass()
+        ));
+    }
+
+    /**
+     * The foreign key column of a collection in the child mapping, and the child's back reference
+     * property when mappedBy names one.
+     *
+     * @return array{column: ColumnMapping, back: ?string}
+     * @throws EntityMappingException When mappedBy is neither a mapped property of the child nor its reference to this class
+     */
+    private function childKey(RelationMapping $relation, PdoRepository $child): array
+    {
+        $mappedBy = (string) $relation->mappedBy;
+        $column = $child->mapping->getColumn($mappedBy);
+        if ($column !== null) {
+            return ['column' => $column, 'back' => null];
+        }
+        $back = $child->mapping->getRelation($mappedBy);
+        if ($back !== null && $back->isManyToOne() && is_a($this->mapping->getEntityClass(), $back->target, true)) {
+            return ['column' => $child->mapping->getJoinColumn($mappedBy), 'back' => $mappedBy];
+        }
+
+        throw new EntityMappingException(sprintf(
+            'The mappedBy "%s" of the collection "%s" of %s is neither a mapped property of %s nor its ManyToOne reference to %s.',
+            $mappedBy,
+            $relation->property,
+            $this->mapping->getEntityClass(),
+            $child->mapping->getEntityClass(),
+            $this->mapping->getEntityClass()
+        ));
+    }
+
+    /**
+     * @throws InvalidArgumentException When the repository of a cascaded collection is on another connection
+     */
+    private function assertSameConnection(RelationMapping $relation, PdoRepository $child): void
+    {
+        if ($child->pdo !== $this->pdo) {
+            throw new InvalidArgumentException(sprintf(
+                'The collection "%s" of %s is cascaded inside one transaction, so the repository of %s must use the same PDO connection; it uses another one.',
+                $relation->property,
+                $this->mapping->getEntityClass(),
+                $relation->target
+            ));
+        }
+    }
+
+    /**
+     * `column = ?` or `column IN (?, ...)`: positional placeholders for a read (see insertRows():
+     * thousands of named ones are quadratic on SQLite), named ones (`:<prefix>N`) for a clause that a
+     * write combines with named SET parameters (a statement cannot mix both: SQLite binds them wrong
+     * without an error).
+     *
+     * @param list<mixed> $values Bindable values
+     * @param string|null $prefix Prefix of named placeholders; null = positional
+     */
+    private function inClause(ColumnMapping $column, array $values, ?string $prefix = null): SqlWhereClause
+    {
+        $values = array_values($values);
+        if ($prefix !== null) {
+            $in = $this->inList($values, $prefix);
+
+            return new SqlWhereClause(
+                $this->quote($column->column) . (count($values) === 1 ? ' = ' . $in['sql'] : ' IN (' . $in['sql'] . ')'),
+                $in['params']
+            );
+        }
+        if (count($values) === 1) {
+            return new SqlWhereClause($this->quote($column->column) . ' = ?', $values);
+        }
+
+        return new SqlWhereClause(
+            $this->quote($column->column) . ' IN (' . implode(', ', array_fill(0, count($values), '?')) . ')',
+            $values
+        );
+    }
+
+    /**
+     * Text key of a property value of a column (as bound): comparable with the text of identifierOf().
+     */
+    private function keyOf(ColumnMapping $column, mixed $value): string
+    {
+        return $value === null ? '' : (string) $this->converter->toDatabase($column, $value);
+    }
+
+    /**
+     * Entities of this repository keyed by the text of their identifier (those that have one).
+     *
+     * @param list<IEntity> $entities
+     * @return array<string, IEntity>
+     */
+    private function keyed(array $entities): array
+    {
+        $keyed = [];
+        foreach ($entities as $entity) {
+            $id = $this->identifierOf($entity);
+            if ($id !== null) {
+                $keyed[(string) $id] = $entity;
+            }
+        }
+
+        return $keyed;
+    }
+
+    /**
+     * The children a collection property holds, checked.
+     *
+     * @return list<IEntity>
+     * @throws InvalidArgumentException When it is not an array (or traversable) of the target class
+     */
+    private function collectionOf(IEntity $parent, RelationMapping $relation): array
+    {
+        $value = $this->mapping->readValue($parent, $relation->property);
+        if ($value === null) {
+            return [];
+        }
+        if ($value instanceof \Traversable) {
+            $value = iterator_to_array($value, false);
+        }
+        if (!is_array($value)) {
+            throw new InvalidArgumentException(sprintf('The collection "%s" of %s holds %s, not an array.', $relation->property, $this->mapping->getEntityClass(), get_debug_type($value)));
+        }
+        foreach ($value as $child) {
+            if (!$child instanceof $relation->target) {
+                throw new InvalidArgumentException(sprintf(
+                    'The collection "%s" of %s holds %s; only %s can be cascaded.',
+                    $relation->property,
+                    $this->mapping->getEntityClass(),
+                    get_debug_type($child),
+                    $relation->target
+                ));
+            }
+        }
+
+        return array_values($value);
+    }
+
+    /**
+     * Before a write: the foreign key of each reference follows the referenced object when there is
+     * one (which must have an identifier: a reference is never cascaded), and is cleared when the
+     * reference was loaded non-null and is now null; otherwise it is left as it is.
+     *
+     * @throws InvalidArgumentException When the referenced object is of another class or has no identifier
+     */
+    private function syncReferences(IEntity $entity): void
+    {
+        foreach ($this->references as $relation) {
+            $foreignKey = $this->mapping->getJoinColumn($relation->property);
+            $target = $this->mapping->readValue($entity, $relation->property);
+            if ($target !== null) {
+                if (!$target instanceof $relation->target) {
+                    throw new InvalidArgumentException(sprintf('The reference "%s" of %s holds %s, not a %s.', $relation->property, $this->mapping->getEntityClass(), get_debug_type($target), $relation->target));
+                }
+                $id = $target->getEntityId();
+                if ($id === null) {
+                    throw new InvalidArgumentException(sprintf(
+                        'The %s referenced by "%s" of %s has no identifier yet: put it first (a ManyToOne reference is never cascaded).',
+                        $relation->target,
+                        $relation->property,
+                        $this->mapping->getEntityClass()
+                    ));
+                }
+                $current = $this->mapping->readValue($entity, $foreignKey->property);
+                if ($current === null || $this->keyOf($foreignKey, $current) !== $this->keyOf($foreignKey, $id)) {
+                    $this->mapping->writeValue($entity, $foreignKey->property, $id);
+                }
+            } elseif (LoadedRelations::wasPresent($entity, $relation->property)) {
+                // Loaded non-null, now null: the reference was cleared
+                $this->mapping->writeValue($entity, $foreignKey->property, null);
+            }
+        }
+    }
+
+    /**
+     * After a write: a reference holding an object is known (loaded); a cleared one is known empty.
+     */
+    private function markReferences(IEntity $entity): void
+    {
+        foreach ($this->references as $relation) {
+            $target = $this->mapping->readValue($entity, $relation->property);
+            if ($target !== null || LoadedRelations::isLoaded($entity, $relation->property)) {
+                LoadedRelations::markReference($entity, $relation->property, $target !== null);
+            }
+        }
+    }
+
+    /**
+     * After the parents of a batch were written (inside the transaction): for each cascaded collection,
+     * the foreign key (and back reference) of the children set, the orphans of the LOADED collections
+     * removed, the children upserted (inserted by insertAll()), and the collection marked loaded when
+     * it was loaded or its parent was inserted by this call.
+     *
+     * @param list<IEntity> $parents
+     * @param array<int, true> $inserted Parents inserted by this call, by object id
+     * @param bool $insertOnly True from insertAll(): the children are new as well
+     */
+    private function cascadeSave(array $parents, array $inserted, bool $insertOnly): void
+    {
+        foreach ($this->compositions as $relation) {
+            $collected = [];
+            foreach ($parents as $parent) {
+                $children = $this->collectionOf($parent, $relation);
+                $loaded = LoadedRelations::isLoaded($parent, $relation->property);
+                if ($children === [] && !$loaded && !isset($inserted[spl_object_id($parent)])) {
+                    continue;   // nothing known, nothing to write
+                }
+                $collected[] = ['parent' => $parent, 'children' => $children, 'loaded' => $loaded];
+            }
+            if ($collected === []) {
                 continue;
             }
-            $value = $column->isVersion ? $newVersion : $this->mapping->readValue($entity, $column->property);
-            $name = ':c' . $i;
-            $columns[] = $this->quote($column->column);
-            $params[$name] = $this->converter->toDatabase($column, $value);
+            $writes = array_filter($collected, static fn(array $entry): bool => $entry['children'] !== [] || $entry['loaded']);
+            if ($writes === []) {
+                // New parents with an empty collection: known to have no children, nothing to write
+                foreach ($collected as $entry) {
+                    LoadedRelations::markCollection($entry['parent'], $relation->property, []);
+                }
+                continue;
+            }
+            ['reader' => $reader, 'writer' => $writer] = $this->related($relation);
+            $this->assertSameConnection($relation, $reader);
+            ['column' => $foreignKey, 'back' => $back] = $this->childKey($relation, $reader);
+
+            $upsert = [];
+            $kept = [];
+            foreach ($collected as $entry) {
+                $parentId = $this->mapping->readValue($entry['parent'], $this->idColumn->property);
+                foreach ($entry['children'] as $child) {
+                    $reader->mapping->writeValue($child, $foreignKey->property, $parentId);
+                    if ($back !== null) {
+                        $reader->mapping->writeValue($child, $back, $entry['parent']);
+                        LoadedRelations::markReference($child, $back, true);
+                    }
+                    $upsert[spl_object_id($child)] = $child;
+                    $childId = $reader->identifierOf($child);
+                    if ($childId !== null) {
+                        $kept[(string) $childId] = true;
+                    }
+                }
+            }
+
+            $orphanParents = [];
+            foreach ($collected as $entry) {
+                if (!$entry['loaded']) {
+                    continue;   // a collection that was not loaded is never taken as empty: no orphan
+                }
+                $id = $this->identifierOf($entry['parent']);
+                if ($id !== null) {
+                    $orphanParents[(string) $id] = ['id' => $id, 'parent' => $entry['parent']];
+                }
+            }
+            if ($orphanParents !== []) {
+                $this->removeOrphans($relation, $reader, $writer, $foreignKey, $orphanParents, $kept);
+            }
+
+            if ($upsert !== []) {
+                if ($insertOnly && $writer === $reader) {
+                    $reader->insertAll(array_values($upsert));
+                } else {
+                    $writer->putAll(array_values($upsert));
+                }
+            }
+
+            foreach ($collected as $entry) {
+                if ($entry['loaded'] || isset($inserted[spl_object_id($entry['parent'])])) {
+                    LoadedRelations::markCollection($entry['parent'], $relation->property, $reader->keyed($entry['children']));
+                }
+            }
+        }
+    }
+
+    /**
+     * Orphan removal: the live children that still belong to the parents in the database (one query
+     * per chunk), are no longer in any collection of the call, and were loaded with their parent (a
+     * child added since the load is not this collection's to remove); each removed through the
+     * registered repository, with the object that was loaded when it is still alive (its version).
+     *
+     * @param array<string, array{id: mixed, parent: IEntity}> $parents Loaded parents, by identifier text
+     * @param array<string, true> $kept Identifier texts of the children present in a collection of the call
+     */
+    private function removeOrphans(RelationMapping $relation, PdoRepository $reader, IRepository $writer, ColumnMapping $foreignKey, array $parents, array $kept): void
+    {
+        $orphans = [];
+        $ids = array_map(static fn(array $parent): mixed => $parent['id'], array_values($parents));
+        foreach (array_chunk($ids, max(1, $reader->maxParameters())) as $chunk) {
+            foreach ($reader->stream($reader->inClause($foreignKey, $chunk), null, null, null, [], self::SCOPE_LIVE) as $stored) {
+                $childKey = (string) $reader->identifierOf($stored);
+                if (isset($kept[$childKey])) {
+                    continue;
+                }
+                $parent = $parents[$reader->keyOf($foreignKey, $reader->mapping->readValue($stored, $foreignKey->property))]['parent'] ?? null;
+                if ($parent === null) {
+                    continue;
+                }
+                $loaded = LoadedRelations::loadedChildren($parent, $relation->property);
+                if ($loaded !== null && !array_key_exists($childKey, $loaded)) {
+                    continue;   // added by someone else after the load
+                }
+                $orphans[] = $loaded[$childKey] ?? $stored;
+            }
+        }
+        foreach ($orphans as $orphan) {
+            $writer->remove($orphan);
+        }
+    }
+
+    /**
+     * Removes the composed children of parents, before the parents' rows (inside the transaction).
+     * Soft ($hard false): the children with #[SoftDelete] are marked, the others kept with the
+     * parent's row. Hard: every child row is deleted, marked or not. Through a decorator, each live
+     * child is removed by its remove() (its exit is published), then, when hard, the rest is deleted.
+     *
+     * @param list<mixed> $parentIds Bindable identifiers of the parents
+     */
+    private function cascadeRemove(array $parentIds, bool $hard): void
+    {
+        if ($parentIds === []) {
+            return;
+        }
+        foreach ($this->compositions as $relation) {
+            ['reader' => $reader, 'writer' => $writer] = $this->related($relation);
+            $this->assertSameConnection($relation, $reader);
+            if (!$hard && $reader->softDelete === null) {
+                continue;   // the parent's row stays: its children without soft delete stay with it
+            }
+            $foreignKey = $this->childKey($relation, $reader)['column'];
+            foreach (array_chunk($parentIds, self::DELETE_CHUNK) as $chunk) {
+                // Named: the removal combines it with the named parameters of its SET
+                $where = $reader->inClause($foreignKey, $chunk, 'fk');
+                if ($writer !== $reader) {
+                    $victims = iterator_to_array($reader->stream($where, null, null, null, [], self::SCOPE_LIVE), false);
+                    foreach ($victims as $victim) {
+                        $writer->remove($victim);
+                    }
+                    if (!$hard) {
+                        continue;
+                    }
+                }
+                $reader->writeExclusively(fn(): int => $reader->removeMatching($where, null, $hard, $reader->now()));
+            }
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Internals: writes
+    ///////////////////////////////////////////////////////////////////////////
+
+    /**
+     * The instant of the lifecycle columns for one write call: the clock, truncated to the second.
+     */
+    private function now(): DateTimeImmutable
+    {
+        $now = $this->clock !== null ? ($this->clock)() : new DateTimeImmutable('now');
+        if (!$now instanceof DateTimeInterface) {
+            throw new RuntimeException(sprintf('The clock of the repository returned %s instead of a DateTimeInterface.', get_debug_type($now)));
+        }
+        $now = DateTimeImmutable::createFromInterface($now);
+
+        return $now->setTime((int) $now->format('G'), (int) $now->format('i'), (int) $now->format('s'), 0);
+    }
+
+    /**
+     * Inserts or updates the entities of one batch (inside the caller's transaction): beforePut for
+     * each, the references synchronized, ONE existence read for those that carry an identifier, then
+     * each write and its afterPut. With cascaded collections, the children of the whole batch are
+     * written after the parents, and the afterPut hooks run after them.
+     *
+     * @param list<IEntity> $batch
+     */
+    private function saveBatch(array $batch, DateTimeImmutable $now): void
+    {
+        foreach ($batch as $entity) {
+            $this->runHooks('beforePut', $entity);
+        }
+        foreach ($this->references !== [] ? $batch : [] as $entity) {
+            $this->syncReferences($entity);
+        }
+        $cascade = $this->compositions !== [];
+        /** @var array<int, true> $inserted Parents inserted by this call, by object id */
+        $inserted = [];
+
+        $ids = [];
+        foreach ($batch as $entity) {
+            $id = $this->identifierOf($entity);
+            if ($id !== null) {
+                $ids[(string) $id] = $id;
+            }
+        }
+        $rows = $ids === [] ? [] : $this->rowStates(array_values($ids));
+
+        $version = $this->mapping->getVersion();
+        foreach ($batch as $entity) {
+            $id = $this->identifierOf($entity);
+            if ($id === null) {
+                $this->insert($entity, true, $now);
+                $inserted[spl_object_id($entity)] = true;
+            } else {
+                $row = $rows[(string) $id] ?? null;
+                $carried = $version !== null ? $this->mapping->readValue($entity, $version->property) : null;
+                if ($row === null || $row['trashed']) {
+                    if ($carried !== null) {
+                        // A versioned copy whose row is gone (or soft-removed): removed by someone else,
+                        // never resurrected
+                        throw new OptimisticLockException($this->mapping->getEntityClass(), $id, (int) $carried, null);
+                    }
+                    if ($row === null) {
+                        $this->insert($entity, false, $now);
+                        $inserted[spl_object_id($entity)] = true;
+                    } else {
+                        $this->updateRow($entity, $id, $now, true);
+                    }
+                } else {
+                    $this->updateRow($entity, $id, $now, false);
+                }
+            }
+
+            // The row now exists and is live: a second occurrence of the identifier in the batch updates it
+            $written = $this->identifierOf($entity);
+            if ($written !== null) {
+                $rows[(string) $written] = ['trashed' => false];
+            }
+            if (!$cascade) {
+                $this->runHooks('afterPut', $entity);
+            }
         }
 
-        $sql = 'INSERT INTO ' . $this->tableSql . ' (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_keys($params)) . ')';
-        $autoId = $generateId && $this->mapping->getIdStrategy() === IdStrategy::Auto;
-        if ($autoId && $this->family === 'pgsql' && $this->mapping->getSequence() === null) {
-            $sql .= ' RETURNING ' . $this->quote($id->column);
-            $returning = true;
+        if ($cascade) {
+            $this->cascadeSave($batch, $inserted, false);
+            foreach ($batch as $entity) {
+                $this->runHooks('afterPut', $entity);
+            }
         }
+        foreach ($this->references !== [] ? $batch : [] as $entity) {
+            $this->markReferences($entity);
+        }
+    }
+
+    /**
+     * Existence and soft delete state of the rows of some identifiers (soft-removed rows included),
+     * keyed by the text of the identifier. One statement per chunk of the driver's parameter limit.
+     *
+     * @param list<mixed> $ids Bindable identifiers
+     * @return array<string, array{trashed: bool}>
+     */
+    private function rowStates(array $ids): array
+    {
+        $select = $this->quote($this->idColumn->column) . ($this->softDelete !== null ? ', ' . $this->quote($this->softDelete->column) : '');
+        $states = [];
+        foreach (array_chunk($ids, max(1, $this->maxParameters())) as $chunk) {
+            if (count($chunk) === 1) {
+                $sql = 'SELECT ' . $select . ' FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column) . ' = :id';
+                $params = [':id' => $chunk[0]];
+            } else {
+                // Positional placeholders (see insertRows())
+                $sql = 'SELECT ' . $select . ' FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column)
+                    . ' IN (' . implode(', ', array_fill(0, count($chunk), '?')) . ')';
+                $params = array_values($chunk);
+            }
+            $statement = $this->run($sql, $params);
+            try {
+                while (($row = $statement->fetch(PDO::FETCH_NUM)) !== false) {
+                    $key = (string) $this->converter->toDatabase($this->idColumn, $this->converter->fromDatabase($this->idColumn, $row[0]));
+                    $states[$key] = ['trashed' => $this->softDelete !== null && $row[1] !== null];
+                }
+            } finally {
+                $statement->closeCursor();
+            }
+        }
+
+        return $states;
+    }
+
+    /**
+     * Inserts one entity (inside the caller's transaction).
+     */
+    private function insert(IEntity $entity, bool $generateId, DateTimeImmutable $now): void
+    {
+        $id = $this->idColumn;
+        $autoId = $generateId && $this->mapping->getIdStrategy() === IdStrategy::Auto;
+        if ($generateId && !$autoId) {
+            $this->mapping->writeValue($entity, $id->property, $this->generateId(null));
+        }
+
+        $columns = $this->insertColumns(!$autoId);
+        $values = $this->insertValues($entity, $columns, $now);
+        $params = [];
+        foreach ($values['values'] as $i => $value) {
+            $params[':c' . $i] = $value;
+        }
+
+        $returning = $autoId && $this->family === 'pgsql' && $this->mapping->getSequence() === null;
         if ($columns === []) {
-            $sql = 'INSERT INTO ' . $this->tableSql . ' DEFAULT VALUES' . ($returning ? ' RETURNING ' . $this->quote($id->column) : '');
+            $sql = 'INSERT INTO ' . $this->tableSql . ' DEFAULT VALUES';
+        } else {
+            $sql = 'INSERT INTO ' . $this->tableSql . ' (' . implode(', ', array_map(fn(ColumnMapping $c): string => $this->quote($c->column), $columns))
+                . ') VALUES (' . implode(', ', array_keys($params)) . ')';
+        }
+        if ($returning) {
+            $sql .= ' RETURNING ' . $this->quote($id->column);
         }
 
         $statement = $this->run($sql, $params);
@@ -735,38 +2252,276 @@ class PdoRepository extends AbstractRepository
                     throw new PdoRepositoryException('Could not read the generated identifier: ' . $e->getMessage(), null, $e);
                 }
             }
-            if ($raw === false || $raw === null || $raw === '' || $raw === '0') {
-                throw new PdoRepositoryException(sprintf(
-                    'The database generated no identifier for %s (is "%s" an identity/auto-increment column%s?).',
-                    $this->mapping->getEntityClass(),
-                    $id->column,
-                    $this->family === 'pgsql' ? ' or is the sequence name right' : ''
-                ));
-            }
-            $this->mapping->writeValue($entity, $id->property, $this->converter->fromDatabase($id, $raw));
+            $this->assignGeneratedId($entity, $raw);
         }
 
+        $this->afterInsert($entity, $values);
+    }
+
+    /**
+     * Inserts the NEW entities of one batch (insertAll()): beforePut for each, identifiers generated,
+     * multi-row statements, then afterPut for each.
+     *
+     * @param list<IEntity> $batch
+     * @return int Rows inserted
+     */
+    private function insertBatch(array $batch, DateTimeImmutable $now): int
+    {
+        foreach ($batch as $entity) {
+            $this->runHooks('beforePut', $entity);
+        }
+        foreach ($this->references !== [] ? $batch : [] as $entity) {
+            $this->syncReferences($entity);
+        }
+
+        $strategy = $this->mapping->getIdStrategy();
+        $withId = [];
+        $autoIds = [];
+        $nextMax = null;
+        if ($strategy === IdStrategy::Max) {
+            // MAX(id)+1 once per batch, above every identifier the batch already carries
+            $nextMax = $this->nextMaxId();
+            foreach ($batch as $entity) {
+                $carried = $this->mapping->readValue($entity, $this->idColumn->property);
+                if ($carried !== null && (int) $carried >= $nextMax) {
+                    $nextMax = (int) $carried + 1;
+                }
+            }
+        }
+        foreach ($batch as $entity) {
+            if ($this->mapping->readValue($entity, $this->idColumn->property) === null) {
+                if ($strategy === IdStrategy::Auto) {
+                    $autoIds[] = $entity;
+                    continue;
+                }
+                $this->mapping->writeValue($entity, $this->idColumn->property, $this->generateId($strategy === IdStrategy::Max ? $nextMax++ : null));
+            }
+            $withId[] = $entity;
+        }
+
+        $inserted = $this->insertRows($withId, true, $now);
+        if ($autoIds !== []) {
+            if ($this->family === 'pgsql' && $this->multiRowInsert() && $this->insertColumns(false) !== []) {
+                $inserted += $this->insertRows($autoIds, false, $now);
+            } else {
+                // No guarantee of consecutive generated values: one INSERT per row
+                foreach ($autoIds as $entity) {
+                    $this->insert($entity, true, $now);
+                    $inserted++;
+                }
+            }
+        }
+
+        if ($this->compositions !== []) {
+            $new = [];
+            foreach ($batch as $entity) {
+                $new[spl_object_id($entity)] = true;
+            }
+            $this->cascadeSave($batch, $new, true);
+        }
+        foreach ($batch as $entity) {
+            $this->runHooks('afterPut', $entity);
+        }
+        foreach ($this->references !== [] ? $batch : [] as $entity) {
+            $this->markReferences($entity);
+        }
+
+        return $inserted;
+    }
+
+    /**
+     * Multi-row INSERT of entities, in statements bounded by the batch size and the parameter limit
+     * (one row per statement where VALUES takes one row). With $withId false the identifier column is
+     * left to the database and read back by RETURNING (PostgreSQL only).
+     *
+     * @param list<IEntity> $entities
+     * @return int Rows inserted
+     */
+    private function insertRows(array $entities, bool $withId, DateTimeImmutable $now): int
+    {
+        if ($entities === []) {
+            return 0;
+        }
+        $columns = $this->insertColumns($withId);
+        if ($columns === []) {
+            foreach ($entities as $entity) {
+                $this->insert($entity, !$withId, $now);
+            }
+            return count($entities);
+        }
+
+        $perStatement = 1;
+        if ($this->multiRowInsert()) {
+            $perStatement = max(1, min($this->batchSize, intdiv($this->maxParameters(), count($columns))));
+            if (in_array($this->family, ['sqlsrv', 'mssql', 'dblib'], true)) {
+                $perStatement = min($perStatement, 1000);
+            }
+        }
+        $head = 'INSERT INTO ' . $this->tableSql . ' (' . implode(', ', array_map(fn(ColumnMapping $c): string => $this->quote($c->column), $columns)) . ') VALUES ';
+        $returning = !$withId;
+
+        $inserted = 0;
+        foreach (array_chunk($entities, $perStatement) as $chunk) {
+            $tuples = [];
+            $params = [];
+            $rows = [];
+            // Positional placeholders: drivers resolve a named one by a linear search (SQLite), which
+            // makes a statement of thousands of parameters quadratic
+            $tuple = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
+            foreach ($chunk as $r => $entity) {
+                $values = $this->insertValues($entity, $columns, $now);
+                $rows[$r] = $values;
+                foreach ($values['values'] as $value) {
+                    $params[] = $value;
+                }
+                $tuples[] = $tuple;
+            }
+            $sql = $head . implode(', ', $tuples) . ($returning ? ' RETURNING ' . $this->quote($this->idColumn->column) : '');
+            $statement = $this->run($sql, $params);
+
+            if ($returning) {
+                $generated = $statement->fetchAll(PDO::FETCH_COLUMN, 0);
+                $statement->closeCursor();
+                if (count($generated) !== count($chunk)) {
+                    throw new PdoRepositoryException(sprintf('The database returned %d identifiers for %d rows of %s.', count($generated), count($chunk), $this->mapping->getEntityClass()));
+                }
+                if ($this->idColumn->type === ColumnType::Integer) {
+                    // Generated in the order of the rows: ascending whatever the order RETURNING lists them in
+                    usort($generated, static fn(mixed $a, mixed $b): int => (int) $a <=> (int) $b);
+                }
+                foreach (array_values($chunk) as $r => $entity) {
+                    $this->assignGeneratedId($entity, $generated[$r]);
+                }
+            } else {
+                $statement->closeCursor();
+            }
+            foreach ($chunk as $r => $entity) {
+                $this->afterInsert($entity, $rows[$r]);
+            }
+            $inserted += count($chunk);
+        }
+
+        return $inserted;
+    }
+
+    /**
+     * Columns of an INSERT: every mapped column, without the identifier when the database generates
+     * it, and the soft delete column when it is not mapped to a property (written NULL: a live row).
+     *
+     * @return list<ColumnMapping>
+     */
+    private function insertColumns(bool $withId): array
+    {
+        $columns = $withId
+            ? $this->columnList
+            : array_values(array_filter($this->columnList, static fn(ColumnMapping $c): bool => !$c->isId));
+        if ($this->softDelete !== null && $this->softDelete->property === '') {
+            $columns[] = $this->softDelete;
+        }
+
+        return $columns;
+    }
+
+    /**
+     * Bound values of one entity for the INSERT columns, with the version (1, or the one carried) and
+     * the lifecycle values (creation time when empty, modification time, live soft delete mark).
+     *
+     * @param list<ColumnMapping> $columns
+     * @return array{values: list<mixed>, version: ?int, stamps: array<string, mixed>}
+     */
+    private function insertValues(IEntity $entity, array $columns, DateTimeImmutable $now): array
+    {
+        $version = $this->mapping->getVersion();
+        $newVersion = null;
         if ($version !== null) {
-            $this->mapping->writeValue($entity, $version->property, $newVersion);
+            $carried = $this->mapping->readValue($entity, $version->property);
+            $newVersion = $carried !== null ? (int) $carried : 1;
+        }
+
+        $values = [];
+        $stamps = [];
+        foreach ($columns as $column) {
+            if ($column->isVersion) {
+                $value = $newVersion;
+            } elseif ($column->isCreatedAt) {
+                $value = $this->mapping->readValue($entity, $column->property);
+                if ($value === null) {
+                    $value = $stamps[$column->property] = $this->stamp($column, $now);
+                }
+            } elseif ($column->isUpdatedAt) {
+                $value = $stamps[$column->property] = $this->stamp($column, $now);
+            } elseif ($column->isSoftDelete) {
+                $value = null;
+                if ($column->property !== '' && $this->mapping->readValue($entity, $column->property) !== null) {
+                    $stamps[$column->property] = null;
+                }
+            } else {
+                $value = $this->mapping->readValue($entity, $column->property);
+            }
+            $values[] = $this->converter->toDatabase($column, $value);
+        }
+
+        return ['values' => $values, 'version' => $newVersion, 'stamps' => $stamps];
+    }
+
+    /**
+     * Writes back to the entity what its INSERT stored: version and lifecycle values.
+     *
+     * @param array{values: list<mixed>, version: ?int, stamps: array<string, mixed>} $values
+     */
+    private function afterInsert(IEntity $entity, array $values): void
+    {
+        $version = $this->mapping->getVersion();
+        if ($version !== null) {
+            $this->mapping->writeValue($entity, $version->property, $values['version']);
+        }
+        foreach ($values['stamps'] as $property => $value) {
+            $this->mapping->writeValue($entity, $property, $value);
         }
     }
 
     /**
-     * @param int|false|null $current Version stored in the row (null when the row holds none)
+     * Updates the row of an entity; $revive also clears the soft delete mark and fills an empty
+     * creation time (a put() over a soft-removed row of an unversioned entity).
      */
-    private function updateRow(IEntity $entity, mixed $id, int|false|null $current): void
+    private function updateRow(IEntity $entity, mixed $id, DateTimeImmutable $now, bool $revive): void
     {
         $version = $this->mapping->getVersion();
 
         $sets = [];
         $params = [];
+        $stamps = [];
         foreach ($this->columnList as $i => $column) {
             if ($column->isId || $column->isVersion) {
                 continue;
             }
             $name = ':c' . $i;
+            if ($column->isUpdatedAt) {
+                $value = $stamps[$column->property] = $this->stamp($column, $now);
+            } elseif ($column->isCreatedAt) {
+                if (!$revive) {
+                    continue;   // never updated
+                }
+                $value = $this->mapping->readValue($entity, $column->property);
+                if ($value === null) {
+                    $value = $stamps[$column->property] = $this->stamp($column, $now);
+                }
+            } elseif ($column->isSoftDelete) {
+                if (!$revive) {
+                    continue;   // only removals mark the row
+                }
+                $value = null;
+                if ($this->mapping->readValue($entity, $column->property) !== null) {
+                    $stamps[$column->property] = null;
+                }
+            } else {
+                $value = $this->mapping->readValue($entity, $column->property);
+            }
             $sets[] = $this->quote($column->column) . ' = ' . $name;
-            $params[$name] = $this->converter->toDatabase($column, $this->mapping->readValue($entity, $column->property));
+            $params[$name] = $this->converter->toDatabase($column, $value);
+        }
+        if ($revive && $this->softDelete !== null && $this->softDelete->property === '') {
+            $sets[] = $this->quote($this->softDelete->column) . ' = NULL';
         }
 
         $where = $this->quote($this->idColumn->column) . ' = :id';
@@ -805,11 +2560,269 @@ class PdoRepository extends AbstractRepository
             }
             $this->mapping->writeValue($entity, $version->property, $newVersion);
         }
+        foreach ($stamps as $property => $value) {
+            $this->mapping->writeValue($entity, $property, $value);
+        }
     }
 
     /**
-     * Version stored in the row of the identifier: false when the row does not exist, null when the
-     * entity is not versioned or the row holds no version.
+     * Removes the rows matching a clause (or the entities a specification evaluated in PHP accepts),
+     * inside the caller's transaction: removeAll*(), and the cascade of a parent's removal into its
+     * children. Soft (marks live rows) when the mapping has #[SoftDelete] and $hard is false; hard
+     * (deletes every matching row, marked or not) otherwise. One statement without hooks nor cascaded
+     * collections; else the entities are loaded, beforeRemove runs for each, their own children are
+     * removed, then their rows, then afterRemove.
+     */
+    private function removeMatching(?SqlWhereClause $where, ?ISpecification $memoryFilter, bool $hard, DateTimeImmutable $now): int
+    {
+        $soft = $this->softDelete !== null && !$hard;
+        if ($soft && $this->scope === self::SCOPE_ONLY_TRASHED) {
+            return 0;   // removals only mark live rows: none is visible here
+        }
+        // A hard removal of a parent reaches every row; a removal by the caller, only the live ones
+        $scope = $hard ? self::SCOPE_WITH_TRASHED : self::SCOPE_LIVE;
+
+        if ($where !== null && $this->hooks['beforeRemove'] === [] && $this->hooks['afterRemove'] === [] && $this->compositions === []) {
+            $where = $this->scoped($where, $scope);
+            if ($soft) {
+                [$sets, $params] = $this->softRemovalSets($now);
+
+                return $this->run(
+                    'UPDATE ' . $this->tableSql . ' SET ' . implode(', ', $sets) . $this->whereSql($where),
+                    $params + $where->getParameters()
+                )->rowCount();
+            }
+
+            return $this->run('DELETE FROM ' . $this->tableSql . $this->whereSql($where), $where->getParameters())->rowCount();
+        }
+
+        // Entities first (hooks, children, or a specification evaluated in PHP), then removal by identifier
+        $victims = [];
+        foreach ($this->stream($where, $memoryFilter, null, null, [], $scope) as $entity) {
+            $victims[] = $entity;
+        }
+        foreach ($victims as $victim) {
+            $this->runHooks('beforeRemove', $victim);
+        }
+        $ids = array_map(fn(IEntity $victim): mixed => $this->identifierOf($victim), $victims);
+        $this->cascadeRemove($ids, !$soft);
+        $removed = 0;
+        foreach (array_chunk($ids, self::DELETE_CHUNK) as $chunk) {
+            $in = $this->inList($chunk, 'd');
+            $condition = $this->quote($this->idColumn->column) . ' IN (' . $in['sql'] . ')';
+            if ($soft) {
+                [$sets, $params] = $this->softRemovalSets($now);
+                $removed += $this->run(
+                    'UPDATE ' . $this->tableSql . ' SET ' . implode(', ', $sets) . ' WHERE ' . $condition
+                    . ' AND ' . $this->quote($this->softDelete->column) . ' IS NULL',
+                    $params + $in['params']
+                )->rowCount();
+            } else {
+                $removed += $this->run('DELETE FROM ' . $this->tableSql . ' WHERE ' . $condition, $in['params'])->rowCount();
+            }
+        }
+        foreach ($victims as $victim) {
+            if ($soft) {
+                $this->stampSoftRemoval($victim, $now, null);
+            }
+            $this->runHooks('afterRemove', $victim);
+        }
+
+        return $removed;
+    }
+
+    /**
+     * remove() and forceRemove(): marks (soft) or deletes (hard) the row of one entity, with the hooks.
+     */
+    private function removeEntity(IEntity $entity, bool $hard): bool
+    {
+        return $this->writeExclusively(function () use ($entity, $hard): bool {
+            $id = $this->identifierOf($entity);
+            if ($id === null) {
+                return false;
+            }
+
+            return $this->transactions->transactional(function () use ($entity, $id, $hard): bool {
+                $this->runHooks('beforeRemove', $entity);
+                if ($this->compositions !== []) {
+                    // The children go first (a hard removal must not leave rows that refer to the parent),
+                    // so the parent is checked first: nothing is cascaded for a row that is not removable
+                    $state = $this->rowStates([$id])[(string) $id] ?? null;
+                    if ($state === null || (!$hard && ($state['trashed'] || $this->scope === self::SCOPE_ONLY_TRASHED))) {
+                        return false;
+                    }
+                    $this->cascadeRemove([$id], $hard);
+                }
+                $removed = $hard ? $this->deleteRow($entity, $id) : $this->markRow($entity, $id, $this->now());
+                if ($removed) {
+                    $this->runHooks('afterRemove', $entity);
+                }
+
+                return $removed;
+            });
+        });
+    }
+
+    /**
+     * DELETE of the row of an entity, checking its version.
+     */
+    private function deleteRow(IEntity $entity, mixed $id): bool
+    {
+        $sql = 'DELETE FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column) . ' = :id';
+        $params = [':id' => $id];
+
+        $version = $this->mapping->getVersion();
+        $expected = $version !== null ? $this->mapping->readValue($entity, $version->property) : null;
+        if ($version !== null && $expected !== null) {
+            $sql .= ' AND ' . $this->quote($version->column) . ' = :version';
+            $params[':version'] = (int) $expected;
+        }
+
+        $deleted = $this->run($sql, $params)->rowCount();
+        if ($deleted > 0) {
+            return true;
+        }
+        if ($version !== null && $expected !== null) {
+            $actual = $this->currentVersion($id);
+            if ($actual !== false) {
+                throw new OptimisticLockException($this->mapping->getEntityClass(), $id, (int) $expected, $actual);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Soft removal of the row of an entity: marks it when it is live (and its version matches).
+     */
+    private function markRow(IEntity $entity, mixed $id, DateTimeImmutable $now): bool
+    {
+        if ($this->scope === self::SCOPE_ONLY_TRASHED) {
+            return false;   // removals only mark live rows: none is visible here
+        }
+        [$sets, $params] = $this->softRemovalSets($now);
+        $sql = 'UPDATE ' . $this->tableSql . ' SET ' . implode(', ', $sets)
+            . ' WHERE ' . $this->quote($this->idColumn->column) . ' = :id AND ' . $this->quote($this->softDelete->column) . ' IS NULL';
+        $params[':id'] = $id;
+
+        $version = $this->mapping->getVersion();
+        $expected = $version !== null ? $this->mapping->readValue($entity, $version->property) : null;
+        if ($version !== null && $expected !== null) {
+            $sql .= ' AND ' . $this->quote($version->column) . ' = :version';
+            $params[':version'] = (int) $expected;
+        }
+
+        if ($this->run($sql, $params)->rowCount() > 0) {
+            $this->stampSoftRemoval($entity, $now, $expected !== null ? (int) $expected + 1 : null);
+            return true;
+        }
+        if ($version !== null && $expected !== null) {
+            $states = $this->rowStates([$id]);
+            $state = $states[(string) $id] ?? null;
+            if ($state !== null && !$state['trashed']) {
+                $actual = $this->currentVersion($id);
+                throw new OptimisticLockException($this->mapping->getEntityClass(), $id, (int) $expected, $actual === false ? null : $actual);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * SET terms of a soft removal: the mark, the modification time, the version counter.
+     *
+     * @return array{0: list<string>, 1: array<string, mixed>}
+     */
+    private function softRemovalSets(DateTimeImmutable $now): array
+    {
+        $sets = [$this->quote($this->softDelete->column) . ' = :lc_deleted_at'];
+        $params = [':lc_deleted_at' => $this->converter->toDatabase($this->softDelete, $this->stamp($this->softDelete, $now))];
+        $updatedAt = $this->mapping->getUpdatedAt();
+        if ($updatedAt !== null) {
+            $sets[] = $this->quote($updatedAt->column) . ' = :lc_updated_at';
+            $params[':lc_updated_at'] = $this->converter->toDatabase($updatedAt, $this->stamp($updatedAt, $now));
+        }
+        $version = $this->mapping->getVersion();
+        if ($version !== null) {
+            $column = $this->quote($version->column);
+            $sets[] = $column . ' = COALESCE(' . $column . ', 0) + 1';
+        }
+
+        return [$sets, $params];
+    }
+
+    /**
+     * Writes back to a soft-removed entity its mark, its modification time and its new version
+     * (null = left as it is).
+     */
+    private function stampSoftRemoval(IEntity $entity, DateTimeImmutable $now, ?int $newVersion): void
+    {
+        if ($this->softDelete->property !== '') {
+            $this->mapping->writeValue($entity, $this->softDelete->property, $this->stamp($this->softDelete, $now));
+        }
+        $updatedAt = $this->mapping->getUpdatedAt();
+        if ($updatedAt !== null) {
+            $this->mapping->writeValue($entity, $updatedAt->property, $this->stamp($updatedAt, $now));
+        }
+        $version = $this->mapping->getVersion();
+        if ($version !== null) {
+            $current = $this->mapping->readValue($entity, $version->property);
+            $newVersion ??= $current !== null ? (int) $current + 1 : null;
+            if ($newVersion !== null) {
+                $this->mapping->writeValue($entity, $version->property, $newVersion);
+            }
+        }
+    }
+
+    /**
+     * The value of a lifecycle property for an instant: in the column's zone, of the property's date class.
+     */
+    private function stamp(ColumnMapping $column, DateTimeImmutable $now): DateTimeInterface
+    {
+        $value = $now->setTimezone(new DateTimeZone($column->timezone));
+        if ($column->type === ColumnType::Date) {
+            $value = $value->setTime(0, 0);   // what a Date column stores and hydrates
+        }
+
+        return $column->dateClass === DateTime::class ? DateTime::createFromImmutable($value) : $value;
+    }
+
+    /**
+     * A generated identifier (Ulid, Uuid7, Max; never Auto).
+     *
+     * @param int|null $nextMax The next Max identifier, when already known for the batch
+     */
+    private function generateId(?int $nextMax): mixed
+    {
+        return match ($this->mapping->getIdStrategy()) {
+            IdStrategy::Ulid => UlidGenerator::shared()->generate(),
+            IdStrategy::Uuid7 => UuidV7Generator::shared()->generate(),
+            IdStrategy::Max => $nextMax ?? $this->nextMaxId(),
+            IdStrategy::Auto => throw new \LogicException('Auto identifiers are generated by the database.'),
+            IdStrategy::Assigned => throw new InvalidArgumentException(sprintf(
+                '%s uses assigned identifiers: set "%s" before putting it.',
+                $this->mapping->getEntityClass(),
+                $this->idColumn->property
+            )),
+        };
+    }
+
+    private function assignGeneratedId(IEntity $entity, mixed $raw): void
+    {
+        if ($raw === false || $raw === null || $raw === '' || $raw === '0') {
+            throw new PdoRepositoryException(sprintf(
+                'The database generated no identifier for %s (is "%s" an identity/auto-increment column%s?).',
+                $this->mapping->getEntityClass(),
+                $this->idColumn->column,
+                $this->family === 'pgsql' ? ' or is the sequence name right' : ''
+            ));
+        }
+        $this->mapping->writeValue($entity, $this->idColumn->property, $this->converter->fromDatabase($this->idColumn, $raw));
+    }
+
+    /**
+     * Version stored in the row of the identifier (soft-removed or not): false when the row does not
+     * exist, null when the entity is not versioned or the row holds no version.
      */
     private function currentVersion(mixed $id): int|false|null
     {
@@ -829,12 +2842,16 @@ class PdoRepository extends AbstractRepository
         return ($version !== null && $row[0] !== null) ? (int) $row[0] : null;
     }
 
-    private function rowExists(mixed $id): bool
+    /**
+     * @param bool $scoped True = only a row the reads of this repository see
+     */
+    private function rowExists(mixed $id, bool $scoped): bool
     {
-        $statement = $this->run(
-            'SELECT 1 FROM ' . $this->tableSql . ' WHERE ' . $this->quote($this->idColumn->column) . ' = :id',
-            [':id' => $id]
-        );
+        $where = new SqlWhereClause($this->quote($this->idColumn->column) . ' = :id', [':id' => $id]);
+        if ($scoped) {
+            $where = $this->scoped($where);
+        }
+        $statement = $this->run('SELECT 1 FROM ' . $this->tableSql . $this->whereSql($where), $where->getParameters());
         $exists = $statement->fetch(PDO::FETCH_NUM) !== false;
         $statement->closeCursor();
 
@@ -848,6 +2865,68 @@ class PdoRepository extends AbstractRepository
         $statement->closeCursor();
 
         return (int) $next;
+    }
+
+    /**
+     * Placeholders and parameters of an IN list.
+     *
+     * @param list<mixed> $values
+     * @return array{sql: string, params: array<string, mixed>}
+     */
+    private function inList(array $values, string $prefix): array
+    {
+        $params = [];
+        foreach (array_values($values) as $i => $value) {
+            $params[':' . $prefix . $i] = $value;
+        }
+
+        return ['sql' => implode(', ', array_keys($params)), 'params' => $params];
+    }
+
+    /** True when the driver takes several rows in one INSERT ... VALUES. */
+    private function multiRowInsert(): bool
+    {
+        return in_array($this->family, self::MULTI_ROW_FAMILIES, true);
+    }
+
+    /**
+     * Maximum number of bound parameters in one statement for the driver.
+     */
+    private function maxParameters(): int
+    {
+        if ($this->maxParameters !== null) {
+            return $this->maxParameters;
+        }
+        $limit = match ($this->family) {
+            'pgsql', 'mysql' => 65535,
+            'sqlsrv', 'mssql', 'dblib' => 2000,
+            'sqlite' => 999,
+            default => 999,
+        };
+        if ($this->family === 'sqlite') {
+            try {
+                $version = (string) $this->pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+                if ($version !== '' && version_compare($version, '3.32.0', '>=')) {
+                    $limit = 32766;
+                }
+            } catch (Throwable) {
+                // Unknown version: the limit of the older releases
+            }
+        }
+
+        return $this->maxParameters = $limit;
+    }
+
+    /**
+     * Runs the hooks of an event for an entity.
+     *
+     * @param 'beforePut'|'afterPut'|'beforeRemove'|'afterRemove' $event
+     */
+    private function runHooks(string $event, IEntity $entity): void
+    {
+        foreach ($this->hooks[$event] as $hook) {
+            $hook($entity, $this);
+        }
     }
 
     /**
@@ -878,19 +2957,38 @@ class PdoRepository extends AbstractRepository
         }
     }
 
+    /**
+     * @param array<mixed> $entities
+     * @return list<IEntity>
+     */
+    private function assertMappedEntities(array $entities): array
+    {
+        foreach ($entities as $entity) {
+            if (!$entity instanceof IEntity) {
+                throw new InvalidArgumentException('All items must implement IEntity.');
+            }
+            $this->assertMappedEntity($entity);
+        }
+
+        return array_values($entities);
+    }
+
     private function quote(string $identifier): string
     {
         return $this->dialect->escapeIdentifier($identifier);
     }
 
     /**
-     * Prepares and runs a statement with bound parameters.
+     * Prepares and runs a statement with bound parameters, and logs it.
      *
-     * @param array<string, mixed> $params Named parameters, already converted for their columns
+     * @param array<string|int, mixed> $params Named parameters (or a list for positional `?` ones),
+     *                                       already converted for their columns
      * @throws PdoRepositoryException When the driver reports an error
      */
     private function run(string $sql, array $params = []): PDOStatement
     {
+        $started = $this->logger !== null ? hrtime(true) : 0;
+        $bound = [];
         try {
             $statement = $this->pdo->prepare($sql);
             if (!$statement instanceof PDOStatement) {
@@ -898,7 +2996,9 @@ class PdoRepository extends AbstractRepository
             }
             foreach ($params as $name => $value) {
                 $value = $this->converter->scalarOrString($value);
-                $statement->bindValue($name, $value, $this->converter->bindType($value));
+                $bound[$name] = $value;
+                // An integer key is a positional placeholder (1-based in PDO)
+                $statement->bindValue(is_int($name) ? $name + 1 : $name, $value, $this->converter->bindType($value));
             }
             if (!$statement->execute()) {
                 throw $this->driverError($statement->errorInfo(), $sql);
@@ -910,6 +3010,14 @@ class PdoRepository extends AbstractRepository
                 is_array($info) && isset($info[0]) ? (string) $info[0] : (is_string($e->getCode()) ? $e->getCode() : null),
                 $e
             );
+        } finally {
+            if ($this->logger !== null) {
+                try {
+                    $this->logger->log($sql, count($params), (hrtime(true) - $started) / 1e6, $this->logParameters ? $bound : null);
+                } catch (Throwable) {
+                    // A broken logger never changes the outcome of a statement.
+                }
+            }
         }
 
         return $statement;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories\Pdo;
 
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnMapping;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
 use BackedEnum;
@@ -23,13 +24,17 @@ use UnitEnum;
  *
  * Converts a property value to the value bound for its column and a fetched value back to the
  * property value, by the ColumnType of the mapping (forward 028, D3). The only driver-specific form
- * is the boolean: PostgreSQL gets a real boolean, every other driver 1/0. Values of specification
+ * is the boolean: PostgreSQL gets a real boolean, every other driver 1/0, and a column stored as
+ * BooleanStorage::Integer gets 1/0 on every driver (since 1.13.0, forward 031, D2). Values of specification
  * parameters go through toQueryParameter(): objects, booleans and arrays are converted like a
  * written value of that column (a DateTimeImmutable compared with a DateTime column is bound in the
  * stored format and time zone, an enum by its value), other scalars are bound as given.
  *
- * @internal Used by PdoRepository; not part of the public API.
- * @version    1.11.0
+ * toProperty() (since 1.13.0) is the lenient read behind EntityMapping::hydrate(): a value already of
+ * the property's PHP type is kept, any other is converted like a fetched value.
+ *
+ * @internal Used by PdoRepository and EntityMapping; not part of the public API.
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -65,7 +70,7 @@ final class PdoValueConverter
                 ColumnType::Integer => $this->toInteger($column, $value),
                 ColumnType::Float => is_float($value) || is_int($value) ? $this->floatText((float) $value) : $this->toText($column, $value),
                 ColumnType::Decimal => is_float($value) ? $this->floatText($value) : $this->toText($column, $value),
-                ColumnType::Boolean => $this->toBoolean($value),
+                ColumnType::Boolean => $this->toBoolean($column, $value),
                 ColumnType::Date => $this->toDate($column, $value)->format('Y-m-d'),
                 ColumnType::DateTime => $this->formatDateTime($this->toDate($column, $value)->setTimezone($this->zone($column->timezone))),
                 ColumnType::Json => json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION),
@@ -129,6 +134,52 @@ final class PdoValueConverter
                 $e->getMessage()
             ), 0, $e);
         }
+    }
+
+    /**
+     * Property value of a value given by the caller (EntityMapping::hydrate()): kept when it already
+     * has the property's PHP type, converted like a fetched value otherwise (since 1.13.0).
+     *
+     * @throws InvalidArgumentException When the value cannot be converted
+     */
+    public function toProperty(ColumnMapping $column, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $kept = match ($column->type) {
+            ColumnType::String, ColumnType::Decimal => is_string($value),
+            ColumnType::Integer => is_int($value),
+            ColumnType::Float => is_float($value),
+            ColumnType::Boolean => is_bool($value),
+            ColumnType::Json => is_array($value),
+            ColumnType::Enum => $column->enumClass !== null && $value instanceof $column->enumClass,
+            ColumnType::Date, ColumnType::DateTime => false,
+            ColumnType::Raw, ColumnType::Auto => true,
+        };
+        if ($kept) {
+            return $value;
+        }
+        if ($column->type === ColumnType::Float && is_int($value)) {
+            return (float) $value;
+        }
+        if ($column->type->isTemporal() && $value instanceof DateTimeInterface) {
+            if ($value instanceof $column->dateClass) {
+                return $value;
+            }
+            return $column->dateClass === DateTime::class
+                ? DateTime::createFromInterface($value)
+                : DateTimeImmutable::createFromInterface($value);
+        }
+        if (is_array($value) || $value instanceof DateTimeInterface || (is_object($value) && !$value instanceof Stringable && !$value instanceof UnitEnum)) {
+            throw $this->mismatch($column, $value);
+        }
+        if ($value instanceof UnitEnum) {
+            $value = $value instanceof BackedEnum ? $value->value : $value->name;
+        }
+
+        return $this->fromDatabase($column, $value instanceof Stringable ? (string) $value : $value);
     }
 
     /**
@@ -207,11 +258,11 @@ final class PdoValueConverter
         throw $this->mismatch($column, $value);
     }
 
-    private function toBoolean(mixed $value): bool|int
+    private function toBoolean(ColumnMapping $column, mixed $value): bool|int
     {
         $bool = is_bool($value) ? $value : $this->readBoolean($value);
 
-        return $this->family === 'pgsql' ? $bool : ($bool ? 1 : 0);
+        return ($this->family === 'pgsql' && $column->booleanStorage === BooleanStorage::Native) ? $bool : ($bool ? 1 : 0);
     }
 
     private function readBoolean(mixed $raw): bool

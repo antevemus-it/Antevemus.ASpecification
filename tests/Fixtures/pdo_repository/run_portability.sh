@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Forward 028, RN-03: runs Module22_PdoRepositoryTest against real PostgreSQL 17 and MySQL 8.4 in
-# disposable containers. Ports are bound to 127.0.0.1 on random free ports; both containers are
-# removed on exit, also on failure or interruption. No other database or host is touched.
+# Forward 028, RN-03 and forward 031, RN-04: runs Module22_PdoRepositoryTest,
+# Module25_PdoRepositoryComplementsTest and Module26_PdoRelationshipsTest against real PostgreSQL 17
+# and MySQL 8.4 in disposable containers. Ports are bound to 127.0.0.1 on random free ports; both
+# containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
 #   bash tests/Fixtures/pdo_repository/run_portability.sh
 set -euo pipefail
@@ -58,7 +59,10 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-$t = new Antevemus\ASpecification\Tests\Unit\Module22_PdoRepositoryTest();
-$t->run();
-echo "OK ", $t->getAssertionCount(), " assertions\n";
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest"] as $suite) {
+    $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
+    $t = new $class();
+    $t->run();
+    echo $suite, " OK ", $t->getAssertionCount(), " assertions\n";
+}
 '

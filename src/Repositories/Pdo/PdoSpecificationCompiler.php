@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
 use Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
@@ -18,6 +19,7 @@ use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\SqlQueryVisitor;
 use Antevemus\ASpecification\Sql\SqlWhereClause;
+use PDO;
 
 /**
  * PdoSpecificationCompiler - Specification to WHERE Clause over an Entity Mapping
@@ -44,9 +46,13 @@ use Antevemus\ASpecification\Sql\SqlWhereClause;
  *   top of a tree are the dialect's true and false conditions
  * - everything else (closures, method calls, external data) raises the exceptions the visitor
  *   already uses
+ * - a boolean compared with a column stored as BooleanStorage::Integer compiles to 1/0 instead of
+ *   the dialect's literal (since 1.13.0, forward 031, D2: `smallint = TRUE` is an error in PostgreSQL)
+ * - Spec::inQuery() compiles to a subquery of the other repository on the same connection (since
+ *   1.13.0, forward 031, D6), with parameters prefixed apart (`:ps1_1`, nested `:ps1_s1_1`)
  *
  * @internal Used by PdoRepository; not part of the public API.
- * @version    1.12.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,11 +66,30 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
 
     private int $identityCounter = 0;
 
+    /** Whether the column of the property clause being compiled stores booleans as 1/0. */
+    private bool $integerBooleans = false;
+
+    private int $subqueryCounter = 0;
+
+    /**
+     * @param EntityMapping $mapping Mapping of the queried entity
+     * @param ISqlDialect $sqlDialect Dialect of the connection
+     * @param PdoValueConverter $converter Converter of the connection
+     * @param PDO|null $connection Connection of the query: a subquery (Spec::inQuery()) is translated
+     *                             only for a repository on this same connection (since 1.13.0)
+     * @param string $parameterPrefix Prefix of the generated parameter names (since 1.13.0; a subquery
+     *                                gets its own, so the parameters of both queries never collide)
+     */
     public function __construct(
         private readonly EntityMapping $mapping,
         private readonly ISqlDialect $sqlDialect,
-        private readonly PdoValueConverter $converter
+        private readonly PdoValueConverter $converter,
+        private readonly ?PDO $connection = null,
+        private readonly string $parameterPrefix = 'p'
     ) {
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $parameterPrefix) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid parameter prefix "%s".', $parameterPrefix));
+        }
         // A static closure: binding $this would make every compiler (one per query) a reference
         // cycle, left for the cycle collector instead of being freed when the query returns
         parent::__construct($sqlDialect, static function (string $property) use ($mapping): string {
@@ -72,7 +97,7 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
 
             // visitComposite() checked the property first; this is only reached for a mapped one
             return $column !== null ? $column->column : throw new \LogicException("Unmapped property {$property}.");
-        });
+        }, $parameterPrefix);
     }
 
     /** {@inheritdoc} */
@@ -80,6 +105,7 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
     {
         $this->converted = [];
         $this->identityCounter = 0;
+        $this->subqueryCounter = 0;
         parent::reset();
 
         return $this;
@@ -98,7 +124,13 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
             throw new NonTranslatableSpecificationException($specification, (string) $reason);
         }
 
-        $clause = parent::visitComposite($specification);
+        $previous = $this->integerBooleans;
+        $this->integerBooleans = $column->type === ColumnType::Boolean && $column->booleanStorage === BooleanStorage::Integer;
+        try {
+            $clause = parent::visitComposite($specification);
+        } finally {
+            $this->integerBooleans = $previous;
+        }
         $parameters = $clause->getParameters();
         foreach ($parameters as $name => $value) {
             if (isset($this->converted[$name])) {
@@ -111,6 +143,53 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
         // The null guards were added by the parent visitor, comparison by comparison (RN-02: same results
         // as InMemoryRepository); this clause only gets its parameters converted
         return new SqlWhereClause($clause->toSql(), $parameters);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * 1/0 for a column stored as BooleanStorage::Integer (since 1.13.0).
+     */
+    protected function formatBooleanLiteral(bool $value): string
+    {
+        return $this->integerBooleans ? ($value ? '1' : '0') : parent::formatBooleanLiteral($value);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Spec::inQuery() (since 1.13.0, forward 031, D6): `col IN (SELECT othercol FROM other WHERE ...)`,
+     * built by the other repository (its mapping, its read scope, NULL values left out) with parameter
+     * names of its own. Its parameters are already converted for the other columns. Refused (not
+     * translatable) when the other repository is on another connection or speaks another dialect.
+     */
+    protected function translateExtensionLeaf(ISpecification $specification, string $column): ?SqlWhereClause
+    {
+        if (!$specification instanceof InQuerySpecification) {
+            return null;
+        }
+
+        $other = $specification->getRepository();
+        if ($this->connection === null || $other->getConnection() !== $this->connection) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                'the subquery repository is on another connection (a subquery is one statement: both repositories must share the same PDO object)'
+            );
+        }
+        if ($other->getDialect()->getFamily() !== $this->sqlDialect->getFamily()) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                sprintf('the subquery repository speaks the %s dialect, this query %s', $other->getDialect()->getFamily(), $this->sqlDialect->getFamily())
+            );
+        }
+
+        $prefix = $this->parameterPrefix . 's' . (++$this->subqueryCounter) . '_';
+        $subquery = $other->toSubquery($specification->getWhere(), $specification->getProperty(), $prefix);
+        foreach (array_keys($subquery->getParameters()) as $name) {
+            $this->converted[$name] = true;
+        }
+
+        return new SqlWhereClause($column . ' IN (' . $subquery->toSql() . ')', $subquery->getParameters());
     }
 
     /**
@@ -180,7 +259,7 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
             $value = $text;
         }
 
-        $name = ':uid' . (++$this->identityCounter);
+        $name = ($this->parameterPrefix === 'p' ? ':uid' : ':' . $this->parameterPrefix . 'uid') . (++$this->identityCounter);
 
         return new SqlWhereClause(
             $this->sqlDialect->escapeIdentifier($id->column) . ' = ' . $name,

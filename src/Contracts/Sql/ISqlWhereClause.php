@@ -19,7 +19,7 @@ use Stringable;
  * - Empty clause verification
  * - Stringable implementation for clean string interpolation
  *
- * @version    1.3.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,9 +36,11 @@ interface ISqlWhereClause extends Stringable
     public function toSql(): string;
 
     /**
-     * Return associative map of named parameter bindings (:param => value).
+     * Return the parameter bindings: an associative map of named bindings (:param => value), or a
+     * list for positional (?) bindings (the clauses the PdoRepository builds internally since 1.13.0).
+     * A clause never mixes the two styles.
      *
-     * @return array<string, mixed>
+     * @return array<int|string, mixed>
      */
     public function getParameters(): array;
 

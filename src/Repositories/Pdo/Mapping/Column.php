@@ -19,7 +19,11 @@ use Attribute;
  * read and written by reflection even when it is private or protected. Reading it by name from a
  * specification still follows the #[Specifiable] rule of the library.
  *
- * @version    1.11.0
+ * Since 1.13.0 (forward 031): `booleanAs:` stores a Boolean column as 1/0 on every driver
+ * (BooleanStorage::Integer), whatever the default of the mapping (D2); `timezone:` wins over the
+ * default zone of the mapping and of the repository (D3).
+ *
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,14 +38,16 @@ final class Column
      * @param ColumnType $type Conversion (default: inferred from the declared type)
      * @param string|null $property Mapped property; only on the class, required there
      * @param class-string<\UnitEnum>|null $enumClass Enum of an Enum column whose property has no enum type
-     * @param string|null $timezone Time zone of a Date/DateTime column (default UTC)
+     * @param string|null $timezone Time zone of a Date/DateTime column (default: the mapping's, the repository's, UTC)
+     * @param BooleanStorage|null $booleanAs Storage of a Boolean column (default: the mapping's, Native); since 1.13.0
      */
     public function __construct(
         public readonly ?string $name = null,
         public readonly ColumnType $type = ColumnType::Auto,
         public readonly ?string $property = null,
         public readonly ?string $enumClass = null,
-        public readonly ?string $timezone = null
+        public readonly ?string $timezone = null,
+        public readonly ?BooleanStorage $booleanAs = null
     ) {
     }
 }

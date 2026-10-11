@@ -6,15 +6,15 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.12.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.12.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.13.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.13.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-24%2F24%20Suites%20Pass%20(7301%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(8056%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
-> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, concurrent resolution of the external data I/O-bound rules depend on, a repository over PDO whose queries are specifications compiled to SQL, and domain events emitted when an entity starts or stops satisfying a specification, on a write or by the mere passage of time.
+> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, concurrent resolution of the external data I/O-bound rules depend on, a repository over PDO whose queries are specifications compiled to SQL (with lifecycle columns, batch and set-based operations and relationships loaded in batch), and domain events emitted when an entity starts or stops satisfying a specification, on a write or by the mere passage of time.
 
 ---
 
@@ -54,6 +54,7 @@
 - 🧭 **Use Cases (Module 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, request validation where only `ERROR` blocks), `UseCaseResult` with a closed domain status and HTTP only at the edge (`toHttpStatus()`), no exception or stack trace in the result, and `StateMachineEventUseCase` exposing a machine event as a use case through the shared `IOutcome` (example 15).
 - ⚡ **Concurrent Data Resolution (Module 21)**: a rule that depends on external data (a bureau score, a fraud check, a balance) declares it with `Spec::external()` instead of calling the service; a `DataResolver` collects the declarations of the whole tree, fetches them concurrently through `curl_multi` (no dependency, works under PHP-FPM) and then evaluates the tree synchronously. A cost policy (`concurrent()`, `tiered()` with three-valued logic, `sequential()`) skips paid sources that can no longer change the verdict; requests are deduplicated; a failed fetch is an evaluation error of its leaf; parameters cannot change the host or path of a call (example 16).
 - 🗄️ **Repository Over PDO (Module 22)**: `PdoRepository` implements `IRepository` over a table: a query is a specification compiled to parameterized SQL by the SQL visitor (any dialect), a write is a prepared statement in a transaction, `iterate()` streams the cursor in constant memory and `count()` builds no entity. Mapping by attributes (`#[Table]`, `#[Column]`, `#[Id]`, `#[Version]`) or by a builder; identifiers `auto`, `ulid`, `uuid7`, `assigned` and `max`; optimistic locking; a non-translatable specification is refused instead of filtering the table in memory (`withInMemoryFallback()` is the explicit opt-in); only properties a specification may read by name can be queried. The transaction port (`Persistence\ITransactionManager`) is shared with the state machine stores (example 17).
+- 🧱 **PDO Repository Follow-ups (Modules 25 and 26)**: lifecycle columns (`#[CreatedAt]`, `#[UpdatedAt]`, `#[SoftDelete]` with `withTrashed()`/`onlyTrashed()`/`forceRemove()`), hooks on the repository (`beforePut`, `afterPut`, `beforeRemove`, `afterRemove`), a SQL log without parameter values by default (`IQueryLogger`), booleans stored as 1/0 and default time zones per mapping and per repository; `insertAll()` with multi-row `INSERT`s and `putAll()` with one existence `SELECT` per batch; `updateWhere()`, `select()` projections, `aggregate()->groupBy()->sum()/avg()/min()/max()/count()` and `Spec::inQuery()` subqueries; `#[ManyToOne]`/`#[OneToMany]` relationships loaded explicitly in batch with `with()` (one query per relation, never N+1), compositions saved and removed with their parent, and orphans removed only from collections that were loaded (examples 17.1 to 17.3).
 - 📡 **Domain Events From Specifications (Module 23)**: `SpecificationTrigger` binds a specification to an enter and an exit event; `TriggeringRepository` decorates any repository and publishes the crossings of every write to an outbox (in memory or PDO, reference DDL `resources/sql/domain_events.ansi.sql`) written in the same transaction, delivered after the commit by `DomainEventDispatcher` with a deterministic idempotency key and a payload without personal data; `MachineEventBridge` sends an event to the state machine (example 18).
 - ⏰ **Domain Events From the Passage of Time (Module 24)**: `SpecificationTrigger::timed()` builds its specification from "now"; `TriggerSweeper`, run by a cron, finds the entities that crossed since their last recorded state (`ITriggerStateStore`, in memory or PDO, table `domain_event_trigger_state`) and publishes through the same outbox, one transaction and one compare-and-set per crossing; `baseline()` introduces a trigger over existing data without a flood of events; `TriggeringRepository` keeps the same state, so a write and a sweep never publish one crossing twice (example 18.1).
 
@@ -90,7 +91,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
   - `ext-curl` *(optional: `HttpDataSource`, the concurrent HTTP fetching of the `DataResolver`, Module 21; without it an HTTP source is refused when registered and `CallableDataSource` keeps working)*
-  - `ext-pdo` *(optional, with the driver of your database: `PdoRepository` (Module 22), the PDO stores of the state machine, `PdoRuleCatalog` and the PDO domain event outbox and trigger state store (Modules 23 and 24))*
+  - `ext-pdo` *(optional, with the driver of your database: `PdoRepository` (Modules 22, 25 and 26), the PDO stores of the state machine, `PdoRuleCatalog` and the PDO domain event outbox and trigger state store (Modules 23 and 24))*
 - **Optional package**: `antevemus/alinq-collection` `^1.5.1` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
 
 ---
@@ -1123,7 +1124,7 @@ Errors follow the 1.8.0 rule: a fetch that fails (an HTTP status outside 2xx, a 
 
 ### 17. Repository Over PDO (Module 22)
 
-`PdoRepository` is the `IRepository` of a database table: a query is a specification compiled to SQL by the SQL visitor (any of its dialects), a write is a prepared `INSERT`/`UPDATE`/`DELETE`, and `iterate()` streams the cursor. The author of the entity maps it to the table, with attributes or with a builder; a mapped property is read and written by reflection even when it is private (the mapping is the author's opt-in). The library generates no DDL and loads no relationship: one entity, one table.
+`PdoRepository` is the `IRepository` of a database table: a query is a specification compiled to SQL by the SQL visitor (any of its dialects), a write is a prepared `INSERT`/`UPDATE`/`DELETE`, and `iterate()` streams the cursor. The author of the entity maps it to the table, with attributes or with a builder; a mapped property is read and written by reflection even when it is private (the mapping is the author's opt-in). The library generates no DDL; relationships are declared on the entity and loaded explicitly, in batch (example 17.3).
 
 ```php
 use Antevemus\ASpecification\Entities\AbstractEntity;
@@ -1238,7 +1239,282 @@ $products = new PdoRepository($pdo, $mapping);
 - **Null values.** A `NULL` column is a null value, and the database answers for it what the in-memory evaluation answers: `property('note', isNull())` matches the rows whose `note` is `NULL`; a comparison (`greaterThan()`, `startsWith()`, `equalTo('x')`, `in('a', 'b')`, ...) never matches them, and its negation `not(property('views', greaterThan(10)))` does. Each comparison is compiled as `(column IS NOT NULL AND ...)`, so it is false there, never SQL's unknown, and a `NOT` over it keeps the in-memory answer. An `and`/`or`/`not` written *inside* a property rejects a null value, as it rejects any null candidate: "no note, or note n2" is `anyOf(property('note', isNull()), property('note', equalTo('n2')))`, not `property('note', anyOf(isNull(), equalTo('n2')))`. `Spec::toSql()` and `Spec::toCriteria()` follow the same rule (changed in 1.11.0, see the CHANGELOG).
 - **The database compares text its own way.** SQLite's `LIKE` ignores ASCII case (`startsWith('mo')` matches `Mouse` there and not in memory), and MySQL's default `_ci` collations ignore case and accents in `=` and `LIKE`: declare text columns with a binary collation (`utf8mb4_bin`) for case-sensitive parity. SQLite gives a `DECIMAL` column numeric affinity (`'59.90'` comes back as `'59.9'`), so the example declares it `TEXT`; comparisons on that column are then textual.
 - **The transaction port is shared** (`Persistence\ITransactionManager`): the state machine's `PdoTransactionManager` is one, so one instance gives the repository, the domain event outbox (example 18) and the machine stores the same transaction.
-- **Not in this version:** relationships and joins, DDL generation, second-level cache, partitions (`makePartition()` throws `PartitioningNotSupportedException`).
+- **Not in this version:** joins (relationships load in batch by `IN`, example 17.3), DDL generation, second-level cache, partitions (`makePartition()` throws `PartitioningNotSupportedException`). Lifecycle columns, soft delete, hooks and the SQL log are in example 17.1, batch and set-based operations in 17.2.
+
+### 17.1. Lifecycle: Timestamps, Soft Delete, Hooks and the SQL Log (Module 25)
+
+The bookkeeping an application usually writes by hand around a table, as options of the mapping and of the repository: creation and modification timestamps, a removal that marks the row instead of deleting it, callables around each write, a log of every statement, booleans stored as integers and the time zone of columns that hold local time without an offset (the Adianti tables, for one). Without them nothing changes.
+
+```php
+use Antevemus\ASpecification\Persistence\InMemoryQueryLogger;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\CreatedAt;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\SoftDelete;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\UpdatedAt;
+
+#[Table('ticket', timezone: 'America/Sao_Paulo', booleanAs: BooleanStorage::Integer)]   // local time without offset, flags as 1/0
+#[SoftDelete('deleted_at')]                       // remove() marks the row instead of deleting it
+class Ticket extends AbstractEntity
+{
+    #[Id(strategy: IdStrategy::Auto)]
+    private ?int $id = null;
+
+    #[CreatedAt] public ?DateTimeImmutable $createdAt = null;   // filled by the INSERT, never updated
+    #[UpdatedAt] public ?DateTimeImmutable $updatedAt = null;   // set by every write of the row
+
+    public function __construct(
+        #[Column] public string $subject,
+        #[Column] public bool $urgent = false,
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): ?int
+    {
+        return $this->id;
+    }
+}
+
+// $pdo of example 17
+$pdo->exec('CREATE TABLE ticket (id INTEGER PRIMARY KEY AUTOINCREMENT, subject VARCHAR(80) NOT NULL,
+    urgent SMALLINT NOT NULL, created_at TEXT, updated_at TEXT, deleted_at TEXT)');
+
+$now = new DateTimeImmutable('2026-03-10 14:30:00.750 UTC');
+$log = new InMemoryQueryLogger();
+$tickets = PdoRepository::forEntity($pdo, Ticket::class)
+    ->withClock(function () use (&$now): DateTimeImmutable { return $now; })   // the system clock by default
+    ->withQueryLogger($log)                       // parameter values stay out unless logParameters: true
+    ->beforePut(function (Ticket $ticket): void { // also afterPut(), beforeRemove(), afterRemove()
+        if (trim($ticket->subject) === '') {
+            throw new InvalidArgumentException('A ticket needs a subject.');
+        }
+    });
+
+$ticket = new Ticket('Printer on fire', urgent: true);
+$tickets->put($ticket);
+$ticket->createdAt->format('Y-m-d H:i:s P');      // '2026-03-10 11:30:00 -03:00': in the mapping's zone, to the second
+$pdo->query('SELECT created_at, urgent FROM ticket')->fetch(PDO::FETCH_NUM);   // ['2026-03-10 11:30:00', 1]
+$log->entries()[0]['parameterCount'];             // 5
+$log->entries()[0]['parameters'];                 // null: values can be personal data
+
+$now = $now->modify('+2 hours');
+$ticket->subject = 'Printer on fire, 3rd floor';
+$tickets->put($ticket);
+$ticket->updatedAt->format('H:i');                // '13:30' (createdAt keeps '11:30')
+```
+
+Removal marks the row; every read leaves the marked rows out, and two views see them:
+
+```php
+try {
+    $tickets->put(new Ticket('  '));
+} catch (InvalidArgumentException $e) {
+    // the beforePut hook refused it inside the transaction: nothing was written
+}
+
+$tickets->remove($ticket);                        // UPDATE ... SET deleted_at: the row stays
+$tickets->count(Spec::alwaysTrue());              // 0: find, iterate, count, findById, select, aggregate skip it
+$tickets->withTrashed()->count(Spec::alwaysTrue());   // 1: a view that also sees the marked rows
+$tickets->onlyTrashed()->findById(1)->subject;    // 'Printer on fire, 3rd floor'
+$tickets->forceRemove($ticket);                   // DELETE: gone for real
+$tickets->withTrashed()->count(Spec::alwaysTrue());   // 0
+```
+
+- **Time zones.** A temporal column is written and read in the zone it declares (`#[Column(timezone: ...)]`), else in the default of the mapping (`#[Table(timezone: ...)]`, `EntityMapping::timezone()`), else in the default of the repository (`withTimezone()`), else in UTC.
+- **Timestamps.** `#[CreatedAt]` is filled by the `INSERT` when the entity holds no value (an imported value is kept) and never updated; `#[UpdatedAt]` is set by the `INSERT`, every `UPDATE` and the soft removal. The instant comes from the repository's clock (`withClock()`, read once per call) and is truncated to the second, so the entity holds exactly what any timestamp column stores.
+- **Soft delete.** `#[SoftDelete('deleted_at')]` on the class (the column alone; add `property:` to hydrate it) or on a nullable date property. `remove()` and `removeBy()` mark only live rows and increment the `#[Version]` counter like any write; `withTrashed()` and `onlyTrashed()` return views (copies of the repository); `forceRemove()` deletes. A marked row is removed for every reader: `TriggeringRepository` publishes the exit and `TriggerSweeper` sees it gone. `put()` of an entity whose row is marked behaves as after a `DELETE`: a versioned copy throws `OptimisticLockException`, an unversioned one is written back and visible again. `toWhereClause()` does not show the soft delete condition.
+- **Hooks** belong to the repository (the entity stays a plain object) and run inside the write's transaction: an exception in a `before*` or an `after*` hook rolls the write back and propagates. `beforePut` runs before the identifier is generated and the timestamps are set. With a remove hook, `removeBy()` loads the matching entities and removes them one by one, so a hook is never bypassed; without one it stays one statement.
+- **SQL log.** `IQueryLogger::log(string $sql, int $parameterCount, float $milliseconds, ?array $parameters)` receives every statement after it ran or failed; the values are passed only with `withQueryLogger($logger, logParameters: true)`. An exception thrown by a logger is ignored. `InMemoryQueryLogger` keeps at most 10 000 entries by default (`entries()`, `statements()`, `clear()`).
+- **Booleans.** `BooleanStorage::Integer`, per column (`#[Column(booleanAs: ...)]`) or as the default of the mapping, writes 1/0 on every driver, PostgreSQL included (the `SMALLINT` flags of legacy schemas), and a specification compiles to `"urgent" = 1`; reading accepts both forms. `Native` stays the default.
+- **`extract()` and `hydrate()`.** `EntityMapping::extract($entity)` gives the row of an entity (column => property value) and `hydrate($row)` builds an entity from one without calling its constructor, both without a database: the `toArray()`/`fromArray()` of an active record.
+
+### 17.2. Batch Writes and Set-Based Operations (Module 25)
+
+Writes and reads over many rows that do not build one entity at a time: a multi-row `INSERT`, an `UPDATE` by specification, a projection into arrays, grouped aggregates computed by the database and a subquery over another repository.
+
+```php
+use Antevemus\ASpecification\Entities\AbstractUlidEntity;
+
+#[Table('sale')]
+#[Id(strategy: IdStrategy::Ulid, column: 'id', property: 'entityId')]   // generated in PHP: the rows go in one INSERT
+class Sale extends AbstractUlidEntity
+{
+    public function __construct(
+        #[Column('product_id')] public int $productId,
+        #[Column] public ?string $region,
+        #[Column(type: ColumnType::Decimal)] public string $amount,
+        #[Column] public int $quantity = 1,
+    ) {
+        parent::__construct();
+    }
+}
+
+$pdo->exec('CREATE TABLE sale (id CHAR(26) PRIMARY KEY, product_id INTEGER NOT NULL, region VARCHAR(10),
+    amount TEXT NOT NULL, quantity INTEGER NOT NULL)');
+$log->clear();
+$sales = PdoRepository::forEntity($pdo, Sale::class)->withQueryLogger($log);
+
+$sales->insertAll([                               // new entities, without the existence SELECT of put()
+    new Sale(1, 'north', '139.90'),
+    new Sale(1, 'south', '279.80', quantity: 2),
+    new Sale(2, 'north', '59.90'),
+    new Sale(3, null, '19.90'),
+]);                                               // 4
+count($log->statements());                        // 1: one multi-row INSERT
+
+$sales->updateWhere(Spec::property('region', Spec::isNull()), ['region' => 'west']);   // 1: one UPDATE, no entity loaded
+
+iterator_to_array($sales->select(Spec::property('region', Spec::equalTo('north')), ['productId', 'amount']), false);
+// [['productId' => 1, 'amount' => '139.90'], ['productId' => 2, 'amount' => '59.90']]: arrays, no entity built
+
+$sales->aggregate(Spec::alwaysTrue())->groupBy('region')->sum('amount')->sum('quantity')->count()->get();
+// [['region' => 'north', 'sum_amount' => '199.8', 'sum_quantity' => 2, 'count' => 2],
+//  ['region' => 'south', 'sum_amount' => '279.8', 'sum_quantity' => 2, 'count' => 1],
+//  ['region' => 'west', 'sum_amount' => '19.9', 'sum_quantity' => 1, 'count' => 1]]
+
+// The sales of active products ($products of example 17): product_id IN (SELECT id FROM product WHERE ...)
+$sales->count(Spec::inQuery('productId', $products, Spec::property('active', Spec::isTrue()), 'entityId'));   // 3
+```
+
+- **`insertAll()`** writes new entities in one transaction, in batches of `withBatchSize()` rows (1 000 by default) that never pass the driver's parameter limit; a row that already exists fails on its key and nothing of the call is kept. Identifiers generated in PHP go in the batch; `auto` identifiers come back by `RETURNING` on PostgreSQL and are inserted row by row on the other drivers (MySQL does not guarantee consecutive values for a multi-row `INSERT`). Measured with 10 000 entities: about 3 times faster than `put()` row by row in SQLite, 20 to 40 times in PostgreSQL and MySQL. **`putAll()`** keeps the upsert, but reads the existence of a whole batch with one `SELECT ... IN`.
+- **`updateWhere()`** converts each value by the type of its column and refuses the identifier, the version counter, the lifecycle columns and unmapped properties before any SQL. It stamps `#[UpdatedAt]`, increments `#[Version]` (a copy loaded before becomes stale) and touches only live rows. It runs **no per-entity hook**, and `TriggeringRepository` does not see it (a `TriggerSweeper` notices the changes): use `putAll()` when hooks or triggers must run. On MySQL the returned count is the rows whose values changed (unless the connection sets `PDO::MYSQL_ATTR_FOUND_ROWS`), and MySQL refuses a subquery on the table being updated.
+- **`select()`** is a generator of arrays keyed by property name, each value converted like a read value; **`aggregate()`** is immutable (`groupBy()`, `count()`, `sum()`, `avg()`, `min()`, `max()`, each with an optional alias) and follows SQL's null rules: `sum`/`avg`/`min`/`max` ignore `NULL`, the sum of nothing is `null`, not 0, `count()` counts rows and `count('prop')` non-null values, the `NULL` group comes first. A `Decimal` column gives canonical decimal text (`'199.8'`, not `'199.80'`; SQLite has no decimal arithmetic and computes in floating point, rounded to 15 significant digits). Both apply the read scope (soft delete); an aggregate needs a translatable specification even with the in-memory fallback.
+- **`Spec::inQuery($property, $other, $where, $otherProperty)`** compiles to `col IN (SELECT othercol FROM other WHERE ... AND othercol IS NOT NULL)` when both repositories share the connection, with the read scope of `$other`; otherwise it cannot be translated. In memory the subquery runs once per instance of the specification and its values are kept: build a new one to see newer data. `whereRelation()` (example 17.3) builds it from a relationship.
+
+### 17.3. Relationships: References, Compositions and Eager Loading (Module 26)
+
+Relationships are declared on the entity and loaded **explicitly**, never lazily and without proxies. A reference (`#[ManyToOne]`) is an aggregation: it is never saved with the entity. A collection (`#[OneToMany]`) is read-only unless `cascade: true` makes it a composition, saved and removed with its parent. The repositories of the related classes are given with `withRelated()`.
+
+```php
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\ManyToOne;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\OneToMany;
+
+#[Table('customer')]
+class Customer extends AbstractEntity
+{
+    public function __construct(
+        #[Id(strategy: IdStrategy::Assigned)] private int $id,
+        #[Column] public string $name,
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): int
+    {
+        return $this->id;
+    }
+}
+
+#[Table('orders')]
+#[SoftDelete('deleted_at')]
+class Order extends AbstractEntity
+{
+    #[Id(strategy: IdStrategy::Auto)]
+    private ?int $id = null;
+
+    #[Column('customer_id')] public ?int $customerId = null;                       // the stored truth of the reference
+    #[ManyToOne(Customer::class, 'customer_id')] public ?Customer $customer = null;   // aggregation: never cascaded
+
+    /** @var list<OrderLine> */
+    #[OneToMany(OrderLine::class, mappedBy: 'orderId', cascade: true)] public array $lines = [];   // composition
+
+    public function __construct(#[Column] public string $number)
+    {
+        parent::__construct();
+    }
+
+    public function getEntityId(): ?int
+    {
+        return $this->id;
+    }
+}
+
+#[Table('order_line')]
+class OrderLine extends AbstractEntity
+{
+    #[Id(strategy: IdStrategy::Auto)]
+    private ?int $id = null;
+
+    #[Column('order_id')] public ?int $orderId = null;   // set by the cascade
+
+    public function __construct(
+        #[Column] public string $sku,
+        #[Column] public int $quantity,
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): ?int
+    {
+        return $this->id;
+    }
+}
+
+$pdo->exec('CREATE TABLE customer (id INTEGER PRIMARY KEY, name VARCHAR(80) NOT NULL)');
+$pdo->exec('CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, number VARCHAR(20) NOT NULL,
+    customer_id INTEGER REFERENCES customer (id), deleted_at TEXT)');
+$pdo->exec('CREATE TABLE order_line (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL REFERENCES orders (id),
+    sku VARCHAR(20) NOT NULL, quantity INTEGER NOT NULL)');
+
+$customers = PdoRepository::forEntity($pdo, Customer::class);
+$lines = PdoRepository::forEntity($pdo, OrderLine::class);
+$orders = PdoRepository::forEntity($pdo, Order::class)->withRelated($customers, $lines);
+
+$customers->putAll([new Customer(1, 'Ana'), new Customer(2, 'Bruno')]);
+foreach (range(1, 100) as $n) {
+    $order = new Order("PO-{$n}");
+    $order->customer = $customers->findById($n % 2 + 1);   // a reference needs an identifier: put it first
+    $order->lines = [new OrderLine('KB-1', 1), new OrderLine('MS-2', $n)];
+    $orders->put($order);                         // the order, then its lines (order_id set), in one transaction
+}
+```
+
+Eager loading is a view, `with()`; each relation costs one query per batch of entities, never one per entity:
+
+```php
+$log->clear();
+foreach ([$orders, $customers, $lines] as $repository) {
+    $repository->withQueryLogger($log);
+}
+$all = $orders->with('lines', 'customer')->find(Spec::alwaysTrue());
+count($all);                                      // 100
+count($log->statements());                        // 3: the orders, then their lines and their customers by IN (...)
+$all[0]->customer->name;                          // 'Bruno'
+$all[0]->customer === $all[2]->customer;          // true: one instance per customer
+count($all[0]->lines);                            // 2
+
+// The filter through a relationship is a subquery on the foreign key
+$orders->count($orders->whereRelation('customer', Spec::property('name', Spec::equalTo('Ana'))));   // 50
+$orders->count($orders->whereRelation('lines', Spec::property('quantity', Spec::greaterThan(95))));   // 5
+```
+
+A collection that was not loaded is never taken as empty, and only a loaded one has orphans:
+
+```php
+$first = $orders->with('lines')->findById(1);
+array_pop($first->lines);                         // a loaded collection: the line that left it is an orphan
+$orders->put($first);                             // ...and is deleted
+$lines->count(Spec::property('orderId', Spec::equalTo(1)));   // 1
+
+$bare = $orders->findById(1);                     // no with(): lines and customer not loaded
+$orders->isLoaded($bare, 'lines');                // false: [] here means "unknown", not "none"
+$orders->put($bare);                              // removes no line, keeps customer_id
+$lines->count(Spec::property('orderId', Spec::equalTo(1)));   // 1
+
+$orders->remove($first);                          // Order has #[SoftDelete]: marked; OrderLine has none, its rows stay
+$lines->count(Spec::property('orderId', Spec::equalTo(1)));   // 1
+$orders->forceRemove($first);                     // a hard delete removes every line row first
+$lines->count(Spec::property('orderId', Spec::equalTo(1)));   // 0
+```
+
+- **Eager loading.** `with('lines', 'customer', 'lines.product')` returns a view whose reads (`find*()`, `iterate*()`, `findSingle()`, `findPage()`, `findById()`) load those relations for each batch of `withBatchSize()` entities with one `SELECT ... WHERE fk IN (...)` per relation (more only past the driver's parameter limit), in the read scope of the related repository (its soft-removed rows are not loaded). A dotted path goes as deep as the relations go, one more query per segment and batch. With 1 000 orders of 10 items each: 2 queries for `with('items')` and 4 for `with('items.product', 'customer')`, against 1 001 for a loop per order, in SQLite, PostgreSQL and MySQL.
+- **Not loaded is not empty.** A relation that was not loaded keeps its default (`[]`, `null`) and the repository knows it (`isLoaded()`; the state lives outside the entity). `put()` of a parent whose collection was not loaded removes no child, and a reference that was not loaded never clears the foreign key: only a reference loaded non-null and then set to `null` clears it.
+- **References** are never cascaded: `put()` writes the identifier of the referenced object into the foreign key property and refuses an object without one.
+- **Compositions.** `put()`, `putAll()` and `insertAll()` write the children after their parent, in its transaction (same connection required), setting the foreign key (and the child's back reference when `mappedBy` names one). Orphans are removed only when the collection was loaded (or the parent was just inserted), and only the children loaded with it that still belong to it, each with its version checked: a child added by someone else in between is never removed. Moving a child between two loaded parents is safe within one `putAll()`.
+- **Removing a parent** removes its children first. A parent with `#[SoftDelete]` marks the children that have `#[SoftDelete]` and keeps the others (its row stays, so a revival finds them); a hard delete (`forceRemove()`, or a parent without soft delete) deletes every child row, marked or not, since no child row may outlive its parent's.
+- **Domain events.** Register a `TriggeringRepository` with `withRelated()` and the cascades and orphans go through it, publishing the children's entries and exits (it reads through its `PdoRepository`); a bare `PdoRepository` publishes nothing and a `TriggerSweeper` notices. A `TriggeringRepository` over the parent reads its "before" without relations: its triggers should read columns.
+- **`whereRelation('customer', $spec)`** is `customer_id IN (SELECT id FROM customer WHERE ...)` and **`whereRelation('lines', $spec)`** is `id IN (SELECT order_id FROM order_line WHERE ...)`, with the related repository's read scope; the foreign key property must be readable by a specification. A relation property is not a column: a specification cannot read it.
+- **Not in this version:** `#[ManyToMany]` (map the association entity with two references), a public way to mark the collection of an aggregate built by hand as loaded, and `iterate()` with relations over MySQL unbuffered queries (the relation queries run while its cursor is open: use `find()`, or give the related repositories their own connection).
 
 ### 18. Domain Events From Specifications (Module 23)
 
@@ -1496,6 +1772,7 @@ src/
 ├── Repositories/              # Concrete repositories and DAG partitioning
 │   ├── File/                 # SingleFileRepository, FilePerEntityRepository
 │   ├── Pdo/                  # PdoRepository; Mapping/ (Table, Column, Id, Version, EntityMapping, IdStrategy, ColumnType) (Module 22, v1.11.0)
+│   │                         # v1.13.0: PdoAggregateQuery, InQuerySpecification; Mapping/ CreatedAt, UpdatedAt, SoftDelete, BooleanStorage, ManyToOne, OneToMany, RelationMapping (Modules 25 and 26)
 │   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
 ├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
@@ -1524,7 +1801,7 @@ src/
 │   ├── Persistence/          # Ports, MachinePersistence, InMemory/ and Pdo/ stores (resources/sql/state_machine.ansi.sql)
 │   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrations
 ├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Module 19)
-├── Persistence/               # ITransactionManager, PdoTransactionManager: the transaction port shared by the repository, outboxes and machine stores (v1.11.0)
+├── Persistence/               # ITransactionManager, PdoTransactionManager: the transaction port shared by the repository, outboxes and machine stores (v1.11.0); IQueryLogger, InMemoryQueryLogger (v1.13.0)
 ├── DomainEvents/              # Domain events from specifications (Module 23, v1.11.0) and from the passage of time (Module 24, v1.12.0)
 │   ├── Outbox/               # IDomainEventOutbox, InMemory and Pdo outboxes (resources/sql/domain_events.ansi.sql)
 │   ├── State/                # ITriggerStateStore, InMemory and Pdo stores of the last known state of each trigger (v1.12.0)
@@ -1554,7 +1831,7 @@ The library features comprehensive unit and integration test coverage with zero 
 php tests/run_all.php
 ```
 
-Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine. Module 22 also prints its benchmark (10 000 rows in SQLite) and, without the `ASPEC_PDO_*` variables, that its PostgreSQL and MySQL runs were skipped, and Module 24 its sweeps over 1 000 and 10 000 rows; those lines are omitted here:
+Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine. Module 22 also prints its benchmark (10 000 rows in SQLite) and, without the `ASPEC_PDO_*` variables, that its PostgreSQL and MySQL runs were skipped, Module 24 its sweeps over 1 000 and 10 000 rows, Module 25 its batch, `updateWhere()` and null/subquery parity runs and Module 26 its eager loading benchmark (1 000 parents × 10 children); those lines are omitted here:
 
 ```text
 ====================================================================
@@ -1572,7 +1849,7 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (204 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (409 assertions)
-• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (507 assertions)
+• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (513 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (207 assertions)
 • [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (270 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
@@ -1585,14 +1862,16 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 22: Repository Over PDO (PdoRepository)... ✅ PASS (569 assertions)
 • [SUITE] Module 23: Domain Events From Specifications... ✅ PASS (331 assertions)
 • [SUITE] Module 24: Domain Events From the Passage of Time... ✅ PASS (310 assertions)
+• [SUITE] Module 25: PdoRepository Follow-ups (log, types, lifecycle, batch, set-based queries)... ✅ PASS (535 assertions)
+• [SUITE] Module 26: PdoRepository Relationships (ManyToOne, OneToMany, eager loading, composition)... ✅ PASS (214 assertions)
 
 ====================================================================
- FINAL RESULT: 24/24 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 7301 | DURATION: ~14s | REGRESSIONS: 0
+ FINAL RESULT: 26/26 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 8056 | DURATION: ~18s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 245 tests and 9 438 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 247 tests and 10 195 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
@@ -1635,7 +1914,8 @@ Key highlights & upcoming roadmap:
 19b. **Time-Based Domain Event Triggers** (a scheduled sweeper for crossings without a write) (Shipped in v1.12.0)
 20. **AI-Assisted Specification Synthesizer**
 21. **PDO-Backed Repository** (the Domian `HibernateRepository`) (Shipped in v1.11.0)
-21b. **`PdoRepository` Follow-ups** (relationships, bulk update by specification, projections and aggregates, batch insert, column options)
+21b. **`PdoRepository` Follow-ups** (lifecycle columns and soft delete, hooks, SQL log, batch insert, bulk update by specification, projections and aggregates, subqueries, `ManyToOne`/`OneToMany` relationships with eager loading in batch) (Shipped in v1.13.0)
+21c. **`PdoRepository` Follow-ups II** (`ManyToMany`, marking a hand-built collection as loaded, `iterate()` with relations over unbuffered MySQL, `CHAR(1)` booleans)
 
 ---
 

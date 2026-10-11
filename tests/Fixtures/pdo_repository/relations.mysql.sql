@@ -1,0 +1,15 @@
+-- Forward 031, E3 (relationships) test schema, MySQL 8.4. Runs only in a disposable container.
+DROP TABLE IF EXISTS aspec_rel_invoice_payment;
+DROP TABLE IF EXISTS aspec_rel_invoice_line;
+DROP TABLE IF EXISTS aspec_rel_invoice;
+DROP TABLE IF EXISTS aspec_rel_order_item;
+DROP TABLE IF EXISTS aspec_rel_order;
+DROP TABLE IF EXISTS aspec_rel_product;
+DROP TABLE IF EXISTS aspec_rel_customer;
+CREATE TABLE aspec_rel_customer (id INT NOT NULL PRIMARY KEY, name VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, country VARCHAR(2) COLLATE utf8mb4_bin NOT NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_product (sku VARCHAR(20) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, title VARCHAR(50) COLLATE utf8mb4_bin NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_order (id INT AUTO_INCREMENT PRIMARY KEY, number VARCHAR(20) COLLATE utf8mb4_bin NOT NULL, customer_id INT NULL, version INT NULL, FOREIGN KEY (customer_id) REFERENCES aspec_rel_customer (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_order_item (id INT AUTO_INCREMENT PRIMARY KEY, order_id INT NOT NULL, product_sku VARCHAR(20) COLLATE utf8mb4_bin NULL, qty INT NOT NULL, deleted_at DATETIME NULL, CHECK (qty > 0), FOREIGN KEY (order_id) REFERENCES aspec_rel_order (id), FOREIGN KEY (product_sku) REFERENCES aspec_rel_product (sku)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_invoice (code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, customer_name VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, deleted_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_invoice_line (id INT NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL, description VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, FOREIGN KEY (invoice_code) REFERENCES aspec_rel_invoice (code)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE aspec_rel_invoice_payment (id VARCHAR(26) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY, invoice_code VARCHAR(20) COLLATE utf8mb4_bin NOT NULL, cents INT NOT NULL, deleted_at DATETIME NULL, CHECK (cents > 0), FOREIGN KEY (invoice_code) REFERENCES aspec_rel_invoice (code)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

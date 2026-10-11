@@ -21,9 +21,10 @@ declare(strict_types=1);
  * - Use case entry points (useCaseRunner, machineEventUseCase, 1.8.0)
  * - Simplification of a specification tree (simplify, 1.9.0)
  * - External data leaf resolved concurrently by a DataResolver (external, 1.10.0)
+ * - Subquery over another PdoRepository (inQuery, 1.13.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.11.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,6 +37,8 @@ namespace Antevemus\ASpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
+use Antevemus\ASpecification\Repositories\Pdo\InQuerySpecification;
+use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
@@ -388,6 +391,32 @@ final class Spec
     public static function in(mixed ...$values): ISpecification
     {
         return self::getFactory()->in(...$values);
+    }
+
+    /**
+     * Membership in the values a query of another PdoRepository returns (1.13.0, forward 031, D6):
+     * `$property` of the candidate is one of the `$otherProperty` values of the entities of `$other`
+     * satisfying `$where`.
+     *
+     * <code>
+     * $orders->find(Spec::inQuery('customerId', $customers, Spec::property('country', Spec::equalTo('BR')), 'id'));
+     * </code>
+     *
+     * Inside a query of a PdoRepository on the same connection it is one statement,
+     * `"customer_id" IN (SELECT "id" FROM "customer" WHERE ...)`, with the read scope (soft delete) of
+     * `$other`; in memory the subquery runs once per instance of the leaf and its values are kept.
+     * NULL values never match (two-valued, as the rest of the library). See InQuerySpecification.
+     *
+     * @param string $property Property of the candidate
+     * @param PdoRepository $other Repository of the subquery
+     * @param ISpecification $where Filter of the subquery
+     * @param string $otherProperty Readable mapped property of the subquery's entities
+     * @return PropertySpecification
+     * @throws \InvalidArgumentException If $otherProperty is not a readable mapped property of $other
+     */
+    public static function inQuery(string $property, PdoRepository $other, ISpecification $where, string $otherProperty): PropertySpecification
+    {
+        return self::property($property, new InQuerySpecification($other, $where, $otherProperty));
     }
 
     /**

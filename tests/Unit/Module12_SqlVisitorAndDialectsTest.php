@@ -36,7 +36,7 @@ use stdClass;
  * todos os dialetos do ecossistema: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite,
  * e desde 1.6.0 db2, informix e duckdb (com paginação em todos os dialetos).
  *
- * @version    1.11.0
+ * @version    1.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -84,6 +84,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testRn07DuckDbDialect();
         $this->testPaginationAcrossDialects();
         $this->testConstantsAtTheRootAreTranslated();
+        $this->testClauseCombinationRefusesAmbiguousParameters();
 
         // 1.11.0: semântica de nulo de dois valores, a mesma da memória (a prova gerativa está no Módulo 22)
         $this->testNullSemanticsMatchMemory();
@@ -1045,10 +1046,20 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         ]);
     }
 
-    /**
-     * Forward 020 (v1.6.0), RN-07: paginate() (ISqlPagination) em todos os dialetos, com validação dos argumentos;
-     * a forma do SQLite roda num banco em memória.
-     */
+    /** 1.13.0: combining clauses never produces a statement the driver would bind wrongly. */
+    private function testClauseCombinationRefusesAmbiguousParameters(): void
+    {
+        $W = \Antevemus\ASpecification\Sql\SqlWhereClause::class;
+        $named = new $W('"a" = :p1', ['p1' => 1]);
+        $positional = new $W('"b" = ?', [2]);
+        $this->assertThrows(\LogicException::class, fn() => $named->and($positional));
+        $this->assertThrows(\LogicException::class, fn() => $positional->or($named));
+        $this->assertThrows(\LogicException::class, fn() => $named->and(new $W('"c" = :p1', ['p1' => 3])));
+        $this->assertEquals(['p1' => 1], $named->and(new $W('"d" = :p1', ['p1' => 1]))->parameters, 'same name, same value: kept once');
+        $this->assertEquals([2, 5], $positional->and(new $W('"e" = ?', [5]))->parameters, 'positional with positional: appended in order');
+        $this->assertEquals(['p1' => 1, 'p2' => 4], $named->and(new $W('"f" = :p2', ['p2' => 4]))->parameters);
+    }
+
     /** 1.11.0: alwaysTrue()/alwaysFalse() at the root are constant conditions, not an exception. */
     private function testConstantsAtTheRootAreTranslated(): void
     {
@@ -1064,6 +1075,10 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertEquals(0, (int) $pdo->query('SELECT COUNT(*) FROM t WHERE ' . Spec::toSql(Spec::alwaysFalse(), 'sqlite')->sql)->fetchColumn());
     }
 
+    /**
+     * Forward 020 (v1.6.0), RN-07: paginate() (ISqlPagination) em todos os dialetos, com validação dos argumentos;
+     * a forma do SQLite roda num banco em memória.
+     */
     private function testPaginationAcrossDialects(): void
     {
         $expected = [

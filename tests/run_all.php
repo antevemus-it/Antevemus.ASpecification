@@ -28,6 +28,8 @@ use Antevemus\ASpecification\Tests\Unit\Module21_ConcurrentDataResolutionTest;
 use Antevemus\ASpecification\Tests\Unit\Module22_PdoRepositoryTest;
 use Antevemus\ASpecification\Tests\Unit\Module23_DomainEventTriggersTest;
 use Antevemus\ASpecification\Tests\Unit\Module24_TimeBasedDomainEventsTest;
+use Antevemus\ASpecification\Tests\Unit\Module25_PdoRepositoryComplementsTest;
+use Antevemus\ASpecification\Tests\Unit\Module26_PdoRelationshipsTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -58,6 +60,8 @@ $suites = [
     'Módulo 22: Repositório sobre PDO (PdoRepository)' => new Module22_PdoRepositoryTest(),
     'Módulo 23: Eventos de Domínio por Especificação' => new Module23_DomainEventTriggersTest(),
     'Módulo 24: Eventos de Domínio pela Passagem do Tempo' => new Module24_TimeBasedDomainEventsTest(),
+    'Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)' => new Module25_PdoRepositoryComplementsTest(),
+    'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, carga ansiosa, composição)' => new Module26_PdoRelationshipsTest(),
 ];
 
 $startTime = microtime(true);
