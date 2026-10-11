@@ -6,15 +6,15 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.10.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.10.0)
+[![Latest Version](https://img.shields.io/badge/Release-v1.11.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.11.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-21%2F21%20Suites%20Pass%20(6006%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-23%2F23%20Suites%20Pass%20(6991%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
-> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, and concurrent resolution of the external data I/O-bound rules depend on.
+> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, concurrent resolution of the external data I/O-bound rules depend on, a repository over PDO whose queries are specifications compiled to SQL, and domain events emitted when an entity starts or stops satisfying a specification.
 
 ---
 
@@ -45,7 +45,7 @@
 - 🗄️ **Repository Architecture & DAG Partitioning**:
   - $O(1)$ early branch pruning in query search trees through specification disjointness, over a materialised topological index of the DAG (`findAll` 45 % to 77 % faster than the recursive walk, see `tests/Benchmark/REPORT-dag-index.md`).
   - TTL and auto-prune on volatile repositories (`withTtl()`, `prune()`, injectable clock), inherited across partitions.
-  - In-memory (`InMemoryRepository`), null (`NullRepository`), and test-double (`FakePartitionRepository`) implementations.
+  - In-memory (`InMemoryRepository`), null (`NullRepository`), and test-double (`FakePartitionRepository`) implementations, and a database one, `PdoRepository` (Module 22).
   - Decoupled disk storage (`FilePerEntityRepository`, `SingleFileRepository`) with pluggable serialization (`JsonEntitySerializer`; `PhpNativeEntitySerializer` is deprecated since v1.5.0 and removed in v2.0.0, because it is the only `unserialize()` in the library: load an existing `.bin` with it and store with the JSON serializer to migrate).
   - Hybrid $L1$ (RAM) + $L2$ (Disk) tiering via `InMemoryAndFileRepository`.
 - 🔒 **Concurrency & Atomic Locking**: `ISynchronizer` primitives wired into every repository (shared readers, exclusive writer, reentrant per execution context): the in-process `SemaphoreSynchronizer` (permit counter, Fiber-aware) and atomic file locks (`flock`) across processes for the file repositories. `SysVSemaphoreSynchronizer` (`ext-sysvsem`) shares the same reader/writer lock between processes through SysV IPC semaphores.
@@ -53,6 +53,8 @@
 - 🚦 **Spec-Driven State Machine (Modules 17 and 18)**: every guard is an `ISpecification`, so a denied transition says why (code, message, property, severity); parallel regions, region-level transitions, named actions (`exit` → transition → `entry`), persisted deadlines (a fixed duration, or a duration or an absolute instant read from the context, pausable with the balance kept while a condition holds); the definition is data (builder or JSON, versioned, fingerprinted, validated at load time); a pure `transition()`/`can()`/`nextEvents()` core and a single write port, `MachineRunner` (compare-and-set, idempotency key, append-only history, transactional outbox), over InMemory or PDO stores with a reference ANSI DDL (example 14).
 - 🧭 **Use Cases (Module 19)**: `IUseCase` + `UseCaseRunner` (middlewares, `TransactionMiddleware`, request validation where only `ERROR` blocks), `UseCaseResult` with a closed domain status and HTTP only at the edge (`toHttpStatus()`), no exception or stack trace in the result, and `StateMachineEventUseCase` exposing a machine event as a use case through the shared `IOutcome` (example 15).
 - ⚡ **Concurrent Data Resolution (Module 21)**: a rule that depends on external data (a bureau score, a fraud check, a balance) declares it with `Spec::external()` instead of calling the service; a `DataResolver` collects the declarations of the whole tree, fetches them concurrently through `curl_multi` (no dependency, works under PHP-FPM) and then evaluates the tree synchronously. A cost policy (`concurrent()`, `tiered()` with three-valued logic, `sequential()`) skips paid sources that can no longer change the verdict; requests are deduplicated; a failed fetch is an evaluation error of its leaf; parameters cannot change the host or path of a call (example 16).
+- 🗄️ **Repository Over PDO (Module 22)**: `PdoRepository` implements `IRepository` over a table: a query is a specification compiled to parameterized SQL by the SQL visitor (any dialect), a write is a prepared statement in a transaction, `iterate()` streams the cursor in constant memory and `count()` builds no entity. Mapping by attributes (`#[Table]`, `#[Column]`, `#[Id]`, `#[Version]`) or by a builder; identifiers `auto`, `ulid`, `uuid7`, `assigned` and `max`; optimistic locking; a non-translatable specification is refused instead of filtering the table in memory (`withInMemoryFallback()` is the explicit opt-in); only properties a specification may read by name can be queried. The transaction port (`Persistence\ITransactionManager`) is shared with the state machine stores (example 17).
+- 📡 **Domain Events From Specifications (Module 23)**: `SpecificationTrigger` binds a specification to an enter and an exit event; `TriggeringRepository` decorates any repository and publishes the crossings of every write to an outbox (in memory or PDO, reference DDL `resources/sql/domain_events.ansi.sql`) written in the same transaction, delivered after the commit by `DomainEventDispatcher` with a deterministic idempotency key and a payload without personal data; `MachineEventBridge` sends an event to the state machine (example 18).
 
 ---
 
@@ -87,7 +89,8 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
   - `ext-curl` *(optional: `HttpDataSource`, the concurrent HTTP fetching of the `DataResolver`, Module 21; without it an HTTP source is refused when registered and `CallableDataSource` keeps working)*
-- **Optional package**: `antevemus/alinq-collection` `^1.5.0` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
+  - `ext-pdo` *(optional, with the driver of your database: `PdoRepository` (Module 22), the PDO stores of the state machine, `PdoRuleCatalog` and the PDO domain event outbox (Module 23))*
+- **Optional package**: `antevemus/alinq-collection` `^1.5.1` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
 
 ---
 
@@ -332,18 +335,19 @@ $whereClause = Spec::toSql(
 );
 
 echo $whereClause->getSql();
-// '("is_active" = TRUE AND ("val_salary" > :p1 OR "txt_city" LIKE :p2))'
-// (booleans are rendered by the dialect; the remaining values are bound)
+// '(("is_active" IS NOT NULL AND "is_active" = TRUE) AND (("val_salary" IS NOT NULL AND "val_salary" > :p1) OR ("txt_city" IS NOT NULL AND "txt_city" LIKE :p2)))'
+// (booleans are rendered by the dialect; the remaining values are bound; each comparison carries an
+// IS NOT NULL guard, so a NOT over a NULL column gives the in-memory answer)
 
 print_r($whereClause->getBindings());
 // [':p1' => 5000, ':p2' => 'New%']
 
 // 3. First-class support for 15 database drivers across 10 SQL dialects (SQL Server, Oracle, Firebird, MySQL, SQLite, Db2, Informix, DuckDB, etc.)
 $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
-// '([active] = 1 AND ([salary] > :p1 OR [city] LIKE :p2))'
+// '(([active] IS NOT NULL AND [active] = 1) AND (([salary] IS NOT NULL AND [salary] > :p1) OR ([city] IS NOT NULL AND [city] LIKE :p2)))'
 
 $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
-// '(`active` = 1 AND (`salary` > :p1 OR BINARY `city` LIKE :p2))'
+// '((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND BINARY `city` LIKE :p2)))'
 ```
 
 ---
@@ -1116,6 +1120,245 @@ try {
 
 Errors follow the 1.8.0 rule: a fetch that fails (an HTTP status outside 2xx, a transport error, the time limit of the source or of the whole resolution with `ResolutionPolicy::tiered(timeout: 3.0)`, a parser that throws, an unknown source) is an evaluation error of the leaf: a failure with the generic message, `evaluation_error = true`, and a `DataFetchException` in `$result->exception` with the status code, never the response body. There is no retry. A parameter value is percent-encoded into the URL template, so `/`, `?`, `#`, `..` or a whole URL in a document number cannot change the host or the path of the call; redirects are not followed. A cache between resolutions is optional (`new DataResolver($registry, new InMemoryDataCache())`, with the TTL of each source; failures are never cached). `ext-curl` is a `suggest`: without it an `HttpDataSource` is refused when registered and a `CallableDataSource` keeps working. The SQL, TCriteria and ALinq visitors refuse the leaf with their "non translatable" exception. State machine guards stay pure: a use case resolves the data before sending the event. Concurrency for non-HTTP sources (Fibers/Revolt) is a planned satellite package.
 
+### 17. Repository Over PDO (Module 22)
+
+`PdoRepository` is the `IRepository` of a database table: a query is a specification compiled to SQL by the SQL visitor (any of its dialects), a write is a prepared `INSERT`/`UPDATE`/`DELETE`, and `iterate()` streams the cursor. The author of the entity maps it to the table, with attributes or with a builder; a mapped property is read and written by reflection even when it is private (the mapping is the author's opt-in). The library generates no DDL and loads no relationship: one entity, one table.
+
+```php
+use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\Column;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\ColumnType;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\Id;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\IdStrategy;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\Table;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\Version;
+use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
+use Antevemus\ASpecification\Spec;
+
+#[Table('product')]
+#[Version(property: 'version')]                   // optimistic locking on the counter AbstractEntity declares
+class Product extends AbstractEntity
+{
+    #[Id(strategy: IdStrategy::Auto)]             // identity/auto-increment, read back after the INSERT
+    private ?int $id = null;
+
+    public function __construct(
+        #[Column] public string $name,
+        #[Column('unit_price', type: ColumnType::Decimal)] public string $price,   // exact decimal, as a string
+        #[Column] public bool $active = true,
+        #[Column] private string $cost = '0.00',  // mapped, but private without a getter: never queryable by name
+    ) {
+        parent::__construct();
+    }
+
+    public function getEntityId(): ?int
+    {
+        return $this->id;
+    }
+}
+
+$pdo = new PDO('sqlite::memory:', options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo->exec('CREATE TABLE product (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(80) NOT NULL,
+    unit_price TEXT NOT NULL, active INTEGER NOT NULL, cost TEXT NOT NULL, version INTEGER NOT NULL)');
+
+$products = PdoRepository::forEntity($pdo, Product::class);   // the dialect comes from the PDO driver
+
+$keyboard = new Product('Keyboard', '149.90', cost: '90.00');
+$products->put($keyboard);                        // INSERT; the generated id comes back
+$keyboard->getEntityId();                         // 1
+$keyboard->getVersion();                          // 1
+$products->putAll([new Product('Mouse', '59.90'), new Product('Cable', '19.90', active: false)]); // one transaction
+
+$active = Spec::property('active', Spec::isTrue());
+$products->count($active);                        // 2: SELECT COUNT(*), no entity is built
+$products->findSingle(Spec::property('name', Spec::equalTo('Mouse')))->price;   // '59.90'
+foreach ($products->iterate($active) as $product) {
+    echo $product->name, PHP_EOL;                 // Keyboard, Mouse: one row at a time from the cursor
+}
+array_map(fn(Product $p): string => $p->name,
+    $products->findPage($active, limit: 1, offset: 1, orderBy: ['name' => 'DESC']));   // ['Keyboard']
+$products->toWhereClause($active)->toSql();       // '("active" IS NOT NULL AND "active" = 1)'
+```
+
+Optimistic locking: with a `#[Version]` counter, the `INSERT` writes 1 and every `UPDATE` increments it and only matches the row while it still holds the version the entity was read with.
+
+```php
+use Antevemus\ASpecification\Repositories\Pdo\Exceptions\OptimisticLockException;
+
+$mine   = $products->findById(1);                 // both copies carry version 1
+$theirs = $products->findById(1);
+$theirs->price = '139.90';
+$products->update($theirs);                       // UPDATE ... WHERE id = 1 AND version = 1
+$theirs->getVersion();                            // 2
+
+$mine->price = '129.90';
+try {
+    $products->update($mine);                     // still version 1: the UPDATE matches no row
+} catch (OptimisticLockException $e) {
+    // nothing was written: reload, apply the change again
+}
+$products->findById(1)->price;                    // '139.90'
+```
+
+The rules that matter, and the builder for a class that cannot carry attributes:
+
+```php
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
+use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
+
+// A specification the SQL visitor cannot translate is refused: never a silent full-table scan
+$cheap = new PredicateSpecification(fn(Product $p): bool => (float) $p->price < 100);
+try {
+    $products->find($cheap);
+} catch (NonTranslatableSpecificationException $e) {
+    // express the rule with property specifications, or opt in below
+}
+count(PdoRepository::forEntity($pdo, Product::class)->withInMemoryFallback()->find($cheap)); // 2: reads the whole table
+
+// Only a mapped property a specification may read by name (public, public getter or #[Specifiable])
+try {
+    $products->find(Spec::property('cost', Spec::greaterThan('50')));
+} catch (NonTranslatableSpecificationException $e) {
+    // "cost" is mapped but private without a getter: refused in SQL as it is in memory
+}
+
+// The same mapping, built explicitly
+$mapping = EntityMapping::for(Product::class)->table('product')->id('id', IdStrategy::Auto)->version('version')
+    ->column('name')->column('price', 'unit_price', ColumnType::Decimal)->column('active')->column('cost');
+$mapping->equals(EntityMapping::fromAttributes(Product::class));  // true
+$products = new PdoRepository($pdo, $mapping);
+```
+
+- **Queries.** Every value is a bound parameter; table and column names come only from the mapping, validated as plain identifiers and quoted by the dialect. A specification that cannot be translated (a closure, a method call, external data) throws `NonTranslatableSpecificationException`; nothing is filtered in memory unless `withInMemoryFallback()` was called, and then the whole table is read, so keep it for small tables. Only a property that is mapped **and** readable by name (public, a public getter or `#[Specifiable]`) can be queried, the rule the in-memory evaluation applies, so a private column is never a read oracle through SQL. `entityId` always means the identifier column.
+- **Reads.** `find*()`, `iterate*()` and `findPage()` order by the identifier (`findPage()` appends it to the given order, so pages never overlap); `iterate()` is a generator over the cursor (constant memory); `count()` builds no entity; `findSingle()` asks for at most two rows and throws when there is more than one; `findById()` reads one row. Entities are built without calling their constructor. MySQL streams only with `PDO::MYSQL_ATTR_USE_BUFFERED_QUERY` set to `false` on the connection; with the default buffered mode the driver holds the whole result before the first row.
+- **Writes** run in a transaction of the repository's `ITransactionManager` (by default a `PdoTransactionManager` on the same connection, which joins a transaction already open): `put()`/`update()` insert or update by the presence of the id and of the row, `putAll()` is all or nothing, `removeBy()` is one `DELETE ... WHERE`. A stale update or removal throws `OptimisticLockException` and writes nothing; a versioned copy whose row is gone is never re-inserted.
+- **Identifiers**: `auto` (identity, serial, auto-increment; in PostgreSQL `INSERT ... RETURNING`, or `lastInsertId()` of the declared sequence), `ulid`, `uuid7`, `assigned`, and `max` (`SELECT COALESCE(MAX(id), 0) + 1` inside the write transaction, compatible with the `IDPOLICY = 'max'` of Adianti's `TRecord`). `max` is subject to a race between concurrent writers: two transactions can read the same maximum and the primary key rejects the second `INSERT`. Prefer `auto`, `ulid` or `uuid7` for new tables.
+- **Null values.** A `NULL` column is a null value, and the database answers for it what the in-memory evaluation answers: `property('note', isNull())` matches the rows whose `note` is `NULL`; a comparison (`greaterThan()`, `startsWith()`, `equalTo('x')`, `in('a', 'b')`, ...) never matches them, and its negation `not(property('views', greaterThan(10)))` does. Each comparison is compiled as `(column IS NOT NULL AND ...)`, so it is false there, never SQL's unknown, and a `NOT` over it keeps the in-memory answer. An `and`/`or`/`not` written *inside* a property rejects a null value, as it rejects any null candidate: "no note, or note n2" is `anyOf(property('note', isNull()), property('note', equalTo('n2')))`, not `property('note', anyOf(isNull(), equalTo('n2')))`. `Spec::toSql()` and `Spec::toCriteria()` follow the same rule (changed in 1.11.0, see the CHANGELOG).
+- **The database compares text its own way.** SQLite's `LIKE` ignores ASCII case (`startsWith('mo')` matches `Mouse` there and not in memory), and MySQL's default `_ci` collations ignore case and accents in `=` and `LIKE`: declare text columns with a binary collation (`utf8mb4_bin`) for case-sensitive parity. SQLite gives a `DECIMAL` column numeric affinity (`'59.90'` comes back as `'59.9'`), so the example declares it `TEXT`; comparisons on that column are then textual.
+- **The transaction port is shared** (`Persistence\ITransactionManager`): the state machine's `PdoTransactionManager` is one, so one instance gives the repository, the domain event outbox (example 18) and the machine stores the same transaction.
+- **Not in this version:** relationships and joins, DDL generation, second-level cache, partitions (`makePartition()` throws `PartitioningNotSupportedException`).
+
+### 18. Domain Events From Specifications (Module 23)
+
+A trigger binds a specification to domain events: when an entity **starts** to satisfy it, the trigger emits its enter event; when it **stops**, its exit event. `TriggeringRepository` decorates any `IRepository`: on `put()`/`update()`/`updateWithDelta()` it reads the stored state of the entity by its identity, writes, evaluates every trigger on the state before and after, and publishes the crossings; on `remove()`/`removeBy()` it emits the exits. The production publisher writes to an outbox in the same transaction as the write, and `DomainEventDispatcher` delivers it after the commit, as the effects of the state machine.
+
+```php
+use Antevemus\ASpecification\DomainEvents\DomainEvent;
+use Antevemus\ASpecification\DomainEvents\DomainEventDispatcher;
+use Antevemus\ASpecification\DomainEvents\DomainEventHandlerRegistry;
+use Antevemus\ASpecification\DomainEvents\Outbox\InMemoryDomainEventOutbox;
+use Antevemus\ASpecification\DomainEvents\OutboxDomainEventPublisher;
+use Antevemus\ASpecification\DomainEvents\SpecificationTrigger;
+use Antevemus\ASpecification\DomainEvents\TriggeringRepository;
+use Antevemus\ASpecification\DomainEvents\TriggerSet;
+use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ASpecification\Repositories\InMemoryRepository;
+use Antevemus\ASpecification\Spec;
+
+class Policy extends AbstractEntity
+{
+    public int $daysOverdue = 0;
+    public bool $documentsValidated = false;
+    public string $holderName = 'Maria Silva';    // personal data: never copied into an event
+
+    public function __construct(private string $number)
+    {
+        parent::__construct();
+    }
+
+    public function getEntityId(): string
+    {
+        return $this->number;
+    }
+}
+
+$triggers = new TriggerSet(
+    new SpecificationTrigger('policy.delinquent', Spec::property('daysOverdue', Spec::greaterThan(30)),
+        onEnter: 'delinquency.started', onExit: 'delinquency.ended'),
+    new SpecificationTrigger('policy.documents', Spec::property('documentsValidated', Spec::isTrue()),
+        onEnter: 'documents.validated'),
+);
+
+$outbox = new InMemoryDomainEventOutbox();        // PdoDomainEventOutbox in production
+$policies = new TriggeringRepository(new InMemoryRepository(), $triggers, new OutboxDomainEventPublisher($outbox));
+
+$policy = new Policy('P-1');
+$policies->put($policy);                          // satisfies no trigger: no event
+$policy->daysOverdue = 45;
+$policies->update($policy);                       // starts to satisfy policy.delinquent
+$policies->update($policy);                       // no crossing, no event
+$policy->daysOverdue = 0;
+$policies->update($policy);                       // stops satisfying it
+$outbox->count();                                 // 2
+
+$event = $outbox->findByEntity(Policy::class, 'P-1')[0]->event;
+$event->name;                                     // 'delinquency.started'
+$event->getPayload();                             // ['trigger' => 'policy.delinquent', 'entity_id' => 'P-1']
+
+// After the commit (a worker or a cron): every event to its handlers, in write order per entity
+$seen = [];
+$handlers = (new DomainEventHandlerRegistry())
+    ->register('delinquency.started', function (DomainEvent $event, string $idempotencyKey) use (&$seen): void { $seen[] = $event->name; })
+    ->register('delinquency.ended', function (DomainEvent $event, string $idempotencyKey) use (&$seen): void { $seen[] = $event->name; });
+(new DomainEventDispatcher($outbox, $handlers))->dispatchPending()->deliveredCount();   // 2
+$seen;                                            // ['delinquency.started', 'delinquency.ended']
+```
+
+An event can move a state machine (example 14): `MachineEventBridge` is a ready-made handler that sends it to a `MachineRunner` as an internal event carrying the domain event's idempotency key, so a redelivery returns the original result and does not move the instance again.
+
+```php
+use Antevemus\ASpecification\DomainEvents\MachineEventBridge;
+use Antevemus\ASpecification\StateMachine\Persistence\InMemory\InMemoryMachineDefinitionRepository;
+use Antevemus\ASpecification\StateMachine\Persistence\MachinePersistence;
+use Antevemus\ASpecification\StateMachine\Runner\MachineRunner;
+
+// "Every document validated" moves the review without a click
+$review = Spec::machine('policy_review', 1)
+    ->region('lifecycle', 'waiting_documents')
+        ->state('waiting_documents')
+            ->on('VALIDATE', 'under_review')
+        ->finalState('under_review')
+    ->build();
+$runner = new MachineRunner(Spec::stateMachine(), new InMemoryMachineDefinitionRepository([$review]), MachinePersistence::inMemory());
+$runner->start('review-P-1', 'policy_review', 1, null, new DateTimeImmutable('2026-10-11 09:00'));
+
+(new MachineEventBridge($runner, ['documents.validated' => 'VALIDATE'], fn(DomainEvent $e): ?string => 'review-' . $e->entityId))
+    ->registerIn($handlers);
+
+$policy->documentsValidated = true;
+$policies->update($policy);                       // documents.validated goes to the outbox
+(new DomainEventDispatcher($outbox, $handlers))->dispatchPending()->deliveredCount();   // 1
+$runner->load('review-P-1')->snapshot->stateOf('lifecycle');                           // 'under_review'
+```
+
+Over the `PdoRepository` of example 17 the row and its events commit together when the repository and the outbox share the connection and the transaction manager. The decorator then reads the "before" with `Spec::property('entityId', Spec::equalTo($id))`, compiled to SQL, without configuration:
+
+```php
+use Antevemus\ASpecification\DomainEvents\Outbox\PdoDomainEventOutbox;
+use Antevemus\ASpecification\Persistence\PdoTransactionManager;
+
+// Once, with your migration tool: resources/sql/domain_events.ansi.sql
+$transactions = new PdoTransactionManager($pdo);  // one unit of work for the row and its events
+$catalog = new TriggeringRepository(
+    PdoRepository::forEntity($pdo, Product::class, $transactions),
+    new TriggerSet(new SpecificationTrigger('product.withdrawn', Spec::property('active', Spec::isFalse()), onEnter: 'product.withdrawn')),
+    new OutboxDomainEventPublisher($events = new PdoDomainEventOutbox($pdo)),
+    $transactions,
+);
+
+$mouse = $catalog->findSingle(Spec::property('name', Spec::equalTo('Mouse')));
+$mouse->active = false;
+$catalog->update($mouse);                         // UPDATE product and INSERT INTO domain_event_outbox, one commit
+$events->count();                                 // 1
+```
+
+- **The payload is minimal on purpose**: the trigger name and the entity id, never the entity, so no personal data reaches a queue or a log; a handler that needs more reads the entity by its id. Each event carries a deterministic idempotency key (`de:` + SHA-256 of trigger, entity class, entity id, kind and instant): the outbox stores a crossing once, so re-applying the same write does not duplicate it.
+- **Reading "before" costs one read per write** (a scan in the in-memory repositories). Over a `PdoRepository` the identity lookup is the SQL one shown above; for another repository that translates specifications to SQL, pass `identitySpecification: TriggeringRepository::byIdProperty('id')`. The in-memory repositories store the caller's object, so the decorator compares with the states it recorded at the last write of that object through it. **Known limitation:** on the in-memory repositories, an entity stored before the decorator existed (or written to the inner repository directly) and then mutated in place has no "before", and that write emits nothing: write through the decorator from the start.
+- **Delivery** is at-least-once, in write order per entity: handlers deduplicate by the idempotency key they receive. A failing handler never undoes the write; the entry is marked failed (no stack trace) and retried, holding that entity's later events back until it succeeds or, with `maxAttempts`, reaches the limit. An event without a handler is a failed attempt, not a silent drop.
+- **Errors:** a specification that throws while being evaluated emits no event; by default the write goes on and the error goes to an `IDomainEventErrorReporter`, and with `failOnEvaluationError: true` the write throws instead. A failure of the publisher (the outbox) always propagates.
+- **Not detected yet:** a crossing caused by time alone, with no write (a policy that becomes overdue at midnight while nobody writes it). Triggers are evaluated when the entity is written through the decorator; a time-based sweeper is on the roadmap. Event sourcing and a message bus client are out of scope: publish to Kafka or RabbitMQ from a handler.
+
 ---
 
 ## 🏗️ Directory Structure
@@ -1146,6 +1389,7 @@ src/
 │   └── Reflection/           # MethodParameterizedSpecification (declarative method call; field access is where())
 ├── Repositories/              # Concrete repositories and DAG partitioning
 │   ├── File/                 # SingleFileRepository, FilePerEntityRepository
+│   ├── Pdo/                  # PdoRepository; Mapping/ (Table, Column, Id, Version, EntityMapping, IdStrategy, ColumnType) (Module 22, v1.11.0)
 │   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
 ├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
@@ -1174,6 +1418,13 @@ src/
 │   ├── Persistence/          # Ports, MachinePersistence, InMemory/ and Pdo/ stores (resources/sql/state_machine.ansi.sql)
 │   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrations
 ├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Module 19)
+├── Persistence/               # ITransactionManager, PdoTransactionManager: the transaction port shared by the repository, outboxes and machine stores (v1.11.0)
+├── DomainEvents/              # Domain events from specifications (Module 23, v1.11.0)
+│   ├── Outbox/               # IDomainEventOutbox, InMemory and Pdo outboxes (resources/sql/domain_events.ansi.sql)
+│   ├── SpecificationTrigger.php # A specification bound to an enter and an exit event; TriggerSet, TriggerEvaluator
+│   ├── TriggeringRepository.php # IRepository decorator that publishes the crossings of every write
+│   ├── DomainEventDispatcher.php # Delivery after the commit; DomainEventHandlerRegistry
+│   └── MachineEventBridge.php # A domain event sent to a MachineRunner
 ├── Resolution/                # Concurrent data resolution (Module 21, v1.10.0)
 │   ├── Exceptions/           # DataResolutionException, DataFetchException, DataSourceNotFoundException
 │   ├── ExternalDataSpecification.php # Spec::external(): the leaf that declares external data
@@ -1195,27 +1446,27 @@ The library features comprehensive unit and integration test coverage with zero 
 php tests/run_all.php
 ```
 
-Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine:
+Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine. Module 22 also prints its benchmark (10 000 rows in SQLite) and, without the `ASPEC_PDO_*` variables, that its PostgreSQL and MySQL runs were skipped; those lines are omitted here:
 
 ```text
 ====================================================================
  ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH
 ====================================================================
 
-• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (284 assertions)
+• [SUITE] Module 1: Specifications & Boolean Algebra... ✅ PASS (285 assertions)
 • [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (59 assertions)
 • [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (90 assertions)
 • [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (94 assertions)
 • [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (115 assertions)
 • [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (97 assertions)
 • [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (61 assertions)
-• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (143 assertions)
+• [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (151 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (204 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (409 assertions)
-• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (459 assertions)
-• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (186 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (263 assertions)
+• [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (507 assertions)
+• [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (207 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (270 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
 • [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (550 assertions)
 • [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (618 assertions)
@@ -1223,19 +1474,21 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 19: Use Case & Shared Result (UseCaseResult)... ✅ PASS (408 assertions)
 • [SUITE] Module 20: Specification Simplification (simplify)... ✅ PASS (116 assertions)
 • [SUITE] Module 21: Concurrent Data Resolution (DataResolver)... ✅ PASS (864 assertions)
+• [SUITE] Module 22: Repository Over PDO (PdoRepository)... ✅ PASS (569 assertions)
+• [SUITE] Module 23: Domain Events From Specifications... ✅ PASS (331 assertions)
 
 ====================================================================
- FINAL RESULT: 21/21 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 6006 | DURATION: ~9s | REGRESSIONS: 0
+ FINAL RESULT: 23/23 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 6991 | DURATION: ~12s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 242 tests and 8 140 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 244 tests and 9 127 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
 - **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, `PropertyAccessor` dot-notation resolution and the `InMemoryRepository` bridge methods.
-- **Multi-DBMS Compatibility:** 15 drivers (10 SQL dialects) certified with proper identifier quoting and bound prepared statements.
+- **Multi-DBMS Compatibility:** 15 drivers (10 SQL dialects) certified with proper identifier quoting and bound prepared statements. `PdoRepository` runs its contract battery in SQLite in the suite and, through `tests/Fixtures/pdo_repository/run_portability.sh`, against PostgreSQL 17 and MySQL 8.4 in disposable containers.
 - **Adianti Database Bridge:** Full translation to `TCriteria`/`TFilter` with De Morgan logic inversion and strict precedence.
 
 ---
@@ -1269,9 +1522,11 @@ Key highlights & upcoming roadmap:
 16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
 17. **GraphQL AST & OpenAPI 3.1 Query Compilers**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**
-19. **Specification-Driven Domain Event Triggers**
+19. **Specification-Driven Domain Event Triggers** (Shipped in v1.11.0)
+19b. **Time-Based Domain Event Triggers** (a scheduled sweeper for crossings without a write)
 20. **AI-Assisted Specification Synthesizer**
-21. **PDO-Backed Repository** (the Domian `HibernateRepository`)
+21. **PDO-Backed Repository** (the Domian `HibernateRepository`) (Shipped in v1.11.0)
+21b. **`PdoRepository` Follow-ups** (relationships, bulk update by specification, projections and aggregates, batch insert, column options)
 
 ---
 

@@ -31,11 +31,16 @@ use Throwable;
  * - Polymorphic resolution via PropertyAccessor
  * - Composition AST traversal
  * - Contradiction inherited from the inner specification, never the tautology (1.6.0)
+ * - A null property value is handed to the inner specification (1.11.0): `property('note', isNull())`
+ *   is satisfied by a null note, a comparison is not, and an AND/OR/NOT/NOR node rejects it (as it
+ *   rejects any null candidate), exactly what the SQL and TCriteria translations answer for a NULL
+ *   column. Before 1.11.0 a null value never satisfied, whatever the inner specification. A property
+ *   that cannot be resolved is still an evaluation error
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -102,12 +107,7 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
         }
 
         if ($propertyValue === null) {
-            return SpecificationResult::failure(
-                message: $this->customReason ?? sprintf("Property '%s' is null on candidate object.", $this->propertyName),
-                code: $this->customCode,
-                ruleName: 'PropertySpecification',
-                property: $this->propertyName
-            );
+            return $this->evaluateNullValue();
         }
 
         $propResult = $this->propertySpecification->evaluate($propertyValue);
@@ -157,13 +157,61 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             return false;
         }
 
-        $propertyValue = $this->getPropertyValue($candidate);
+        // A missing property throws (getPropertyValue()); a null value goes to the inner specification
+        return $this->propertySpecification->isSatisfiedBy($this->getPropertyValue($candidate));
+    }
 
-        if ($propertyValue === null) {
-            return false;
+    /**
+     * Evaluates a null property value (1.11.0): the inner specification decides through
+     * isSatisfiedBy(null), the same answer isSatisfiedBy() gives, so evaluate() and isSatisfiedBy()
+     * never disagree (AND/OR evaluate() hand a null candidate to their operands, while their
+     * isSatisfiedBy() rejects it). A null value that does not satisfy is reported as the property's
+     * own failure, with its because()/withCode(), as before 1.11.0: the report does not depend on
+     * the shape of the inner tree. An exception is an evaluation error, never a rule failure.
+     *
+     * @return SpecificationResult
+     */
+    private function evaluateNullValue(): SpecificationResult
+    {
+        try {
+            $satisfied = $this->propertySpecification->isSatisfiedBy(null);
+        } catch (Throwable $e) {
+            return SpecificationResult::error(
+                exception: $e,
+                ruleName: 'PropertySpecification',
+                property: $this->propertyName,
+                code: $this->customCode
+            );
         }
 
-        return $this->propertySpecification->isSatisfiedBy($propertyValue);
+        if ($satisfied) {
+            return SpecificationResult::satisfied();
+        }
+
+        return SpecificationResult::failure(
+            message: $this->customReason ?? sprintf("Property '%s' is null on candidate object.", $this->propertyName),
+            code: $this->customCode,
+            ruleName: 'PropertySpecification',
+            property: $this->propertyName
+        );
+    }
+
+    /**
+     * What the inner specification answers for a null property value: true, false, or null when it
+     * throws (1.11.0). The algebra compares these answers, since a null value is no longer refused
+     * before the inner specification is asked.
+     *
+     * @internal Used by the algebra of this class and by SpecificationSimplifier.
+     * @param ISpecification<mixed> $specification
+     * @return bool|null
+     */
+    public static function nullValueAnswer(ISpecification $specification): ?bool
+    {
+        try {
+            return $specification->isSatisfiedBy(null);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -318,8 +366,11 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             }
             $baseGeneralizes = $this->baseSpecification->isGeneralizationOf($other->getBaseSpecification())
                 || $this->baseSpecification->getType() === $other->getBaseSpecification()->getType();
+            // Since 1.11.0 a null value reaches the inner specifications: the other one must not accept
+            // a null value this one refuses (the leaf algebra only speaks of non-null values)
             return $baseGeneralizes
-                && $this->propertySpecification->isGeneralizationOf($other->getPropertySpecification());
+                && $this->propertySpecification->isGeneralizationOf($other->getPropertySpecification())
+                && $this->acceptsNullWhenever($other->getPropertySpecification());
         }
 
         return false;
@@ -345,7 +396,10 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
                 return true;
             }
             if ($this->propertyName === $other->getPropertyName()) {
-                return $this->propertySpecification->isDisjointWith($other->getPropertySpecification());
+                // Since 1.11.0 both may accept a null value, whatever the leaf algebra says of the others
+                return $this->propertySpecification->isDisjointWith($other->getPropertySpecification())
+                    && !(self::nullValueAnswer($this->propertySpecification) !== false
+                        && self::nullValueAnswer($other->getPropertySpecification()) !== false);
             }
         }
 
@@ -364,11 +418,27 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
      * {@inheritdoc}
      *
      * RN-08 (forward 019): a property restriction is a contradiction when its inner specification (or
-     * its base) is one. It never inherits a tautology: a missing or null property does not satisfy it.
+     * its base) is one and, since 1.11.0, the inner one also refuses a null value. It never inherits a tautology: a candidate that is not an object or an array does
+     * not satisfy it, and a missing property is an evaluation error.
      */
     public function isContradiction(): bool
     {
-        return $this->propertySpecification->isContradiction()
+        // A null value reaches the inner specification since 1.11.0: a contradiction for every other
+        // value that accepts null (or may throw on it) is not one here
+        return ($this->propertySpecification->isContradiction() && self::nullValueAnswer($this->propertySpecification) === false)
             || $this->baseSpecification->isContradiction();
+    }
+
+    /**
+     * Whether this inner specification accepts a null value whenever the other one does.
+     *
+     * @param ISpecification<mixed> $other
+     */
+    private function acceptsNullWhenever(ISpecification $other): bool
+    {
+        $mine = self::nullValueAnswer($this->propertySpecification);
+        $theirs = self::nullValueAnswer($other);
+
+        return $theirs === false || ($mine === true && $theirs === true);
     }
 }

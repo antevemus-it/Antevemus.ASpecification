@@ -159,11 +159,12 @@ class Module7_PredicatesAndFactoriesTest extends TestCase
         $this->assertFalse($none->evaluate((object) ['status' => 'A'])->isSatisfied);
         $this->assertTrue(str_contains((string) Spec::nor($a, $b), ' NOR '));
 
-        // SQL: NOT (a OR b), valores por binding
+        // SQL: NOT (a OR b), valores por binding; 1.11.0 mudou: cada comparação leva a guarda de nulo,
+        // para que o NOT sobre status NULL seja verdadeiro como em memória (antes: "status" = :p1 sem guarda)
         $sql = Spec::toSql(Spec::nor($a, $b), 'pgsql');
-        $this->assertEquals('NOT (("status" = :p1 OR "status" = :p2))', $sql->toSql());
+        $this->assertEquals('NOT ((("status" IS NOT NULL AND "status" = :p1) OR ("status" IS NOT NULL AND "status" = :p2)))', $sql->toSql());
         $this->assertEquals([':p1' => 'A', ':p2' => 'B'], $sql->getParameters());
-        $this->assertEquals('NOT (("status" = :p1 OR ("status" = :p2 OR "status" = :p3)))', Spec::toSql($none, 'pgsql')->toSql());
+        $this->assertEquals('NOT ((("status" IS NOT NULL AND "status" = :p1) OR (("status" IS NOT NULL AND "status" = :p2) OR ("status" IS NOT NULL AND "status" = :p3))))', Spec::toSql($none, 'pgsql')->toSql());
 
         // TCriteria (stubs do Adianti sob demanda): De Morgan, NOT a AND NOT b; negado volta a a OR b
         if (!class_exists(\Adianti\Database\TCriteria::class)) {
@@ -171,8 +172,9 @@ class Module7_PredicatesAndFactoriesTest extends TestCase
                 require_once $stub;
             }
         }
-        $this->assertEquals("(status <> 'A' AND status <> 'B')", Spec::toCriteria(Spec::nor($a, $b))->dump());
-        $this->assertEquals("(status <> 'A' AND (status <> 'B' AND status <> 'C'))", Spec::toCriteria($none)->dump());
+        // 1.11.0 mudou: a comparação negada aceita o status NULL, como em memória (antes: status <> 'A' sozinho)
+        $this->assertEquals("((status IS NULL OR status <> 'A') AND (status IS NULL OR status <> 'B'))", Spec::toCriteria(Spec::nor($a, $b))->dump());
+        $this->assertEquals("((status IS NULL OR status <> 'A') AND ((status IS NULL OR status <> 'B') AND (status IS NULL OR status <> 'C')))", Spec::toCriteria($none)->dump());
         $this->assertEquals("(status = 'A' OR status = 'B')", Spec::toCriteria(Spec::not(Spec::nor($a, $b)))->dump());
 
         // ALinq

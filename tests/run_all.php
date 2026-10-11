@@ -25,6 +25,8 @@ use Antevemus\ASpecification\Tests\Unit\Module18_StateMachineRunnerTest;
 use Antevemus\ASpecification\Tests\Unit\Module19_UseCaseTest;
 use Antevemus\ASpecification\Tests\Unit\Module20_SimplifyTest;
 use Antevemus\ASpecification\Tests\Unit\Module21_ConcurrentDataResolutionTest;
+use Antevemus\ASpecification\Tests\Unit\Module22_PdoRepositoryTest;
+use Antevemus\ASpecification\Tests\Unit\Module23_DomainEventTriggersTest;
 
 echo "====================================================================\n";
 echo " ANTEVEMUS ASPECIFICATION - MASTER TEST RUNNER & REGRESSION WATCH\n";
@@ -52,6 +54,8 @@ $suites = [
     'Módulo 19: Caso de Uso e Resultado Comum (UseCaseResult)' => new Module19_UseCaseTest(),
     'Módulo 20: Simplificação de Especificações (simplify)' => new Module20_SimplifyTest(),
     'Módulo 21: Resolução Concorrente de Dados (DataResolver)' => new Module21_ConcurrentDataResolutionTest(),
+    'Módulo 22: Repositório sobre PDO (PdoRepository)' => new Module22_PdoRepositoryTest(),
+    'Módulo 23: Eventos de Domínio por Especificação' => new Module23_DomainEventTriggersTest(),
 ];
 
 $startTime = microtime(true);

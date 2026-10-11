@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Tests\TestCase;
  * - Teste de precedência e aninhamento de parênteses
  * - Suporte a propriedades de paginação, ordenação e mapeamento de colunas
  *
- * @version    1.6.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -70,6 +70,72 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // Forward 018 (v1.6.0), RN-07: chamada de método é opaca ao TCriteria.
         $this->testF018MethodCallIsNotTranslatableToCriteria();
+
+        // 1.11.0: semântica de nulo da memória no TCriteria (a prova gerativa nos três bancos está no Módulo 22)
+        $this->testNullSemanticsFollowMemory();
+        $this->testRealAdiantiEmitsNullChecks();
+    }
+
+    /**
+     * 1.11.0: o TCriteria responde para uma coluna NULL o que a memória responde. O critério é uma árvore
+     * AND/OR (as negações descem até os filtros), em que um filtro desconhecido para NULL já exclui a
+     * linha; por isso a comparação positiva não muda. Muda a comparação negada, verdadeira em memória
+     * para o valor nulo: antes not(property('idade', greaterThan(18))) era (idade <= 18) e deixava de
+     * fora a linha com idade NULL. E um AND/OR/NOT dentro da propriedade, que em memória recusa o nulo,
+     * ganha IS NOT NULL quando um filtro dele casaria com NULL.
+     */
+    private function testNullSemanticsFollowMemory(): void
+    {
+        $dump = fn($spec): string => Spec::toCriteria($spec)->dump();
+
+        $this->assertEquals('(idade > 18)', $dump(Spec::property('idade', Spec::greaterThan(18))));
+        $this->assertEquals('(idade IS NULL OR idade <= 18)', $dump(Spec::not(Spec::property('idade', Spec::greaterThan(18)))));
+        $this->assertEquals('(idade <= 18)', $dump(Spec::property('idade', Spec::not(Spec::greaterThan(18)))), 'NOT dentro da propriedade recusa o nulo: nada a acrescentar');
+        $this->assertEquals('(deleted_at IS NULL)', $dump(Spec::property('deleted_at', Spec::isNull())));
+        $this->assertEquals('(deleted_at IS NOT NULL)', $dump(Spec::not(Spec::property('deleted_at', Spec::isNull()))));
+        $this->assertEquals("(status IN ('A') OR status IS NULL)", $dump(Spec::property('status', Spec::in('A', null))));
+        $this->assertEquals("(status IS NOT NULL AND (status IS NULL OR status = 'A'))", $dump(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A')))));
+        $this->assertEquals("(status IS NULL OR (status IS NOT NULL AND status <> 'A'))", $dump(Spec::not(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A'))))));
+        $this->assertEquals("(status IS NULL OR status = 'A')", $dump(Spec::anyOf(Spec::property('status', Spec::isNull()), Spec::property('status', Spec::equalTo('A')))));
+
+        // No banco (SQLite, dump literal do stub): mesma resposta que a memória, linha a linha
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE p (id INTEGER PRIMARY KEY, idade INTEGER NULL, status VARCHAR(5) NULL)');
+        $pdo->exec("INSERT INTO p (id, idade, status) VALUES (1, 10, 'A'), (2, 30, 'B'), (3, NULL, NULL), (4, 40, NULL)");
+        $rows = [
+            (object) ['id' => 1, 'idade' => 10, 'status' => 'A'],
+            (object) ['id' => 2, 'idade' => 30, 'status' => 'B'],
+            (object) ['id' => 3, 'idade' => null, 'status' => null],
+            (object) ['id' => 4, 'idade' => 40, 'status' => null],
+        ];
+        foreach ([
+            Spec::not(Spec::property('idade', Spec::greaterThan(18))),
+            Spec::property('idade', Spec::not(Spec::greaterThan(18))),
+            Spec::not(Spec::property('status', Spec::in('A', 'B'))),
+            Spec::property('status', Spec::notIn('A')),
+            Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A'))),
+            Spec::not(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A')))),
+            Spec::nor(Spec::property('idade', Spec::lessThan(20)), Spec::property('status', Spec::equalTo('B'))),
+        ] as $spec) {
+            $memory = array_values(array_map(fn(object $r): int => $r->id, array_filter($rows, fn(object $r): bool => $spec->isSatisfiedBy($r))));
+            $ids = array_map('intval', $pdo->query('SELECT id FROM p WHERE ' . $dump($spec) . ' ORDER BY id')->fetchAll(\PDO::FETCH_COLUMN));
+            $this->assertEquals($memory, $ids, (string) $spec . ' ' . $dump($spec));
+        }
+    }
+
+    /** 1.11.0: as mesmas verificações de nulo com as classes reais do Adianti, quando disponíveis. */
+    private function testRealAdiantiEmitsNullChecks(): void
+    {
+        $out = $this->runRealAdiantiProbe();
+        if ($out === null) {
+            return;
+        }
+
+        $this->assertEquals('(idade IS NULL OR idade <= 18)', $out['notGreaterThan']['dump']);
+        $this->assertEquals('(idade IS NULL OR idade <= :p)', preg_replace('/:par_\d+/', ':p', $out['notGreaterThan']['prepared']));
+        $this->assertEquals("(status IS NOT NULL AND (status IS NULL OR status = 'A'))", $out['anyOfNullInside']['dump']);
+        $this->assertEquals("(status IS NULL OR (status IS NOT NULL AND status <> 'A'))", $out['notAnyOfNullInside']['dump']);
     }
 
     /**
@@ -104,13 +170,15 @@ class Module13_TCriteriaBuilderTest extends TestCase
         }
 
         // 5. De Morgan: NOT REGEXP com a mesma flag
-        $this->assertEquals("(code NOT REGEXP '(?i)^abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^abc/i'))))->dump());
-        $this->assertEquals("(code NOT REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^Abc/'))))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?i)^abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^abc/i'))))->dump());
+        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^Abc/'))))->dump());
 
         // 6. Regressão: padrão legado sem delimitadores (só por construção direta; a fábrica o recusa) vai inalterado
         $legacy = new \Antevemus\ASpecification\Specifications\String\RegexSpecification('^[0-9]+$');
         $this->assertEquals("(cpf REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', $legacy))->dump());
-        $this->assertEquals("(cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', $legacy)))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(cpf IS NULL OR cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', $legacy)))->dump());
 
         // 7. Regressão: a guarda de valores continua inspecionando o padrão regex (bug #2); um padrão
         //    delimitado nunca começa por NOESC:/(SELECT, e com a flag inline o valor tampouco
@@ -131,7 +199,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(code REGEXP '(?i)^abc')", $out['regexIgnoreCase']['dump']);
         $this->assertEquals("(code REGEXP :p)", preg_replace('/:par_\d+/', ':p', $out['regexIgnoreCase']['prepared']));
         $this->assertEquals("(code REGEXP '(?-i)^Abc')", $out['regexSensitive']['dump']);
-        $this->assertEquals("(code NOT REGEXP '(?i)^abc')", $out['notRegexIgnoreCase']['dump']);
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?i)^abc')", $out['notRegexIgnoreCase']['dump']);
         $this->assertEquals("(cpf REGEXP '^[0-9]+$')", $out['regexLegacy']['dump']);
     }
 
@@ -161,8 +230,9 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(UPPER(name) LIKE UPPER('%a!%%') ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::contains('a%', false)))->dump());
 
         // 4. De Morgan: NOT LIKE, com e sem ESCAPE
-        $this->assertEquals("(name NOT LIKE 'Ab%')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::startsWith('Ab'))))->dump());
-        $this->assertEquals("(promo NOT LIKE '%50!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('promo', Spec::contains('50%'))))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(name IS NULL OR name NOT LIKE 'Ab%')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::startsWith('Ab'))))->dump());
+        $this->assertEquals("(promo IS NULL OR promo NOT LIKE '%50!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('promo', Spec::contains('50%'))))->dump());
 
         // 5. Composição com irmãs: a folha sensível continua sensível ao lado de uma insensível
         $mixed = Spec::property('name', Spec::startsWith('Ab'))->and(Spec::property('sigla', Spec::equalIgnoreCase('sp')));
@@ -175,7 +245,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         // 7. Regressão: RegexSpecification genérica continua REGEXP sem delimitadores
         //    (desde o bug #33 a sensibilidade sai como flag inline: (?-i) para um padrão sem i)
         $this->assertEquals("(cpf REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', Spec::regex('/^[0-9]+$/')))->dump());
-        $this->assertEquals("(cpf NOT REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(cpf IS NULL OR cpf NOT REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
     }
 
     /**
@@ -188,7 +259,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(name LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::wildcard('100%*')))->dump());
         $this->assertEquals("(name LIKE 'a!_b_' ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::like('a_b?')))->dump());
         $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('a_b*')))->dump());
-        $this->assertEquals("(name NOT LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::wildcard('100%*'))))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(name IS NULL OR name NOT LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::wildcard('100%*'))))->dump());
         $this->assertEquals("(name LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', Spec::toCriteria(Spec::property('name', Spec::wildcard('100%*')))->dump(true)));
 
         // Regressão: sem caracteres especiais do LIKE, saída idêntica à anterior (sem ESCAPE)
@@ -213,7 +285,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(UPPER(name) LIKE UPPER('ab%'))", $out['startsWithIgnoreCase']['dump']);
         $this->assertEquals("(promo LIKE '%50!%!_off!!%' ESCAPE '!')", $out['containsEscaped']['dump']);
         $this->assertEquals("(promo LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', $out['containsEscaped']['prepared']));
-        $this->assertEquals("(name NOT LIKE 'Ab%')", $out['notStartsWith']['dump']);
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(name IS NULL OR name NOT LIKE 'Ab%')", $out['notStartsWith']['dump']);
         $this->assertEquals("(name LIKE '100!%%' ESCAPE '!')", $out['wildcardEscaped']['dump']);
         $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", $out['wildcardEscapedIgnoreCase']['dump']);
         $this->assertEquals("(name LIKE 'Ab%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['affixMixedAnd']['dump']);
@@ -370,7 +443,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // De Morgan: NOT de folha insensível vira NOT LIKE, ainda insensível
         $c4 = TCriteriaBuilder::fromSpecification(Spec::not(Spec::property('sigla', Spec::equalIgnoreCase('sp'))));
-        $this->assertEquals("(UPPER(sigla) NOT LIKE UPPER('sp'))", $c4->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp'))", $c4->dump());
 
         // Um critério raiz insensível continua valendo para folhas sensíveis (comportamento do Adianti, inalterado)
         $c5 = TCriteriaBuilder::fromSpecification(Spec::property('nome', Spec::wildcard('Jo*')));
@@ -393,7 +467,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $out['equalIgnoreCase']['dump']);
         $this->assertEquals("(UPPER(cidade) LIKE UPPER('são%'))", $out['wildcardIgnoreCase']['dump']);
-        $this->assertEquals("(UPPER(sigla) NOT LIKE UPPER('sp'))", $out['notEqualIgnoreCase']['dump']);
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp'))", $out['notEqualIgnoreCase']['dump']);
         $this->assertEquals("(nome LIKE 'Jo%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['mixedAnd']['dump']);
         $this->assertEquals("(uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(sigla) LIKE UPPER('sp')))", $out['nestedOr']['dump']);
 
@@ -555,7 +630,10 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // NOT(IS NOT NULL) => IS NULL
         $spec4 = Spec::property('deleted_at', Spec::not(Spec::isNotNull()));
-        $this->assertEquals("(deleted_at IS NULL)", TCriteriaBuilder::fromSpecification($spec4)->dump());
+        // 1.11.0 mudou: um NOT dentro da propriedade recusa o valor nulo (AND/OR/NOT recusam candidato nulo), então
+        // not(isNotNull()) dentro de property() não casa com nada, em memória e aqui; "é nulo" se escreve
+        // property('deleted_at', isNull()). Antes: (deleted_at IS NULL), que a memória nunca aceitava
+        $this->assertEquals("(deleted_at IS NOT NULL AND deleted_at IS NULL)", TCriteriaBuilder::fromSpecification($spec4)->dump());
 
         // NOT(IS NULL) => IS NOT NULL
         $spec5 = Spec::property('deleted_at', Spec::not(Spec::equal(null)));
@@ -569,13 +647,15 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $specAnd = Spec::property('ativo', Spec::equal(true))
             ->and(Spec::property('bloqueado', Spec::equal(false)));
         $notAnd = Spec::not($specAnd);
-        $this->assertEquals("(ativo <> TRUE OR bloqueado <> FALSE)", TCriteriaBuilder::fromSpecification($notAnd)->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("((ativo IS NULL OR ativo <> TRUE) OR (bloqueado IS NULL OR bloqueado <> FALSE))", TCriteriaBuilder::fromSpecification($notAnd)->dump());
 
         // De Morgan: NOT(A OR B) => NOT A AND NOT B
         $specOr = Spec::property('status', Spec::equal('A'))
             ->or(Spec::property('status', Spec::equal('B')));
         $notOr = Spec::not($specOr);
-        $this->assertEquals("(status <> 'A' AND status <> 'B')", TCriteriaBuilder::fromSpecification($notOr)->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("((status IS NULL OR status <> 'A') AND (status IS NULL OR status <> 'B'))", TCriteriaBuilder::fromSpecification($notOr)->dump());
     }
 
     private function testFieldMapper(): void
@@ -685,11 +765,13 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // Negação, null no conjunto, vazio
         $this->assertEquals("(status NOT IN ('A','B'))", Spec::toCriteria(Spec::property('status', Spec::notIn('A', 'B')))->dump());
-        $this->assertEquals("(status NOT IN ('A','B'))", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', 'B'))))->dump());
+        // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
+        $this->assertEquals("(status IS NULL OR status NOT IN ('A','B'))", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', 'B'))))->dump());
         $this->assertEquals("(status IN ('A') OR status IS NULL)", Spec::toCriteria(Spec::property('status', Spec::in('A', null)))->dump());
         $this->assertEquals("(status NOT IN ('A') AND status IS NOT NULL)", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', null))))->dump());
         $this->assertEquals("(1 = 0)", Spec::toCriteria(Spec::property('status', Spec::in()))->dump());
-        $this->assertEquals("(1 = 1)", Spec::toCriteria(Spec::property('status', Spec::notIn()))->dump());
+        // 1.11.0 mudou: notIn() é um NOT dentro da propriedade, que recusa o valor nulo como em memória (antes: (1 = 1))
+        $this->assertEquals("(status IS NOT NULL AND 1 = 1)", Spec::toCriteria(Spec::property('status', Spec::notIn()))->dump());
         $this->assertEquals("(n IN (1,2,3))", Spec::toCriteria(Spec::property('n', Spec::in(1, 2, 3)))->dump());
 
         // Valores do conjunto passam pela mesma barreira de passthrough do Adianti (bug KJ36)

@@ -23,7 +23,7 @@ declare(strict_types=1);
  * - External data leaf resolved concurrently by a DataResolver (external, 1.10.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.10.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -378,7 +378,7 @@ final class Spec
      * list of arrays (`in([[1, 2], [3]])`) or several array arguments.
      *
      * Since 1.5.0 the result is one InSpecification leaf (strict typed equality, as
-     * equalTo()), translated as `"col" IN (:p1, :p2)` by the SQL visitor, as
+     * equalTo()), translated as `("col" IS NOT NULL AND "col" IN (:p1, :p2))` by the SQL visitor, as
      * `TFilter('col', 'IN', [...])` by the TCriteria visitor and as `in_array(..., true)`
      * by the ALinq visitor; before, it was a chain of equalTo() OR equalTo().
      *
@@ -394,7 +394,8 @@ final class Spec
      * Specifies that candidate value must NOT belong to the given set: `not(in(...))`.
      *
      * Accepts the same variadic or single-array forms as in(). `notIn()` of the empty set is
-     * the tautology. Translated as `NOT ("col" IN (...))` by the SQL visitor and as
+     * the tautology. Inside a property, translated as `("col" IS NOT NULL AND NOT ("col" IN (...)))` by the
+     * SQL visitor (a NOT rejects a null value, 1.11.0) and as
      * `TFilter('col', 'NOT IN', [...])` by the TCriteria visitor.
      *
      * @param mixed ...$values Rejected values, or a single array holding them

@@ -57,7 +57,7 @@ final class Module11Contract
  * Forward 022 (1.7.0): vocabulário canônico em inglês; o português segue como legado onde o PHP
  * permite (getters depreciados nas classes, chaves do fromArray, valores de RuleAction, filtros).
  *
- * @version    1.7.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -1259,10 +1259,10 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $bound = new RuleBoundSpecification(Spec::property('valor', Spec::greaterThan(10)), $rule);
         $other = new RuleBoundSpecification(Spec::property('ativo', Spec::equalTo(true)), $rule);
 
-        // SQL
-        $this->assertEquals('"valor" > :p1', Spec::toSql($bound, 'pgsql')->toSql(), 'RuleBound deve traduzir para SQL');
-        $this->assertEquals('NOT ("valor" > :p1)', Spec::toSql(Spec::not($bound), 'pgsql')->toSql(), 'NOT(RuleBound) deve traduzir para SQL');
-        $this->assertEquals('("valor" > :p1 AND "ativo" = TRUE)', Spec::toSql(Spec::allOf($bound, $other), 'pgsql')->toSql(), 'AND de RuleBound deve traduzir para SQL');
+        // SQL (1.11.0 mudou: cada comparação leva a guarda de nulo "col" IS NOT NULL AND ...)
+        $this->assertEquals('("valor" IS NOT NULL AND "valor" > :p1)', Spec::toSql($bound, 'pgsql')->toSql(), 'RuleBound deve traduzir para SQL');
+        $this->assertEquals('NOT (("valor" IS NOT NULL AND "valor" > :p1))', Spec::toSql(Spec::not($bound), 'pgsql')->toSql(), 'NOT(RuleBound) deve traduzir para SQL');
+        $this->assertEquals('(("valor" IS NOT NULL AND "valor" > :p1) AND ("ativo" IS NOT NULL AND "ativo" = TRUE))', Spec::toSql(Spec::allOf($bound, $other), 'pgsql')->toSql(), 'AND de RuleBound deve traduzir para SQL');
 
         // TCriteria (stubs do Adianti carregados sob demanda, como no Módulo 13)
         if (!class_exists(\Adianti\Database\TCriteria::class)) {

@@ -49,7 +49,7 @@ use stdClass;
  * - Interoperabilidade fluente com ALinqCollection (where, orderBy, take, sum)
  * - Integração nativa de InMemoryRepository com asLinqCollection e findAsLinqCollection
  *
- * @version    1.6.1
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -671,17 +671,33 @@ class Module14_ALinqSynergyTest extends TestCase
     /**
      * 17. Reprodução (c): propriedade nula e propriedade ausente seguem PropertySpecification.
      *
-     * No núcleo, valor nulo nunca satisfaz (`isSatisfiedBy` false, `evaluate` falha) e propriedade
-     * ausente é erro de avaliação (InvalidArgumentException), nunca `false` que um NOT inverteria.
+     * No núcleo, o valor nulo vai à especificação interna desde a 1.11.0 (antes nunca satisfazia:
+     * `isSatisfiedBy` false, `evaluate` falha) e propriedade ausente é erro de avaliação
+     * (InvalidArgumentException), nunca `false` que um NOT inverteria.
      */
     private function testALinqVisitorMirrorsPropertySpecificationOnNullAndMissingProperties(): void
     {
         $isNullOnProperty = Spec::property('n', Spec::isNull());
         $predicate = ALinqSpecificationVisitor::createPredicate($isNullOnProperty);
 
-        $this->assertFalse($isNullOnProperty->isSatisfiedBy((object)['n' => null]));
-        $this->assertFalse($isNullOnProperty->evaluate((object)['n' => null])->isSatisfied);
-        $this->assertFalse($predicate((object)['n' => null]), 'visitor: null property value must not satisfy, like the core');
+        // 1.11.0 mudou: isNull() dentro de property() casa com o valor nulo (antes: false nos três)
+        $this->assertTrue($isNullOnProperty->isSatisfiedBy((object)['n' => null]));
+        $this->assertTrue($isNullOnProperty->evaluate((object)['n' => null])->isSatisfied);
+        $this->assertTrue($predicate((object)['n' => null]), 'visitor: null property value goes to the inner predicate, like the core');
+        $this->assertFalse($predicate((object)['n' => 1]));
+
+        // Uma comparação não aceita o nulo; um NOT acima da propriedade aceita; um NOT dentro dela não
+        // (AND/OR/NOT recusam candidato nulo), como no núcleo
+        foreach ([
+            Spec::property('n', Spec::greaterThan(1)),
+            Spec::not(Spec::property('n', Spec::greaterThan(1))),
+            Spec::property('n', Spec::not(Spec::greaterThan(1))),
+            Spec::property('n', Spec::anyOf(Spec::isNull(), Spec::greaterThan(1))),
+        ] as $spec) {
+            $this->assertEquals($spec->isSatisfiedBy((object)['n' => null]), ALinqSpecificationVisitor::createPredicate($spec)((object)['n' => null]), (string) $spec);
+        }
+        $this->assertTrue(ALinqSpecificationVisitor::createPredicate(Spec::not(Spec::property('n', Spec::greaterThan(1))))((object)['n' => null]));
+        $this->assertFalse(ALinqSpecificationVisitor::createPredicate(Spec::property('n', Spec::not(Spec::greaterThan(1))))((object)['n' => null]));
 
         $this->assertThrows(
             \InvalidArgumentException::class,

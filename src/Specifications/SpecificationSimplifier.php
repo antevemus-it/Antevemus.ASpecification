@@ -49,6 +49,9 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * differ. A null candidate is rejected by every AND/OR/NOT node, whatever its operands; when the
  * root of the tree is simplified away the remaining node answers for null on its own (for example
  * alwaysTrue() accepts it), as isTautology()/isContradiction() already assume non-null candidates.
+ * A property value, on the other hand, may be null (1.11.0: it reaches the inner specification), so
+ * the inside of a property restriction is rewritten only when the rewrite keeps the answer for a null
+ * value.
  *
  * Unknown specification types are never guessed: AND, OR, NOT, NOR (JointDenialSpecification),
  * property restrictions (PropertySpecification) and rule bindings (RuleBoundSpecification) are
@@ -61,7 +64,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Automatic use (D6): no visitor and no engine simplifies by itself; the rule engine offers it
  * as an opt-in (DynamicSpecificationEngine::withSimplification()).
  *
- * @version    1.9.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -162,6 +165,14 @@ final class SpecificationSimplifier
         $inner = $node->getPropertySpecification();
         $simplifiedBase = self::simplifyNode($base);
         $simplifiedInner = self::simplifyNode($inner);
+
+        // Since 1.11.0 a null property value reaches the inner specification, while the rules here
+        // assume non-null candidates: a rewrite that changes the answer for null (an AND/OR/NOT node
+        // rejects null, the alwaysTrue() or isNull() left in its place accepts it) is not applied
+        if ($simplifiedInner !== $inner
+            && PropertySpecification::nullValueAnswer($simplifiedInner) !== PropertySpecification::nullValueAnswer($inner)) {
+            $simplifiedInner = $inner;
+        }
 
         if ($simplifiedBase === $base && $simplifiedInner === $inner) {
             return $node;

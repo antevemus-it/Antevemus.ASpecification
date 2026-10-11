@@ -61,6 +61,16 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
      */
     public function evaluate(mixed $candidate): SpecificationResult
     {
+        // A null candidate is refused, as isSatisfiedBy() does (Domian contract); before 1.11.0,
+        // evaluate(null) asked the operands and could answer satisfied where isSatisfiedBy(null) is false.
+        if ($candidate === null) {
+            return SpecificationResult::failure(
+                message: $this->customReason ?? 'Null candidate is not permitted.',
+                code: $this->customCode,
+                ruleName: 'AndSpecification'
+            );
+        }
+
         $leftResult = $this->left->evaluate($candidate);
         $rightResult = $this->right->evaluate($candidate);
 

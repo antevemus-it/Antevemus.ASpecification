@@ -1,0 +1,18 @@
+-- Forward 028 (PdoRepository) test schema, SQLite. Decimals are TEXT (SQLite NUMERIC affinity would
+-- turn '9.90' into 9.9); booleans are INTEGER 1/0; dates are ISO text.
+DROP TABLE IF EXISTS aspec_article;
+CREATE TABLE aspec_article (id VARCHAR(26) PRIMARY KEY, title VARCHAR(200) NOT NULL, status VARCHAR(20) NOT NULL, views INTEGER NOT NULL, price TEXT NOT NULL, published INTEGER NOT NULL, published_at TEXT NULL, tags TEXT NOT NULL, note TEXT NULL);
+DROP TABLE IF EXISTS aspec_counter;
+CREATE TABLE aspec_counter (id INTEGER PRIMARY KEY AUTOINCREMENT, label VARCHAR(100) NOT NULL UNIQUE, lock_version INTEGER NULL);
+DROP TABLE IF EXISTS aspec_counter_plain;
+CREATE TABLE aspec_counter_plain (id INTEGER NOT NULL PRIMARY KEY, label VARCHAR(100) NOT NULL UNIQUE, lock_version INTEGER NULL);
+DROP TABLE IF EXISTS aspec_typed;
+CREATE TABLE aspec_typed (id VARCHAR(40) PRIMARY KEY, i INTEGER NULL, f REAL NULL, d TEXT NULL, b INTEGER NULL, day TEXT NULL, moment TEXT NULL, moment_mut TEXT NULL, payload TEXT NULL, priority INTEGER NULL, color VARCHAR(10) NULL, raw VARCHAR(50) NULL);
+DROP TABLE IF EXISTS aspec_document;
+CREATE TABLE aspec_document (id INTEGER PRIMARY KEY AUTOINCREMENT, title VARCHAR(200) NOT NULL, version INTEGER NOT NULL);
+DROP TABLE IF EXISTS aspec_secret;
+CREATE TABLE aspec_secret (id INTEGER NOT NULL PRIMARY KEY, secret VARCHAR(100) NOT NULL, marked VARCHAR(100) NOT NULL);
+DROP TABLE IF EXISTS aspec_tag;
+CREATE TABLE aspec_tag (id VARCHAR(36) PRIMARY KEY, name VARCHAR(100) NOT NULL);
+DROP TABLE IF EXISTS aspec_null_parity;
+CREATE TABLE aspec_null_parity (id INTEGER NOT NULL PRIMARY KEY, n INTEGER NULL, m INTEGER NULL, s VARCHAR(20) NULL);

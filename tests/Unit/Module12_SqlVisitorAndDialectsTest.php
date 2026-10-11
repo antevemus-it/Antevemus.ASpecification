@@ -36,7 +36,7 @@ use stdClass;
  * todos os dialetos do ecossistema: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite,
  * e desde 1.6.0 db2, informix e duckdb (com paginação em todos os dialetos).
  *
- * @version    1.6.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -83,6 +83,88 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testRn07InformixDialect();
         $this->testRn07DuckDbDialect();
         $this->testPaginationAcrossDialects();
+        $this->testConstantsAtTheRootAreTranslated();
+
+        // 1.11.0: semântica de nulo de dois valores, a mesma da memória (a prova gerativa está no Módulo 22)
+        $this->testNullSemanticsMatchMemory();
+    }
+
+    /**
+     * 1.11.0: a mesma especificação responde igual em memória e no SQL quando a coluna é NULL. Antes, em
+     * memória property('note', isNull()) era falso para note nula (o nulo nunca chegava à especificação
+     * interna) e o SQL emitia "note" IS NULL (verdadeiro); NOT sobre uma comparação com coluna NULL era
+     * verdadeiro em memória e desconhecido no SQL (a linha ficava de fora). Agora o valor nulo vai à
+     * especificação interna e cada comparação sai guardada por "col" IS NOT NULL.
+     */
+    private function testNullSemanticsMatchMemory(): void
+    {
+        $sql = fn($spec): string => Spec::toSql($spec, 'pgsql')->toSql();
+
+        // As verificações de nulo já são de dois valores: sem guarda
+        $this->assertEquals('"note" IS NULL', $sql(Spec::property('note', Spec::isNull())));
+        $this->assertEquals('"note" IS NOT NULL', $sql(Spec::property('note', Spec::isNotNull())));
+        $this->assertEquals('"note" IS NULL', $sql(Spec::property('note', Spec::equalTo(null))));
+        $this->assertEquals('"note" IS NOT NULL', $sql(Spec::property('note', Spec::notEqual(null))));
+        $this->assertEquals('("note" IN (:p1) OR "note" IS NULL)', $sql(Spec::property('note', Spec::in('a', null))));
+        $this->assertEquals('"note" IS NULL', $sql(Spec::property('note', Spec::in(null))));
+        $this->assertEquals('1 = 0', $sql(Spec::property('note', Spec::in())));
+        $this->assertEquals('1 = 1', $sql(Spec::property('note', Spec::alwaysTrue())));
+
+        // Toda comparação ganha a guarda; o NOT acima da propriedade nega a comparação guardada
+        $this->assertEquals('("age" IS NOT NULL AND "age" > :p1)', $sql(Spec::property('age', Spec::greaterThan(18))));
+        $this->assertEquals('NOT (("age" IS NOT NULL AND "age" > :p1))', $sql(Spec::not(Spec::property('age', Spec::greaterThan(18)))));
+        $this->assertEquals('("note" IS NOT NULL AND "note" = :p1)', $sql(Spec::property('note', Spec::equalTo('x'))));
+
+        // Um AND/OR/NOT dentro da propriedade recusa o valor nulo em memória: a guarda o envolve, e as
+        // comparações de dentro não precisam de outra
+        $this->assertEquals('("age" IS NOT NULL AND NOT ("age" > :p1))', $sql(Spec::property('age', Spec::not(Spec::greaterThan(18)))));
+        $this->assertEquals('("age" IS NOT NULL AND ("age" IS NULL OR "age" > :p1))', $sql(Spec::property('age', Spec::anyOf(Spec::isNull(), Spec::greaterThan(18)))));
+        $this->assertFalse(Spec::property('age', Spec::anyOf(Spec::isNull(), Spec::greaterThan(18)))->isSatisfiedBy((object) ['age' => null]));
+        $this->assertTrue(Spec::anyOf(Spec::property('age', Spec::isNull()), Spec::property('age', Spec::greaterThan(18)))->isSatisfiedBy((object) ['age' => null]));
+
+        // Memória: o valor nulo vai à especificação interna (antes: sempre falso)
+        $nullAge = (object) ['age' => null, 'note' => null];
+        $this->assertTrue(Spec::property('note', Spec::isNull())->isSatisfiedBy($nullAge));
+        $this->assertTrue(Spec::property('note', Spec::isNull())->evaluate($nullAge)->isSatisfied);
+        $this->assertFalse(Spec::property('age', Spec::greaterThan(18))->isSatisfiedBy($nullAge));
+        $this->assertTrue(Spec::not(Spec::property('age', Spec::greaterThan(18)))->isSatisfiedBy($nullAge));
+        $failure = Spec::property('age', Spec::greaterThan(18))->because('Adult only')->withCode('AGE')->evaluate($nullAge);
+        $this->assertEquals(['Adult only', 'AGE', 'age'], [$failure->failures[0]->message, $failure->failures[0]->code, $failure->failures[0]->property]);
+        // Propriedade ausente continua erro de avaliação, não falso
+        $this->assertTrue(Spec::property('missing', Spec::isNull())->evaluate($nullAge)->isError);
+        $this->assertThrows(\InvalidArgumentException::class, fn() => Spec::property('missing', Spec::isNull())->isSatisfiedBy($nullAge));
+
+        // Um visitor que sabe que a coluna nunca é NULL dispensa a guarda (o PdoRepository faz isso com o id)
+        $notNullId = new class('pgsql') extends SqlQueryVisitor {
+            protected function canBeNull(string $property): bool
+            {
+                return $property !== 'id';
+            }
+        };
+        $this->assertEquals('("id" = :p1 AND ("age" IS NOT NULL AND "age" > :p2))', $notNullId->translate(Spec::property('id', Spec::equalTo(7))->and(Spec::property('age', Spec::greaterThan(18))))->toSql());
+
+        // No banco (SQLite): NOT sobre a comparação inclui a linha NULL, como em memória; isNull() casa com ela
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE p (id INTEGER PRIMARY KEY, age INTEGER NULL)');
+        $pdo->exec('INSERT INTO p (id, age) VALUES (1, 10), (2, 30), (3, NULL)');
+        $rows = [(object) ['id' => 1, 'age' => 10], (object) ['id' => 2, 'age' => 30], (object) ['id' => 3, 'age' => null]];
+        foreach ([
+            Spec::not(Spec::property('age', Spec::greaterThan(18))),
+            Spec::property('age', Spec::isNull()),
+            Spec::property('age', Spec::not(Spec::greaterThan(18))),
+            Spec::nor(Spec::property('age', Spec::greaterThan(18)), Spec::property('age', Spec::lessThan(5))),
+        ] as $spec) {
+            $where = Spec::toSql($spec, 'sqlite');
+            $statement = $pdo->prepare('SELECT id FROM p WHERE ' . $where->toSql() . ' ORDER BY id');
+            $statement->execute($where->getParameters());
+            $memory = array_values(array_map(fn(object $r): int => $r->id, array_filter($rows, fn(object $r): bool => $spec->isSatisfiedBy($r))));
+            $this->assertEquals($memory, array_map('intval', $statement->fetchAll(\PDO::FETCH_COLUMN)), (string) $spec);
+        }
+        $where = Spec::toSql(Spec::not(Spec::property('age', Spec::greaterThan(18))), 'sqlite');
+        $statement = $pdo->prepare('SELECT id FROM p WHERE ' . $where->toSql() . ' ORDER BY id');
+        $statement->execute($where->getParameters());
+        $this->assertEquals([1, 3], array_map('intval', $statement->fetchAll(\PDO::FETCH_COLUMN)), 'antes da 1.11.0 o SQL dava só [1]');
     }
 
     /**
@@ -92,6 +174,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testReadmeExample8RunsAsWritten(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         // 1. Build pure domain specification
         $spec = Spec::property('active', Spec::equalTo(true))
             ->and(
@@ -111,7 +195,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         );
 
         $this->assertInstanceOf(ISqlWhereClause::class, $whereClause);
-        $this->assertEquals('("is_active" = TRUE AND ("val_salary" > :p1 OR "txt_city" LIKE :p2))', $whereClause->getSql());
+        $this->assertEquals('(("is_active" IS NOT NULL AND "is_active" = TRUE) AND (("val_salary" IS NOT NULL AND "val_salary" > :p1) OR ("txt_city" IS NOT NULL AND "txt_city" LIKE :p2)))', $whereClause->getSql());
         $this->assertEquals([':p1' => 5000, ':p2' => 'New%'], $whereClause->getBindings());
 
         // Os aliases nunca divergem dos acessores canônicos
@@ -120,10 +204,10 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // 3. First-class support for 12 database drivers across 7 SQL dialects
         $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
-        $this->assertEquals('([active] = 1 AND ([salary] > :p1 OR [city] LIKE :p2))', $whereSqlServer->getSql());
+        $this->assertEquals('(([active] IS NOT NULL AND [active] = 1) AND (([salary] IS NOT NULL AND [salary] > :p1) OR ([city] IS NOT NULL AND [city] LIKE :p2)))', $whereSqlServer->getSql());
 
         $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
-        $this->assertEquals('(`active` = 1 AND (`salary` > :p1 OR BINARY `city` LIKE :p2))', $whereMySql->getSql());
+        $this->assertEquals('((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND BINARY `city` LIKE :p2)))', $whereMySql->getSql());
         $this->assertEquals([':p1' => 5000, ':p2' => 'New%'], $whereMySql->getBindings());
 
         // Cláusula vazia também responde aos aliases
@@ -138,22 +222,24 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testFieldMapperAliasResolution(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $spec = Spec::property('status', Spec::equalTo('ACTIVE'));
         $map  = ['status' => 'st_status'];
         $other = ['status' => 'tp_status'];
 
         // Facade: só fieldMap, só fieldMapper, os dois iguais
-        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $map)->getSql());
-        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMapper: $map)->getSql());
-        $this->assertEquals('"st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $map, fieldMapper: $map)->getSql());
+        $this->assertEquals('("st_status" IS NOT NULL AND "st_status" = :p1)', Spec::toSql($spec, 'pgsql', fieldMap: $map)->getSql());
+        $this->assertEquals('("st_status" IS NOT NULL AND "st_status" = :p1)', Spec::toSql($spec, 'pgsql', fieldMapper: $map)->getSql());
+        $this->assertEquals('("st_status" IS NOT NULL AND "st_status" = :p1)', Spec::toSql($spec, 'pgsql', fieldMap: $map, fieldMapper: $map)->getSql());
 
         // Instância: mesma regra
-        $this->assertEquals('`st_status` = :p1', $spec->toSql('mysql', fieldMapper: $map)->getSql());
-        $this->assertEquals('`st_status` = :p1', $spec->toSql('mysql', $map, $map)->getSql());
+        $this->assertEquals('(`st_status` IS NOT NULL AND `st_status` = :p1)', $spec->toSql('mysql', fieldMapper: $map)->getSql());
+        $this->assertEquals('(`st_status` IS NOT NULL AND `st_status` = :p1)', $spec->toSql('mysql', $map, $map)->getSql());
 
         // Mapper objeto: identidade
         $mapper = new FieldMapper($map, 'c');
-        $this->assertEquals('"c"."st_status" = :p1', Spec::toSql($spec, 'pgsql', fieldMap: $mapper, fieldMapper: $mapper)->getSql());
+        $this->assertEquals('("c"."st_status" IS NOT NULL AND "c"."st_status" = :p1)', Spec::toSql($spec, 'pgsql', fieldMap: $mapper, fieldMapper: $mapper)->getSql());
 
         // Os dois diferentes: ambíguo
         $this->assertThrows(\InvalidArgumentException::class, function () use ($spec, $map, $other) {
@@ -178,6 +264,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testIdentifierInjectionIsRejected(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $unsafe = [
             ['pgsql',  'id) or 1=1 or (id'],
             ['sqlsrv', 'id] or 1=1 or (id'],
@@ -200,17 +288,17 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         );
 
         // Regressão: identificadores legítimos continuam quoted como antes
-        $this->assertEquals('"c"."status" = :p1', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'pgsql')->toSql());
-        $this->assertEquals('[c].[status] = :p1', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'sqlsrv')->toSql());
-        $this->assertEquals('`total_value` > :p1', Spec::toSql(Spec::property('totalValue', Spec::greaterThan(10)), 'mysql')->toSql());
+        $this->assertEquals('("c"."status" IS NOT NULL AND "c"."status" = :p1)', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'pgsql')->toSql());
+        $this->assertEquals('([c].[status] IS NOT NULL AND [c].[status] = :p1)', Spec::toSql(Spec::property('c.status', Spec::equalTo(1)), 'sqlsrv')->toSql());
+        $this->assertEquals('(`total_value` IS NOT NULL AND `total_value` > :p1)', Spec::toSql(Spec::property('totalValue', Spec::greaterThan(10)), 'mysql')->toSql());
 
         // Regressão: expressão de função simples declarada no mapper continua aceita (sem quoting, como antes)
         $this->assertEquals(
-            'LOWER(name) = :p1',
+            '(LOWER(name) IS NOT NULL AND LOWER(name) = :p1)',
             Spec::toSql(Spec::property('name', Spec::equalTo('x')), 'pgsql', ['name' => 'LOWER(name)'])->toSql()
         );
         $this->assertEquals(
-            'COALESCE(c.nick, c.name) = :p1',
+            '(COALESCE(c.nick, c.name) IS NOT NULL AND COALESCE(c.nick, c.name) = :p1)',
             Spec::toSql(Spec::property('name', Spec::equalTo('x')), 'pgsql', ['name' => 'COALESCE(c.nick, c.name)'])->toSql()
         );
     }
@@ -282,38 +370,40 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
     private function testBasicComparisonOperations(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
 
         // 1. Igualdade
         $specEq = new PropertySpecification($base, 'age', new EqualSpecification(25));
         $clausePg = (new SqlQueryVisitor('pgsql'))->translate($specEq);
-        $this->assertEquals('"age" = :p1', $clausePg->toSql());
+        $this->assertEquals('("age" IS NOT NULL AND "age" = :p1)', $clausePg->toSql());
         $this->assertEquals([':p1' => 25], $clausePg->getParameters());
 
         // 2. Maior Que (MySQL)
         $specGt = new PropertySpecification($base, 'salary', new GreaterThanSpecification(5000.0));
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specGt);
-        $this->assertEquals('`salary` > :p1', $clauseMy->toSql());
+        $this->assertEquals('(`salary` IS NOT NULL AND `salary` > :p1)', $clauseMy->toSql());
         $this->assertEquals([':p1' => 5000.0], $clauseMy->getParameters());
 
         // 3. Menor Que (SQL Server)
         $specLt = new PropertySpecification($base, 'score', new LessThanSpecification(100));
         $clauseMs = (new SqlQueryVisitor('sqlsrv'))->translate($specLt);
-        $this->assertEquals('[score] < :p1', $clauseMs->toSql());
+        $this->assertEquals('([score] IS NOT NULL AND [score] < :p1)', $clauseMs->toSql());
 
         // 4. Diferente (Oracle)
         $specNeq = new PropertySpecification($base, 'status', new NotEqualSpecification('CANCELLED'));
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specNeq);
-        $this->assertEquals('"STATUS" <> :p1', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('("STATUS" IS NOT NULL AND "STATUS" <> :p1)', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
         $this->assertEquals([':p1' => 'CANCELLED'], $clauseOra->getParameters());
 
         // 5. Booleano no PostgreSQL vs SQL Server
         $specBool = new PropertySpecification($base, 'active', new EqualSpecification(true));
         $clausePgBool = (new SqlQueryVisitor('pgsql'))->translate($specBool);
-        $this->assertEquals('"active" = TRUE', $clausePgBool->toSql());
+        $this->assertEquals('("active" IS NOT NULL AND "active" = TRUE)', $clausePgBool->toSql());
 
         $clauseMsBool = (new SqlQueryVisitor('sqlsrv'))->translate($specBool);
-        $this->assertEquals('[active] = 1', $clauseMsBool->toSql());
+        $this->assertEquals('([active] IS NOT NULL AND [active] = 1)', $clauseMsBool->toSql());
     }
 
     private function testNullHandling(): void
@@ -339,6 +429,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
     private function testLogicalCompositionAndOrNot(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
 
         $spec = (new PropertySpecification($base, 'age', new GreaterThanSpecification(18)))
@@ -347,26 +439,28 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // PostgreSQL
         $clausePg = (new SqlQueryVisitor('pgsql'))->translate($spec);
-        $this->assertEquals('(("age" > :p1 AND "status" = :p2) OR NOT ("is_vip" = TRUE))', $clausePg->toSql());
+        $this->assertEquals('((("age" IS NOT NULL AND "age" > :p1) AND ("status" IS NOT NULL AND "status" = :p2)) OR NOT (("is_vip" IS NOT NULL AND "is_vip" = TRUE)))', $clausePg->toSql());
         $this->assertEquals([':p1' => 18, ':p2' => 'ACTIVE'], $clausePg->getParameters());
 
         // SQL Server (mssql / dblib)
         $clauseSqlsrv = (new SqlQueryVisitor('sqlsrv'))->translate($spec);
-        $this->assertEquals('(([age] > :p1 AND [status] = :p2) OR NOT ([is_vip] = 1))', $clauseSqlsrv->toSql());
+        $this->assertEquals('((([age] IS NOT NULL AND [age] > :p1) AND ([status] IS NOT NULL AND [status] = :p2)) OR NOT (([is_vip] IS NOT NULL AND [is_vip] = 1)))', $clauseSqlsrv->toSql());
 
         // Oracle (oci)
         $clauseOci = (new SqlQueryVisitor('oci'))->translate($spec);
-        $this->assertEquals('(("AGE" > :p1 AND "STATUS" = :p2) OR NOT ("IS_VIP" = 1))', $clauseOci->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('((("AGE" IS NOT NULL AND "AGE" > :p1) AND ("STATUS" IS NOT NULL AND "STATUS" = :p2)) OR NOT (("IS_VIP" IS NOT NULL AND "IS_VIP" = 1)))', $clauseOci->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
     }
 
     private function testTextAndWildcardOperations(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
 
         // Wildcard: 'J*hn' -> 'J%hn'
         $specWild = new PropertySpecification($base, 'name', new WildcardSpecification('J*hn'));
         $clause = (new SqlQueryVisitor('pgsql'))->translate($specWild);
-        $this->assertEquals('"name" LIKE :p1', $clause->toSql());
+        $this->assertEquals('("name" IS NOT NULL AND "name" LIKE :p1)', $clause->toSql());
         $this->assertEquals([':p1' => 'J%hn'], $clause->getParameters());
 
         // EqualIgnoreCase
@@ -374,37 +468,39 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // PostgreSQL usa ILIKE
         $clausePg = (new SqlQueryVisitor('pgsql'))->translate($specCase);
-        $this->assertEquals('"code" ILIKE :p1', $clausePg->toSql());
+        $this->assertEquals('("code" IS NOT NULL AND "code" ILIKE :p1)', $clausePg->toSql());
 
         // Oracle usa LOWER(col) LIKE LOWER(:p)
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specCase);
-        $this->assertEquals('LOWER("CODE") LIKE LOWER(:p1)', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('("CODE" IS NOT NULL AND LOWER("CODE") LIKE LOWER(:p1))', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
 
         // Firebird usa LOWER(col) LIKE LOWER(:p)
         $clauseFb = (new SqlQueryVisitor('firebird'))->translate($specCase);
-        $this->assertEquals('LOWER("CODE") LIKE LOWER(:p1)', $clauseFb->toSql()); // Firebird cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('("CODE" IS NOT NULL AND LOWER("CODE") LIKE LOWER(:p1))', $clauseFb->toSql()); // Firebird cita em maiúsculas (BUG-20261007-MNZN)
 
         // MySQL usa LIKE
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specCase);
-        $this->assertEquals('`code` LIKE :p1', $clauseMy->toSql());
+        $this->assertEquals('(`code` IS NOT NULL AND `code` LIKE :p1)', $clauseMy->toSql());
     }
 
     private function testRegexSupportAndExceptions(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
         $specRegex = new PropertySpecification($base, 'phone', new RegexSpecification('^[0-9]+$'));
 
         // PostgreSQL suporta ~
         $clausePg = (new SqlQueryVisitor('pgsql'))->translate($specRegex);
-        $this->assertEquals('"phone" ~ :p1', $clausePg->toSql());
+        $this->assertEquals('("phone" IS NOT NULL AND "phone" ~ :p1)', $clausePg->toSql());
 
         // MySQL suporta REGEXP BINARY
         $clauseMy = (new SqlQueryVisitor('mysql'))->translate($specRegex);
-        $this->assertEquals('`phone` REGEXP BINARY :p1', $clauseMy->toSql());
+        $this->assertEquals('(`phone` IS NOT NULL AND `phone` REGEXP BINARY :p1)', $clauseMy->toSql());
 
         // Oracle suporta REGEXP_LIKE
         $clauseOra = (new SqlQueryVisitor('oracle'))->translate($specRegex);
-        $this->assertEquals('REGEXP_LIKE("PHONE", :p1, \'c\')', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('("PHONE" IS NOT NULL AND REGEXP_LIKE("PHONE", :p1, \'c\'))', $clauseOra->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
 
         // SQL Server e Firebird lançam exceção unsupported
         $this->assertThrows(UnsupportedSqlOperationException::class, function () use ($specRegex) {
@@ -418,6 +514,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
     private function testFieldMapper(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
 
         // Mapeador explícito de dicionário com alias de tabela
@@ -430,29 +528,31 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
             ->and(new PropertySpecification($base, 'nomeLocatario', new EqualSpecification('João')));
 
         $clause = (new SqlQueryVisitor('pgsql', $mapper))->translate($spec);
-        $this->assertEquals('("c"."vl_aluguel" > :p1 AND "c"."nm_locatario" = :p2)', $clause->toSql());
+        $this->assertEquals('(("c"."vl_aluguel" IS NOT NULL AND "c"."vl_aluguel" > :p1) AND ("c"."nm_locatario" IS NOT NULL AND "c"."nm_locatario" = :p2))', $clause->toSql());
     }
 
     private function testFluentFacadeAndMethodToSql(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
         $spec = new PropertySpecification($base, 'status', new EqualSpecification('ACTIVE'));
 
         // 1. Chamada direta no objeto $spec->toSql()
         $clause1 = $spec->toSql('mysql');
         $this->assertInstanceOf(ISqlWhereClause::class, $clause1);
-        $this->assertEquals('`status` = :p1', $clause1->toSql());
+        $this->assertEquals('(`status` IS NOT NULL AND `status` = :p1)', $clause1->toSql());
 
         // 2. Chamada via Facade Spec::toSql()
         $clause2 = Spec::toSql($spec, 'sqlsrv');
         $this->assertInstanceOf(ISqlWhereClause::class, $clause2);
-        $this->assertEquals('[status] = :p1', $clause2->toSql());
+        $this->assertEquals('([status] IS NOT NULL AND [status] = :p1)', $clause2->toSql());
 
         // 3. Chamada via accept(ISpecificationVisitor)
         $visitor = Spec::sqlVisitor('oracle');
         $clause3 = $spec->accept($visitor);
         $this->assertInstanceOf(ISqlWhereClause::class, $clause3);
-        $this->assertEquals('"STATUS" = :p1', $clause3->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
+        $this->assertEquals('("STATUS" IS NOT NULL AND "STATUS" = :p1)', $clause3->toSql()); // Oracle cita em maiúsculas (BUG-20261007-MNZN)
     }
 
     private function testNonTranslatableException(): void
@@ -494,6 +594,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testOracleAndFirebirdQuoteIdentifiersInUpperCase(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         foreach (['oracle', 'oci', 'firebird', 'fbird', 'ibase'] as $d) {
             $obj = SqlDialectFactory::create($d);
             $this->assertEquals('"STATUS"', $obj->escapeIdentifier('status'), "$d: segmento simples em maiúsculas");
@@ -512,7 +614,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
             ->and(Spec::property('txt_city', Spec::equalTo('Rio')));
         foreach (['oracle', 'firebird'] as $d) {
             $clause = Spec::toSql($spec, $d);
-            $this->assertEquals('("VAL_SALARY" > :p1 AND "TXT_CITY" = :p2)', $clause->getSql(), "$d: cláusula completa");
+            $this->assertEquals('(("VAL_SALARY" IS NOT NULL AND "VAL_SALARY" > :p1) AND ("TXT_CITY" IS NOT NULL AND "TXT_CITY" = :p2))', $clause->getSql(), "$d: cláusula completa");
             $this->assertEquals([':p1' => 5000, ':p2' => 'Rio'], $clause->getBindings(), "$d: bindings inalterados");
         }
 
@@ -531,16 +633,18 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testStringAffixesTranslateToLikeInEveryDialect(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         // 1. Reprodução: prefixo, case-sensitive, nos sete dialetos
         $spec = Spec::property('name', Spec::startsWith('Ab'));
         $expected = [
-            'pgsql' => '"name" LIKE :p1',
-            'mysql' => 'BINARY `name` LIKE :p1',
-            'sqlsrv' => '[name] LIKE :p1',
-            'sqlite' => '"name" LIKE :p1',
-            'ansi' => '"name" LIKE :p1',
-            'oracle' => '"NAME" LIKE :p1',
-            'firebird' => '"NAME" LIKE :p1',
+            'pgsql' => '("name" IS NOT NULL AND "name" LIKE :p1)',
+            'mysql' => '(`name` IS NOT NULL AND BINARY `name` LIKE :p1)',
+            'sqlsrv' => '([name] IS NOT NULL AND [name] LIKE :p1)',
+            'sqlite' => '("name" IS NOT NULL AND "name" LIKE :p1)',
+            'ansi' => '("name" IS NOT NULL AND "name" LIKE :p1)',
+            'oracle' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1)',
+            'firebird' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1)',
         ];
         foreach ($expected as $d => $sql) {
             $clause = Spec::toSql($spec, $d);
@@ -554,23 +658,23 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // 3. Case-insensitive usa o LIKE insensível de cada dialeto
         $ci = Spec::property('name', Spec::startsWith('ab', false));
-        $this->assertEquals('"name" ILIKE :p1', Spec::toSql($ci, 'pgsql')->getSql());
-        $this->assertEquals('`name` LIKE :p1', Spec::toSql($ci, 'mysql')->getSql());
-        $this->assertEquals('LOWER("NAME") LIKE LOWER(:p1)', Spec::toSql($ci, 'oracle')->getSql());
-        $this->assertEquals('LOWER([name]) LIKE LOWER(:p1)', Spec::toSql($ci, 'sqlsrv')->getSql());
+        $this->assertEquals('("name" IS NOT NULL AND "name" ILIKE :p1)', Spec::toSql($ci, 'pgsql')->getSql());
+        $this->assertEquals('(`name` IS NOT NULL AND `name` LIKE :p1)', Spec::toSql($ci, 'mysql')->getSql());
+        $this->assertEquals('("NAME" IS NOT NULL AND LOWER("NAME") LIKE LOWER(:p1))', Spec::toSql($ci, 'oracle')->getSql());
+        $this->assertEquals('([name] IS NOT NULL AND LOWER([name]) LIKE LOWER(:p1))', Spec::toSql($ci, 'sqlsrv')->getSql());
 
         // 4. Escape dos curingas do LIKE: só quando o literal os contém, com ESCAPE '!' portável
         $clause = Spec::toSql(Spec::property('promo', Spec::contains('50%_off!')), 'pgsql');
-        $this->assertEquals('"promo" LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals('("promo" IS NOT NULL AND "promo" LIKE :p1 ESCAPE \'!\')', $clause->getSql());
         $this->assertEquals([':p1' => '%50!%!_off!!%'], $clause->getBindings());
 
         // Barra invertida é escape padrão do LIKE no MySQL: a cláusula ESCAPE explícita a neutraliza
         $clause = Spec::toSql(Spec::property('path', Spec::startsWith('C:\\')), 'mysql');
-        $this->assertEquals('BINARY `path` LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals('(`path` IS NOT NULL AND BINARY `path` LIKE :p1 ESCAPE \'!\')', $clause->getSql());
         $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
 
         // 5. NOT continua sendo tratado pelo visitor
-        $this->assertEquals('NOT ("name" LIKE :p1)', Spec::toSql(Spec::not(Spec::property('name', Spec::startsWith('Ab'))), 'pgsql')->getSql());
+        $this->assertEquals('NOT (("name" IS NOT NULL AND "name" LIKE :p1))', Spec::toSql(Spec::not(Spec::property('name', Spec::startsWith('Ab'))), 'pgsql')->getSql());
 
         // 6. Regressão em memória: semântica idêntica à anterior (case-sensitive por padrão, literal sem regex)
         $this->assertTrue(Spec::startsWith('Ab')->isSatisfiedBy('Abc'));
@@ -597,11 +701,13 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testRegexBindHasNoPhpDelimitersOrModifiers(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         $base = Spec::specify(stdClass::class);
 
         $delimited = new PropertySpecification($base, 'phone', new RegexSpecification('/^[0-9]+$/'));
         $clause = (new SqlQueryVisitor('pgsql'))->translate($delimited);
-        $this->assertEquals('"phone" ~ :p1', $clause->toSql());
+        $this->assertEquals('("phone" IS NOT NULL AND "phone" ~ :p1)', $clause->toSql());
         $this->assertEquals([':p1' => '^[0-9]+$'], $clause->getParameters(), 'bind sem as barras do PHP');
 
         // Outros delimitadores e o modificador u (sem efeito no banco)
@@ -610,9 +716,9 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Modificador i: REGEX insensível de cada dialeto
         $ci = new PropertySpecification($base, 'code', new RegexSpecification('/^abc/i'));
-        $this->assertEquals('"code" ~* :p1', (new SqlQueryVisitor('pgsql'))->translate($ci)->toSql());
-        $this->assertEquals('`code` REGEXP :p1', (new SqlQueryVisitor('mysql'))->translate($ci)->toSql());
-        $this->assertEquals('REGEXP_LIKE("CODE", :p1, \'i\')', (new SqlQueryVisitor('oracle'))->translate($ci)->toSql());
+        $this->assertEquals('("code" IS NOT NULL AND "code" ~* :p1)', (new SqlQueryVisitor('pgsql'))->translate($ci)->toSql());
+        $this->assertEquals('(`code` IS NOT NULL AND `code` REGEXP :p1)', (new SqlQueryVisitor('mysql'))->translate($ci)->toSql());
+        $this->assertEquals('("CODE" IS NOT NULL AND REGEXP_LIKE("CODE", :p1, \'i\'))', (new SqlQueryVisitor('oracle'))->translate($ci)->toSql());
         $this->assertEquals([':p1' => '^abc'], (new SqlQueryVisitor('oracle'))->translate($ci)->getParameters());
 
         // Modificador sem equivalente portável: recusa explícita
@@ -635,16 +741,18 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testWildcardLiteralsAreEscapedInLike(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         // 1. Reprodução: % literal no padrão, nos sete dialetos
         $spec = Spec::property('name', Spec::like('100%*'));
         $expected = [
-            'pgsql' => '"name" LIKE :p1 ESCAPE \'!\'',
-            'mysql' => 'BINARY `name` LIKE :p1 ESCAPE \'!\'',
-            'sqlsrv' => '[name] LIKE :p1 ESCAPE \'!\'',
-            'sqlite' => '"name" LIKE :p1 ESCAPE \'!\'',
-            'ansi' => '"name" LIKE :p1 ESCAPE \'!\'',
-            'oracle' => '"NAME" LIKE :p1 ESCAPE \'!\'',
-            'firebird' => '"NAME" LIKE :p1 ESCAPE \'!\'',
+            'pgsql' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
+            'mysql' => '(`name` IS NOT NULL AND BINARY `name` LIKE :p1 ESCAPE \'!\')',
+            'sqlsrv' => '([name] IS NOT NULL AND [name] LIKE :p1 ESCAPE \'!\')',
+            'sqlite' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
+            'ansi' => '("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\')',
+            'oracle' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1 ESCAPE \'!\')',
+            'firebird' => '("NAME" IS NOT NULL AND "NAME" LIKE :p1 ESCAPE \'!\')',
         ];
         foreach ($expected as $d => $sql) {
             $clause = Spec::toSql($spec, $d);
@@ -658,20 +766,20 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // 3. Barra invertida: escape padrão do LIKE no MySQL, neutralizada pela cláusula ESCAPE explícita
         $clause = Spec::toSql(Spec::property('path', Spec::like('C:\\*')), 'mysql');
-        $this->assertEquals('BINARY `path` LIKE :p1 ESCAPE \'!\'', $clause->getSql());
+        $this->assertEquals('(`path` IS NOT NULL AND BINARY `path` LIKE :p1 ESCAPE \'!\')', $clause->getSql());
         $this->assertEquals([':p1' => 'C:\\%'], $clause->getBindings());
 
         // 4. Ignore-case usa o LIKE insensível do dialeto, com o mesmo escape
         $ci = Spec::toSql(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('100%*')), 'pgsql');
-        $this->assertEquals('"name" ILIKE :p1 ESCAPE \'!\'', $ci->getSql());
+        $this->assertEquals('("name" IS NOT NULL AND "name" ILIKE :p1 ESCAPE \'!\')', $ci->getSql());
         $this->assertEquals([':p1' => '100!%%'], $ci->getBindings());
 
         // 5. NOT envolve a cláusula inteira
-        $this->assertEquals('NOT ("name" LIKE :p1 ESCAPE \'!\')', Spec::toSql(Spec::not($spec), 'pgsql')->getSql());
+        $this->assertEquals('NOT (("name" IS NOT NULL AND "name" LIKE :p1 ESCAPE \'!\'))', Spec::toSql(Spec::not($spec), 'pgsql')->getSql());
 
         // 6. Regressão: padrão sem % / _ / ! / barra invertida sai exatamente como antes, sem ESCAPE
         $plain = Spec::toSql(Spec::property('name', Spec::like('J*hn?')), 'pgsql');
-        $this->assertEquals('"name" LIKE :p1', $plain->getSql());
+        $this->assertEquals('("name" IS NOT NULL AND "name" LIKE :p1)', $plain->getSql());
         $this->assertEquals([':p1' => 'J%hn_'], $plain->getBindings());
 
         // 7. Paridade com a memória: o LIKE passa a distinguir o que fnmatch distingue
@@ -688,19 +796,21 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testRn07InTranslatesToSqlInList(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         // Cenário Gherkin
         $spec = Spec::property('status', Spec::in('A', 'B'));
         $where = Spec::toSql($spec, SqlDialect::POSTGRESQL);
-        $this->assertEquals('"status" IN (:p1, :p2)', $where->getSql());
+        $this->assertEquals('("status" IS NOT NULL AND "status" IN (:p1, :p2))', $where->getSql());
         $this->assertEquals([':p1' => 'A', ':p2' => 'B'], $where->getBindings());
 
         // Cada dialeto com o próprio quoting
-        $this->assertEquals('`status` IN (:p1, :p2)', Spec::toSql($spec, 'mysql')->getSql());
-        $this->assertEquals('[status] IN (:p1, :p2)', Spec::toSql($spec, 'sqlsrv')->getSql());
-        $this->assertEquals('"STATUS" IN (:p1, :p2)', Spec::toSql($spec, 'oracle')->getSql());
-        $this->assertEquals('"STATUS" IN (:p1, :p2)', Spec::toSql($spec, 'firebird')->getSql());
-        $this->assertEquals('"status" IN (:p1, :p2)', Spec::toSql($spec, 'sqlite')->getSql());
-        $this->assertEquals('"status" IN (:p1, :p2)', Spec::toSql($spec, 'ansi')->getSql());
+        $this->assertEquals('(`status` IS NOT NULL AND `status` IN (:p1, :p2))', Spec::toSql($spec, 'mysql')->getSql());
+        $this->assertEquals('([status] IS NOT NULL AND [status] IN (:p1, :p2))', Spec::toSql($spec, 'sqlsrv')->getSql());
+        $this->assertEquals('("STATUS" IS NOT NULL AND "STATUS" IN (:p1, :p2))', Spec::toSql($spec, 'oracle')->getSql());
+        $this->assertEquals('("STATUS" IS NOT NULL AND "STATUS" IN (:p1, :p2))', Spec::toSql($spec, 'firebird')->getSql());
+        $this->assertEquals('("status" IS NOT NULL AND "status" IN (:p1, :p2))', Spec::toSql($spec, 'sqlite')->getSql());
+        $this->assertEquals('("status" IS NOT NULL AND "status" IN (:p1, :p2))', Spec::toSql($spec, 'ansi')->getSql());
 
         // Vazio: a forma falsa do dialeto, sem parâmetros
         $empty = Spec::toSql(Spec::property('status', Spec::in()), 'pgsql');
@@ -710,15 +820,15 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         // null e booleanos no conjunto
         $this->assertEquals('("status" IN (:p1) OR "status" IS NULL)', Spec::toSql(Spec::property('status', Spec::in('A', null)), 'pgsql')->getSql());
         $this->assertEquals('"status" IS NULL', Spec::toSql(Spec::property('status', Spec::in(null)), 'pgsql')->getSql());
-        $this->assertEquals('`ativo` IN (1)', Spec::toSql(Spec::property('ativo', Spec::in(true)), 'mysql')->getSql());
+        $this->assertEquals('(`ativo` IS NOT NULL AND `ativo` IN (1))', Spec::toSql(Spec::property('ativo', Spec::in(true)), 'mysql')->getSql());
 
         // Negação e composição: numeração de parâmetros contínua
-        $this->assertEquals('NOT ("status" IN (:p1, :p2))', Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), 'pgsql')->getSql());
+        $this->assertEquals('("status" IS NOT NULL AND NOT ("status" IN (:p1, :p2)))', Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), 'pgsql')->getSql());
         $combined = Spec::toSql(
             Spec::property('status', Spec::in('A', 'B'))->and(Spec::property('uf', Spec::in(['SP', 'RJ', 'MG']))),
             'pgsql'
         );
-        $this->assertEquals('("status" IN (:p1, :p2) AND "uf" IN (:p3, :p4, :p5))', $combined->getSql());
+        $this->assertEquals('(("status" IS NOT NULL AND "status" IN (:p1, :p2)) AND ("uf" IS NOT NULL AND "uf" IN (:p3, :p4, :p5)))', $combined->getSql());
         $this->assertEquals([':p1' => 'A', ':p2' => 'B', ':p3' => 'SP', ':p4' => 'RJ', ':p5' => 'MG'], $combined->getBindings());
 
         // Fora de propriedade não há coluna
@@ -784,6 +894,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testRn07Db2Dialect(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         foreach (['db2' => 'db2', 'ibm' => 'db2', 'ibm_db2' => 'db2', 'pdo_ibm' => 'db2', 'DB2' => 'db2'] as $driver => $family) {
             $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
         }
@@ -800,21 +912,21 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertEquals('1 = 0', $db2->getFalseCondition());
 
         $this->assertDialectClauses('db2', [
-            'eq' => '"AGE" = :p1',
-            'gte' => '"AGE" >= :p1',
-            'lte' => '"AGE" <= :p1',
-            'neq' => '"STATUS" <> :p1',
-            'in' => '"STATUS" IN (:p1, :p2)',
+            'eq' => '("AGE" IS NOT NULL AND "AGE" = :p1)',
+            'gte' => '("AGE" IS NOT NULL AND "AGE" >= :p1)',
+            'lte' => '("AGE" IS NOT NULL AND "AGE" <= :p1)',
+            'neq' => '("STATUS" IS NOT NULL AND "STATUS" <> :p1)',
+            'in' => '("STATUS" IS NOT NULL AND "STATUS" IN (:p1, :p2))',
             'inNull' => '("STATUS" IN (:p1) OR "STATUS" IS NULL)',
             'isNull' => '"DELETED_AT" IS NULL',
             'notNull' => '"DELETED_AT" IS NOT NULL',
-            'bool' => '"ACTIVE" = 1',
-            'notBool' => '"ACTIVE" = 0',
-            'likeEscape' => '"PROMO" LIKE :p1 ESCAPE \'!\'',
-            'likeCi' => 'LOWER("NAME") LIKE LOWER(:p1)',
-            'regex' => 'REGEXP_LIKE("PHONE", :p1, \'c\')',
-            'regexCi' => 'REGEXP_LIKE("CODE", :p1, \'i\')',
-            'combined' => '("AGE" >= :p1 AND "STATUS" IN (:p2, :p3))',
+            'bool' => '("ACTIVE" IS NOT NULL AND "ACTIVE" = 1)',
+            'notBool' => '("ACTIVE" IS NOT NULL AND "ACTIVE" = 0)',
+            'likeEscape' => '("PROMO" IS NOT NULL AND "PROMO" LIKE :p1 ESCAPE \'!\')',
+            'likeCi' => '("NAME" IS NOT NULL AND LOWER("NAME") LIKE LOWER(:p1))',
+            'regex' => '("PHONE" IS NOT NULL AND REGEXP_LIKE("PHONE", :p1, \'c\'))',
+            'regexCi' => '("CODE" IS NOT NULL AND REGEXP_LIKE("CODE", :p1, \'i\'))',
+            'combined' => '(("AGE" IS NOT NULL AND "AGE" >= :p1) AND ("STATUS" IS NOT NULL AND "STATUS" IN (:p2, :p3)))',
         ]);
         $this->assertTrue($db2->supportsRegex());
 
@@ -833,6 +945,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testRn07InformixDialect(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         foreach (['informix' => 'informix', 'ifx' => 'informix', 'pdo_informix' => 'informix'] as $driver => $family) {
             $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
         }
@@ -852,27 +966,27 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $delimited = new InformixDialect(delimitedIdentifiers: true);
         $this->assertEquals('"status"', $delimited->escapeIdentifier('STATUS'));
         $this->assertEquals('"c"."val_salary"', $delimited->escapeIdentifier('C.Val_Salary'));
-        $this->assertEquals('"status" = :p1', (new SqlQueryVisitor($delimited))->translate(Spec::property('status', Spec::equalTo('A')))->toSql());
+        $this->assertEquals('("status" IS NOT NULL AND "status" = :p1)', (new SqlQueryVisitor($delimited))->translate(Spec::property('status', Spec::equalTo('A')))->toSql());
 
         $this->assertDialectClauses('informix', [
-            'eq' => 'age = :p1',
-            'gte' => 'age >= :p1',
-            'lte' => 'age <= :p1',
-            'neq' => 'status <> :p1',
-            'in' => 'status IN (:p1, :p2)',
+            'eq' => '(age IS NOT NULL AND age = :p1)',
+            'gte' => '(age IS NOT NULL AND age >= :p1)',
+            'lte' => '(age IS NOT NULL AND age <= :p1)',
+            'neq' => '(status IS NOT NULL AND status <> :p1)',
+            'in' => '(status IS NOT NULL AND status IN (:p1, :p2))',
             'inNull' => '(status IN (:p1) OR status IS NULL)',
             'isNull' => 'deleted_at IS NULL',
             'notNull' => 'deleted_at IS NOT NULL',
-            'bool' => "active = 't'",
-            'notBool' => "active = 'f'",
-            'likeEscape' => 'promo LIKE :p1 ESCAPE \'!\'',
-            'likeCi' => 'LOWER(name) LIKE LOWER(:p1)',
+            'bool' => "(active IS NOT NULL AND active = 't')",
+            'notBool' => "(active IS NOT NULL AND active = 'f')",
+            'likeEscape' => '(promo IS NOT NULL AND promo LIKE :p1 ESCAPE \'!\')',
+            'likeCi' => '(name IS NOT NULL AND LOWER(name) LIKE LOWER(:p1))',
             'regex' => UnsupportedSqlOperationException::class,
             'regexCi' => UnsupportedSqlOperationException::class,
-            'combined' => '(age >= :p1 AND status IN (:p2, :p3))',
+            'combined' => '((age IS NOT NULL AND age >= :p1) AND (status IS NOT NULL AND status IN (:p2, :p3)))',
         ]);
         $this->assertFalse($ifx->supportsRegex());
-        $this->assertEquals("active IN ('t')", Spec::toSql(Spec::property('active', Spec::in(true)), 'informix')->getSql());
+        $this->assertEquals("(active IS NOT NULL AND active IN ('t'))", Spec::toSql(Spec::property('active', Spec::in(true)), 'informix')->getSql());
 
         $this->assertPagination($ifx, [
             'limit' => 'SELECT FIRST 10 * FROM t ORDER BY id',
@@ -890,6 +1004,8 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      */
     private function testRn07DuckDbDialect(): void
     {
+        // 1.11.0 mudou: toda comparação sob property() sai com a guarda de nulo `(col IS NOT NULL AND ...)`, para que
+        // NOT/NOR sobre coluna NULL respondam como em memória; as expectativas abaixo eram sem a guarda
         foreach (['duckdb' => 'duckdb', 'pdo_duckdb' => 'duckdb', 'DuckDB' => 'duckdb'] as $driver => $family) {
             $this->assertEquals($family, SqlDialectFactory::create($driver)->getFamily(), "driver {$driver}");
         }
@@ -903,24 +1019,24 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertEquals('FALSE', $duck->formatBoolean(false));
 
         $this->assertDialectClauses('duckdb', [
-            'eq' => '"age" = :p1',
-            'gte' => '"age" >= :p1',
-            'lte' => '"age" <= :p1',
-            'neq' => '"status" <> :p1',
-            'in' => '"status" IN (:p1, :p2)',
+            'eq' => '("age" IS NOT NULL AND "age" = :p1)',
+            'gte' => '("age" IS NOT NULL AND "age" >= :p1)',
+            'lte' => '("age" IS NOT NULL AND "age" <= :p1)',
+            'neq' => '("status" IS NOT NULL AND "status" <> :p1)',
+            'in' => '("status" IS NOT NULL AND "status" IN (:p1, :p2))',
             'inNull' => '("status" IN (:p1) OR "status" IS NULL)',
             'isNull' => '"deleted_at" IS NULL',
             'notNull' => '"deleted_at" IS NOT NULL',
-            'bool' => '"active" = TRUE',
-            'notBool' => '"active" = FALSE',
-            'likeEscape' => '"promo" LIKE :p1 ESCAPE \'!\'',
-            'likeCi' => '"name" ILIKE :p1',
-            'regex' => 'regexp_matches("phone", :p1)',
-            'regexCi' => 'regexp_matches("code", :p1, \'i\')',
-            'combined' => '("age" >= :p1 AND "status" IN (:p2, :p3))',
+            'bool' => '("active" IS NOT NULL AND "active" = TRUE)',
+            'notBool' => '("active" IS NOT NULL AND "active" = FALSE)',
+            'likeEscape' => '("promo" IS NOT NULL AND "promo" LIKE :p1 ESCAPE \'!\')',
+            'likeCi' => '("name" IS NOT NULL AND "name" ILIKE :p1)',
+            'regex' => '("phone" IS NOT NULL AND regexp_matches("phone", :p1))',
+            'regexCi' => '("code" IS NOT NULL AND regexp_matches("code", :p1, \'i\'))',
+            'combined' => '(("age" IS NOT NULL AND "age" >= :p1) AND ("status" IS NOT NULL AND "status" IN (:p2, :p3)))',
         ]);
         $this->assertTrue($duck->supportsRegex());
-        $this->assertEquals('"name" ILIKE :p1 ESCAPE \'!\'', Spec::toSql(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('100%*')), 'duckdb')->getSql());
+        $this->assertEquals('("name" IS NOT NULL AND "name" ILIKE :p1 ESCAPE \'!\')', Spec::toSql(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('100%*')), 'duckdb')->getSql());
 
         $this->assertPagination($duck, [
             'limit' => 'SELECT * FROM t ORDER BY id LIMIT 10',
@@ -933,6 +1049,21 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
      * Forward 020 (v1.6.0), RN-07: paginate() (ISqlPagination) em todos os dialetos, com validação dos argumentos;
      * a forma do SQLite roda num banco em memória.
      */
+    /** 1.11.0: alwaysTrue()/alwaysFalse() at the root are constant conditions, not an exception. */
+    private function testConstantsAtTheRootAreTranslated(): void
+    {
+        foreach (['pgsql', 'mysql', 'sqlite', 'sqlsrv', 'oci'] as $dialect) {
+            $this->assertEquals('1 = 1', Spec::toSql(Spec::alwaysTrue(), $dialect)->sql, "{$dialect}: alwaysTrue() at the root");
+            $this->assertEquals('1 = 0', Spec::toSql(Spec::alwaysFalse(), $dialect)->sql, "{$dialect}: alwaysFalse() at the root");
+            $this->assertEquals([], Spec::toSql(Spec::alwaysTrue(), $dialect)->parameters);
+        }
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE t (x INTEGER)');
+        $pdo->exec('INSERT INTO t VALUES (1), (2)');
+        $this->assertEquals(2, (int) $pdo->query('SELECT COUNT(*) FROM t WHERE ' . Spec::toSql(Spec::alwaysTrue(), 'sqlite')->sql)->fetchColumn());
+        $this->assertEquals(0, (int) $pdo->query('SELECT COUNT(*) FROM t WHERE ' . Spec::toSql(Spec::alwaysFalse(), 'sqlite')->sql)->fetchColumn());
+    }
+
     private function testPaginationAcrossDialects(): void
     {
         $expected = [
@@ -1018,7 +1149,14 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->assertEquals([':p1' => 'A', ':p2' => 'B'], Spec::toSql($leaves['in'], $driver)->getBindings());
         $this->assertEquals([':p1' => '%50!%!_off%'], Spec::toSql($leaves['likeEscape'], $driver)->getBindings());
         $this->assertEquals([], Spec::toSql($leaves['isNull'], $driver)->getBindings());
-        $this->assertEquals('NOT (' . Spec::toSql($leaves['in'], $driver)->getSql() . ')', Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), $driver)->getSql());
+        // 1.11.0 mudou: o NOT acima da propriedade nega a comparação guardada; notIn() é um NOT dentro da
+        // propriedade, que em memória recusa o valor nulo, então a guarda envolve o NOT (antes: NOT (... IN ...))
+        $in = Spec::toSql($leaves['in'], $driver)->getSql();
+        $this->assertEquals('NOT (' . $in . ')', Spec::toSql(Spec::not($leaves['in']), $driver)->getSql());
+        $this->assertEquals(
+            preg_replace('/^\((.+?) IS NOT NULL AND (.+)\)$/', '($1 IS NOT NULL AND NOT ($2))', $in),
+            Spec::toSql(Spec::property('status', Spec::notIn('A', 'B')), $driver)->getSql()
+        );
     }
 
     /**

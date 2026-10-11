@@ -57,15 +57,22 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Support for relational comparisons, pattern matching (LIKE, ILIKE), and Regular Expressions
  * - startsWith/endsWith/contains emitted as portable LIKE with wildcard escaping; regex bodies sent
  *   without PHP delimiters (BUG-20261007-3E3F)
- * - Set membership (InSpecification, 1.5.0) emitted as `"col" IN (:p1, :p2)`; the empty set as the
+ * - Set membership (InSpecification, 1.5.0) emitted as `"col" IN (:p1, :p2)` (guarded since 1.11.0); the empty set as the
  *   dialect's false condition (`1 = 0`), a null member as an extra `OR "col" IS NULL`
  * - A declarative method call (MethodParameterizedSpecification, 1.6.0) is opaque to SQL: it raises
  *   NonTranslatableSpecificationException, as the inline closure of must() does
  * - External data (ExternalDataSpecification, 1.10.0) only exists when the tree is evaluated in PHP by
  *   a DataResolver: it raises NonTranslatableSpecificationException
+ * - Two-valued null semantics, the same as the in-memory evaluation (1.11.0): inside a property clause
+ *   every comparison on a column that may hold NULL is emitted as `(col IS NOT NULL AND <comparison>)`,
+ *   false for a NULL column instead of SQL's unknown, so a NOT or a NOR over it answers what
+ *   `isSatisfiedBy()` answers (before, `NOT ("age" > :p1)` excluded a row whose age was NULL). The null
+ *   checks (`IS NULL`, `IS NOT NULL`, equality to null, a set holding null) already are two-valued and
+ *   are not guarded. An AND/OR/NOT/NOR node directly inside a property rejects a null value in memory,
+ *   so it is emitted as `(col IS NOT NULL AND (...))` and its own comparisons need no further guard
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.10.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,6 +85,13 @@ class SqlQueryVisitor implements ISpecificationVisitor
     private IFieldMapper $fieldMapper;
     private int $parameterCounter = 0;
     private ?string $currentColumn = null;
+
+    /**
+     * Whether the current column may still be NULL where the clause being built is evaluated: true
+     * inside a property clause, false once a null guard on that column encloses the clause (and for a
+     * column that never holds NULL, see canBeNull()).
+     */
+    private bool $currentColumnNullable = false;
 
     /**
      * @param ISqlDialect|SqlDialect|string $dialect Target dialect
@@ -104,6 +118,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     {
         $this->parameterCounter = 0;
         $this->currentColumn = null;
+        $this->currentColumnNullable = false;
         return $this;
     }
 
@@ -141,6 +156,19 @@ class SqlQueryVisitor implements ISpecificationVisitor
     /** {@inheritdoc} */
     public function visitComposite(ICompositeSpecification $specification): SqlWhereClause
     {
+        if ($this->currentColumn !== null && $this->currentColumnNullable && self::isLogicalNode($specification)) {
+            // In memory an AND/OR/NOT/NOR node rejects a null candidate, so the node is false for a NULL
+            // column; under the guard the column is known not to be NULL and its leaves need no guard.
+            $this->currentColumnNullable = false;
+            try {
+                $clause = $this->visitComposite($specification);
+            } finally {
+                $this->currentColumnNullable = true;
+            }
+
+            return $this->guardNull($clause, $this->currentColumn);
+        }
+
         return match (true) {
             $specification instanceof PropertySpecification =>
                 $this->visitPropertySpecification($specification),
@@ -176,15 +204,77 @@ class SqlQueryVisitor implements ISpecificationVisitor
     private function visitPropertySpecification(PropertySpecification $specification): SqlWhereClause
     {
         $previousColumn = $this->currentColumn;
+        $previousNullable = $this->currentColumnNullable;
         $rawProp = $specification->getPropertyName();
         $mappedCol = $this->fieldMapper->mapField($rawProp);
         $this->currentColumn = $this->dialect->escapeIdentifier($mappedCol);
+        $this->currentColumnNullable = $this->canBeNull($rawProp);
 
         try {
             return $this->visit($specification->getPropertySpecification());
         } finally {
             $this->currentColumn = $previousColumn;
+            $this->currentColumnNullable = $previousNullable;
         }
+    }
+
+    /**
+     * Whether the column a property is mapped to may hold NULL (1.11.0). A comparison on a column that
+     * never does needs no null guard; the visitor cannot know the schema, so every column may. A
+     * subclass bound to a mapping (the PdoRepository compiler) answers false for the identifier column.
+     *
+     * @param string $property Property name as written in the specification (before the field mapping)
+     * @return bool
+     */
+    protected function canBeNull(string $property): bool
+    {
+        return true;
+    }
+
+    /**
+     * Whether a node is one of the logical composites that reject a null candidate in memory.
+     */
+    private static function isLogicalNode(ISpecification $specification): bool
+    {
+        return $specification instanceof AndSpecification
+            || $specification instanceof OrSpecification
+            || $specification instanceof NotSpecification
+            || $specification instanceof JointDenialSpecification;
+    }
+
+    /**
+     * Make a clause on a column two-valued: `(col IS NOT NULL AND <clause>)`, false for a NULL column
+     * where SQL would answer unknown (1.11.0).
+     *
+     * @param SqlWhereClause $clause
+     * @param string $col Escaped column
+     * @return SqlWhereClause
+     */
+    private function guardNull(SqlWhereClause $clause, string $col): SqlWhereClause
+    {
+        if ($clause->isEmpty()) {
+            return $clause;
+        }
+
+        return new SqlWhereClause("({$col} IS NOT NULL AND {$clause->sql})", $clause->parameters);
+    }
+
+    /**
+     * Whether the clause of a leaf already answers for a NULL column what the leaf answers for a null
+     * value, without a guard: the null checks, equality and inequality to null, a set holding null and
+     * the empty set (1.11.0).
+     */
+    private static function isNullAwareLeaf(ISpecification $specification): bool
+    {
+        return match (true) {
+            $specification instanceof IsNullSpecification,
+            $specification instanceof NotNullSpecification => true,
+            $specification instanceof EqualSpecification,
+            $specification instanceof NotEqualSpecification => $specification->getValue() === null,
+            $specification instanceof InSpecification =>
+                $specification->getValues() === [] || in_array(null, $specification->getValues(), true),
+            default => false,
+        };
     }
 
     /**
@@ -241,6 +331,18 @@ class SqlQueryVisitor implements ISpecificationVisitor
     /** {@inheritdoc} */
     public function visitLeaf(ISpecification $specification): SqlWhereClause
     {
+        // The constants are leaves, so they always arrive here (the AlwaysTrue/AlwaysFalse arms of
+        // visitComposite() are never reached): wherever they appear in a tree (at its root, as an operand
+        // of and/or/not/nor, inside a property clause) they are the dialect's constant condition (fixed in
+        // 1.11.0; before, any of them threw NonTranslatableSpecificationException, as
+        // Spec::toSql(Spec::alwaysTrue()) did).
+        if ($specification instanceof AlwaysTrueSpecification) {
+            return new SqlWhereClause($this->dialect->getTrueCondition());
+        }
+        if ($specification instanceof AlwaysFalseSpecification) {
+            return new SqlWhereClause($this->dialect->getFalseCondition());
+        }
+
         if ($specification instanceof RuleBoundSpecification) {
             return $this->visit($specification->getInnerSpecification());
         }
@@ -280,7 +382,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
             );
         }
 
-        return match (true) {
+        $clause = match (true) {
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($specification, $col),
 
@@ -328,6 +430,11 @@ class SqlQueryVisitor implements ISpecificationVisitor
 
             default => throw new NonTranslatableSpecificationException($specification),
         };
+
+        // A comparison is unknown in SQL for a NULL column, false in memory for a null value (1.11.0)
+        return $this->currentColumnNullable && !self::isNullAwareLeaf($specification)
+            ? $this->guardNull($clause, $col)
+            : $clause;
     }
 
     /**

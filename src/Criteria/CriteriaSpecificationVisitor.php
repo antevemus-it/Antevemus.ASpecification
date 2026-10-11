@@ -62,9 +62,19 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   raises NonTranslatableCriteriaException, as the inline closure of must() does
  * - External data (ExternalDataSpecification, 1.10.0) only exists when the tree is evaluated in PHP by
  *   a DataResolver: it raises NonTranslatableCriteriaException, negated or not
+ * - The null semantics of the in-memory evaluation (1.11.0). TCriteria has no NOT: negations are pushed
+ *   down to the filters, so the criteria is an AND/OR tree in which a filter that SQL answers unknown
+ *   for a NULL column excludes the row exactly as a false one. A plain comparison inside a property is
+ *   false for a null value in memory and needs nothing; a negated comparison is TRUE for a null value
+ *   in memory (`not(property('age', greaterThan(18)))`), so it becomes `(age IS NULL OR age <= 18)`;
+ *   an AND/OR/NOT/NOR node directly inside a property rejects a null value in memory, so its negation
+ *   becomes `(col IS NULL OR (...))`, and the node itself `(col IS NOT NULL AND (...))` when one of its
+ *   filters is true for a NULL column (`IS NULL`, `1 = 1`); otherwise the row is already left out. The null checks, equality
+ *   to null and a set holding null are already exact. Before 1.11.0, `not(property('age',
+ *   greaterThan(18)))` was `(age <= 18)` and left out a row whose age was NULL
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.10.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +85,18 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 {
     private readonly IFieldMapper $fieldMapper;
     private ?string $currentProperty = null;
+
+    /**
+     * Whether the current column may still be NULL where the expression being built is evaluated: true
+     * inside a property, false once a null check on that column encloses the expression (1.11.0).
+     */
+    private bool $currentNullable = false;
+
+    /**
+     * Number of filters built so far that are TRUE for a NULL column (`col IS NULL`, the constant
+     * `1 = 1`); every other filter is false or unknown there (1.11.0).
+     */
+    private int $nullTolerantFilters = 0;
 
     /**
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
@@ -134,6 +156,11 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     public function visitComposite(ICompositeSpecification $specification): TExpression
     {
+        if ($this->currentProperty !== null && $this->currentNullable && self::isLogicalNode($specification)) {
+            // In memory an AND/OR/NOT/NOR node rejects a null value: false for a NULL column (1.11.0)
+            return $this->withNullCheck(TExpression::AND_OPERATOR, fn(): TExpression => $this->visitComposite($specification), true);
+        }
+
         return match (true) {
             $specification instanceof PropertySpecification =>
                 $this->visitPropertySpecification($specification),
@@ -164,13 +191,66 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function visitPropertySpecification(PropertySpecification $specification): TExpression
     {
         $previousProperty = $this->currentProperty;
+        $previousNullable = $this->currentNullable;
         $this->currentProperty = $this->fieldMapper->map($specification->getPropertyName());
+        $this->currentNullable = true;
 
         try {
             return $this->visit($specification->getInnerSpecification());
         } finally {
             $this->currentProperty = $previousProperty;
+            $this->currentNullable = $previousNullable;
         }
+    }
+
+    /**
+     * Whether a node is one of the logical composites that reject a null candidate in memory.
+     */
+    private static function isLogicalNode(ISpecification $specification): bool
+    {
+        return $specification instanceof AndSpecification
+            || $specification instanceof OrSpecification
+            || $specification instanceof NotSpecification
+            || $specification instanceof JointDenialSpecification;
+    }
+
+    /**
+     * Combine a null check on the current column with an expression built while the column is known
+     * to be (AND: `col IS NOT NULL AND ...`) or allowed to be (OR: `col IS NULL OR ...`) NULL; the
+     * expression is built with the column treated as not null, so it carries no further null check.
+     *
+     * With `$onlyWhenTolerant`, the `IS NOT NULL` check is added only when the expression holds a filter
+     * that is true for a NULL column: a criteria is an AND/OR tree (negations are pushed down to the
+     * filters), so without such a filter it already leaves a NULL row out.
+     *
+     * @param string $operator TExpression::AND_OPERATOR or TExpression::OR_OPERATOR
+     * @param \Closure(): TExpression $build
+     * @param bool $onlyWhenTolerant
+     * @return TExpression
+     */
+    private function withNullCheck(string $operator, \Closure $build, bool $onlyWhenTolerant = false): TExpression
+    {
+        $column = (string) $this->currentProperty;
+        $tolerantBefore = $this->nullTolerantFilters;
+        $this->currentNullable = false;
+        try {
+            $expression = $build();
+        } finally {
+            $this->currentNullable = true;
+        }
+
+        if ($onlyWhenTolerant && $this->nullTolerantFilters === $tolerantBefore) {
+            return $expression;
+        }
+        if ($operator === TExpression::OR_OPERATOR) {
+            $this->nullTolerantFilters++;
+        }
+
+        $criteria = new TCriteria();
+        $criteria->add(new TFilter($column, $operator === TExpression::AND_OPERATOR ? 'IS NOT' : 'IS', null));
+        $criteria->add($expression, $operator);
+
+        return $criteria;
     }
 
     /**
@@ -196,7 +276,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         // Universal Tautology and Contradiction (column-independent)
         if ($specification instanceof AlwaysTrueSpecification) {
-            return new TFilter('1', '=', 1);
+            return $this->nullTolerant(new TFilter('1', '=', 1));
         }
 
         if ($specification instanceof AlwaysFalseSpecification) {
@@ -254,7 +334,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 new TFilter($col, 'IS NOT', null),
 
             $specification instanceof IsNullSpecification =>
-                new TFilter($col, 'IS', null),
+                $this->nullTolerant(new TFilter($col, 'IS', null)),
 
             $specification instanceof WildcardSpecification =>
                 $this->translateWildcard($col, $specification->getPattern(), false),
@@ -289,7 +369,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function translateEqual(string $col, mixed $val): TFilter
     {
         if ($val === null) {
-            return new TFilter($col, 'IS', null);
+            return $this->nullTolerant(new TFilter($col, 'IS', null));
         }
         return new TFilter($col, '=', $val);
     }
@@ -310,12 +390,12 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         $values = $specification->getValues();
         if ($values === []) {
-            return new TFilter('1', '=', $negated ? 1 : 0);
+            return $negated ? $this->nullTolerant(new TFilter('1', '=', 1)) : new TFilter('1', '=', 0);
         }
 
         $nonNull = array_values(array_filter($values, static fn(mixed $value): bool => $value !== null));
         $hasNull = count($nonNull) !== count($values);
-        $nullFilter = new TFilter($col, $negated ? 'IS NOT' : 'IS', null);
+        $nullFilter = $negated ? new TFilter($col, 'IS NOT', null) : $this->nullTolerant(new TFilter($col, 'IS', null));
 
         if ($nonNull === []) {
             return $nullFilter;
@@ -454,6 +534,11 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function visitNot(ISpecification $inner): TExpression
     {
+        if ($this->currentProperty !== null && $this->currentNullable && self::isLogicalNode($inner)) {
+            // The node is false for a null value in memory, so its negation is true there (1.11.0)
+            return $this->withNullCheck(TExpression::OR_OPERATOR, fn(): TExpression => $this->visitNot($inner));
+        }
+
         return match (true) {
             $inner instanceof RuleBoundSpecification =>
                 $this->visitNot($inner->getInnerSpecification()),
@@ -478,7 +563,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 new TFilter('1', '=', 0),
 
             $inner instanceof AlwaysFalseSpecification =>
-                new TFilter('1', '=', 1),
+                $this->nullTolerant(new TFilter('1', '=', 1)),
 
             default => $this->visitNotLeaf($inner),
         };
@@ -493,12 +578,15 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private function visitNotPropertySpecification(PropertySpecification $specification): TExpression
     {
         $previousProperty = $this->currentProperty;
+        $previousNullable = $this->currentNullable;
         $this->currentProperty = $this->fieldMapper->map($specification->getPropertyName());
+        $this->currentNullable = true;
 
         try {
             return $this->visitNot($specification->getInnerSpecification());
         } finally {
             $this->currentProperty = $previousProperty;
+            $this->currentNullable = $previousNullable;
         }
     }
 
@@ -555,7 +643,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
         $this->assertSafeValue($col, $inner);
 
-        return match (true) {
+        $negated = match (true) {
             $inner instanceof EqualSpecification =>
                 $this->translateNotEqual($col, $inner->getValue()),
 
@@ -578,7 +666,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 new TFilter($col, '>', $inner->getValue()),
 
             $inner instanceof NotNullSpecification =>
-                new TFilter($col, 'IS', null),
+                $this->nullTolerant(new TFilter($col, 'IS', null)),
 
             $inner instanceof IsNullSpecification =>
                 new TFilter($col, 'IS NOT', null),
@@ -599,6 +687,45 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 new TFilter($col, 'NOT REGEXP', $this->regexPattern($inner)),
 
             default => throw new NonTranslatableCriteriaException($inner, "Unable to logically invert specified rule."),
+        };
+
+        if (!$this->currentNullable || self::isNullAwareLeaf($inner)) {
+            return $negated;
+        }
+
+        // A comparison is false for a null value in memory, so its negation is true there (1.11.0):
+        // `col IS NULL OR <inverted comparison>`, where SQL alone would answer unknown
+        $criteria = new TCriteria();
+        $criteria->add($this->nullTolerant(new TFilter($col, 'IS', null)));
+        $criteria->add($negated, TExpression::OR_OPERATOR);
+
+        return $criteria;
+    }
+
+    /**
+     * Count a filter that is true for a NULL column (see withNullCheck()).
+     */
+    private function nullTolerant(TFilter $filter): TFilter
+    {
+        $this->nullTolerantFilters++;
+
+        return $filter;
+    }
+
+    /**
+     * Whether the filter of a leaf already answers for a NULL column what the leaf answers for a null
+     * value: the null checks, equality and inequality to null, a set holding null and the empty set.
+     */
+    private static function isNullAwareLeaf(ISpecification $specification): bool
+    {
+        return match (true) {
+            $specification instanceof IsNullSpecification,
+            $specification instanceof NotNullSpecification => true,
+            $specification instanceof EqualSpecification,
+            $specification instanceof NotEqualSpecification => $specification->getValue() === null,
+            $specification instanceof InSpecification =>
+                $specification->getValues() === [] || in_array(null, $specification->getValues(), true),
+            default => false,
         };
     }
 

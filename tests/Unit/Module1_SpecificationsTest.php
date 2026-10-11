@@ -482,8 +482,10 @@ class Module1_SpecificationsTest extends TestCase
         $this->assertTrue(Spec::property('a', Spec::alwaysFalse())->isContradiction());
         $this->assertTrue(Spec::property('a', Spec::in())->isContradiction());
         $this->assertTrue(Spec::property('a', Spec::greaterThan(10)->and(Spec::lessThan(5)))->isContradiction());
-        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->isTautology(), 'propriedade ausente ou nula não satisfaz');
-        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->isSatisfiedBy((object) ['a' => null]));
+        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->isTautology(), 'propriedade ausente ou candidato não inspecionável não satisfaz');
+        // 1.11.0 mudou: o valor nulo vai à especificação interna, e alwaysTrue() o aceita (antes: false)
+        $this->assertTrue(Spec::property('a', Spec::alwaysTrue())->isSatisfiedBy((object) ['a' => null]));
+        $this->assertFalse(Spec::property('a', Spec::alwaysTrue())->evaluate('a')->isSatisfied, 'candidato que não é objeto nem array');
         $this->assertTrue(Spec::property('a', Spec::alwaysFalse())->not()->isTautology(), '¬where(contradição)');
         $this->assertTrue(Spec::property('a', Spec::alwaysTrue(), Spec::alwaysFalse())->isContradiction(), 'base contraditória');
     }

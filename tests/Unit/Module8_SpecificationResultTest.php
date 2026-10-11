@@ -21,6 +21,7 @@ class Module8_SpecificationResultTest extends TestCase
     {
         $this->testEvaluationErrorIsNotRuleFailure();
         $this->testEvaluationErrorNeverExposesTheException();
+        $this->testCompositesAgreeOnANullCandidate();
         $this->testSpecificationFailureObject();
         $this->testSpecificationResultObject();
         $this->testBasicEvaluateAndDefaultMessage();
@@ -378,6 +379,27 @@ class Module8_SpecificationResultTest extends TestCase
         $this->assertFalse($leaks(\Antevemus\ASpecification\Spec::property('x', $throwing)->evaluate((object) ['x' => 1])), 'PropertySpecification');
         $this->assertFalse($leaks(\Antevemus\ASpecification\Spec::not($throwing)->evaluate(1)), 'composite');
         $this->assertTrue($throwing->evaluate(1)->exception instanceof \RuntimeException);
+    }
+
+    /** 1.11.0: evaluate(null) and isSatisfiedBy(null) give the same answer on every composite. */
+    private function testCompositesAgreeOnANullCandidate(): void
+    {
+        $S = \Antevemus\ASpecification\Spec::class;
+        $cases = [
+            'and' => $S::isNull()->and($S::isNull()),
+            'or' => $S::isNull()->or($S::greaterThan(5)),
+            'not' => $S::not($S::greaterThan(5)),
+            'nor' => $S::nor($S::isNotNull(), $S::greaterThan(5)),
+            'allOf' => $S::allOf($S::isNull(), $S::alwaysTrue()),
+            'anyOf' => $S::anyOf($S::isNull(), $S::greaterThan(5)),
+        ];
+        foreach ($cases as $name => $spec) {
+            $this->assertEquals($spec->isSatisfiedBy(null), $spec->evaluate(null)->isSatisfied, "{$name}: evaluate(null) agrees with isSatisfiedBy(null)");
+        }
+        $annotated = $S::isNull()->and($S::isNull())->because('Customer is required.')->withCode('CUSTOMER_REQUIRED');
+        $result = $annotated->evaluate(null);
+        $this->assertEquals(['CUSTOMER_REQUIRED'], $result->getCodes());
+        $this->assertEquals(['Customer is required.'], $result->getReasons());
     }
 
     private function testEvaluationErrorIsNotRuleFailure(): void

@@ -91,7 +91,7 @@ enum R021Document: string
  *   nodes; D8: errors and time limits; D9: cache; D10: visitors refuse the leaf; D12: no curl;
  * - the example 16 blocks of the README (EN/pt-BR), transcribed against the local server.
  *
- * @version    1.10.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -1110,7 +1110,9 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
         if ($start === false) {
             return [];
         }
-        $end = strpos($text, "\n## ", $start + 1);
+        // Up to the next example (1.11.0 added examples 17 and 18 after this one) or section
+        $ends = array_filter([strpos($text, "\n### ", $start + 1), strpos($text, "\n## ", $start + 1)], static fn($p): bool => $p !== false);
+        $end = $ends === [] ? false : min($ends);
         $section = substr($text, $start, ($end === false ? strlen($text) : $end) - $start);
         preg_match_all('/```php\n(.*?)```/s', $section, $matches);
 

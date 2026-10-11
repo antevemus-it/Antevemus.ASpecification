@@ -38,7 +38,9 @@ use DateTimeInterface;
  *   BadMethodCallException from isSatisfiedBy() and becomes an error result under evaluate()
  *   (never a rule failure, never inverted by NOT), as where() does with a missing property and
  *   must() with a throwing closure; any exception raised by the method behaves the same way;
- * - a null returned value does not satisfy (a null property does not satisfy where() either);
+ * - a null returned value does not satisfy, whatever the result specification (a method call is
+ *   evaluated in PHP only; since 1.11.0 where() hands a null property value to its inner
+ *   specification instead, so that it answers as the SQL translation of the same rule);
  * - any other returned value, scalars included, is evaluated by the result specification.
  * Side effects of the method are the caller's responsibility; the result is never cached.
  *
@@ -57,7 +59,7 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.6.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Reflection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

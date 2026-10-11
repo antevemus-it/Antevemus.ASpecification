@@ -56,6 +56,11 @@ $cases = [
     'notInList'                 => Spec::property('status', Spec::notIn('A', 'B')),
     'inWithNull'                => Spec::property('status', Spec::in('A', null)),
     'inIntegers'                => Spec::property('n', Spec::in(1, 2, 3)),
+    // 1.11.0: semântica de nulo da memória (comparação negada aceita NULL; AND/OR/NOT dentro da
+    // propriedade recusa o nulo)
+    'notGreaterThan'            => Spec::not(Spec::property('idade', Spec::greaterThan(18))),
+    'anyOfNullInside'           => Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A'))),
+    'notAnyOfNullInside'        => Spec::not(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A')))),
 ];
 
 $out = [];

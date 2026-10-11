@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\StateMachine\Persistence\Pdo;
 
+use Antevemus\ASpecification\Persistence\PdoTransactionManager as SharedPdoTransactionManager;
 use Antevemus\ASpecification\StateMachine\Persistence\ITransactionManager;
-use Closure;
-use PDO;
-use Throwable;
 
 /**
  * PdoTransactionManager - Unit of Work over One PDO Connection
@@ -17,37 +15,18 @@ use Throwable;
  * runner in its own business transaction), the work joins it: nothing is begun nor committed
  * here, and a failure is rethrown for the owner to roll back.
  *
- * @version    1.8.0
+ * Since 1.11.0 (forward 028, D8) the behaviour lives in the shared Persistence\PdoTransactionManager,
+ * which this class extends unchanged: it is both a state machine ITransactionManager (accepted by
+ * MachinePersistence) and a shared Persistence\ITransactionManager (accepted by the PDO repository),
+ * so one instance can give the repository and the state machine stores the same transaction.
+ *
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class PdoTransactionManager implements ITransactionManager
+final class PdoTransactionManager extends SharedPdoTransactionManager implements ITransactionManager
 {
-    public function __construct(private readonly PDO $pdo)
-    {
-    }
-
-    /** {@inheritdoc} */
-    public function transactional(Closure $work): mixed
-    {
-        if ($this->pdo->inTransaction()) {
-            return $work();
-        }
-
-        $this->pdo->beginTransaction();
-        try {
-            $result = $work();
-            $this->pdo->commit();
-        } catch (Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
-            throw $e;
-        }
-
-        return $result;
-    }
 }

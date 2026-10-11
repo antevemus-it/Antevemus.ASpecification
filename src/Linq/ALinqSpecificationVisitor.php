@@ -45,13 +45,19 @@ use Closure;
  * - External data (ExternalDataSpecification, 1.10.0) is refused with NonTranslatableLinqException:
  *   its data is resolved per candidate by a DataResolver, never once per item of a filter
  *
+ * Null values (1.11.0), as the core: a null property value is handed to the compiled inner predicate
+ * (`isNull()` under a property matches it, a comparison does not), and the AND/OR/NOT/NOR predicates
+ * reject a null candidate, as AndSpecification, OrSpecification, NotSpecification and
+ * JointDenialSpecification do. Before 1.11.0 a null property value never satisfied, and the compiled
+ * NOT/NOR accepted a null candidate the core rejects.
+ *
  * Parity contract: for the same candidate, the compiled predicate returns exactly what the
  * specification's own isSatisfiedBy()/evaluate() would decide, and throws the same typed
  * exceptions (IncompatibleTypeException on type mismatch, InvalidArgumentException on a
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.10.0
+ * @version    1.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -249,9 +255,9 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         $basePredicate = $this->visit($specification->getLeftSide());
         $innerPredicate = $this->visit($specification->getPropertySpecification());
 
-        // Mirrors PropertySpecification::evaluate(): non-inspectable candidate and null property
-        // value never satisfy; a missing property is an evaluation error, never a false that a
-        // NOT could turn into approval.
+        // Mirrors PropertySpecification::evaluate(): a non-inspectable candidate never satisfies; a
+        // missing property is an evaluation error, never a false that a NOT could turn into approval;
+        // a null value goes to the inner predicate (1.11.0).
         return function(mixed $candidate) use ($propertyName, $basePredicate, $innerPredicate): bool {
             if ($candidate === null || (!is_object($candidate) && !is_array($candidate))) {
                 return false;
@@ -271,12 +277,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
                 );
             }
 
-            $value = PropertyAccessor::getValue($candidate, $propertyName);
-            if ($value === null) {
-                return false;
-            }
-
-            return $innerPredicate($value);
+            return $innerPredicate(PropertyAccessor::getValue($candidate, $propertyName));
         };
     }
 
@@ -288,7 +289,8 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         $left = $this->visit($specification->getLeftSide());
         $right = $this->visit($specification->getRightSide());
 
-        return fn(mixed $candidate): bool => $left($candidate) && $right($candidate);
+        // A null candidate never satisfies a conjunction, as AndSpecification::isSatisfiedBy() (1.11.0)
+        return fn(mixed $candidate): bool => $candidate !== null && $left($candidate) && $right($candidate);
     }
 
     /**
@@ -299,7 +301,8 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         $left = $this->visit($specification->getLeftSide());
         $right = $this->visit($specification->getRightSide());
 
-        return fn(mixed $candidate): bool => $left($candidate) || $right($candidate);
+        // A null candidate never satisfies a disjunction, as OrSpecification::isSatisfiedBy() (1.11.0)
+        return fn(mixed $candidate): bool => $candidate !== null && ($left($candidate) || $right($candidate));
     }
 
     /**
@@ -309,7 +312,8 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     {
         $inner = $this->visit($specification->getSpecification());
 
-        return fn(mixed $candidate): bool => !$inner($candidate);
+        // A null candidate never satisfies a negation, as NotSpecification::isSatisfiedBy() (1.11.0)
+        return fn(mixed $candidate): bool => $candidate !== null && !$inner($candidate);
     }
 
     /**
@@ -320,7 +324,8 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
         $left = $this->visit($specification->getLeftSide());
         $right = $this->visit($specification->getRightSide());
 
-        return fn(mixed $candidate): bool => !$left($candidate) && !$right($candidate);
+        // A null candidate never satisfies a joint denial, as JointDenialSpecification (1.11.0)
+        return fn(mixed $candidate): bool => $candidate !== null && !$left($candidate) && !$right($candidate);
     }
 
     /**
