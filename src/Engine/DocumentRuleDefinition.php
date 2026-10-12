@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use InvalidArgumentException;
 
 /**
@@ -20,11 +21,10 @@ use InvalidArgumentException;
  * - Support for universal (all), alternative (any), or exclusive (one_of_set) requirement rules
  * - Grouping by alternative sets (e.g. Identity Document: Tax ID, Passport, or Driver License)
  * - Direct hydration from relational database records (fromArray)
- * - English vocabulary since 1.7.0: fromArray() reads the English keys and, as legacy, the Portuguese
- *   keys of 1.6.x (English wins when both are present); the Portuguese getters remain as deprecated
- *   aliases, removed in 2.0.0
+ * - English vocabulary since 1.7.0, only English since 2.0.0: fromArray() refuses a Portuguese key of
+ *   1.6.x (LEGACY_KEYS) with LegacyVocabularyException; the deprecated Portuguese getters were removed
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -33,6 +33,27 @@ use InvalidArgumentException;
  */
 final readonly class DocumentRuleDefinition implements IDocumentRuleDefinition
 {
+    /**
+     * Portuguese keys of a document requirement row read by fromArray() up to 1.14.x (legacy =>
+     * canonical), synonyms included; refused since 2.0.0 (LegacyVocabularyException).
+     */
+    public const LEGACY_KEYS = [
+        'grupo_codigo' => 'group_code',
+        'grupo' => 'group_code',
+        'codigo_tipo_documento' => 'document_type_code',
+        'tipo_documento' => 'document_type_code',
+        'escopo' => 'scope',
+        'cenario' => 'scenario',
+        'regra_obrigatoriedade' => 'requirement_mode',
+        'regra' => 'requirement_mode',
+        'codigo_set_alternativas' => 'alternative_set_code',
+        'set_alt' => 'alternative_set_code',
+        'condicional_expressao' => 'condition_expression',
+        'condicional' => 'condition_expression',
+        'ordem' => 'sort_order',
+        'ativo' => 'active',
+    ];
+
     /**
      * @param string $groupCode Stable document group code (identifier only)
      * @param string $documentTypeCode Code of the required document type
@@ -68,62 +89,50 @@ final readonly class DocumentRuleDefinition implements IDocumentRuleDefinition
     /**
      * Instantiates a document requirement from an associative database record.
      *
-     * Canonical keys: `group_code`, `document_type_code`, `scope`, `scenario`, `requirement_mode`,
+     * Keys: `group_code`, `document_type_code`, `scope`, `scenario`, `requirement_mode`,
      * `alternative_set_code`, `condition_expression`, `sort_order`, `active`. The Portuguese keys of
-     * 1.6.x are accepted as legacy (`grupo_codigo`/`grupo`, `codigo_tipo_documento`/`tipo_documento`,
+     * 1.6.x (read as legacy up to 1.14.x: `grupo_codigo`/`grupo`, `codigo_tipo_documento`/`tipo_documento`,
      * `escopo`, `cenario`, `regra_obrigatoriedade`/`regra`, `codigo_set_alternativas`/`set_alt`,
-     * `condicional_expressao`/`condicional`, `ordem`, `ativo`); when both are present the English key
-     * wins. No runtime notice is raised for a legacy key (catalog data is not code).
+     * `condicional_expressao`/`condicional`, `ordem`, `ativo`) are refused since 2.0.0 with
+     * LegacyVocabularyException, which points to UPGRADE-2.0.md.
      *
-     * @param array<string, mixed> $row Relational database record; the scope (`scope`, legacy `escopo`) is mandatory
+     * @param array<string, mixed> $row Relational database record; the scope (`scope`) is mandatory
      * @return self
      * @throws InvalidArgumentException When the record has no (or an empty) scope
+     * @throws LegacyVocabularyException When the row carries a Portuguese key of 1.x
      */
     public static function fromArray(array $row): self
     {
-        $modeRaw = self::pick($row, 'requirement_mode', 'regra_obrigatoriedade', 'regra');
+        LegacyVocabularyException::assertNoLegacyKeys($row, self::LEGACY_KEYS, sprintf(
+            'document requirement row "%s" key',
+            is_scalar($row['document_type_code'] ?? null) ? (string) $row['document_type_code'] : '?'
+        ));
+
+        $modeRaw = $row['requirement_mode'] ?? null;
         $mode = $modeRaw instanceof DocumentRequirementMode
             ? $modeRaw
             : DocumentRequirementMode::fromOrDefault(is_string($modeRaw) ? $modeRaw : null);
 
-        $activeRaw = self::pick($row, 'active', 'ativo') ?? true;
+        $activeRaw = $row['active'] ?? true;
         $active = is_bool($activeRaw)
             ? $activeRaw
             : ($activeRaw === 'Y' || $activeRaw === '1' || $activeRaw === 1 || $activeRaw === 'true');
 
-        $setCode = self::pick($row, 'alternative_set_code', 'codigo_set_alternativas', 'set_alt');
-        $condition = self::pick($row, 'condition_expression', 'condicional_expressao', 'condicional');
-        $scenario = self::pick($row, 'scenario', 'cenario');
+        $setCode = $row['alternative_set_code'] ?? null;
+        $condition = $row['condition_expression'] ?? null;
+        $scenario = $row['scenario'] ?? null;
 
         return new self(
-            groupCode: (string) (self::pick($row, 'group_code', 'grupo_codigo', 'grupo') ?? ''),
-            documentTypeCode: (string) (self::pick($row, 'document_type_code', 'codigo_tipo_documento', 'tipo_documento') ?? ''),
-            scope: (string) (self::pick($row, 'scope', 'escopo') ?? ''),
+            groupCode: (string) ($row['group_code'] ?? ''),
+            documentTypeCode: (string) ($row['document_type_code'] ?? ''),
+            scope: (string) ($row['scope'] ?? ''),
             requirementMode: $mode,
             alternativeSetCode: $setCode !== null ? (string) $setCode : null,
             conditionExpression: $condition !== null ? (string) $condition : null,
-            sortOrder: (int) (self::pick($row, 'sort_order', 'ordem') ?? 0),
+            sortOrder: (int) ($row['sort_order'] ?? 0),
             active: $active,
             scenario: $scenario !== null && $scenario !== '' ? (string) $scenario : null
         );
-    }
-
-    /**
-     * Returns the value of the first key present with a non-null value (canonical key first).
-     *
-     * @param array<string, mixed> $row
-     * @param string ...$keys Canonical key followed by its legacy synonyms
-     * @return mixed
-     */
-    private static function pick(array $row, string ...$keys): mixed
-    {
-        foreach ($keys as $key) {
-            if (isset($row[$key])) {
-                return $row[$key];
-            }
-        }
-
-        return null;
     }
 
     /** {@inheritdoc} */
@@ -178,57 +187,5 @@ final readonly class DocumentRuleDefinition implements IDocumentRuleDefinition
     public function isActive(): bool
     {
         return $this->active;
-    }
-
-    // ------------------------------------------------------------------
-    // Portuguese aliases of 1.6.x (not part of IDocumentRuleDefinition since 1.7.0)
-    // ------------------------------------------------------------------
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getGroupCode(). */
-    public function getGrupoCodigo(): string
-    {
-        return $this->getGroupCode();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getDocumentTypeCode(). */
-    public function getCodigoTipoDocumento(): string
-    {
-        return $this->getDocumentTypeCode();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getScope(). */
-    public function getEscopo(): string
-    {
-        return $this->getScope();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getScenario(). */
-    public function getCenario(): ?string
-    {
-        return $this->getScenario();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getRequirementMode(). */
-    public function getRegraObrigatoriedade(): DocumentRequirementMode
-    {
-        return $this->getRequirementMode();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getAlternativeSetCode(). */
-    public function getCodigoSetAlternativas(): ?string
-    {
-        return $this->getAlternativeSetCode();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getConditionExpression(). */
-    public function getCondicionalExpressao(): ?string
-    {
-        return $this->getConditionExpression();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getSortOrder(). */
-    public function getOrdem(): int
-    {
-        return $this->getSortOrder();
     }
 }

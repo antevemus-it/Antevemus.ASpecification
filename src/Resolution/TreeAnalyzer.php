@@ -7,7 +7,7 @@ namespace Antevemus\ASpecification\Resolution;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
@@ -45,7 +45,7 @@ use Throwable;
  * Node types are matched by exact class, as SpecificationSimplifier does: a subclass is unknown.
  *
  * @internal
- * @version    1.10.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -316,11 +316,11 @@ final class TreeAnalyzer
      */
     private static function propertyValue(mixed $candidate, string $propertyName): mixed
     {
-        if (!PropertyAccessor::hasProperty($candidate, $propertyName)) {
+        if (!PropertyAccess::hasProperty($candidate, $propertyName)) {
             throw new InvalidArgumentException(sprintf('Property "%s" not found.', $propertyName));
         }
 
-        return PropertyAccessor::getValue($candidate, $propertyName);
+        return PropertyAccess::getValue($candidate, $propertyName);
     }
 
     private static function negate(int $outcomes): int

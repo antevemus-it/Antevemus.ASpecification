@@ -17,10 +17,10 @@ use Antevemus\ASpecification\Engine\RuleAction;
  * - Polymorphic parameter resolution (integer, decimal, string, custom metadata)
  * - Severity and operational violation action identification (RuleAction)
  * - Statutory/legal basis for compliance auditing and contract emission
- * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract and survive
- *   only as deprecated aliases on RuleDefinition (removed in 2.0.0)
+ * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract in 1.7.0 and
+ *   their deprecated aliases on RuleDefinition were removed in 2.0.0
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -132,8 +132,8 @@ interface IRuleDefinition
      *
      * Two kinds of entries live here (RN-17): the applicability restrictions read by the catalog
      * (`product_code`, `plan_code`, `valid_from`, `valid_until`, hydrated from the catalog row by
-     * `RuleDefinition::fromArray()`; the Portuguese keys of 1.6.x `codigo_produto`, `codigo_plano`,
-     * `data_inicio_vigencia`, `data_fim_vigencia` are still read as legacy) and free data for the
+     * `RuleDefinition::fromArray()`; their Portuguese names of 1.6.x `codigo_produto`, `codigo_plano`,
+     * `data_inicio_vigencia`, `data_fim_vigencia` are refused since 2.0.0) and free data for the
      * rule handlers.
      *
      * @return array<string, mixed>

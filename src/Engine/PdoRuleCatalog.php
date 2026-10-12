@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -33,8 +34,8 @@ use PDOStatement;
  *   `product_code` and `plan_code` (whitelist of filter columns) become
  *   `(col IS NULL OR col = '' OR col = :value)`, or `(col IS NULL OR col = '')` when absent;
  *   `reference_date` is evaluated by the in-memory pass on the hydrated validity dates;
- *   every other key is ignored, so validation context never leaks into SQL (the Portuguese keys
- *   of 1.6.x are read as legacy, exactly as in memory)
+ *   every other key is ignored, so validation context never leaks into SQL (the Portuguese names
+ *   of the reserved keys, read as legacy up to 1.14.x, are refused since 2.0.0, exactly as in memory)
  * - Optional validity filter in SQL through withAsOf(); without it the rows arrive with their
  *   dates and the in-memory contract decides (only when `reference_date` is given)
  * - `findDocumentRules()` joins group and requirement by `group_id`; both must be active
@@ -46,17 +47,19 @@ use PDOStatement;
  *   A canonical column shared by several tables (`id`, `code`, `scope`, `scenario`, `sort_order`,
  *   `condition_expression`, `active`) maps to the same real name in all of them
  * - Presets for the Portuguese schema of 1.5.0/1.6.x (`regra_negocio`, `grupo_documento_obrigatorio`,
- *   `grupo_documento_obrigatorio_tipo`): legacyPortugueseTables() and legacyPortugueseColumns(), so
- *   existing tables stay readable without migration
+ *   `grupo_documento_obrigatorio_tipo`): legacyPortugueseTables() and legacyPortugueseColumns() map the
+ *   table and column NAMES, so those tables are read without renaming them; their action VALUES must
+ *   be English since 2.0.0 (`bloquear`, `alertar`, `apenas_log` are refused; UPDATE in UPGRADE-2.0.md)
  * - No cache: a caching decorator wraps the catalog when needed
  *
  * Applicability lives in the columns `product_code`, `plan_code`, `valid_from`, `valid_until`: entries
- * under those four keys (or their legacy Portuguese names) inside the `parameters` JSON are dropped on
- * hydration, so that the SQL narrowing and the in-memory contract always read the same values.
+ * under those four keys (or their Portuguese names of 1.6.x) inside the `parameters` JSON are dropped on
+ * hydration, as they always were, so that the SQL narrowing and the in-memory contract always read the
+ * same values (they never restricted anything in this catalog, in either language).
  * Date columns must come back as ISO dates (`YYYY-MM-DD`), which is the default of every PDO driver
  * except Oracle (set `NLS_DATE_FORMAT` there).
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -73,8 +76,8 @@ class PdoRuleCatalog implements IRuleCatalog
     ];
 
     /**
-     * Portuguese role names of 1.5.0/1.6.x accepted as keys of `$tables` (legacy => canonical);
-     * removed in 2.0.0. The canonical role wins when both are given.
+     * Portuguese role names of 1.5.0/1.6.x (legacy => canonical), accepted as keys of `$tables` up to
+     * 1.14.x; refused since 2.0.0 (LegacyVocabularyException): use `rule`, `group`, `requirement`.
      */
     public const LEGACY_TABLE_ROLES = [
         'regra' => 'rule',
@@ -115,12 +118,13 @@ class PdoRuleCatalog implements IRuleCatalog
     /**
      * @param PDO $pdo Connection to the database holding the catalog (its error mode is left untouched)
      * @param string $schema Optional schema (or database) qualifying every table; '' = unqualified
-     * @param array<string, string> $tables Table names by role (`rule`, `group`, `requirement`; legacy
-     *                                      `regra`, `grupo`, `grupo_tipo`); missing roles keep the default
+     * @param array<string, string> $tables Table names by role (`rule`, `group`, `requirement`); missing
+     *                                      roles keep the default
      * @param array<string, string> $columns Real column names by canonical column; missing columns keep
      *                                       the canonical name (see legacyPortugueseColumns())
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
+     * @throws LegacyVocabularyException When a role is one of the Portuguese roles of 1.x
      */
     public function __construct(
         private readonly PDO $pdo,
@@ -132,20 +136,18 @@ class PdoRuleCatalog implements IRuleCatalog
             throw new InvalidArgumentException(sprintf('Rule catalog schema "%s" is not a plain SQL identifier.', $schema));
         }
 
+        LegacyVocabularyException::assertNoLegacyKeys($tables, self::LEGACY_TABLE_ROLES, 'rule catalog table role');
+
         $byRole = [];
         foreach ($tables as $role => $name) {
-            $canonical = self::LEGACY_TABLE_ROLES[$role] ?? $role;
-            if (!array_key_exists($canonical, self::DEFAULT_TABLES)) {
+            if (!array_key_exists($role, self::DEFAULT_TABLES)) {
                 throw new InvalidArgumentException(sprintf(
                     'Unknown rule catalog table role "%s". Expected: %s.',
                     (string) $role,
                     implode(', ', array_keys(self::DEFAULT_TABLES))
                 ));
             }
-            // The canonical role wins over its legacy synonym.
-            if ($canonical === $role || !array_key_exists($canonical, $tables)) {
-                $byRole[$canonical] = $name;
-            }
+            $byRole[$role] = $name;
         }
 
         $resolved = [];
@@ -204,8 +206,9 @@ class PdoRuleCatalog implements IRuleCatalog
 
     /**
      * Column names of the Portuguese schema read by 1.5.0/1.6.x, by canonical column (columns whose
-     * name did not change, `id` and `active`, are omitted). The legacy action values (`bloquear`,
-     * `alertar`, `apenas_log`) stored in such tables are read by RuleAction::fromOrDefault().
+     * name did not change, `id` and `active`, are omitted). The preset maps names only: the action
+     * values stored in such tables must be English since 2.0.0 (`bloquear`, `alertar`, `apenas_log` are
+     * refused with LegacyVocabularyException; UPGRADE-2.0.md has the UPDATE, constraint included).
      *
      * @return array<string, string>
      */

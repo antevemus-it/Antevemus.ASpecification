@@ -14,6 +14,7 @@ use Antevemus\ASpecification\Engine\DocumentRequirementMode;
 use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
 use Antevemus\ASpecification\Engine\DynamicSpecificationEngine;
 use Antevemus\ASpecification\Engine\Exceptions\InvalidConditionalExpressionException;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\MissingAlternativeSetException;
 use Antevemus\ASpecification\Engine\Exceptions\MissingRuleHandlerException;
 use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
@@ -54,10 +55,11 @@ final class Module11Contract
  * de requisitos documentais (ALL, ANY, ONE_OF_SET), a triagem operacional de vereditos (RuleEngineVerdict)
  * e o isolamento de handlers plugáveis.
  *
- * Forward 022 (1.7.0): vocabulário canônico em inglês; o português segue como legado onde o PHP
- * permite (getters depreciados nas classes, chaves do fromArray, valores de RuleAction, filtros).
+ * Forward 022 (1.7.0): vocabulário canônico em inglês. Forward 033 D10 (2.0.0): o português, que
+ * seguiu como legado da 1.7.0 à 1.14.x, é recusado (getters removidos; chaves, valores e filtros em
+ * português lançam LegacyVocabularyException apontando o UPGRADE-2.0.md).
  *
- * @version    1.11.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -113,12 +115,13 @@ class Module11_DynamicRuleEngineTest extends TestCase
         // Forward 019 RN-11 (1.6.0): RuleCompilationWarning no modo de validação do catálogo.
         $this->testCatalogValidationWarnsDegenerateRules();
 
-        // Forward 022 (1.7.0): inglês canônico, português como legado.
+        // Forward 022 (1.7.0): inglês canônico. Forward 033 D10 (2.0.0): o português, legado até a
+        // 1.14.x, é recusado com LegacyVocabularyException apontando o UPGRADE-2.0.md.
         $this->testEnglishVocabularyIsCanonical();
-        $this->testPortugueseGettersAreDeprecatedAliases();
-        $this->testFromArrayAcceptsPortugueseKeysAndEnglishWins();
-        $this->testRuleActionReadsPortugueseValues();
-        $this->testPortugueseFilterAndRestrictionKeysAreStillRead();
+        $this->testPortugueseGettersWereRemoved();
+        $this->testFromArrayRefusesPortugueseKeys();
+        $this->testRuleActionRefusesPortugueseValues();
+        $this->testPortugueseFilterAndRestrictionKeysAreRefused();
         $this->testFailureMetadataAndDocumentPathsAreEnglish();
     }
 
@@ -160,51 +163,45 @@ class Module11_DynamicRuleEngineTest extends TestCase
     }
 
     /**
-     * Forward 022 RN-02 (D1 a): os getters em português continuam nas classes concretas, delegam ao
-     * inglês e são @deprecated (removidos na 2.0.0).
+     * Forward 033 D10 (2.0.0): os getters em português, depreciados na 1.7.0, saíram das classes.
      */
-    private function testPortugueseGettersAreDeprecatedAliases(): void
+    private function testPortugueseGettersWereRemoved(): void
     {
-        $rule = new RuleDefinition(
-            code: 'R1', name: 'Regra', ruleType: 't', violationAction: RuleAction::WARN, description: 'd',
-            intValue: 3, decimalValue: 1.5, textValue: 'x', legalBasis: 'Art. 1', violationMessage: 'm',
-            conditionExpression: 'a=b', priority: 7, scope: 'contrato', scenario: 'ativacao', parameters: ['k' => 1]
-        );
-        $pairs = [
-            'getCodigo' => 'getCode', 'getNome' => 'getName', 'getDescricao' => 'getDescription', 'getTipoRegra' => 'getRuleType',
-            'getAcaoAoViolar' => 'getViolationAction', 'getValorInteiro' => 'getIntValue', 'getValorDecimal' => 'getDecimalValue',
-            'getValorTexto' => 'getTextValue', 'getFundamentoLegal' => 'getLegalBasis', 'getMensagemViolacao' => 'getViolationMessage',
-            'getCondicionalExpressao' => 'getConditionExpression', 'getPrioridade' => 'getPriority', 'getEscopo' => 'getScope',
-            'getCenario' => 'getScenario', 'getParametros' => 'getParameters',
+        $removed = [
+            RuleDefinition::class => ['getCodigo', 'getNome', 'getDescricao', 'getTipoRegra', 'getAcaoAoViolar', 'getValorInteiro',
+                'getValorDecimal', 'getValorTexto', 'getFundamentoLegal', 'getMensagemViolacao', 'getCondicionalExpressao',
+                'getPrioridade', 'getEscopo', 'getCenario', 'getParametros'],
+            DocumentRuleDefinition::class => ['getGrupoCodigo', 'getCodigoTipoDocumento', 'getEscopo', 'getCenario',
+                'getRegraObrigatoriedade', 'getCodigoSetAlternativas', 'getCondicionalExpressao', 'getOrdem'],
         ];
-        foreach ($pairs as $legacy => $english) {
-            $this->assertEquals($rule->{$english}(), $rule->{$legacy}(), "RuleDefinition::{$legacy}() delega a {$english}()");
-            $doc = (string) (new \ReflectionMethod(RuleDefinition::class, $legacy))->getDocComment();
-            $this->assertTrue(str_contains($doc, '@deprecated 1.7.0') && str_contains($doc, "use {$english}()"), "{$legacy}() é @deprecated 1.7.0");
-        }
-
-        $doc = new DocumentRuleDefinition(
-            groupCode: 'g', documentTypeCode: 'rg', scope: 'contrato', requirementMode: DocumentRequirementMode::ANY,
-            alternativeSetCode: 'id', conditionExpression: 'a=b', sortOrder: 4, scenario: 'ativacao'
-        );
-        $docPairs = [
-            'getGrupoCodigo' => 'getGroupCode', 'getCodigoTipoDocumento' => 'getDocumentTypeCode', 'getEscopo' => 'getScope',
-            'getCenario' => 'getScenario', 'getRegraObrigatoriedade' => 'getRequirementMode',
-            'getCodigoSetAlternativas' => 'getAlternativeSetCode', 'getCondicionalExpressao' => 'getConditionExpression',
-            'getOrdem' => 'getSortOrder',
-        ];
-        foreach ($docPairs as $legacy => $english) {
-            $this->assertEquals($doc->{$english}(), $doc->{$legacy}(), "DocumentRuleDefinition::{$legacy}() delega a {$english}()");
-            $comment = (string) (new \ReflectionMethod(DocumentRuleDefinition::class, $legacy))->getDocComment();
-            $this->assertTrue(str_contains($comment, '@deprecated 1.7.0') && str_contains($comment, "use {$english}()"), "{$legacy}() é @deprecated 1.7.0");
+        foreach ($removed as $class => $methods) {
+            foreach ($methods as $method) {
+                $this->assertFalse(method_exists($class, $method), "{$class}::{$method}() foi removido na 2.0.0");
+            }
         }
     }
 
     /**
-     * Forward 022 RN-04 (D3 a): fromArray() aceita as chaves em português (inclusive os sinônimos),
-     * sem aviso em runtime, e o inglês vence quando as duas vêm.
+     * Confere uma recusa do vocabulário em português: a exceção certa, o nome em português, o
+     * substituto em inglês e o guia de atualização na mensagem.
      */
-    private function testFromArrayAcceptsPortugueseKeysAndEnglishWins(): void
+    private function assertLegacyRefused(\Closure $call, string $legacy, string $replacement, string $label): LegacyVocabularyException
+    {
+        $e = $this->assertThrows(LegacyVocabularyException::class, $call, "{$label}: deveria recusar \"{$legacy}\"");
+        $this->assertEquals($legacy, $e->legacy, "{$label}: nome recusado");
+        $this->assertEquals($replacement, $e->replacement, "{$label}: substituto em inglês");
+        $this->assertTrue(str_contains($e->getMessage(), 'UPGRADE-2.0.md') && str_contains($e->getMessage(), "\"{$legacy}\""), "{$label}: " . $e->getMessage());
+        $this->assertTrue($e instanceof RuleEngineException, "{$label}: é uma RuleEngineException");
+
+        return $e;
+    }
+
+    /**
+     * Forward 033 D10: fromArray() recusa cada chave em português (sinônimos inclusive), mesmo com a
+     * inglesa ao lado, e as chaves de aplicabilidade em português dentro de parameters; o inglês
+     * continua hidratando como antes. Nunca ignora em silêncio.
+     */
+    private function testFromArrayRefusesPortugueseKeys(): void
     {
         $english = RuleDefinition::fromArray([
             'code' => 'R1', 'name' => 'Regra', 'description' => 'd', 'rule_type' => 't', 'violation_action' => 'warn',
@@ -213,71 +210,40 @@ class Module11_DynamicRuleEngineTest extends TestCase
             'scenario' => 'ativacao', 'parameters' => ['k' => 1], 'active' => 'Y',
             'product_code' => 'A', 'plan_code' => 'P1', 'valid_from' => '2026-01-01', 'valid_until' => '2026-12-31',
         ]);
-        $portuguese = RuleDefinition::fromArray([
-            'codigo' => 'R1', 'nome' => 'Regra', 'descricao' => 'd', 'tipo_regra' => 't', 'acao_ao_violar' => 'alertar',
-            'valor_inteiro' => '3', 'valor_decimal' => '1.5', 'valor_texto' => 'x', 'fundamento_legal' => 'Art. 1',
-            'mensagem_violacao' => 'm', 'condicional_expressao' => 'a=b', 'prioridade' => 7, 'escopo' => 'contrato',
-            'cenario' => 'ativacao', 'parametros' => ['k' => 1], 'ativo' => 'Y',
-            'codigo_produto' => 'A', 'codigo_plano' => 'P1', 'data_inicio_vigencia' => '2026-01-01', 'data_fim_vigencia' => '2026-12-31',
-        ]);
-        $this->assertTrue($english == $portuguese, 'as chaves em português hidratam a mesma definição');
+        $this->assertEquals(RuleAction::WARN, $english->getViolationAction());
         $this->assertEquals(
             ['k' => 1, 'product_code' => 'A', 'plan_code' => 'P1', 'valid_from' => '2026-01-01', 'valid_until' => '2026-12-31'],
-            $portuguese->getParameters(),
-            'colunas de aplicabilidade em português entram em parameters sob a chave em inglês'
+            $english->getParameters()
         );
 
-        $synonyms = RuleDefinition::fromArray(['codigo' => 'R2', 'nome' => 'n', 'tipo' => 'tipo_curto', 'acao' => 'apenas_log', 'ativo' => 'N']);
-        $this->assertEquals('tipo_curto', $synonyms->getRuleType());
-        $this->assertEquals(RuleAction::LOG, $synonyms->getViolationAction());
-        $this->assertFalse($synonyms->isActive());
+        $base = ['code' => 'R1', 'name' => 'n', 'rule_type' => 't'];
+        $legacyRuleKeys = RuleDefinition::LEGACY_KEYS + array_flip(RuleDefinition::LEGACY_APPLICABILITY_COLUMNS);
+        $this->assertCount(22, $legacyRuleKeys, 'as 22 chaves portuguesas da regra (sinônimos inclusive)');
+        foreach ($legacyRuleKeys as $legacy => $replacement) {
+            $e = $this->assertLegacyRefused(fn() => RuleDefinition::fromArray($base + [$legacy => 'x']), $legacy, $replacement, "regra[{$legacy}]");
+            $this->assertTrue(str_contains($e->getMessage(), 'catalog row "R1"'), 'a mensagem nomeia a linha');
+            // Mesmo com a chave em inglês presente (até a 1.14 o inglês vencia e o português era ignorado)
+            $this->assertLegacyRefused(fn() => RuleDefinition::fromArray($base + [$replacement => 'y', $legacy => 'x']), $legacy, $replacement, "regra[{$legacy}] com o inglês");
+        }
+        foreach (RuleDefinition::LEGACY_APPLICABILITY_COLUMNS as $replacement => $legacy) {
+            $this->assertLegacyRefused(fn() => RuleDefinition::fromArray($base + ['parameters' => [$legacy => 'A']]), $legacy, $replacement, "parameters[{$legacy}]");
+        }
 
-        $both = RuleDefinition::fromArray([
-            'code' => 'EN', 'codigo' => 'PT', 'name' => 'en', 'nome' => 'pt', 'rule_type' => 'en_t', 'tipo_regra' => 'pt_t',
-            'violation_action' => 'log', 'acao_ao_violar' => 'bloquear', 'scope' => 'en_scope', 'escopo' => 'pt_scope',
-            'priority' => 1, 'prioridade' => 9, 'product_code' => 'EN_P', 'codigo_produto' => 'PT_P', 'active' => 'Y', 'ativo' => 'N',
-        ]);
-        $this->assertEquals(['EN', 'en', 'en_t', RuleAction::LOG, 'en_scope', 1, ['product_code' => 'EN_P'], true], [
-            $both->getCode(), $both->getName(), $both->getRuleType(), $both->getViolationAction(), $both->getScope(),
-            $both->getPriority(), $both->getParameters(), $both->isActive(),
-        ], 'com as duas chaves, o inglês vence');
+        $docBase = ['group_code' => 'g', 'document_type_code' => 'rg', 'scope' => 'contrato'];
+        $this->assertEquals('g', DocumentRuleDefinition::fromArray($docBase)->getGroupCode());
+        $this->assertCount(14, DocumentRuleDefinition::LEGACY_KEYS);
+        foreach (DocumentRuleDefinition::LEGACY_KEYS as $legacy => $replacement) {
+            $this->assertLegacyRefused(fn() => DocumentRuleDefinition::fromArray($docBase + [$legacy => 'x']), $legacy, $replacement, "documento[{$legacy}]");
+        }
 
-        $docEnglish = DocumentRuleDefinition::fromArray([
-            'group_code' => 'g', 'document_type_code' => 'rg', 'scope' => 'contrato', 'scenario' => 'ativacao',
-            'requirement_mode' => 'one_of_set', 'alternative_set_code' => 'id', 'condition_expression' => 'a=b',
-            'sort_order' => 4, 'active' => 'Y',
-        ]);
-        $docPortuguese = DocumentRuleDefinition::fromArray([
-            'grupo_codigo' => 'g', 'codigo_tipo_documento' => 'rg', 'escopo' => 'contrato', 'cenario' => 'ativacao',
-            'regra_obrigatoriedade' => 'one_of_set', 'codigo_set_alternativas' => 'id', 'condicional_expressao' => 'a=b',
-            'ordem' => 4, 'ativo' => 'Y',
-        ]);
-        $docSynonyms = DocumentRuleDefinition::fromArray([
-            'grupo' => 'g', 'tipo_documento' => 'rg', 'escopo' => 'contrato', 'cenario' => 'ativacao',
-            'regra' => 'one_of_set', 'set_alt' => 'id', 'condicional' => 'a=b', 'ordem' => 4,
-        ]);
-        $this->assertTrue($docEnglish == $docPortuguese, 'documento: chaves em português hidratam o mesmo requisito');
-        $this->assertTrue($docEnglish == $docSynonyms, 'documento: sinônimos curtos (grupo, tipo_documento, regra, set_alt, condicional)');
-
-        $docBoth = DocumentRuleDefinition::fromArray([
-            'group_code' => 'en_g', 'grupo_codigo' => 'pt_g', 'document_type_code' => 'en_doc', 'codigo_tipo_documento' => 'pt_doc',
-            'scope' => 'en_scope', 'escopo' => 'pt_scope', 'sort_order' => 1, 'ordem' => 9,
-            'alternative_set_code' => 'en_set', 'set_alt' => 'pt_set', 'requirement_mode' => 'any', 'regra_obrigatoriedade' => 'all',
-        ]);
-        $this->assertEquals(['en_g', 'en_doc', 'en_scope', 1, 'en_set', DocumentRequirementMode::ANY], [
-            $docBoth->getGroupCode(), $docBoth->getDocumentTypeCode(), $docBoth->getScope(), $docBoth->getSortOrder(),
-            $docBoth->getAlternativeSetCode(), $docBoth->getRequirementMode(),
-        ], 'documento: com as duas chaves, o inglês vence');
-
-        // Sem aviso em runtime para chave em português (dado de banco não é código).
+        // Sem aviso em runtime: a recusa é exceção, não notice.
         $notices = [];
         set_error_handler(static function (int $errno, string $message) use (&$notices): bool {
             $notices[] = $message;
             return true;
         });
         try {
-            RuleDefinition::fromArray(['codigo' => 'R3', 'nome' => 'n', 'tipo_regra' => 't', 'acao_ao_violar' => 'bloquear']);
-            DocumentRuleDefinition::fromArray(['grupo_codigo' => 'g', 'codigo_tipo_documento' => 'rg', 'escopo' => 'x']);
+            RuleDefinition::fromArray($base);
         } finally {
             restore_error_handler();
         }
@@ -285,11 +251,12 @@ class Module11_DynamicRuleEngineTest extends TestCase
     }
 
     /**
-     * Forward 022 RN-05: valores em inglês; fromOrDefault() e a triagem do veredito leem os valores em português.
+     * Forward 033 D10: chaves de metadado só em inglês; o handler que grava `acao` é recusado, o
+     * caminho e as chaves da falha de documento são ingleses, e o portador de documentos em português
+     * (->documentos, ['documentos'], hasDocumento(), getDocumentos()) é recusado, não lido como vazio.
      */
     private function testFailureMetadataAndDocumentPathsAreEnglish(): void
     {
-        // Regra de catálogo: chaves em inglês canônicas, português duplicado como legado.
         $catalog = new InMemoryRuleCatalog();
         $catalog->addRule(new RuleDefinition(code: 'R-EN', name: 'Idade mínima', ruleType: 'min_age', violationAction: RuleAction::WARN, legalBasis: 'Lei X', scope: 's'));
         $registry = Spec::ruleRegistry()->registerClosure('min_age', fn() => Spec::property('age', Spec::greaterThanOrEqualTo(18)));
@@ -298,68 +265,127 @@ class Module11_DynamicRuleEngineTest extends TestCase
         foreach (['action' => 'warn', 'rule_code' => 'R-EN', 'rule_type' => 'min_age', 'rule_name' => 'Idade mínima', 'legal_basis' => 'Lei X'] as $key => $value) {
             $this->assertEquals($value, $failure->metadata[$key] ?? null, "metadata[{$key}]");
         }
-        $this->assertEquals('warn', $failure->metadata['acao'] ?? null, 'chave portuguesa mantida como legado');
         $this->assertTrue(array_key_exists('original_message', $failure->metadata), 'original_message');
+        $this->assertTrue(array_key_exists('original_messages', $failure->metadata) && array_key_exists('original_failures', $failure->metadata));
+        foreach (['acao', 'regra', 'tipo_regra', 'nome_regra', 'prioridade', 'mensagem_original', 'fundamento_legal', 'mensagens_originais', 'falhas_originais'] as $legacy) {
+            $this->assertFalse(array_key_exists($legacy, $failure->metadata), "a duplicata portuguesa {$legacy} saiu na 2.0.0");
+        }
 
-        // Documento: caminho em inglês, chaves em inglês e português legado; avaliador lê 'documents' e 'documentos'.
+        // Handler que ainda grava a ação ou o fundamento em português: recusado, não triado pela ação da regra
+        foreach ([['acao', 'action', ['acao' => 'warn']], ['acao_ao_violar', 'violation_action', ['acao_ao_violar' => 'warn']], ['alertar', 'warn', ['action' => 'alertar']]] as [$legacy, $replacement, $metadata]) {
+            $handlerRegistry = Spec::ruleRegistry()->registerClosure('min_age', fn() => new class ($metadata) extends AbstractSpecification {
+                /** @param array<string, mixed> $metadata */
+                public function __construct(private readonly array $metadata) {}
+                public function getType(): string { return 'mixed'; }
+                public function isSatisfiedBy(mixed $c): bool { return false; }
+                public function evaluate(mixed $c): SpecificationResult { return SpecificationResult::failure('handler', 'H', metadata: $this->metadata); }
+            });
+            $this->assertLegacyRefused(fn() => Spec::engine($catalog, $handlerRegistry)->validate((object) ['age' => 16], 's'), $legacy, $replacement, "handler {$legacy}");
+        }
+
         $doc = new DocumentRuleDefinition(groupCode: 'G', scope: 's', documentTypeCode: 'rg', requirementMode: DocumentRequirementMode::ALL);
         $docCatalog = new InMemoryRuleCatalog();
         $docCatalog->addDocumentRule($doc);
         $engine = Spec::engine($docCatalog);
         $docFailure = $engine->validate((object) ['documents' => []], 's')->getBlockingFailures()[0];
         $this->assertEquals('documents.rg', $docFailure->property, 'caminho da falha de documento em inglês');
-        $this->assertEquals('rg', $docFailure->metadata['document_type'] ?? null, 'document_type');
-        $this->assertEquals('G', $docFailure->metadata['group_code'] ?? null, 'group_code');
-        $this->assertEquals('rg', $docFailure->metadata['tipo_documento'] ?? null, 'tipo_documento legado');
+        $this->assertEquals(['action' => 'block', 'document_type' => 'rg', 'group_code' => 'G', 'requirement_mode' => 'all'], $docFailure->metadata, 'só as chaves em inglês');
         $this->assertTrue($engine->validate((object) ['documents' => ['rg']], 's')->isSatisfied(), "presença lida de ->documents");
         $this->assertTrue($engine->validate(['documents' => ['rg']], 's')->isSatisfied(), "presença lida de ['documents']");
-        $this->assertTrue($engine->validate((object) ['documentos' => ['rg']], 's')->isSatisfied(), 'presença lida de ->documentos (legado)');
+
+        $holders = [
+            'documentos' => [(object) ['documentos' => ['rg']], 'documents'],
+            "['documentos']" => [['documentos' => ['rg']], 'documents'],
+            'hasDocumento()' => [new class { public function hasDocumento(string $t): bool { return true; } }, 'hasDocument()'],
+            'getDocumentos()' => [new class { public function getDocumentos(): array { return ['rg']; } }, 'getDocuments()'],
+        ];
+        foreach ($holders as $label => [$holder, $replacement]) {
+            $legacy = $label === "['documentos']" ? 'documentos' : $label;
+            $verdict = $engine->validate($holder, 's');
+            $this->assertTrue($verdict->hasEvaluationErrors(), "portador {$label}: erro de avaliação (bloqueia), nunca \"documento ausente\" em silêncio");
+            $this->assertLegacyRefused(fn() => (new DocumentGroupSpecificationBuilder())->build([$doc])->isSatisfiedBy($holder), $legacy, $replacement, "portador {$label}");
+        }
+        $sets = new DocumentRuleDefinition(groupCode: 'G', scope: 's', documentTypeCode: 'rg', requirementMode: DocumentRequirementMode::ANY, alternativeSetCode: 'id');
+        $setFailure = (new DocumentGroupSpecificationBuilder())->build([$sets])->evaluate((object) ['documents' => []])->failures[0];
+        $this->assertEquals(['action', 'alternative_set', 'mode', 'accepted_documents', 'codes', 'present', 'expected', 'received'], array_keys($setFailure->metadata), 'set: só as chaves em inglês');
     }
 
-    private function testRuleActionReadsPortugueseValues(): void
+    /**
+     * Forward 033 D10: os valores de RuleAction em português são recusados (inclusive em caixa e espaço
+     * diferentes), em fromOrDefault(), em fromMetadata() e na triagem do veredito; valor desconhecido
+     * continua caindo no padrão.
+     */
+    private function testRuleActionRefusesPortugueseValues(): void
     {
-        $this->assertEquals('block', RuleAction::BLOCK->value);
-        $this->assertEquals('warn', RuleAction::WARN->value);
-        $this->assertEquals('log', RuleAction::LOG->value);
-
-        $this->assertEquals(RuleAction::BLOCK, RuleAction::fromOrDefault('bloquear', RuleAction::LOG));
-        $this->assertEquals(RuleAction::WARN, RuleAction::fromOrDefault('alertar'));
-        $this->assertEquals(RuleAction::LOG, RuleAction::fromOrDefault(' APENAS_LOG '));
+        $this->assertEquals(['block', 'warn', 'log'], array_map(static fn(RuleAction $a): string => $a->value, RuleAction::cases()));
         $this->assertEquals(RuleAction::WARN, RuleAction::fromOrDefault('WARN'));
-        $this->assertTrue(RuleAction::tryFrom('bloquear') === null, 'o português não é valor do enum, só alias de leitura');
-        $this->assertEquals(FailureSeverity::WARNING, RuleAction::fromOrDefault('alertar')->toSeverity(), 'toSeverity() inalterado');
+        $this->assertEquals(RuleAction::LOG, RuleAction::fromOrDefault(' log '));
+        $this->assertEquals(RuleAction::LOG, RuleAction::fromOrDefault('desconhecido', RuleAction::LOG), 'valor desconhecido cai no padrão, como antes');
+        $this->assertEquals(RuleAction::BLOCK, RuleAction::fromOrDefault(null));
 
+        foreach (['bloquear' => 'block', 'alertar' => 'warn', ' APENAS_LOG ' => 'log', 'Alertar' => 'warn'] as $legacy => $replacement) {
+            $this->assertLegacyRefused(fn() => RuleAction::fromOrDefault($legacy, RuleAction::LOG), $legacy, $replacement, "fromOrDefault({$legacy})");
+        }
+        $this->assertLegacyRefused(fn() => RuleDefinition::fromArray(['code' => 'R', 'name' => 'n', 'rule_type' => 't', 'violation_action' => 'alertar']), 'alertar', 'warn', 'coluna violation_action');
+
+        $this->assertEquals(RuleAction::WARN, RuleAction::fromMetadata(['action' => 'warn']));
+        $this->assertEquals(RuleAction::LOG, RuleAction::fromMetadata(['violation_action' => RuleAction::LOG]));
+        $this->assertEquals(RuleAction::WARN, RuleAction::fromMetadata([], RuleAction::WARN));
+        $this->assertLegacyRefused(fn() => RuleAction::fromMetadata(['acao' => 'warn']), 'acao', 'action', 'metadado acao');
+
+        foreach ([[['acao' => 'warn'], 'acao', 'action'], [['action' => 'apenas_log'], 'apenas_log', 'log'], [['fundamento_legal' => 'Lei X'], 'fundamento_legal', 'legal_basis']] as [$metadata, $legacy, $replacement]) {
+            $this->assertLegacyRefused(
+                fn() => RuleEngineVerdict::fromSpecificationResult(SpecificationResult::failure('a', 'A', metadata: $metadata)),
+                $legacy,
+                $replacement,
+                'veredito ' . json_encode($metadata)
+            );
+        }
         $verdict = RuleEngineVerdict::fromSpecificationResult(SpecificationResult::combine(
-            SpecificationResult::failure('a', 'A', metadata: ['acao' => 'alertar']),
-            SpecificationResult::failure('b', 'B', metadata: ['acao' => 'apenas_log']),
-            SpecificationResult::failure('c', 'C', metadata: ['acao' => 'bloquear'])
+            SpecificationResult::failure('a', 'A', metadata: ['action' => 'warn', 'legal_basis' => 'Lei X']),
+            SpecificationResult::failure('b', 'B', metadata: ['action' => 'log']),
+            SpecificationResult::failure('c', 'C', metadata: ['action' => 'block'])
         ));
         $this->assertEquals([['A'], ['B'], ['C']], [
             array_map(static fn(SpecificationFailure $f): ?string => $f->code, $verdict->getWarningFailures()),
             array_map(static fn(SpecificationFailure $f): ?string => $f->code, $verdict->getLogFailures()),
             array_map(static fn(SpecificationFailure $f): ?string => $f->code, $verdict->getBlockingFailures()),
-        ], 'metadata gravada com a ação em português é triada como antes');
+        ], 'triagem pelos valores em inglês');
+        $this->assertEquals(['Lei X'], $verdict->getLegalBases());
     }
 
     /**
-     * Forward 022 RN-04: os filtros de contexto (codigo_produto, codigo_plano, data_referencia) e as
-     * restrições gravadas em parameters com as chaves em português (implementação externa de
-     * IRuleDefinition) continuam lidos; o inglês vence quando os dois vêm.
+     * Forward 033 D10: as chaves de filtro (contexto) em português e as restrições em português dentro
+     * de parameters (regra montada em código) são recusadas, mesmo sem nenhuma regra que as leria; o
+     * inglês continua filtrando como antes.
      */
-    private function testPortugueseFilterAndRestrictionKeysAreStillRead(): void
+    private function testPortugueseFilterAndRestrictionKeysAreRefused(): void
     {
         $catalog = new InMemoryRuleCatalog();
         $catalog->addRule(new RuleDefinition(code: 'R_GLOBAL', name: 'g', ruleType: 't', scope: 'contrato', priority: 1));
         $catalog->addRule(new RuleDefinition(code: 'R_EN', name: 'en', ruleType: 't', scope: 'contrato', priority: 2,
             parameters: ['product_code' => 'A', 'valid_until' => '2026-06-30']));
-        $catalog->addRule(new RuleDefinition(code: 'R_PT', name: 'pt', ruleType: 't', scope: 'contrato', priority: 3,
-            parameters: ['codigo_produto' => 'A', 'data_fim_vigencia' => '2026-06-30']));
-        $codes = fn(array $filters) => array_map(fn($r) => $r->getCode(), $catalog->findRules('contrato', null, $filters));
+        $codes = fn(InMemoryRuleCatalog $c, array $filters) => array_map(fn($r) => $r->getCode(), $c->findRules('contrato', null, $filters));
 
-        $this->assertEquals(['R_PT', 'R_EN', 'R_GLOBAL'], $codes(['product_code' => 'A']));
-        $this->assertEquals(['R_PT', 'R_EN', 'R_GLOBAL'], $codes(['codigo_produto' => 'A']), 'filtro em português ainda é lido');
-        $this->assertEquals(['R_GLOBAL'], $codes(['codigo_produto' => 'A', 'data_referencia' => '2026-07-01']), 'data_referencia ainda é lida');
-        $this->assertEquals(['R_GLOBAL'], $codes(['product_code' => 'B', 'codigo_produto' => 'A']), 'com as duas chaves, o inglês vence');
+        $this->assertEquals(['R_EN', 'R_GLOBAL'], $codes($catalog, ['product_code' => 'A']));
+        $this->assertEquals(['R_GLOBAL'], $codes($catalog, ['product_code' => 'A', 'reference_date' => '2026-07-01']));
+        foreach (InMemoryRuleCatalog::LEGACY_FILTER_KEYS as $replacement => $legacy) {
+            $this->assertLegacyRefused(fn() => $codes($catalog, [$legacy => 'A']), $legacy, $replacement, "filtro {$legacy}");
+            $this->assertLegacyRefused(fn() => $codes($catalog, [$replacement => 'A', $legacy => 'A']), $legacy, $replacement, "filtro {$legacy} com o inglês");
+            $this->assertLegacyRefused(fn() => $codes(new InMemoryRuleCatalog(), [$legacy => 'A']), $legacy, $replacement, "filtro {$legacy} sem regras");
+        }
+        $this->assertLegacyRefused(
+            fn() => Spec::engine($catalog, Spec::ruleRegistry()->registerClosure('t', fn() => Spec::alwaysTrue()))->validate(new stdClass(), 'contrato', null, ['codigo_produto' => 'A']),
+            'codigo_produto',
+            'product_code',
+            'contexto do validate()'
+        );
+
+        $withLegacy = new InMemoryRuleCatalog([new RuleDefinition(code: 'R_PT', name: 'pt', ruleType: 't', scope: 'contrato',
+            parameters: ['codigo_produto' => 'A'])]);
+        $e = $this->assertLegacyRefused(fn() => $codes($withLegacy, ['product_code' => 'A']), 'codigo_produto', 'product_code', 'restrição em parameters');
+        $this->assertTrue(str_contains($e->getMessage(), 'rule "R_PT"'), 'nomeia a regra');
+
         $this->assertEquals('product_code', InMemoryRuleCatalog::FILTER_PRODUCT);
         $this->assertEquals('reference_date', InMemoryRuleCatalog::FILTER_REFERENCE_DATE);
         $this->assertEquals(['product_code', 'plan_code', 'valid_from', 'valid_until'], RuleDefinition::APPLICABILITY_COLUMNS);
@@ -524,10 +550,10 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         $failure = $verdict->getWarningFailures()[0];
         $this->assertEquals('Comprovante de residência vencido.', $failure->message);
-        $this->assertEquals('warn', $failure->metadata['acao']);
-        $this->assertEquals('comp_residencia_90', $failure->metadata['regra']);
-        $this->assertEquals('dias_maximos_comprovante', $failure->metadata['tipo_regra']);
-        $this->assertTrue(isset($failure->metadata['mensagem_original']), 'A mensagem técnica da folha fica preservada no metadata');
+        $this->assertEquals('warn', $failure->metadata['action']);
+        $this->assertEquals('comp_residencia_90', $failure->metadata['rule_code']);
+        $this->assertEquals('dias_maximos_comprovante', $failure->metadata['rule_type']);
+        $this->assertTrue(isset($failure->metadata['original_message']), 'A mensagem técnica da folha fica preservada no metadata');
 
         // Regra que passa continua passando (o carimbo só age sobre falhas).
         $ok = $engine->validate((object) ['diasCompResidencia' => 10], 'contrato_locacao');
@@ -560,7 +586,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
                     return SpecificationResult::failure(
                         'Mensagem do handler',
                         'CODIGO_DO_HANDLER',
-                        metadata: ['acao' => 'block', 'fundamento_legal' => 'Base do handler']
+                        metadata: ['action' => 'block', 'legal_basis' => 'Base do handler']
                     );
                 }
             };
@@ -575,7 +601,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $this->assertEquals('CODIGO_DO_HANDLER', $failure->code);
         $this->assertEquals(['Base do handler'], $verdict->getLegalBases());
         // O vínculo com a regra do catálogo continua rastreável.
-        $this->assertEquals('regra_warn', $failure->metadata['regra']);
+        $this->assertEquals('regra_warn', $failure->metadata['rule_code']);
     }
 
     /**
@@ -612,9 +638,9 @@ class Module11_DynamicRuleEngineTest extends TestCase
     private function testVerdictFailureCodesKeepAlignmentAndWarnOnlySemantics(): void
     {
         $result = SpecificationResult::combine(
-            SpecificationResult::failure('a', 'A', metadata: ['acao' => 'warn']),
-            SpecificationResult::failure('b', null, metadata: ['acao' => 'warn']),
-            SpecificationResult::failure('c', 'C', metadata: ['acao' => 'log'])
+            SpecificationResult::failure('a', 'A', metadata: ['action' => 'warn']),
+            SpecificationResult::failure('b', null, metadata: ['action' => 'warn']),
+            SpecificationResult::failure('c', 'C', metadata: ['action' => 'log'])
         );
         $verdict = RuleEngineVerdict::fromSpecificationResult($result);
 
@@ -696,20 +722,20 @@ class Module11_DynamicRuleEngineTest extends TestCase
         ]);
 
         // Pessoa física com holerite: só o holerite se aplica, 1 presente -> satisfeito
-        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => ['holerite']]));
+        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documents' => ['holerite']]));
         // Pessoa física sem nada: 0 presentes -> reprovado (antes aprovava, contando a condicional como presente)
-        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => []]));
+        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pf', 'documents' => []]));
         // Pessoa jurídica com os dois: 2 presentes -> reprovado
-        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documentos' => ['holerite', 'declaracao_ir']]));
+        $this->assertFalse($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documents' => ['holerite', 'declaracao_ir']]));
         // Pessoa jurídica só com declaração: 1 -> satisfeito
-        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documentos' => ['declaracao_ir']]));
+        $this->assertTrue($spec->isSatisfiedBy((object) ['tipo' => 'pj', 'documents' => ['declaracao_ir']]));
 
         // Set em que nenhum documento se aplica: nada é exigido
         $specTodosCondicionais = $builder->build([
             new DocumentRuleDefinition('analise', 'a', 'contrato', DocumentRequirementMode::ONE_OF_SET, 's', 'tipo=pj'),
             new DocumentRuleDefinition('analise', 'b', 'contrato', DocumentRequirementMode::ONE_OF_SET, 's', 'tipo=pj'),
         ]);
-        $this->assertTrue($specTodosCondicionais->isSatisfiedBy((object) ['tipo' => 'pf', 'documentos' => []]));
+        $this->assertTrue($specTodosCondicionais->isSatisfiedBy((object) ['tipo' => 'pf', 'documents' => []]));
     }
 
     /**
@@ -737,7 +763,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // ALL sem set é a forma normal
         $spec = $builder->build([new DocumentRuleDefinition('ativacao', 'rg', 'contrato', DocumentRequirementMode::ALL)]);
-        $this->assertTrue($spec->isSatisfiedBy((object) ['documentos' => ['rg']]));
+        $this->assertTrue($spec->isSatisfiedBy((object) ['documents' => ['rg']]));
     }
 
     /**
@@ -779,14 +805,14 @@ class Module11_DynamicRuleEngineTest extends TestCase
             new DocumentRuleDefinition('ativacao', 'cnh', 'contrato', DocumentRequirementMode::ANY, 'identidade'),
         ]);
 
-        $result = $spec->evaluate((object) ['documentos' => []]);
+        $result = $spec->evaluate((object) ['documents' => []]);
         $this->assertFalse($result->isSatisfied);
         $this->assertCount(1, $result->failures, 'um requisito, uma falha');
         $failure = $result->failures[0];
         $this->assertEquals('DOC_SET_IDENTIDADE', $failure->code);
-        $this->assertEquals(['rg', 'cnh'], $failure->metadata['documentos_aceitos']);
-        $this->assertEquals(['DOC_RG', 'DOC_CNH'], $failure->metadata['codigos']);
-        $this->assertEquals('block', $failure->metadata['acao']);
+        $this->assertEquals(['rg', 'cnh'], $failure->metadata['accepted_documents']);
+        $this->assertEquals(['DOC_RG', 'DOC_CNH'], $failure->metadata['codes']);
+        $this->assertEquals('block', $failure->metadata['action']);
 
         $verdict = RuleEngineVerdict::fromSpecificationResult($result);
         $this->assertCount(1, $verdict->getBlockingFailures());
@@ -908,7 +934,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
                     if ($this->isSatisfiedBy($candidate)) {
                         return SpecificationResult::satisfied();
                     }
-                    return SpecificationResult::failure('Aluguel excede teto.', $this->rule->getCode(), metadata: ['acao' => 'block']);
+                    return SpecificationResult::failure('Aluguel excede teto.', $this->rule->getCode(), metadata: ['action' => 'block']);
                 }
             };
         });
@@ -971,7 +997,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // Cenário 1: Todos os obrigatórios + CNH presente (identidade satisfeita)
         $candidato1 = (object) [
-            'documentos' => ['cnpj_imobiliaria', 'contrato_assinado', 'cnh_locatario']
+            'documents' => ['cnpj_imobiliaria', 'contrato_assinado', 'cnh_locatario']
         ];
         $this->assertTrue($spec->isSatisfiedBy($candidato1));
         $verdict1 = $spec->evaluate($candidato1);
@@ -979,7 +1005,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // Cenário 2: Faltou contrato_assinado (falha de ALL)
         $candidato2 = (object) [
-            'documentos' => ['cnpj_imobiliaria', 'cnh_locatario']
+            'documents' => ['cnpj_imobiliaria', 'cnh_locatario']
         ];
         $this->assertFalse($spec->isSatisfiedBy($candidato2));
         $verdict2 = $spec->evaluate($candidato2);
@@ -988,7 +1014,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
 
         // Cenário 3: Faltou identidade (nem RG nem CNH)
         $candidato3 = (object) [
-            'documentos' => ['cnpj_imobiliaria', 'contrato_assinado']
+            'documents' => ['cnpj_imobiliaria', 'contrato_assinado']
         ];
         $this->assertFalse($spec->isSatisfiedBy($candidato3));
     }
@@ -1006,15 +1032,15 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $spec = $builder->build($docRules);
 
         // Apenas holerite -> Satisfeito (1 de 2)
-        $cand1 = (object) ['documentos' => ['holerite']];
+        $cand1 = (object) ['documents' => ['holerite']];
         $this->assertTrue($spec->isSatisfiedBy($cand1));
 
         // Ambos presentes -> Reprovado (2 de 2, violou exclusividade)
-        $cand2 = (object) ['documentos' => ['holerite', 'declaracao_ir']];
+        $cand2 = (object) ['documents' => ['holerite', 'declaracao_ir']];
         $this->assertFalse($spec->isSatisfiedBy($cand2));
 
         // Nenhum presente -> Reprovado (0 de 2)
-        $cand3 = (object) ['documentos' => []];
+        $cand3 = (object) ['documents' => []];
         $this->assertFalse($spec->isSatisfiedBy($cand3));
     }
 
@@ -1038,14 +1064,14 @@ class Module11_DynamicRuleEngineTest extends TestCase
         // Locação residencial tradicional sem declaração -> REPROVADO
         $candTradicional = (object) [
             'tipo_locacao' => 'residencial_urbano',
-            'documentos' => []
+            'documents' => []
         ];
         $this->assertFalse($spec->isSatisfiedBy($candTradicional));
 
         // Locação para temporada sem declaração -> APROVADO (condição dispensada)
         $candTemporada = (object) [
             'tipo_locacao' => 'residencial_temporada',
-            'documentos' => []
+            'documents' => []
         ];
         $this->assertTrue($spec->isSatisfiedBy($candTemporada));
     }
@@ -1155,8 +1181,8 @@ class Module11_DynamicRuleEngineTest extends TestCase
                         $this->r->getViolationMessage() ?? 'Dupla garantia detectada.',
                         $this->r->getCode(),
                         metadata: [
-                            'acao' => $this->r->getViolationAction()->value,
-                            'fundamento_legal' => $this->r->getLegalBasis()
+                            'action' => $this->r->getViolationAction()->value,
+                            'legal_basis' => $this->r->getLegalBasis()
                         ]
                     );
                 }
@@ -1177,7 +1203,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
                     return SpecificationResult::failure(
                         $this->r->getViolationMessage() ?? 'Documento expirado.',
                         $this->r->getCode(),
-                        metadata: ['acao' => $this->r->getViolationAction()->value]
+                        metadata: ['action' => $this->r->getViolationAction()->value]
                     );
                 }
             };
@@ -1202,7 +1228,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $contratoValido = (object) [
             'garantias' => ['garantia_fianca'],
             'diasCompResidencia' => 30,
-            'documentos' => ['contrato_locacao_assinado'],
+            'documents' => ['contrato_locacao_assinado'],
         ];
 
         $verdictValido = $engine->validate($contratoValido, 'contrato_locacao', 'contrato_locacao_ativacao');
@@ -1215,7 +1241,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $contratoInvalido = (object) [
             'garantias' => ['garantia_fianca', 'fiador'],
             'diasCompResidencia' => 120,
-            'documentos' => ['contrato_locacao_assinado'],
+            'documents' => ['contrato_locacao_assinado'],
         ];
 
         $verdictInvalido = $engine->validate($contratoInvalido, 'contrato_locacao', 'contrato_locacao_ativacao');
@@ -1450,7 +1476,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
             public function getType(): string { return 'mixed'; }
             public function isSatisfiedBy(mixed $c): bool { return false; }
             public function evaluate(mixed $c): SpecificationResult {
-                return SpecificationResult::failure('handler', 'H_BLOCK', metadata: ['acao' => 'block']);
+                return SpecificationResult::failure('handler', 'H_BLOCK', metadata: ['action' => 'block']);
             }
         });
         $registry->registerClosure('propriedade_inexistente', fn(IRuleDefinition $r): ISpecification =>
@@ -1486,7 +1512,7 @@ class Module11_DynamicRuleEngineTest extends TestCase
         $catalog->addDocumentRule(new DocumentRuleDefinition(groupCode: 'g', documentTypeCode: 'cpf', scope: 'x', requirementMode: DocumentRequirementMode::ANY, alternativeSetCode: 'id'));
         $catalog->addDocumentRule(new DocumentRuleDefinition(groupCode: 'g', documentTypeCode: 'cnh', scope: 'x', requirementMode: DocumentRequirementMode::ANY, alternativeSetCode: 'id'));
 
-        $verdict = Spec::engine($catalog)->validate((object) ['documentos' => []], 'x');
+        $verdict = Spec::engine($catalog)->validate((object) ['documents' => []], 'x');
         $this->assertEquals(['DOC_RG', 'DOC_SET_ID'], $verdict->getFailureCodes());
         $this->assertEquals(
             [FailureSeverity::ERROR, FailureSeverity::ERROR],

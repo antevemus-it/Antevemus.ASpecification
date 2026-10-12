@@ -21,7 +21,7 @@ use DateTimeInterface;
  * specification to the returned value: "call isEligibleFor(2026-12-01) and require true". It is
  * the method half of the Domian `FieldParameterizedSpecification`/`MethodParameterizedSpecification`
  * pair (Copyright 2006-2010 the original author or authors, Apache License 2.0; see
- * THIRD_PARTY_NOTICES.md); the field half is `where()` with the PropertyAccessor, so no field
+ * THIRD_PARTY_NOTICES.md); the field half is `where()` with the shared property accessor, so no field
  * specification exists (forward 018, decision D8).
  *
  * Unlike `must(closure)` the call is declarative: the method name and the arguments are data, so the
@@ -59,7 +59,7 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.11.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Reflection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

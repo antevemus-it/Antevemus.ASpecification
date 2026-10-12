@@ -60,7 +60,7 @@ Provenance, at package level (PHP namespace <- Domian package, net.sourceforge.d
       PartitionRepository, InMemoryRepository, NullRepository, UnsupportedRepository,
       NotImplementedRepository, EntityPersistenceMetaData, PersistentEntity    <- api.repository, core.repository
     Repositories\File\SingleFileRepository, FilePerEntityRepository,
-      InMemoryAndFileRepository (XML/XStream replaced by JSON/PHP serializers) <- xstream-repository
+      InMemoryAndFileRepository (XML/XStream replaced by JSON)              <- xstream-repository
     Contracts\Entities\*, Entities\*                                         <- api.entity, core.entity
     Contracts\Concurrent\ISynchronizer; Concurrent\SemaphoreSynchronizer
       (algorithm only; see its DocBlock)                                    <- core.util.concurrent.locks
@@ -74,7 +74,9 @@ Provenance, at package level (PHP namespace <- Domian package, net.sourceforge.d
     PropertySpecification, PredicateSpecification, SubsumptionAndEqualityTrait,
     the affix/LIKE leaves (StartsWith, EndsWith, Contains, LiteralPattern),
     LooseEqualSpecification, TypeCompatibility, AllEntities and UniqueEntity
-    collection specifications; Helpers\PropertyAccessor; Sql\LikePattern;
+    collection specifications; Helpers\PropertyAccessor (since 2.0.0 a facade over
+    antevemus/adeep-property-access, a separate package with its own NOTICE);
+    Sql\LikePattern;
     StateMachine\* and UseCase\* (1.8.0; conceptual references in section 4);
     Results\IOutcome.
 

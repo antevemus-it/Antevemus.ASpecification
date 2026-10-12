@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Tests\Unit;
 
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ALinq\ALinqCollection;
 use Antevemus\ALinq\ALinqLazyCollection;
 use Antevemus\ASpecification\AbstractCompositeSpecification;
@@ -49,7 +50,7 @@ use stdClass;
  * - Interoperabilidade fluente com ALinqCollection (where, orderBy, take, sum)
  * - Integração nativa de InMemoryRepository com asLinqCollection e findAsLinqCollection
  *
- * @version    1.11.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -97,6 +98,12 @@ class Module14_ALinqSynergyTest extends TestCase
             $this->testRn05BridgeReturnsALinqInterfaces();
             $this->testRn04BridgeStreamsAnyRepositoryLazily();
         }
+
+        // Forward 033 D11 (2.0.0, marco 14): o acessor é o do pacote antevemus/adeep-property-access;
+        // PropertyAccessor é fachada fina e o ASpec não guarda mais cópia da resolução.
+        $this->testF033FacadeAnswersExactlyAsThePackage();
+        $this->testF033ChangedAnswersReachTheInternalReaders();
+        $this->testF033NoLocalCopyOfThePropertyResolution();
     }
 
     /**
@@ -209,7 +216,8 @@ class Module14_ALinqSynergyTest extends TestCase
         $account = new Module14SpecifiableAccount();
 
         $this->assertTrue(Spec::property('status', Spec::equalTo('active'))->isSatisfiedBy($account));
-        $this->assertFalse(PropertyAccessor::hasProperty($account, 'passwordHash'));
+        $this->assertFalse(PropertyAccess::hasProperty($account, 'passwordHash')); // README 10.1 (2.0.0): o pacote compartilhado
+        $this->assertFalse(PropertyAccessor::hasProperty($account, 'passwordHash')); // a fachada depreciada responde igual
         $this->assertTrue(Spec::property('passwordHash', Spec::startsWith('h'))->evaluate($account)->isError);
 
         // O mesmo resultado de uma propriedade inexistente, e o visitor ALinq espelha o núcleo
@@ -1030,6 +1038,204 @@ class Module14_ALinqSynergyTest extends TestCase
             $this->assertEquals([5, 7], $filtered->select(fn($e) => $e->occurrences)->toArray());
         }
     }
+
+    // ------------------------------------------------------------------
+    // Forward 033 D11 (2.0.0): acessor compartilhado (antevemus/adeep-property-access)
+    // ------------------------------------------------------------------
+
+    /**
+     * Candidatos de borda da bateria de contrato: arrays, ArrayAccess, getters, propriedades públicas,
+     * dinâmicas, __get com e sem __isset, #[Specifiable], caminho com ponto, escalar e nulo.
+     *
+     * @return list<array{0: string, 1: mixed, 2: string}>
+     */
+    private static function f033Cases(): array
+    {
+        $plain = new stdClass();
+        $plain->name = 'Ana';
+        $plain->nothing = null;
+        $plain->address = (object) ['city' => 'Recife', 'zip' => null];
+
+        $getters = new F033Getters();
+        $magic = new F033MagicGuarded();
+        $unguarded = new F033MagicUnguarded();
+        $arrayObject = new \ArrayObject(['k' => 1, 'nil' => null]);
+        $arrayAccess = new F033ArrayAccessWithProperty();
+        $marked = new Module14SpecifiableAccount();
+
+        return [
+            ['array key', ['a' => 1], 'a'], ['array null', ['a' => null], 'a'], ['array missing', ['a' => 1], 'b'],
+            ['array path', ['a' => ['b' => ['c' => 7]]], 'a.b.c'], ['array literal dot key', ['a.b' => 1], 'a.b'],
+            ['stdClass', $plain, 'name'], ['stdClass null', $plain, 'nothing'], ['stdClass path', $plain, 'address.city'],
+            ['path through null', $plain, 'address.zip.x'], ['path through scalar', $plain, 'name.x'], ['missing', $plain, 'nope'],
+            ['getX', $getters, 'title'], ['x()', $getters, 'code'], ['isX', $getters, 'active'], ['hasX', $getters, 'children'],
+            ['private getter', $getters, 'hidden'], ['required parameter', $getters, 'label'], ['optional parameter', $getters, 'optional'],
+            ['public property', $getters, 'label'], ['magic method name', $getters, '__construct'], ['empty name', $getters, ''],
+            ['__call', new F033CallOnly(), 'secret'],
+            ['__get guarded', $magic, 'virtual'], ['__get guarded missing', $magic, 'other'], ['__get unguarded', $unguarded, 'gone'],
+            ['ArrayObject', $arrayObject, 'k'], ['ArrayObject null', $arrayObject, 'nil'], ['ArrayObject missing', $arrayObject, 'x'],
+            ['ArrayAccess with property', $arrayAccess, 'visible'], ['ArrayAccess offset', $arrayAccess, 'offset'],
+            ['specifiable', $marked, 'status'], ['not specifiable', $marked, 'passwordHash'],
+            ['scalar', 42, 'x'], ['null', null, 'x'], ['empty array', [], ''],
+        ];
+    }
+
+    /**
+     * D11: a fachada devolve exatamente o que o pacote devolve (getValue, hasProperty e o accessor),
+     * caso a caso; os três métodos são @deprecated 2.0.0 e nenhum emite aviso em tempo de execução.
+     */
+    private function testF033FacadeAnswersExactlyAsThePackage(): void
+    {
+        $notices = [];
+        set_error_handler(static function (int $errno, string $message) use (&$notices): bool {
+            $notices[] = $message;
+            return true;
+        });
+        try {
+            foreach (self::f033Cases() as [$label, $target, $path]) {
+                $this->assertTrue(PropertyAccessor::getValue($target, $path) === PropertyAccess::getValue($target, $path), "getValue: {$label}");
+                $this->assertEquals(PropertyAccess::hasProperty($target, $path), PropertyAccessor::hasProperty($target, $path), "hasProperty: {$label}");
+                $this->assertTrue(PropertyAccessor::getAccessor($path)($target) === PropertyAccess::accessor($path)($target), "accessor: {$label}");
+            }
+        } finally {
+            restore_error_handler();
+        }
+        $this->assertEquals([], $notices, 'a fachada não emite aviso (caminho quente)');
+
+        $class = new \ReflectionClass(PropertyAccessor::class);
+        $this->assertTrue(str_contains((string) $class->getDocComment(), '@deprecated 2.0.0'), 'classe @deprecated 2.0.0');
+        foreach (['getValue', 'hasProperty', 'getAccessor'] as $method) {
+            $this->assertTrue(str_contains((string) $class->getMethod($method)->getDocComment(), '@deprecated 2.0.0'), "{$method}() @deprecated 2.0.0");
+        }
+        $this->assertEquals(['getValue', 'hasProperty', 'getAccessor'], array_map(
+            static fn(\ReflectionMethod $m): string => $m->getName(),
+            $class->getMethods(\ReflectionMethod::IS_PUBLIC)
+        ), 'mesma API pública de antes');
+    }
+
+    /**
+     * §4 do requirements (respostas que mudaram com o pacote), pela fachada e pelos pontos internos
+     * (Spec::property, o visitor ALinq e o leitor do composite).
+     */
+    private function testF033ChangedAnswersReachTheInternalReaders(): void
+    {
+        $getters = new F033Getters();
+
+        // Nome vazio: null (a 1.x lançava InvalidArgumentException) e nunca chama get()/is()/has()
+        $this->assertTrue(PropertyAccessor::getValue($getters, '') === null);
+        $this->assertFalse(PropertyAccessor::hasProperty($getters, ''));
+        $this->assertEquals(0, $getters->bareCalls, 'get() sem nome nunca foi chamado');
+
+        // Getter com parâmetro obrigatório: pulado (a 1.x lançava ArgumentCountError); a propriedade pública responde
+        $this->assertEquals('public label', PropertyAccessor::getValue($getters, 'label'));
+        $this->assertTrue(Spec::property('label', Spec::equalTo('public label'))->isSatisfiedBy($getters), 'PropertySpecification');
+        $this->assertTrue(ALinqSpecificationVisitor::createPredicate(Spec::property('label', Spec::equalTo('public label')))($getters), 'visitor ALinq');
+        $this->assertEquals('optional', PropertyAccessor::getValue($getters, 'optional'), 'parâmetro opcional continua getter');
+
+        // ArrayAccess com propriedade pública: só os offsets contam (a 1.x via a propriedade pelo cast)
+        $arrayAccess = new F033ArrayAccessWithProperty();
+        $this->assertFalse(PropertyAccessor::hasProperty($arrayAccess, 'visible'));
+        $this->assertTrue(PropertyAccessor::hasProperty($arrayAccess, 'offset'));
+
+        // Propriedade pública com unset e __get sem __isset: null (a 1.x caía no __get)
+        $this->assertTrue(PropertyAccessor::getValue(new F033MagicUnguarded(), 'gone') === null);
+
+        // Nunca __call, nunca nome mágico
+        $call = new F033CallOnly();
+        $this->assertTrue(PropertyAccessor::getValue($call, 'secret') === null);
+        $this->assertEquals(0, $call->calls, '__call nunca é chamado');
+        $before = $getters->constructed;
+        $this->assertTrue(PropertyAccessor::getValue($getters, '__construct') === null);
+        $this->assertEquals($before, $getters->constructed, 'ler "__construct" não roda o construtor de novo');
+
+        // O leitor do composite (AbstractCompositeSpecification::getPropertyValue) delega ao pacote
+        $reader = new class (F033Getters::class) extends AbstractCompositeSpecification {
+            protected function isSpecifyingAllInstancesOfItsType(): bool
+            {
+                return true;
+            }
+            public function read(object $object, string $name): mixed
+            {
+                return $this->getPropertyValue($object, $name);
+            }
+        };
+        $this->assertEquals('public label', $reader->read($getters, 'label'));
+        $this->assertEquals('C-1', $reader->read($getters, 'code'), 'o composite agora também lê x()');
+        $this->assertThrows(\RuntimeException::class, fn() => $reader->read($getters, 'hidden'));
+
+        // O PdoRepository pergunta ao mesmo acessor o que um nome alcança: o getter com parâmetro
+        // obrigatório não torna a coluna privada consultável (até a 1.14 o EntityMapping tinha a própria
+        // regra e compilava a coluna no SQL, enquanto em memória a leitura lançava ArgumentCountError).
+        $mapping = \Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping::fromAttributes(F033MappedSecret::class);
+        $reason = null;
+        $this->assertTrue($mapping->findQueryColumn('secret', $reason) === null, 'coluna privada sem leitor válido não é consultável');
+        $this->assertTrue(str_contains((string) $reason, 'not readable by name'), (string) $reason);
+        $this->assertTrue($mapping->findQueryColumn('visible') !== null, 'getter sem parâmetro continua tornando a coluna consultável');
+        $this->assertTrue(Spec::property('secret', Spec::equalTo('x'))->evaluate(new F033MappedSecret())->isError, 'em memória: erro de avaliação, a mesma recusa');
+    }
+
+    /**
+     * D11/D6: o ASpec não tem mais cópia da resolução de propriedade por nome. A fachada só delega;
+     * nenhum ponto interno chama a fachada; ninguém em src/ monta nome de getter ("get" . ucfirst) nem
+     * resolve campo por reflexão fora dos caminhos de ESCRITA e de mapeamento listados.
+     */
+    private function testF033NoLocalCopyOfThePropertyResolution(): void
+    {
+        $src = dirname(__DIR__, 2) . '/src';
+        $code = static function (string $file): string {
+            $out = '';
+            foreach (token_get_all((string) file_get_contents($file)) as $token) {
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+                $out .= is_array($token) ? $token[1] : $token;
+            }
+            return $out;
+        };
+
+        // 1. A fachada: três métodos, cada um um único return que delega ao pacote, sem reflexão
+        $facade = $code($src . '/Helpers/PropertyAccessor.php');
+        foreach (['method_exists', 'property_exists', 'is_callable', 'ucfirst', 'Reflection', 'isset(', 'ArrayAccess', 'explode('] as $forbidden) {
+            $this->assertFalse(str_contains($facade, $forbidden), "a fachada não resolve nada sozinha ({$forbidden})");
+        }
+        $this->assertEquals(3, substr_count($facade, 'return '), 'um return por método');
+        foreach (['return PropertyAccess::getValue($target, $property);', 'return PropertyAccess::hasProperty($target, $property);', 'return PropertyAccess::accessor($property);'] as $delegation) {
+            $this->assertTrue(str_contains($facade, $delegation), "delega: {$delegation}");
+        }
+
+        // 2. Pontos internos: chamam o pacote, nunca a fachada; e não montam nome de getter nem lêem campo por nome
+        $readers = [
+            'Resolution/TreeAnalyzer.php', 'Resolution/ExternalDataSpecification.php', 'Specifications/PropertySpecification.php',
+            'Linq/ALinqSpecificationVisitor.php', 'StateMachine/Event.php', 'StateMachine/DeadlineDefinition.php',
+            'AbstractCompositeSpecification.php', 'Engine/DocumentLeafSpecification.php',
+        ];
+        foreach ($readers as $reader) {
+            $this->assertTrue(str_contains($code($src . '/' . $reader), 'use Antevemus\ADeepPropertyAccess\PropertyAccess;'), "{$reader} usa o pacote");
+        }
+        $getterNames = '/[\'"](get|is|has)[\'"]\s*\.\s*ucfirst\s*\(/i';
+        $fieldByName = 'ReflectionUtils::getFieldByName(';
+        $allowedFieldByName = ['Helpers/SpecificationHelper.php', 'Repositories/Pdo/Mapping/EntityMapping.php']; // escrita do delta; mapeamento de colunas
+        $allowedPropertyExists = ['Factory/StrictReturnsNullFactory.php']; // construção de objeto (escrita)
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($src, \RecursiveDirectoryIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            if (!$file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+            $relative = substr($file->getPathname(), strlen($src) + 1);
+            $body = $code($file->getPathname());
+            if ($relative !== 'Helpers/PropertyAccessor.php') {
+                $this->assertFalse(str_contains($body, 'PropertyAccessor::'), "{$relative} não chama a fachada");
+            }
+            $this->assertEquals(0, preg_match($getterNames, $body), "{$relative} não monta nome de getter para ler propriedade");
+            if (!in_array($relative, $allowedFieldByName, true)) {
+                $this->assertFalse(str_contains($body, $fieldByName), "{$relative} não resolve campo por nome");
+            }
+            if (!in_array($relative, $allowedPropertyExists, true)) {
+                $this->assertFalse(str_contains($body, 'property_exists('), "{$relative} não usa property_exists() para ler propriedade");
+            }
+        }
+    }
+
 }
 
 /** Entidade de arquivo do teste RN-04 da ponte lazy (forward 017). */
@@ -1047,4 +1253,76 @@ final class Module14SpecifiableAccount
     #[Specifiable]
     private string $status = 'active';      // opt-in: legível por nome, gravável por delta
     private string $passwordHash = 'h4sh';  // não marcada: invisível para um nome
+}
+
+/** Forward 033: getters de todos os tipos, inclusive os que o acessor não pode chamar. */
+class F033Getters
+{
+    public string $label = 'public label';
+    public int $bareCalls = 0;
+    public int $constructed = 0;
+
+    public function __construct()
+    {
+        $this->constructed++;
+    }
+    public function getTitle(): string { return 'T'; }
+    public function code(): string { return 'C-1'; }
+    public function isActive(): bool { return true; }
+    public function hasChildren(): bool { return false; }
+    private function getHidden(): string { return 'never'; }
+    public function getLabel(string $locale): string { return "label in {$locale}"; }
+    public function getOptional(string $suffix = ''): string { return 'optional' . $suffix; }
+    public function get(): string { $this->bareCalls++; return 'bare'; }
+}
+
+/** Forward 033: getter privado alcançável só por __call. */
+class F033CallOnly
+{
+    public int $calls = 0;
+    private function getSecret(): string { return 'secret'; }
+    public function __call(string $name, array $arguments): mixed { $this->calls++; return $this->{$name}(...$arguments); }
+}
+
+/** Forward 033: __get guardado por __isset. */
+class F033MagicGuarded
+{
+    public function __isset(string $name): bool { return $name === 'virtual'; }
+    public function __get(string $name): mixed { return $name === 'virtual' ? 'v' : 'unexpected'; }
+}
+
+/** Forward 033: propriedade pública removida com unset e __get sem __isset. */
+class F033MagicUnguarded
+{
+    public string $gone = 'x';
+    public function __construct() { unset($this->gone); }
+    public function __get(string $name): mixed { return 'from __get'; }
+}
+
+/** Forward 033: ArrayAccess com uma propriedade pública que não é offset. */
+class F033ArrayAccessWithProperty implements \ArrayAccess
+{
+    public string $visible = 'property';
+    public function offsetExists(mixed $offset): bool { return $offset === 'offset'; }
+    public function offsetGet(mixed $offset): mixed { return $offset === 'offset' ? 'value' : null; }
+    public function offsetSet(mixed $offset, mixed $value): void {}
+    public function offsetUnset(mixed $offset): void {}
+}
+
+/** Forward 033: coluna privada com getter de parâmetro obrigatório (não é leitor) e outra com getter válido. */
+#[\Antevemus\ASpecification\Repositories\Pdo\Mapping\Table('aspec_f033_secret')]
+class F033MappedSecret extends \Antevemus\ASpecification\Entities\AbstractEntity
+{
+    #[\Antevemus\ASpecification\Repositories\Pdo\Mapping\Id(strategy: \Antevemus\ASpecification\Repositories\Pdo\Mapping\IdStrategy::Assigned)]
+    private int $id = 1;
+
+    #[\Antevemus\ASpecification\Repositories\Pdo\Mapping\Column('secret')]
+    private string $secret = 's3cret';
+
+    #[\Antevemus\ASpecification\Repositories\Pdo\Mapping\Column('visible')]
+    private string $visible = 'v';
+
+    public function getEntityId(): int { return $this->id; }
+    public function getSecret(string $key): string { return $key === 'k' ? $this->secret : ''; }
+    public function getVisible(): string { return $this->visible; }
 }

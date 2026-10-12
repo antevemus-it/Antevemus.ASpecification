@@ -14,9 +14,10 @@ namespace Antevemus\ASpecification\Contracts\Engine;
  * - Filtered retrieval of active business rules by scope and scenario
  * - Filtered retrieval of document requirement groups by scope and scenario
  * - Applicability filters with a written contract: product_code, plan_code, reference_date (RN-17)
- * - English vocabulary since 1.7.0; the Portuguese filter and restriction keys of 1.6.x are read as legacy
+ * - English vocabulary since 1.7.0, only English since 2.0.0: the Portuguese filter and restriction keys
+ *   of 1.6.x (read as legacy up to 1.14.x) are refused by the library's catalogs
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,8 +37,8 @@ interface IRuleCatalog
      * the engine. The catalog interprets ONLY the reserved keys `product_code` (string),
      * `plan_code` (string) and `reference_date` (DateTimeInterface or date string); every other
      * key is ignored by the catalog (it belongs to the handlers and to the document evaluator).
-     * The Portuguese keys of 1.6.x (`codigo_produto`, `codigo_plano`, `data_referencia`) are read as
-     * legacy when the English key is absent.
+     * The Portuguese keys of 1.6.x (`codigo_produto`, `codigo_plano`, `data_referencia`), read as legacy
+     * up to 1.14.x, are refused since 2.0.0 (LegacyVocabularyException) by the library's catalogs.
      * Semantics are AND, mirroring scope and scenario: a rule whose `product_code` restriction is
      * null applies to every product; a rule restricted to a product applies only when the filter
      * brings the same value, so a missing filter means "no product" and restricted rules do not apply
@@ -45,9 +46,8 @@ interface IRuleCatalog
      * `valid_from <= reference_date` and `valid_until` is null or `>= reference_date`
      * (inclusive, by day); without `reference_date` the validity window is not evaluated.
      * The restrictions are read from `IRuleDefinition::getParameters()` under the keys
-     * `product_code`, `plan_code`, `valid_from`, `valid_until` (legacy `codigo_produto`,
-     * `codigo_plano`, `data_inicio_vigencia`, `data_fim_vigencia`). Every implementation honours the
-     * same keys with the same semantics.
+     * `product_code`, `plan_code`, `valid_from`, `valid_until` (their Portuguese names of 1.6.x are
+     * refused since 2.0.0). Every implementation honours the same keys with the same semantics.
      *
      * @param string $scope Operational scope (e.g. 'rental_contract', 'claim')
      * @param string|null $scenario Specific scenario (e.g. 'claim:occupied'); null = scope-global rules only

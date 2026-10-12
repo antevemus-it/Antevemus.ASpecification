@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentPresenceEvaluator;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
@@ -21,9 +22,16 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *
  * Supported guard grammar: `<property>=<value>`, `<property><><value>`, `<property>!=<value>`.
  * Anything else is rejected at construction time (InvalidConditionalExpressionException): a guard
- * that cannot be understood must never silently require or waive a document.
+ * that cannot be understood must never silently require or waive a document. The property is read
+ * through the shared property accessor (`PropertyAccess`, 2.0.0), as every property specification:
+ * array key, public getter (`getX()`, `x()`, `isX()`, `hasX()`), public property or `__get` guarded by
+ * `__isset`, then a #[Specifiable] property (up to 1.14 a public property was tried before the getter,
+ * and `isX()`/`hasX()`/`x()` and #[Specifiable] were not read).
  *
- * @version    1.7.0
+ * Failure metadata in English only since 2.0.0 (`action`, `document_type`, `group_code`,
+ * `requirement_mode`); the Portuguese duplicates of 1.7.0 to 1.14.x were removed.
+ *
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -108,13 +116,7 @@ final class DocumentLeafSpecification extends AbstractSpecification
 
         [$prop, $op, $expected] = $this->guard;
 
-        $actual = null;
-        if (is_object($candidate)) {
-            $actual = $candidate->{$prop}
-                ?? (method_exists($candidate, 'get' . ucfirst($prop)) ? $candidate->{'get' . ucfirst($prop)}() : null);
-        } elseif (is_array($candidate)) {
-            $actual = $candidate[$prop] ?? null;
-        }
+        $actual = PropertyAccess::getValue($candidate, $prop);
 
         $actualStr = (string) ($actual ?? '');
 
@@ -173,11 +175,6 @@ final class DocumentLeafSpecification extends AbstractSpecification
                 'document_type' => $this->getDocumentType(),
                 'group_code' => $this->rule->getGroupCode(),
                 'requirement_mode' => $this->rule->getRequirementMode()->value,
-                // Legacy Portuguese keys, removed in 2.0.0.
-                'acao' => RuleAction::BLOCK->value,
-                'tipo_documento' => $this->getDocumentType(),
-                'grupo' => $this->rule->getGroupCode(),
-                'regra' => $this->rule->getRequirementMode()->value,
             ],
             severity: FailureSeverity::ERROR
         );

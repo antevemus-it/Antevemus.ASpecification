@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Countable;
@@ -27,10 +28,12 @@ use Countable;
  *   the transition is forbidden. `canProceed()` is its negation.
  * - An evaluation error (a rule that could not be evaluated: missing property, throwing getter,
  *   incompatible type) is ALWAYS a blocking failure, regardless of the rule's configured action.
- * - The action is read from the failure metadata (`acao`, `acao_ao_violar`, `action`) with
- *   RuleAction::fromOrDefault(): English values (1.7.0) and the legacy Portuguese ones are triaged alike.
+ * - The action is read from the failure metadata by RuleAction::fromMetadata() (`action`, then
+ *   `violation_action`, default BLOCK). Since 2.0.0 a Portuguese key (`acao`, `acao_ao_violar`) or value
+ *   (`bloquear`, `alertar`, `apenas_log`) is refused with LegacyVocabularyException instead of triaged;
+ *   so is the legal basis under `fundamento_legal` (read as `legal_basis` only).
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -39,6 +42,12 @@ use Countable;
  */
 final readonly class RuleEngineVerdict implements Countable
 {
+    /**
+     * Portuguese metadata key read by getLegalBases() up to 1.14.x (legacy => canonical); a failure
+     * carrying it is refused since 2.0.0 (the action keys are in RuleAction::LEGACY_METADATA_KEYS).
+     */
+    public const LEGACY_METADATA_KEYS = ['fundamento_legal' => 'legal_basis'];
+
     /**
      * @param bool $isSatisfied True if no failure was registered
      * @param list<SpecificationFailure> $blockingFailures Violations with the 'block' action
@@ -89,21 +98,16 @@ final readonly class RuleEngineVerdict implements Countable
         $log = [];
 
         foreach ($result->failures as $failure) {
+            // Portuguese metadata keys the verdict used to read (1.7.0 to 1.14.x) are refused (2.0.0).
+            LegacyVocabularyException::assertNoLegacyKeys($failure->metadata, self::LEGACY_METADATA_KEYS, 'failure metadata key');
+
             // A failure produced by an evaluation error is never WARN/LOG: the rule was not evaluated.
             if (isset($failure->metadata['evaluation_error'])) {
                 $blocking[] = $failure;
                 continue;
             }
 
-            $actionRaw = $failure->metadata['action']
-                ?? $failure->metadata['violation_action']
-                ?? $failure->metadata['acao']
-                ?? $failure->metadata['acao_ao_violar']
-                ?? RuleAction::BLOCK;
-
-            $action = $actionRaw instanceof RuleAction
-                ? $actionRaw
-                : RuleAction::fromOrDefault(is_string($actionRaw) ? $actionRaw : null);
+            $action = RuleAction::fromMetadata($failure->metadata);
 
             match ($action) {
                 RuleAction::BLOCK => $blocking[] = $failure,
@@ -263,9 +267,7 @@ final readonly class RuleEngineVerdict implements Countable
     {
         $bases = [];
         foreach ($this->specificationResult->failures as $failure) {
-            $base = $failure->metadata['fundamento_legal']
-                ?? $failure->metadata['legal_basis']
-                ?? null;
+            $base = $failure->metadata['legal_basis'] ?? null;
 
             if (is_string($base) && trim($base) !== '' && !in_array($base, $bases, true)) {
                 $bases[] = $base;

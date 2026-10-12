@@ -51,7 +51,7 @@ use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
  * marked it #[Specifiable]; the fixtures that stand for the Domian test domain carry the marker, and
  * the opt-in section below covers the unmarked cases.
  *
- * @version    1.6.1
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Parity
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -859,8 +859,9 @@ final class DomianConcurrencyEntityUtilTest extends TestCase
         self::assertFalse(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityALinqMarkedProperty::class, 'other')));
         self::assertTrue(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityGuardedAccount::class, 'status')));
         self::assertFalse(ReflectionUtils::isSpecifiable(new \ReflectionProperty(ParityGuardedAccount::class, 'passwordHash')));
+        // 2.0.0: the marker of the shared accessor (antevemus/adeep-property-access) counts on the write path too
         self::assertSame(
-            [Specifiable::class, 'Antevemus\ALinq\Attributes\Specifiable'],
+            [Specifiable::class, 'Antevemus\ALinq\Attributes\Specifiable', 'Antevemus\ADeepPropertyAccess\Attributes\Specifiable'],
             ReflectionUtils::SPECIFIABLE_ATTRIBUTES
         );
     }

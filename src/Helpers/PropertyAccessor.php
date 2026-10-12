@@ -4,40 +4,42 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Helpers;
 
-use ArrayAccess;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Closure;
 
 /**
- * PropertyAccessor - Polymorphic and Resilient Property Extractor
+ * PropertyAccessor - Deprecated Facade over the Shared Property Accessor
  *
- * Provides unified, reflective resolution of object properties, attributes, getters,
- * and nested dot notation paths, compatible with DTOs, rich entities, and associative arrays.
+ * Since 2.0.0 the property resolution of this library lives in `antevemus/adeep-property-access`
+ * (`Antevemus\ADeepPropertyAccess\PropertyAccess`), the package shared with ALinq: both libraries
+ * read the same value from the same candidate by construction. Every internal reader of the library
+ * calls the package directly; this class only delegates, so that code calling it keeps working.
  *
- * Features:
- * - Direct public and dynamic attribute access
- * - Getter method (getProperty, property) and boolean predicate (isProperty, hasProperty) resolution
- * - Array and ArrayAccess interface support
- * - Nested dot notation path traversal (e.g. 'user.address.city')
- * - Private and protected properties marked #[Specifiable] by the author of the class, declared
- *   anywhere in the class hierarchy, as the LAST resort (Domian ReflectionUtils.getFieldByName(): a
- *   specification may be bound to a field without a getter; opt-in since 1.6.1)
- * - Generates optimized Closures for functional pipelines and LINQ queries
- *
- * Resolution order of a single segment, first match wins:
- *   1. array / ArrayAccess key;
- *   2. public method getX(), x(), isX(), hasX();
- *   3. isset($object->x): public initialized property, or __get guarded by __isset;
- *   4. public property (reflection; an uninitialized typed property yields null);
- *   5. non-public property marked #[Specifiable] (on the property or on the class that declares it),
- *      declared by the class or a superclass (reflection; since 1.4.4, opt-in since 1.6.1);
+ * Resolution order of a single segment, first match wins (the package's contract):
+ *   1. array key, or `ArrayAccess` offset (existence through `offsetExists()`);
+ *   2. public method `getX()`, `x()`, `isX()`, `hasX()` without required parameters (never `__call()`,
+ *      never a name starting with `__`);
+ *   3. `isset($object->x)`: public initialized property, dynamic property, `__get` guarded by `__isset`;
+ *   4. declared public property (an uninitialized typed property yields null);
+ *   5. private or protected property marked `#[Specifiable]` (this library's attribute, ALinq's or the
+ *      package's, recognized by name), on the property or on the class that declares it, declared by
+ *      the class or an ancestor;
  *   6. null.
+ * A path with a dot is always a path. An unmarked private or protected property is not resolved: the
+ * name may come from a request, and without the author's opt-in a range over a private field would
+ * work as a read oracle for its value.
  *
- * An unmarked private or protected property is not resolved: getValue() yields null and hasProperty()
- * answers false, as for a property that does not exist. The name reaching this class may come from a
- * request (a filter or an ordering built by a screen); without the author's opt-in, a range over a
- * private field would work as a read oracle for its value.
+ * Answers that changed with the package (2.0.0): an empty name yields null instead of throwing
+ * `InvalidArgumentException`; an `ArrayAccess` object answers through its offsets only (a public
+ * property of an `ArrayAccess` object is no longer seen by hasProperty()); an unset public property
+ * with `__get()` and no `__isset()` yields null; a method with a required parameter, a method reached
+ * only through `__call()` and a method whose name starts with `__` are never called as getters.
  *
- * @version    1.6.1
+ * No runtime notice is raised: the facade sits on the hot path of every property specification.
+ *
+ * @deprecated 2.0.0 Removed in 3.0.0; use Antevemus\ADeepPropertyAccess\PropertyAccess
+ *             (getValue(), hasProperty(), accessor())
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -52,18 +54,11 @@ final class PropertyAccessor
      * @param mixed $target Candidate object or array
      * @param string $property Property name or dot notation path ('user.address.city')
      * @return mixed Extracted value or null if unresolvable
+     * @deprecated 2.0.0 Removed in 3.0.0; use PropertyAccess::getValue()
      */
     public static function getValue(mixed $target, string $property): mixed
     {
-        if ($target === null) {
-            return null;
-        }
-
-        if (str_contains($property, '.')) {
-            return self::getNestedValue($target, $property);
-        }
-
-        return self::extractSingleProperty($target, $property);
+        return PropertyAccess::getValue($target, $property);
     }
 
     /**
@@ -72,176 +67,11 @@ final class PropertyAccessor
      * @param mixed $target
      * @param string $property
      * @return bool
+     * @deprecated 2.0.0 Removed in 3.0.0; use PropertyAccess::hasProperty()
      */
     public static function hasProperty(mixed $target, string $property): bool
     {
-        if ($target === null) {
-            return false;
-        }
-
-        if (str_contains($property, '.')) {
-            $segments = explode('.', $property);
-            $current = $target;
-            foreach ($segments as $segment) {
-                if ($current === null || !self::hasSingleProperty($current, $segment)) {
-                    return false;
-                }
-                $current = self::extractSingleProperty($current, $segment);
-            }
-            return true;
-        }
-
-        return self::hasSingleProperty($target, $property);
-    }
-
-    /**
-     * Extract a single property from an object or array.
-     *
-     * @param mixed $target
-     * @param string $property
-     * @return mixed
-     */
-    private static function extractSingleProperty(mixed $target, string $property): mixed
-    {
-        if (is_array($target) || $target instanceof ArrayAccess) {
-            return $target[$property] ?? null;
-        }
-
-        if (is_object($target)) {
-            $methods = [
-                'get' . ucfirst($property),
-                $property,
-                'is' . ucfirst($property),
-                'has' . ucfirst($property),
-            ];
-
-            foreach ($methods as $method) {
-                if (method_exists($target, $method) && is_callable([$target, $method])) {
-                    return $target->$method();
-                }
-            }
-
-            if (isset($target->{$property})) {
-                return $target->{$property};
-            }
-
-            if (property_exists($target, $property)) {
-                try {
-                    $ref = new \ReflectionProperty($target, $property);
-                    if ($ref->isPublic()) {
-                        return $ref->getValue($target);
-                    }
-                } catch (\Throwable) {
-                    // Ignore
-                }
-            }
-
-            // Last resort: a private/protected property declared by the class or a superclass
-            // (Domian reads the field itself when no accessor exists), only when its author opted in.
-            $field = self::specifiableField($target, $property);
-            if ($field !== null) {
-                try {
-                    if ($field->isStatic()) {
-                        return $field->getValue();
-                    }
-                    return $field->isInitialized($target) ? $field->getValue($target) : null;
-                } catch (\Throwable) {
-                    // Ignore
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Check whether an individual property exists on an object or array.
-     *
-     * @param mixed $target
-     * @param string $property
-     * @return bool
-     */
-    private static function hasSingleProperty(mixed $target, string $property): bool
-    {
-        if (is_array($target) || $target instanceof ArrayAccess) {
-            return array_key_exists($property, (array)$target) || isset($target[$property]);
-        }
-
-        if (is_object($target)) {
-            $methods = [
-                'get' . ucfirst($property),
-                $property,
-                'is' . ucfirst($property),
-                'has' . ucfirst($property),
-            ];
-
-            foreach ($methods as $method) {
-                if (method_exists($target, $method) && is_callable([$target, $method])) {
-                    return true;
-                }
-            }
-
-            if (isset($target->{$property})) {
-                return true;
-            }
-
-            if (property_exists($target, $property)) {
-                try {
-                    $ref = new \ReflectionProperty($target, $property);
-                    if ($ref->isPublic()) {
-                        return true;
-                    }
-                } catch (\Throwable) {
-                    return false;
-                }
-            }
-
-            // Last resort: a private/protected property marked #[Specifiable]
-            try {
-                return self::specifiableField($target, $property) !== null;
-            } catch (\InvalidArgumentException) {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The property declared by the class or a superclass under that name, when it is public or its
-     * author marked it #[Specifiable]; null otherwise (missing, or non-public without the opt-in).
-     *
-     * @param object $target
-     * @param string $property
-     * @return \ReflectionProperty|null
-     * @throws \InvalidArgumentException When the name is empty (ReflectionUtils::getFieldByName())
-     */
-    private static function specifiableField(object $target, string $property): ?\ReflectionProperty
-    {
-        $field = ReflectionUtils::getFieldByName($property, $target);
-        if ($field === null || (!$field->isPublic() && !ReflectionUtils::isSpecifiable($field))) {
-            return null;
-        }
-        return $field;
-    }
-
-    /**
-     * Extract nested value traversing dot-separated path segments.
-     *
-     * @param mixed $target
-     * @param string $path
-     * @return mixed
-     */
-    private static function getNestedValue(mixed $target, string $path): mixed
-    {
-        $current = $target;
-        foreach (explode('.', $path) as $segment) {
-            if ($current === null) {
-                return null;
-            }
-            $current = self::extractSingleProperty($current, $segment);
-        }
-        return $current;
+        return PropertyAccess::hasProperty($target, $property);
     }
 
     /**
@@ -249,9 +79,10 @@ final class PropertyAccessor
      *
      * @param string $property
      * @return Closure(mixed): mixed
+     * @deprecated 2.0.0 Removed in 3.0.0; use PropertyAccess::accessor()
      */
     public static function getAccessor(string $property): Closure
     {
-        return fn(mixed $item): mixed => self::getValue($item, $property);
+        return PropertyAccess::accessor($property);
     }
 }

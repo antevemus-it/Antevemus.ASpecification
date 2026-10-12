@@ -7,7 +7,7 @@ namespace Antevemus\ASpecification\Specifications;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Throwable;
@@ -28,7 +28,7 @@ use Throwable;
  *
  * Features:
  * - Attribute-targeted diagnostic failures via Notification Pattern
- * - Polymorphic resolution via PropertyAccessor
+ * - Polymorphic resolution via the shared property accessor (`PropertyAccess`, antevemus/adeep-property-access)
  * - Composition AST traversal
  * - Contradiction inherited from the inner specification, never the tautology (1.6.0)
  * - A null property value is handed to the inner specification (1.11.0): `property('note', isNull())`
@@ -40,7 +40,7 @@ use Throwable;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.11.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -217,14 +217,14 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
     /**
      * Resolves the property value from candidate object or array.
      *
-     * Delegates to PropertyAccessor for polymorphic resolution.
+     * Delegates to the shared property accessor (`PropertyAccess`) for polymorphic resolution.
      *
      * @param mixed $candidate
      * @return mixed
      */
     private function getPropertyValue(mixed $candidate): mixed
     {
-        if (!PropertyAccessor::hasProperty($candidate, $this->propertyName)) {
+        if (!PropertyAccess::hasProperty($candidate, $this->propertyName)) {
             throw new \InvalidArgumentException(
                 sprintf(
                     'Property "%s" not found or not accessible on candidate of type "%s"',
@@ -234,7 +234,7 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
             );
         }
 
-        return PropertyAccessor::getValue($candidate, $this->propertyName);
+        return PropertyAccess::getValue($candidate, $this->propertyName);
     }
 
     /**

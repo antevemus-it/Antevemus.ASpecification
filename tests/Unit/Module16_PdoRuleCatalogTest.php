@@ -10,6 +10,7 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
 use Antevemus\ASpecification\Engine\DynamicSpecificationEngine;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
 use Antevemus\ASpecification\Engine\PdoRuleCatalog;
@@ -19,6 +20,7 @@ use Antevemus\ASpecification\Engine\RuleEngineVerdict;
 use Antevemus\ASpecification\Engine\RuleSpecificationRegistry;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Tests\Support\UpgradeGuide;
 use Antevemus\ASpecification\Tests\TestCase;
 use DateTimeImmutable;
 use InvalidArgumentException;
@@ -36,10 +38,14 @@ use PDO;
  * Forward 022 (1.7.0): o DDL de referência passou ao inglês (`business_rule`,
  * `document_requirement_group`, `document_requirement`). O DDL português da 1.6.1 vive só como
  * fixture (`tests/Fixtures/rule_catalog.legacy-pt-1.6.1.ansi.sql`) e prova que os presets
- * `legacyPortugueseTables()`/`legacyPortugueseColumns()` leem o esquema antigo sem migração, com o
+ * `legacyPortugueseTables()`/`legacyPortugueseColumns()` leem os NOMES do esquema antigo, com o
  * mesmo veredito do esquema novo.
  *
- * @version    1.7.0
+ * Forward 033 D10 (2.0.0): os VALORES em português (ações bloquear/alertar/apenas_log), os filtros e os
+ * papéis de tabela em português são recusados; o SQL do UPGRADE-2.0.md (lido do próprio guia) migra o
+ * catálogo da 1.6.x e a 2.0.0 passa a responder como o catálogo de referência (RN-04 c).
+ *
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -72,6 +78,8 @@ class Module16_PdoRuleCatalogTest extends TestCase
         $this->testSchemaAndTableNamesAreConfigurable();
         $this->testColumnMapIsValidatedAndApplied();
         $this->testLegacyPortugueseSchemaGivesTheSameVerdict();
+        // Forward 033 RN-04 (c): catálogo em português recusado pela 2.0.0, aceito depois do SQL do UPGRADE-2.0.md.
+        $this->testPortugueseCatalogIsRefusedUntilTheUpgradeSql();
         $this->testReadmeStyleExample();
     }
 
@@ -283,15 +291,15 @@ class Module16_PdoRuleCatalogTest extends TestCase
             'perfeito' => (object) [
                 'ocorrencias' => 0, 'garantias' => 1, 'diasCompResidencia' => 30, 'aluguel' => 1000, 'auditado' => true,
                 'fiadores' => 1, 'tipo_locacao' => 'residencial',
-                'documentos' => ['cnpj_imobiliaria', 'declaracao_art43', 'cpf_locatario', 'contrato_locacao_assinado', 'declaracao_debitos'],
+                'documents' => ['cnpj_imobiliaria', 'declaracao_art43', 'cpf_locatario', 'contrato_locacao_assinado', 'declaracao_debitos'],
             ],
             'violador' => (object) [
                 'ocorrencias' => 4, 'garantias' => 2, 'diasCompResidencia' => 120, 'aluguel' => 6000, 'auditado' => false,
-                'fiadores' => 3, 'tipo_locacao' => 'residencial_temporada', 'documentos' => [],
+                'fiadores' => 3, 'tipo_locacao' => 'residencial_temporada', 'documents' => [],
             ],
             'intermediario' => (object) [
                 'ocorrencias' => 1, 'garantias' => 1, 'diasCompResidencia' => 91, 'aluguel' => 4000, 'auditado' => false,
-                'fiadores' => 2, 'tipo_locacao' => 'residencial', 'documentos' => ['cnpj_imobiliaria', 'rg_locatario', 'cpf_locatario'],
+                'fiadores' => 2, 'tipo_locacao' => 'residencial', 'documents' => ['cnpj_imobiliaria', 'rg_locatario', 'cpf_locatario'],
             ],
         ];
     }
@@ -670,32 +678,29 @@ class Module16_PdoRuleCatalogTest extends TestCase
         $this->assertEquals('acao_ao_violar', $legacy->getColumns()['violation_action']);
         $this->assertEquals('active', $legacy->getColumns()['active'], 'active e id não mudaram de nome');
 
-        // Papéis de tabela em português (1.6.x) continuam aceitos; o papel em inglês vence.
-        $byLegacyRole = new PdoRuleCatalog($pdo, '', ['regra' => 'minhas_regras', 'grupo_tipo' => 'meus_tipos']);
-        $this->assertEquals(['rule' => 'minhas_regras', 'group' => 'document_requirement_group', 'requirement' => 'meus_tipos'], $byLegacyRole->getTables());
-        $both = new PdoRuleCatalog($pdo, '', ['regra' => 'perde', 'rule' => 'vence']);
-        $this->assertEquals('vence', $both->getTables()['rule']);
+        // 2.0.0 (forward 033 D10): papéis de tabela em português (aceitos até a 1.14.x) são recusados,
+        // mesmo com o papel em inglês ao lado.
+        foreach (PdoRuleCatalog::LEGACY_TABLE_ROLES as $legacy => $english) {
+            foreach ([[$legacy => 'minhas_regras'], [$english => 'vence', $legacy => 'perde']] as $tables) {
+                $e = $this->assertThrows(LegacyVocabularyException::class, fn() => new PdoRuleCatalog($pdo, '', $tables));
+                $this->assertTrue($e->legacy === $legacy && $e->replacement === $english && str_contains($e->getMessage(), 'UPGRADE-2.0.md'), $e->getMessage());
+            }
+        }
+        $this->assertThrows(InvalidArgumentException::class, fn() => new PdoRuleCatalog($pdo, '', ['regras' => 'x']), 'papel desconhecido continua InvalidArgumentException');
     }
 
     /**
-     * Forward 022 RN-06/RN-08: o DDL português da 1.6.1 (fixture), lido com legacyPortugueseTables()
-     * e legacyPortugueseColumns(), com as ações gravadas em português, produz exatamente o mesmo
-     * resultado do DDL novo em inglês em toda a matriz alvo × escopo × cenário × filtros.
+     * Copia as linhas de referência para as tabelas do DDL português da 1.6.1 (nomes pelos presets);
+     * com $portugueseValues as ações vão como a 1.6.x as gravava (bloquear, alertar, apenas_log).
      */
-    private function testLegacyPortugueseSchemaGivesTheSameVerdict(): void
+    private static function legacyPdo(bool $portugueseValues): PDO
     {
-        $this->assertTrue(is_file(self::LEGACY_DDL), 'a fixture do DDL português da 1.6.1 deve existir');
-        $this->assertFalse(
-            str_contains((string) file_get_contents(self::DDL), 'CREATE TABLE regra_negocio'),
-            'o DDL de referência é um só, em inglês; o português fica só como fixture'
-        );
-
         $toLegacy = PdoRuleCatalog::legacyPortugueseColumns();
         $legacyValues = array_flip(RuleAction::LEGACY_PORTUGUESE_VALUES);
-        $translate = static function (array $row) use ($toLegacy, $legacyValues): array {
+        $translate = static function (array $row) use ($toLegacy, $legacyValues, $portugueseValues): array {
             $out = [];
             foreach ($row as $column => $value) {
-                if ($column === 'violation_action' && is_string($value)) {
+                if ($portugueseValues && $column === 'violation_action' && is_string($value)) {
                     $value = $legacyValues[$value];
                 }
                 $out[$toLegacy[$column] ?? $column] = $value;
@@ -706,7 +711,12 @@ class Module16_PdoRuleCatalogTest extends TestCase
         $legacyPdo = new PDO('sqlite::memory:');
         $legacyPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $legacyPdo->exec('PRAGMA foreign_keys = ON');
-        self::loadDdl($legacyPdo, (string) file_get_contents(self::LEGACY_DDL));
+        $ddl = (string) file_get_contents(self::LEGACY_DDL);
+        if (!$portugueseValues) {
+            // A tabela antiga com os valores já migrados (caminho B do UPGRADE-2.0.md): CHECK e DEFAULT em inglês.
+            $ddl = str_replace(["DEFAULT 'bloquear'", "('bloquear', 'alertar', 'apenas_log')"], ["DEFAULT 'block'", "('block', 'warn', 'log')"], $ddl);
+        }
+        self::loadDdl($legacyPdo, $ddl);
         $tables = PdoRuleCatalog::legacyPortugueseTables();
         foreach (self::ruleRows() as $row) {
             self::insert($legacyPdo, $tables['rule'], $translate($row));
@@ -717,35 +727,61 @@ class Module16_PdoRuleCatalogTest extends TestCase
         foreach (self::groupTypeRows() as $row) {
             self::insert($legacyPdo, $tables['requirement'], $translate($row));
         }
-        $this->assertEquals('bloquear', $legacyPdo->query("SELECT acao_ao_violar FROM regra_negocio WHERE codigo = 'global_max_ocorrencias_3'")->fetchColumn(), 'a tabela antiga guarda a ação em português');
 
-        $legacyCatalog = new PdoRuleCatalog($legacyPdo, '', PdoRuleCatalog::legacyPortugueseTables(), PdoRuleCatalog::legacyPortugueseColumns());
-        $englishCatalog = new PdoRuleCatalog(self::seededPdo());
+        return $legacyPdo;
+    }
+
+    /**
+     * Confere que dois catálogos respondem igual em toda a matriz alvo × escopo × cenário × filtros
+     * (documentos, regras e veredito).
+     */
+    private function assertSameCatalogAnswers(IRuleCatalog $expected, IRuleCatalog $actual, string $label): void
+    {
         $registry = self::registry();
-        $fromLegacy = new DynamicSpecificationEngine($legacyCatalog, $registry);
-        $fromEnglish = new DynamicSpecificationEngine($englishCatalog, $registry);
-
+        $fromExpected = new DynamicSpecificationEngine($expected, $registry);
+        $fromActual = new DynamicSpecificationEngine($actual, $registry);
         foreach (self::scopeCases() as [$scope, $scenario]) {
             $this->assertEquals(
-                self::documentSignatures($englishCatalog, $scope, $scenario),
-                self::documentSignatures($legacyCatalog, $scope, $scenario),
-                sprintf('findDocumentRules(%s, %s) diverge entre o esquema português e o inglês', $scope, $scenario ?? 'null')
+                self::documentSignatures($expected, $scope, $scenario),
+                self::documentSignatures($actual, $scope, $scenario),
+                sprintf('%s: findDocumentRules(%s, %s) diverge', $label, $scope, $scenario ?? 'null')
             );
             foreach (self::filterCases() as $filters) {
                 $this->assertEquals(
-                    self::ruleCodes($englishCatalog, $scope, $scenario, $filters),
-                    self::ruleCodes($legacyCatalog, $scope, $scenario, $filters),
-                    sprintf('findRules(%s, %s, %s) diverge entre os esquemas', $scope, $scenario ?? 'null', json_encode($filters))
+                    self::ruleCodes($expected, $scope, $scenario, $filters),
+                    self::ruleCodes($actual, $scope, $scenario, $filters),
+                    sprintf('%s: findRules(%s, %s, %s) diverge', $label, $scope, $scenario ?? 'null', json_encode($filters))
                 );
                 foreach (self::targets() as $name => $target) {
                     $this->assertEquals(
-                        self::verdictSummary($fromEnglish->validate($target, $scope, $scenario, $filters)),
-                        self::verdictSummary($fromLegacy->validate($target, $scope, $scenario, $filters)),
-                        sprintf('veredito de %s diverge entre os esquemas em (%s, %s, %s)', $name, $scope, $scenario ?? 'null', json_encode($filters))
+                        self::verdictSummary($fromExpected->validate($target, $scope, $scenario, $filters)),
+                        self::verdictSummary($fromActual->validate($target, $scope, $scenario, $filters)),
+                        sprintf('%s: veredito de %s diverge em (%s, %s, %s)', $label, $name, $scope, $scenario ?? 'null', json_encode($filters))
                     );
                 }
             }
         }
+    }
+
+    /**
+     * Forward 022 RN-06/RN-08, revisto na 2.0.0: o DDL português da 1.6.1 (fixture), lido com
+     * legacyPortugueseTables() e legacyPortugueseColumns(), produz o mesmo resultado do DDL em inglês
+     * quando as ações já estão em inglês: os presets mapeiam nomes, não valores. Os filtros de contexto
+     * em português são recusados.
+     */
+    private function testLegacyPortugueseSchemaGivesTheSameVerdict(): void
+    {
+        $this->assertTrue(is_file(self::LEGACY_DDL), 'a fixture do DDL português da 1.6.1 deve existir');
+        $this->assertFalse(
+            str_contains((string) file_get_contents(self::DDL), 'CREATE TABLE regra_negocio'),
+            'o DDL de referência é um só, em inglês; o português fica só como fixture'
+        );
+
+        $legacyPdo = self::legacyPdo(false);
+        $this->assertEquals('block', $legacyPdo->query("SELECT acao_ao_violar FROM regra_negocio WHERE codigo = 'global_max_ocorrencias_3'")->fetchColumn());
+        $legacyCatalog = new PdoRuleCatalog($legacyPdo, '', PdoRuleCatalog::legacyPortugueseTables(), PdoRuleCatalog::legacyPortugueseColumns());
+        $englishCatalog = new PdoRuleCatalog(self::seededPdo());
+        $this->assertSameCatalogAnswers($englishCatalog, $legacyCatalog, 'nomes em português, valores em inglês');
 
         // Hidratação pelo esquema antigo: valores canônicos, ação em inglês, aplicabilidade em inglês.
         $byCode = [];
@@ -756,22 +792,116 @@ class Module16_PdoRuleCatalogTest extends TestCase
         $this->assertEquals(['product_code' => 'PROD_A', 'plan_code' => 'PLANO_A1'], $byCode['aluguel_maximo_plano_a1']->getParameters());
         $this->assertEquals(['campo' => 'fiadores', 'limite' => 2], $byCode['limite_parametrizado_ativacao']->getParameters());
 
-        // Os filtros de contexto em português (1.6.x) ainda são lidos, no SQL e na passada em memória.
+        // 2.0.0: os filtros de contexto em português (lidos até a 1.14.x) são recusados, no SQL e em memória.
         foreach ([$legacyCatalog, $englishCatalog] as $catalog) {
-            $this->assertEquals(
-                self::ruleCodes($catalog, 'contrato_locacao', 'contrato_locacao_ativacao', ['product_code' => 'PROD_A', 'plan_code' => 'PLANO_A1', 'reference_date' => '2026-07-01']),
-                self::ruleCodes($catalog, 'contrato_locacao', 'contrato_locacao_ativacao', ['codigo_produto' => 'PROD_A', 'codigo_plano' => 'PLANO_A1', 'data_referencia' => '2026-07-01'])
-            );
+            foreach (['codigo_produto' => 'product_code', 'codigo_plano' => 'plan_code', 'data_referencia' => 'reference_date'] as $legacy => $english) {
+                $e = $this->assertThrows(LegacyVocabularyException::class, fn() => self::ruleCodes($catalog, 'contrato_locacao', 'contrato_locacao_ativacao', [$legacy => 'PROD_A']));
+                $this->assertTrue($e->legacy === $legacy && $e->replacement === $english, $e->getMessage());
+            }
         }
 
-        // A chave de aplicabilidade em português dentro do JSON também é descartada (a coluna é a fonte).
-        $legacyPdo->exec("UPDATE regra_negocio SET parametros = '{\"campo\": \"fiadores\", \"limite\": 2, \"codigo_produto\": \"PROD_Z\"}' WHERE codigo = 'limite_parametrizado_ativacao'");
+        // A chave de aplicabilidade dentro do JSON continua descartada, em qualquer língua (a coluna é a
+        // fonte; nunca restringiu nada neste catálogo).
+        $legacyPdo->exec("UPDATE regra_negocio SET parametros = '{\"campo\": \"fiadores\", \"limite\": 2, \"codigo_produto\": \"PROD_Z\", \"product_code\": \"PROD_Y\"}' WHERE codigo = 'limite_parametrizado_ativacao'");
         $limit = array_values(array_filter(
             $legacyCatalog->findRules('contrato_locacao', 'contrato_locacao_ativacao'),
             static fn(IRuleDefinition $r): bool => $r->getCode() === 'limite_parametrizado_ativacao'
         ));
         $this->assertCount(1, $limit);
         $this->assertEquals(['campo' => 'fiadores', 'limite' => 2], $limit[0]->getParameters());
+    }
+
+    /**
+     * RN-04 (c) do forward 033: um catálogo da 1.6.x (DDL português, ações em português) é recusado
+     * pela 2.0.0, pelo PdoRuleCatalog com os presets e por um InMemoryRuleCatalog alimentado com as
+     * linhas do banco; o SQL do UPGRADE-2.0.md (lido do próprio guia, caminho A, SQLite) migra o catálogo
+     * e os dois passam a responder exatamente como o catálogo de referência. O mesmo para uma tabela do
+     * DDL de referência criada sem o CHECK, com o UPDATE da seção 3.1.
+     */
+    private function testPortugueseCatalogIsRefusedUntilTheUpgradeSql(): void
+    {
+        $toReference = UpgradeGuide::sqlBlock(UpgradeGuide::ENGLISH, 'portuguese-schema-to-reference');
+        $values = UpgradeGuide::sqlBlock(UpgradeGuide::ENGLISH, 'reference-schema-values');
+        $inPlace = UpgradeGuide::sqlBlock(UpgradeGuide::ENGLISH, 'portuguese-schema-in-place');
+        $this->assertCount(3, UpgradeGuide::statements($toReference), 'caminho A: três INSERT ... SELECT');
+        $this->assertCount(1, UpgradeGuide::statements($values), 'seção 3.1: um UPDATE');
+        $this->assertCount(4, UpgradeGuide::statements($inPlace), 'caminho B: DROP, UPDATE, ADD, DEFAULT');
+        foreach (['portuguese-schema-to-reference', 'reference-schema-values', 'portuguese-schema-in-place'] as $name) {
+            $this->assertEquals(
+                UpgradeGuide::sqlBlock(UpgradeGuide::ENGLISH, $name),
+                UpgradeGuide::sqlBlock(UpgradeGuide::PORTUGUESE, $name),
+                "o guia em português traz o mesmo SQL ({$name})"
+            );
+        }
+
+        $reference = new PdoRuleCatalog(self::seededPdo());
+        $inMemoryFrom = static function (PDO $pdo, string $rules, string $groups, string $requirements, array $keys): InMemoryRuleCatalog {
+            [$code, $scope, $scenario, $active, $groupId, $sortOrder] = $keys;
+            $catalog = new InMemoryRuleCatalog();
+            foreach ($pdo->query("SELECT * FROM {$rules}")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                foreach (['parameters', 'parametros'] as $json) { // a coluna JSON chega como texto
+                    if (is_string($row[$json] ?? null)) {
+                        $row[$json] = json_decode($row[$json], true);
+                    }
+                }
+                $catalog->addRule(RuleDefinition::fromArray($row));
+            }
+            $sql = "SELECT g.{$code} AS group_code, g.{$scope} AS scope, g.{$scenario} AS scenario, t.*"
+                . " FROM {$groups} g JOIN {$requirements} t ON t.{$groupId} = g.id WHERE g.{$active} = 'Y'"
+                . " ORDER BY t.{$sortOrder}, g.{$sortOrder}, g.{$code}, t.id";
+            foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                unset($row['id'], $row['group_id'], $row['grupo_id']);
+                $catalog->addDocumentRule(DocumentRuleDefinition::fromArray($row));
+            }
+            return $catalog;
+        };
+
+        // 1. O catálogo como a 1.6.x o deixou: recusado, nunca lido com a ação errada.
+        $pdo = self::legacyPdo(true);
+        $this->assertEquals('bloquear', $pdo->query("SELECT acao_ao_violar FROM regra_negocio WHERE codigo = 'global_max_ocorrencias_3'")->fetchColumn());
+        $presets = new PdoRuleCatalog($pdo, '', PdoRuleCatalog::legacyPortugueseTables(), PdoRuleCatalog::legacyPortugueseColumns());
+        $e = $this->assertThrows(LegacyVocabularyException::class, fn() => $presets->findRules('contrato_locacao', null));
+        $this->assertTrue(in_array($e->legacy, ['bloquear', 'alertar', 'apenas_log'], true) && str_contains($e->getMessage(), 'UPGRADE-2.0.md'), $e->getMessage());
+        $this->assertThrows(LegacyVocabularyException::class, fn() => (new DynamicSpecificationEngine($presets, self::registry()))->validate(self::targets()['perfeito'], 'contrato_locacao'));
+        $e = $this->assertThrows(LegacyVocabularyException::class, fn() => $inMemoryFrom($pdo, 'regra_negocio', 'grupo_documento_obrigatorio', 'grupo_documento_obrigatorio_tipo', ['codigo', 'escopo', 'cenario', 'active', 'grupo_id', 'ordem']));
+        $this->assertEquals('codigo', $e->legacy, 'InMemory alimentado por SELECT * da tabela antiga: a primeira chave em português');
+
+        // 2. Caminho A do guia: DDL de referência + INSERT ... SELECT; os dois catálogos aceitam e respondem igual.
+        self::loadDdl($pdo, (string) file_get_contents(self::DDL));
+        foreach (UpgradeGuide::statements($toReference) as $statement) {
+            $pdo->exec($statement);
+        }
+        $this->assertEquals('block', $pdo->query("SELECT violation_action FROM business_rule WHERE code = 'global_max_ocorrencias_3'")->fetchColumn());
+        $this->assertEquals(0, (int) $pdo->query("SELECT COUNT(*) FROM business_rule WHERE violation_action NOT IN ('block', 'warn', 'log')")->fetchColumn());
+        $this->assertSameCatalogAnswers($reference, new PdoRuleCatalog($pdo), 'depois do caminho A (PdoRuleCatalog)');
+        $this->assertSameCatalogAnswers(
+            $reference,
+            $inMemoryFrom($pdo, 'business_rule', 'document_requirement_group', 'document_requirement', ['code', 'scope', 'scenario', 'active', 'group_id', 'sort_order']),
+            'depois do caminho A (InMemoryRuleCatalog com SELECT *)'
+        );
+
+        // 3. Seção 3.1: tabela do DDL de referência criada sem o CHECK, com ações em português (e em caixa mista).
+        $english = new PDO('sqlite::memory:');
+        $english->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        self::loadDdl($english, (string) file_get_contents(self::DDL));
+        $english->exec('PRAGMA ignore_check_constraints = ON');
+        $portugueseAction = ['block' => ' Bloquear', 'warn' => 'ALERTAR', 'log' => 'apenas_log'];
+        foreach (self::ruleRows() as $row) {
+            $row['violation_action'] = $portugueseAction[$row['violation_action']];
+            self::insert($english, 'business_rule', $row);
+        }
+        $english->exec('PRAGMA ignore_check_constraints = OFF');
+        foreach (self::groupRows() as $row) {
+            self::insert($english, 'document_requirement_group', $row);
+        }
+        foreach (self::groupTypeRows() as $row) {
+            self::insert($english, 'document_requirement', $row);
+        }
+        $this->assertThrows(LegacyVocabularyException::class, fn() => (new PdoRuleCatalog($english))->findRules('contrato_locacao', null));
+        foreach (UpgradeGuide::statements($values) as $statement) {
+            $english->exec($statement);
+        }
+        $this->assertSameCatalogAnswers($reference, new PdoRuleCatalog($english), 'depois do UPDATE da seção 3.1');
     }
 
     /**
@@ -787,12 +917,12 @@ class Module16_PdoRuleCatalogTest extends TestCase
         foreach (['valida_ausencia_dupla_garantia_art43_ii', 'expirar_documento_apos_dias', 'registro_auditoria', 'aluguel_maximo_aceito', 'limite_parametrizado'] as $type) {
             $registry->registerClosure($type, fn($rule) => Spec::alwaysTrue());
         }
-        $contrato = (object) ['ocorrencias' => 4, 'documentos' => ['contrato_locacao_assinado']];
+        $contrato = (object) ['ocorrencias' => 4, 'documents' => ['contrato_locacao_assinado']];
 
         // Opcional: lê só as regras vigentes numa data (janela de vigência filtrada no SQL)
         $catalogo = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
 
-        // Tabelas criadas com o esquema em português da v1.5/v1.6 (regra_negocio...) continuam legíveis, sem migração
+        // Tabelas criadas com o esquema em português da v1.5/v1.6 (regra_negocio...) continuam legíveis pelos nomes; as ações precisam estar em inglês desde a v2.0 (UPGRADE-2.0.md)
         $catalogoLegado = new PdoRuleCatalog(
             $pdo,
             'rental_guarantee',

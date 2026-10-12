@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\StateMachine;
 
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use DateTimeImmutable;
 use InvalidArgumentException;
 
@@ -17,7 +17,7 @@ use InvalidArgumentException;
  * (`occurredAt`: guards and deadlines never read the clock, D4/RN-02), an optional idempotency key
  * (used by the MachineRunner, D13) and its origin (D19).
  *
- * @version    1.8.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -133,7 +133,7 @@ final class Event
      */
     public function payloadValue(string $path): mixed
     {
-        return PropertyAccessor::getValue($this->payload, $path);
+        return PropertyAccess::getValue($this->payload, $path);
     }
 
     /**

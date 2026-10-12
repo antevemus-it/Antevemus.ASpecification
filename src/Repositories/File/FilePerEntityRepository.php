@@ -6,6 +6,8 @@ namespace Antevemus\ASpecification\Repositories\File;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
+use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
@@ -17,15 +19,22 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * Organizes entities into a directory of individual files keyed by unique entity ID
  * (<storageDir>/<sanitizedId>.<ext>), providing direct O(1) lookups for UniqueEntitySpecification.
  *
+ * File content (2.0.0): the serialized entity; when it is a JSON object (JsonEntitySerializer), the
+ * repository adds the entity's persistence metadata under `__persistence_metadata` (forward 006 data
+ * delta). Files written by 1.x carry no metadata and are read as they are. A `.bin` file of the
+ * PHP-native serializer of 1.x (removed in 2.0.0) found in the directory is refused with a
+ * RepositoryException pointing to UPGRADE-2.0.md, never skipped as if the entity did not exist.
+ *
  * Features:
  * - Partitioned persistence via individual files
  * - O(1) optimized direct access by unique key
  * - On-demand filesystem iteration: iterate*() reads the directory entry by entry (readdir), never the whole listing
- * - Session metadata per entity (writes on put, reads on every served entity)
+ * - Persistence metadata per entity, written with the entity on put() and hydrated from its file
+ *   (2.0.0); reads served by this instance reach the files on store() or close()
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.5.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,6 +43,17 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  */
 class FilePerEntityRepository extends AbstractFileRepository
 {
+    /** Extension of the files written by the PHP-native serializer of 1.x (removed in 2.0.0). */
+    private const LEGACY_NATIVE_EXTENSION = 'bin';
+
+    /**
+     * Ids whose metadata record changed in this instance after the entity was last written
+     * (reads served), flushed to the entity files by store().
+     *
+     * @var array<string, true>
+     */
+    private array $unflushedMetadata = [];
+
     /**
      * @param string $storagePath Storage directory path
      * @param class-string<T>|string|IEntitySerializer $entityClassOrSerializer Entity class or serializer
@@ -83,7 +103,46 @@ class FilePerEntityRepository extends AbstractFileRepository
      */
     public function store(): void
     {
-        // In the file-per-entity model, files are already persisted individually on disk
+        // Entities are written by put(); what store() still has to write is the metadata of the
+        // entities this instance served since their last write (2.0.0).
+        if ($this->persistenceDefinition === PersistenceDefinition::ReadOnly
+            || $this->persistenceDefinition === PersistenceDefinition::Transient
+            || $this->persistenceDefinition === PersistenceDefinition::MemoryOnly) {
+            $this->unflushedMetadata = [];
+            return;
+        }
+
+        foreach (array_keys($this->unflushedMetadata) as $id) {
+            $id = (string) $id;
+            $target = $this->getFilePath($id);
+            $metadata = $this->metadataMap[$id] ?? null;
+            if ($metadata === null || !file_exists($target)) {
+                continue;
+            }
+            $content = @file_get_contents($target);
+            $document = is_string($content) ? json_decode($content, true) : null;
+            if (!is_array($document) || ($document !== [] && array_is_list($document))) {
+                continue; // not a JSON object: this serializer's files carry no metadata
+            }
+            $document[self::PERSISTENCE_METADATA_KEY] = self::exportMetadata($metadata);
+            $this->writeAtomic($target, $this->encodeDocument($document));
+        }
+        $this->unflushedMetadata = [];
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Reads the record persisted in the entity's file when this instance holds none (2.0.0).
+     */
+    public function getEntityMetaData(IEntity $entity): ?IEntityPersistenceMetaData
+    {
+        $id = (string) $entity->getEntityId();
+        if (!isset($this->metadataMap[$id]) && $this->isReadable()) {
+            $this->hydrateMetadataFromFile($id);
+        }
+
+        return $this->metadataMap[$id] ?? null;
     }
 
     /**
@@ -97,10 +156,22 @@ class FilePerEntityRepository extends AbstractFileRepository
             return;
         }
 
-        $target = $this->getFilePath($entity->getEntityId());
-        $content = $this->serializer->serialize($entity);
-        $this->writeAtomic($target, $content);
+        $id = (string) $entity->getEntityId();
+        $target = $this->getFilePath($id);
+        if (!isset($this->metadataMap[$id]) && $this->isReadable()) {
+            // The record persisted with the previous version of the entity keeps counting.
+            $this->hydrateMetadataFromFile($id);
+        }
         $this->recordWriteMetadata($entity);
+
+        $content = $this->serializer->serialize($entity);
+        $document = json_decode($content, true);
+        if (is_array($document) && ($document === [] || !array_is_list($document))) {
+            $document[self::PERSISTENCE_METADATA_KEY] = self::exportMetadata($this->metadataMap[$id]);
+            $content = $this->encodeDocument($document);
+        }
+        $this->writeAtomic($target, $content);
+        unset($this->unflushedMetadata[$id]);
     }
 
     /**
@@ -151,8 +222,11 @@ class FilePerEntityRepository extends AbstractFileRepository
                 }
             });
             $this->forgetMetadata($entity);
+            unset($this->unflushedMetadata[(string) $entity->getEntityId()]);
             return true;
         }
+
+        $this->assertNoLegacyNativeFile($entity->getEntityId());
 
         return false;
     }
@@ -191,6 +265,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             });
         }
         $this->clearMetadata();
+        $this->unflushedMetadata = [];
     }
 
     /**
@@ -207,6 +282,7 @@ class FilePerEntityRepository extends AbstractFileRepository
             $expectedId = $specification->getExpectedId();
             $target = $this->getFilePath($expectedId);
             if (!file_exists($target)) {
+                $this->assertNoLegacyNativeFile($expectedId);
                 return null;
             }
 
@@ -301,7 +377,12 @@ class FilePerEntityRepository extends AbstractFileRepository
         }
 
         $target = $this->getFilePath($entity->getEntityId());
-        return file_exists($target);
+        if (file_exists($target)) {
+            return true;
+        }
+        $this->assertNoLegacyNativeFile($entity->getEntityId());
+
+        return false;
     }
 
     /**
@@ -325,11 +406,22 @@ class FilePerEntityRepository extends AbstractFileRepository
             return [];
         }
 
-        $ext = $this->serializer->getFileExtension();
-        $pattern = rtrim($this->storagePath, "/\\") . DIRECTORY_SEPARATOR . "*.{$ext}";
-        $files = glob($pattern);
+        // One listing serves both the entity files (`*.<ext>`, sorted, hidden entries excluded) and
+        // the refusal of `.bin` files left by the PHP-native serializer of 1.x (2.0.0).
+        $suffix = '.' . $this->serializer->getFileExtension();
+        $legacySuffix = '.' . self::LEGACY_NATIVE_EXTENSION;
+        $entries = glob(rtrim($this->storagePath, "/\\") . DIRECTORY_SEPARATOR . '*');
 
-        return $files !== false ? $files : [];
+        $files = [];
+        foreach ($entries !== false ? $entries : [] as $path) {
+            if (str_ends_with($path, $suffix)) {
+                $files[] = $path;
+            } elseif ($suffix !== $legacySuffix && str_ends_with($path, $legacySuffix) && is_file($path)) {
+                throw self::legacyNativeFormatException($path);
+            }
+        }
+
+        return $files;
     }
 
     /**
@@ -354,8 +446,16 @@ class FilePerEntityRepository extends AbstractFileRepository
         $suffix = '.' . $this->serializer->getFileExtension();
 
         try {
+            $legacySuffix = '.' . self::LEGACY_NATIVE_EXTENSION;
+            $checkLegacy = $suffix !== $legacySuffix;
             while (($entry = readdir($handle)) !== false) {
-                if ($entry === '' || $entry[0] === '.' || !str_ends_with($entry, $suffix)) {
+                if ($entry === '' || $entry[0] === '.') {
+                    continue;
+                }
+                if ($checkLegacy && str_ends_with($entry, $legacySuffix) && is_file($directory . $entry)) {
+                    throw self::legacyNativeFormatException($directory . $entry);
+                }
+                if (!str_ends_with($entry, $suffix)) {
                     continue;
                 }
                 $path = $directory . $entry;
@@ -384,9 +484,106 @@ class FilePerEntityRepository extends AbstractFileRepository
             if ($content === false || trim($content) === "") {
                 return null;
             }
+            [$content, $block] = $this->splitMetadata($content);
             /** @var T $entity */
             $entity = $this->serializer->deserialize($content, $this->entityClass);
+            $id = (string) $entity->getEntityId();
+            if ($block !== null && !isset($this->metadataMap[$id])) {
+                $this->metadataMap[$id] = self::importMetadata($block, $id, $filePath);
+            }
             return $entity;
         });
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The read reaches the entity's file on the next store() or close().
+     */
+    protected function recordReadMetadata(IEntity $entity): void
+    {
+        parent::recordReadMetadata($entity);
+        $this->unflushedMetadata[(string) $entity->getEntityId()] = true;
+    }
+
+    /**
+     * Separates the `__persistence_metadata` block from an entity document, so that the serializer
+     * only sees the entity.
+     *
+     * @param string $content File content
+     * @return array{0: string, 1: mixed} Entity content and the metadata block (null when absent)
+     */
+    private function splitMetadata(string $content): array
+    {
+        if (!str_contains($content, '"' . self::PERSISTENCE_METADATA_KEY . '"')) {
+            return [$content, null];
+        }
+        $document = json_decode($content, true);
+        if (!is_array($document) || !array_key_exists(self::PERSISTENCE_METADATA_KEY, $document)) {
+            return [$content, null];
+        }
+        $block = $document[self::PERSISTENCE_METADATA_KEY];
+        unset($document[self::PERSISTENCE_METADATA_KEY]);
+
+        return [$this->encodeDocument($document), $block];
+    }
+
+    /**
+     * Loads the metadata record persisted in the file of an entity, when the file carries one.
+     *
+     * @param string $id Entity id
+     * @return void
+     */
+    private function hydrateMetadataFromFile(string $id): void
+    {
+        $target = $this->getFilePath($id);
+        if (!file_exists($target)) {
+            return;
+        }
+        $content = $this->withSharedLock($target, static fn(): string|false => @file_get_contents($target));
+        if (!is_string($content)) {
+            return;
+        }
+        [, $block] = $this->splitMetadata($content);
+        if ($block !== null) {
+            $this->metadataMap[$id] = self::importMetadata($block, $id, $target);
+        }
+    }
+
+    /**
+     * Encodes an entity document the way JsonEntitySerializer does.
+     *
+     * @param array<array-key, mixed> $document
+     * @return string
+     * @throws RepositoryException
+     */
+    private function encodeDocument(array $document): string
+    {
+        $json = json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            throw new RepositoryException('Failed to encode the entity document: ' . json_last_error_msg());
+        }
+
+        return $json;
+    }
+
+    /**
+     * Refuses the `.bin` file of an entity written by the PHP-native serializer of 1.x when this
+     * repository reads another extension: the entity exists, in a format 2.0.0 no longer reads.
+     *
+     * @param string|int $id Entity id
+     * @return void
+     * @throws RepositoryException
+     */
+    private function assertNoLegacyNativeFile(string|int $id): void
+    {
+        if ($this->serializer->getFileExtension() === self::LEGACY_NATIVE_EXTENSION) {
+            return;
+        }
+        $legacy = rtrim($this->storagePath, "/\\") . DIRECTORY_SEPARATOR
+            . FileNameSanitizer::sanitize($id) . '.' . self::LEGACY_NATIVE_EXTENSION;
+        if (is_file($legacy)) {
+            throw self::legacyNativeFormatException($legacy);
+        }
     }
 }

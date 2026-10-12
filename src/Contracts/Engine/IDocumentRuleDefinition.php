@@ -19,10 +19,10 @@ use Antevemus\ASpecification\Engine\DocumentRequirementMode;
  * - Resolution of Boolean requirement semantics (all, any, one_of_set)
  * - Grouping by alternative sets (e.g., 'identity'), mandatory for any / one_of_set
  * - Conditional expression for requirement activation
- * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract and survive
- *   only as deprecated aliases on DocumentRuleDefinition (removed in 2.0.0)
+ * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract in 1.7.0 and
+ *   their deprecated aliases on DocumentRuleDefinition were removed in 2.0.0
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -40,15 +40,15 @@ interface IDocumentRuleDefinition
     public function getGroupCode(): string;
 
     /**
-     * Returns the operational scope this document requirement belongs to (e.g. 'contrato_locacao',
-     * 'sinistro'). Never empty: a document requirement always belongs to exactly one scope.
+     * Returns the operational scope this document requirement belongs to (e.g. 'rental_contract',
+     * 'claim'). Never empty: a document requirement always belongs to exactly one scope.
      *
      * @return string
      */
     public function getScope(): string;
 
     /**
-     * Returns the scenario this document requirement belongs to (e.g. 'sinistro:ocupado').
+     * Returns the scenario this document requirement belongs to (e.g. 'claim:occupied').
      * Null means the requirement applies to the whole scope regardless of scenario.
      *
      * @return string|null

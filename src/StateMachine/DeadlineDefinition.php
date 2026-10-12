@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\StateMachine;
 
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException;
 use DateInterval;
 use DateTimeImmutable;
@@ -26,7 +26,7 @@ use LogicException;
  *   ISO-8601 duration (string or DateInterval); `dueAt = enteredAt + duration`;
  * - `atFrom`: a dotted path into the context (`context.sla_due_at`) holding the due instant itself
  *   (DateTimeInterface, or an ISO-8601 text with date, time and offset).
- * Paths start with `context.` and are resolved with the PropertyAccessor against the context given
+ * Paths start with `context.` and are resolved with the shared property accessor (`PropertyAccess`) against the context given
  * to transition()/initialSnapshot() at the moment the state is entered. A missing or invalid value
  * makes the entering event rejected with SM_DEADLINE_SOURCE_INVALID (D8): never a silently empty
  * deadline.
@@ -41,7 +41,7 @@ use LogicException;
  * The keys of an unused source and of an absent pause are omitted, so a definition without the
  * 1.9.0 fields keeps its 1.8.0 array form and fingerprint.
  *
- * @version    1.9.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -192,7 +192,7 @@ final class DeadlineDefinition
             return $this->dueFrom($enteredAt);
         }
         try {
-            $value = PropertyAccessor::getValue([self::CONTEXT_ROOT => $context], (string) $this->sourcePath());
+            $value = PropertyAccess::getValue([self::CONTEXT_ROOT => $context], (string) $this->sourcePath());
         } catch (\Throwable) {
             return null;
         }

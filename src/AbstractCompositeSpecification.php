@@ -24,7 +24,7 @@ declare(strict_types=1);
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.1
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -38,7 +38,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
-use Antevemus\ASpecification\Helpers\ReflectionUtils;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -590,65 +590,28 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
     }
 
     /**
-     * Extracts property value from an object via reflection or getters.
-     *
-     * Hybrid resolution order:
-     * 1. Public getters (getX, isX, hasX)
-     * 2. Public properties
-     * 3. Private/protected properties declared by the object's class and marked #[Specifiable]
-     *    (on the property or on that class; opt-in since 1.6.1, an unmarked one is "not found")
+     * Extracts a property value from an object through the shared property accessor
+     * (`PropertyAccess` of antevemus/adeep-property-access, since 2.0.0), the same resolution every
+     * property specification of the library uses: public getter (`getX()`, `x()`, `isX()`, `hasX()`),
+     * public property, then a private or protected property marked #[Specifiable] (on the property or
+     * on the class that declares it, ancestors included; an unmarked one is "not found").
      *
      * @param object $object Target instance
      * @param string $propertyName Property name
      * @return mixed Extracted value
-     * @throws \RuntimeException If property cannot be found or accessed
+     * @throws \RuntimeException If the property cannot be resolved
      */
     protected function getPropertyValue(object $object, string $propertyName): mixed
     {
-        $getter = 'get' . ucfirst($propertyName);
-        if (method_exists($object, $getter) && is_callable([$object, $getter])) {
-            return $object->$getter();
+        if (!PropertyAccess::hasProperty($object, $propertyName)) {
+            throw new \RuntimeException(sprintf(
+                'Property "%s" not found on %s. Attempted: public getter, public property, #[Specifiable] property.',
+                $propertyName,
+                get_class($object)
+            ));
         }
 
-        $isMethod = 'is' . ucfirst($propertyName);
-        if (method_exists($object, $isMethod) && is_callable([$object, $isMethod])) {
-            return $object->$isMethod();
-        }
-
-        $hasMethod = 'has' . ucfirst($propertyName);
-        if (method_exists($object, $hasMethod) && is_callable([$object, $hasMethod])) {
-            return $object->$hasMethod();
-        }
-
-        if (property_exists($object, $propertyName)) {
-            $reflection = new \ReflectionProperty($object, $propertyName);
-            if ($reflection->isPublic()) {
-                return $object->$propertyName;
-            }
-        }
-
-        try {
-            $reflection = new \ReflectionProperty($object, $propertyName);
-            if (!ReflectionUtils::isSpecifiable($reflection)) {
-                throw new \ReflectionException(sprintf(
-                    'Property %s::$%s is not public and not marked #[Specifiable]',
-                    get_class($object),
-                    $propertyName
-                ));
-            }
-            $reflection->setAccessible(true);
-            return $reflection->getValue($object);
-        } catch (\ReflectionException $e) {
-            throw new \RuntimeException(
-                sprintf(
-                    'Property "%s" not found on %s. Attempted: public getter, public property, Reflection.',
-                    $propertyName,
-                    get_class($object)
-                ),
-                0,
-                $e
-            );
-        }
+        return PropertyAccess::getValue($object, $propertyName);
     }
 
     /**

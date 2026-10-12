@@ -7,7 +7,7 @@ namespace Antevemus\ASpecification\Resolution;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use InvalidArgumentException;
 use Throwable;
@@ -23,7 +23,7 @@ use Throwable;
  * Spec::external('credit.score', ['document' => 'customer.cpf'], Spec::greaterThanOrEqualTo(700));
  * </code>
  *
- * Parameters are dot paths into the candidate (PropertyAccessor notation), resolved when the leaf is
+ * Parameters are dot paths into the candidate (shared property accessor notation, `PropertyAccess`), resolved when the leaf is
  * evaluated or collected by the resolver. The inner specification is a common specification, with
  * because()/withCode(), and it is the one that decides (forward 026 D1).
  *
@@ -50,7 +50,7 @@ use Throwable;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.10.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -248,7 +248,7 @@ final class ExternalDataSpecification extends AbstractSpecification implements I
         $values = [];
         foreach ($this->parameters as $name => $path) {
             try {
-                if (!PropertyAccessor::hasProperty($candidate, $path)) {
+                if (!PropertyAccess::hasProperty($candidate, $path)) {
                     throw new InvalidArgumentException(sprintf(
                         'Parameter "%s" of external data "%s": path "%s" not found or not accessible on candidate of type "%s".',
                         $name,
@@ -257,7 +257,7 @@ final class ExternalDataSpecification extends AbstractSpecification implements I
                         get_debug_type($candidate)
                     ));
                 }
-                $value = PropertyAccessor::getValue($candidate, $path);
+                $value = PropertyAccess::getValue($candidate, $path);
             } catch (Throwable $e) {
                 return SpecificationResult::error(exception: $e, ruleName: $this->getRuleName(), code: $this->customCode);
             }

@@ -2,7 +2,7 @@
 -- Antevemus.ASpecification - relational rule catalog (reference DDL)
 -- =====================================================================
 -- Read by Antevemus\ASpecification\Engine\PdoRuleCatalog (since 1.5.0;
--- English vocabulary since 1.7.0).
+-- English vocabulary since 1.7.0, only English since 2.0.0).
 --
 -- Portable ANSI SQL: no schema, no dialect types, unquoted identifiers.
 -- Only the columns the engine reads are declared; a consumer table may
@@ -25,11 +25,12 @@
 --   requirement_mode        all | any | one_of_set (any/one_of_set need a set)
 --
 -- Tables created with the Portuguese schema of 1.5.0/1.6.x (regra_negocio,
--- grupo_documento_obrigatorio, grupo_documento_obrigatorio_tipo) stay
--- readable without migration: pass PdoRuleCatalog::legacyPortugueseTables()
--- and PdoRuleCatalog::legacyPortugueseColumns() to the constructor; the
--- legacy action values (bloquear, alertar, apenas_log) are read as
--- block, warn and log.
+-- grupo_documento_obrigatorio, grupo_documento_obrigatorio_tipo) are read
+-- by name through PdoRuleCatalog::legacyPortugueseTables() and
+-- PdoRuleCatalog::legacyPortugueseColumns(); since 2.0.0 their action
+-- values must be English (bloquear, alertar and apenas_log are refused).
+-- UPGRADE-2.0.md has the SQL that copies such tables into this DDL, or
+-- updates them in place.
 -- =====================================================================
 
 CREATE TABLE business_rule (

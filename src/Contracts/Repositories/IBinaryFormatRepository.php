@@ -10,7 +10,8 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
  * IBinaryFormatRepository - Marker Interface for Binary Format Repositories
  *
  * Classification marker interface for persistent repositories storing
- * entities in binary formats (native serialization, Protobuf, BSON, etc.).
+ * entities in binary formats (Protobuf, BSON, etc.; the library ships none since the PHP-native
+ * serializer was removed in 2.0.0).
  *
  * Features:
  * - Semantic classification for repositories with binary media
@@ -18,7 +19,7 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
  *
  * @template T of IEntity
  * @extends IPersistentRepository<T>
- * @version    1.1.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

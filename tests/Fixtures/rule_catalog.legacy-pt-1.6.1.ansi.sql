@@ -3,7 +3,9 @@
 -- below this banner. Not shipped as a reference: since 1.7.0 the only
 -- reference DDL is resources/sql/rule_catalog.ansi.sql (English). Used
 -- by Module16 to prove that PdoRuleCatalog::legacyPortugueseTables() and
--- legacyPortugueseColumns() read the old schema without migration.
+-- legacyPortugueseColumns() read the old table and column names, that
+-- 2.0.0 refuses the Portuguese action values stored by 1.6.x, and that
+-- the SQL of UPGRADE-2.0.md migrates such a catalog.
 -- =====================================================================
 -- Antevemus.ASpecification - relational rule catalog (reference DDL)
 -- =====================================================================

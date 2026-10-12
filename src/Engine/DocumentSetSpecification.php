@@ -17,9 +17,11 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * one. A set in which no document applies requires nothing and is satisfied.
  *
  * A failing set emits ONE aggregated failure (`DOC_SET_<KEY>`) listing the accepted documents,
- * instead of one failure per document, so the verdict reports one blocked requirement.
+ * instead of one failure per document, so the verdict reports one blocked requirement. Its metadata
+ * is English only since 2.0.0 (`action`, `alternative_set`, `mode`, `accepted_documents`, `codes`,
+ * `present`, `expected`, `received`); the Portuguese duplicates of 1.7.0 to 1.14.x were removed.
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -121,15 +123,6 @@ final class DocumentSetSpecification extends AbstractSpecification
                 'present' => $presentTypes,
                 'expected' => $this->mode === DocumentRequirementMode::ANY ? '>=1' : 1,
                 'received' => count($present),
-                // Legacy Portuguese keys, removed in 2.0.0.
-                'acao' => RuleAction::BLOCK->value,
-                'set_alternativas' => $this->setKey,
-                'modo' => $this->mode->value,
-                'documentos_aceitos' => $accepted,
-                'codigos' => $codes,
-                'presentes' => $presentTypes,
-                'esperado' => $this->mode === DocumentRequirementMode::ANY ? '>=1' : 1,
-                'recebido' => count($present),
             ],
             severity: FailureSeverity::ERROR
         );

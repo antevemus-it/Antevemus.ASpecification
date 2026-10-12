@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+// Composer's autoloader first: since 2.0.0 the library requires antevemus/adeep-property-access
+// (installed by `composer install`); vendor/bin/phpunit loads it on its own, the module runner
+// (tests/run_all.php) through this line.
+if (is_file(dirname(__DIR__) . '/vendor/autoload.php')) {
+    require_once dirname(__DIR__) . '/vendor/autoload.php';
+}
+
 spl_autoload_register(function ($class) {
     $namespaces = [
         'Antevemus\\ASpecification\\Tests\\' => __DIR__ . '/',

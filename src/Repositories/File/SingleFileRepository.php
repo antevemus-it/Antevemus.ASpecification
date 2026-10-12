@@ -15,17 +15,32 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * SingleFileRepository - Entity repository persisting all entities in a single central document
  *
  * Maintains the entity collection indexed by unique identity and persists all records
- * into a single document (JSON, XML, or binary) with atomic write semantics.
+ * into a single JSON document with atomic write semantics.
+ *
+ * Document (2.0.0): the envelope is always JSON and belongs to the repository; the serializer only
+ * serializes each entity:
+ *
+ *     {"__meta": {"repository_id", "entity_type", "updated_at", "count"},
+ *      "entities": [ {<entity>, "__persistence_metadata": {...}}, ... ]}
+ *
+ * An entity whose serialized form is a JSON object (JsonEntitySerializer) is embedded as that object,
+ * with its persistence metadata under `__persistence_metadata`; the output of a serializer that does
+ * not produce a JSON object is embedded as a JSON string, without metadata. JSON documents written by
+ * 1.x (no metadata) are read as they are. The PHP-native `serialize()` envelope of 1.x
+ * (PhpNativeEntitySerializer, `.bin`) is refused with a RepositoryException pointing to UPGRADE-2.0.md;
+ * so is any other content that is not a JSON document of this shape (until 1.14 it was read as an
+ * empty repository and overwritten by the next write).
  *
  * Features:
  * - Centralized single-file persistence
  * - Support for immediate write-through (ReadWrite) or on-demand snapshot (Snapshot)
  * - Safe reloading and shared locking for concurrent reads
- * - Session metadata per entity (writes on put/putAll, reads on every served entity)
+ * - Persistence metadata per entity, written with the document and hydrated on load (2.0.0); reads
+ *   served by this instance reach the file with its next write, store() or close()
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    1.5.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -79,7 +94,16 @@ class SingleFileRepository extends AbstractFileRepository
         }
 
         return $this->withExclusiveLock($this->lockFilePath(), function () use ($mutation): mixed {
+            // The reload takes the entities (and their persisted metadata) from disk; the records
+            // this instance holds win for the entities it touched, so reads it served since its last
+            // write are not lost (counters are last-writer-wins between processes).
+            $session = $this->metadataMap;
             $this->load();
+            foreach ($session as $id => $metadata) {
+                if (isset($this->entities[$id])) {
+                    $this->metadataMap[$id] = $metadata;
+                }
+            }
             $result = $mutation();
             if ($result !== false) {
                 $this->store();
@@ -114,9 +138,12 @@ class SingleFileRepository extends AbstractFileRepository
     /**
      * {@inheritdoc}
      *
-     * Non-JSON branch (serializer extension other than `json`, e.g. PhpNativeEntitySerializer `.bin`):
-     * deprecated since 1.5.0, removed in 2.0.0; use JsonEntitySerializer. The `serialize()` envelope
-     * goes away with PhpNativeEntitySerializer and the single-file envelope becomes JSON-only.
+     * Reads the JSON document: every entity is deserialized by the serializer and its
+     * `__persistence_metadata`, when present, becomes its metadata record (2.0.0). The records this
+     * instance held are replaced by the persisted ones (reload semantics).
+     *
+     * @throws RepositoryException When the file holds the PHP-native envelope of 1.x (see
+     *                             UPGRADE-2.0.md) or is not a single-file JSON document
      */
     public function load(): void
     {
@@ -126,6 +153,7 @@ class SingleFileRepository extends AbstractFileRepository
 
         if (!file_exists($this->storagePath)) {
             $this->entities = [];
+            $this->metadataMap = [];
             $this->isLoaded = true;
             return;
         }
@@ -134,40 +162,48 @@ class SingleFileRepository extends AbstractFileRepository
             $content = file_get_contents($this->storagePath);
             if ($content === false || trim($content) === "") {
                 $this->entities = [];
+                $this->metadataMap = [];
                 $this->isLoaded = true;
                 return;
             }
 
-            $this->entities = [];
+            if (self::isPhpSerializedPayload($content)) {
+                throw self::legacyNativeFormatException($this->storagePath);
+            }
 
-            if ($this->serializer->getFileExtension() === 'json') {
-                $decoded = json_decode($content, true);
-                if (is_array($decoded) && isset($decoded["entities"]) && is_array($decoded["entities"])) {
-                    foreach ($decoded["entities"] as $rawEntityData) {
-                        $entityJson = is_string($rawEntityData) ? $rawEntityData : json_encode($rawEntityData);
-                        if ($entityJson !== false) {
-                            /** @var T $entity */
-                            $entity = $this->serializer->deserialize($entityJson, $this->entityClass);
-                            $this->entities[(string)$entity->getEntityId()] = $entity;
-                        }
-                    }
+            $decoded = json_decode($content, true);
+            if (!is_array($decoded) || !isset($decoded["entities"]) || !is_array($decoded["entities"])) {
+                throw new RepositoryException(sprintf(
+                    '%s is not a single-file entity document (a JSON object with an "entities" list%s); '
+                    . 'refusing to read it as an empty repository.',
+                    $this->storagePath,
+                    json_last_error() !== JSON_ERROR_NONE ? ': ' . json_last_error_msg() : ''
+                ));
+            }
+
+            $entities = [];
+            $metadata = [];
+            foreach ($decoded["entities"] as $rawEntityData) {
+                $block = null;
+                if (is_array($rawEntityData) && array_key_exists(self::PERSISTENCE_METADATA_KEY, $rawEntityData)) {
+                    $block = $rawEntityData[self::PERSISTENCE_METADATA_KEY];
+                    unset($rawEntityData[self::PERSISTENCE_METADATA_KEY]);
                 }
-            } else {
-                // Deprecated 1.5.0, removed in 2.0.0 (use JsonEntitySerializer): see load() docblock.
-                // The envelope only carries arrays, scalars and the serialized entity strings.
-                // Entities are reconstructed below through the serializer whitelist; the envelope
-                // itself must never instantiate a class (BUG-20261007-HIJG).
-                $data = @unserialize($content, ["allowed_classes" => false]);
-                if (is_array($data) && isset($data["entities"]) && is_array($data["entities"])) {
-                    foreach ($data["entities"] as $serializedEntity) {
-                        if (is_string($serializedEntity)) {
-                            /** @var T $entity */
-                            $entity = $this->serializer->deserialize($serializedEntity, $this->entityClass);
-                            $this->entities[(string)$entity->getEntityId()] = $entity;
-                        }
-                    }
+                $entityJson = is_string($rawEntityData) ? $rawEntityData : json_encode($rawEntityData);
+                if ($entityJson === false) {
+                    continue;
+                }
+                /** @var T $entity */
+                $entity = $this->serializer->deserialize($entityJson, $this->entityClass);
+                $id = (string)$entity->getEntityId();
+                $entities[$id] = $entity;
+                if ($block !== null) {
+                    $metadata[$id] = self::importMetadata($block, $id, $this->storagePath);
                 }
             }
+
+            $this->entities = $entities;
+            $this->metadataMap = $metadata;
             $this->isLoaded = true;
         });
     }
@@ -175,9 +211,9 @@ class SingleFileRepository extends AbstractFileRepository
     /**
      * {@inheritdoc}
      *
-     * Non-JSON branch (serializer extension other than `json`, e.g. PhpNativeEntitySerializer `.bin`):
-     * deprecated since 1.5.0, removed in 2.0.0; use JsonEntitySerializer. The `serialize()` envelope
-     * goes away with PhpNativeEntitySerializer and the single-file envelope becomes JSON-only.
+     * Writes the JSON document (the envelope belongs to the repository since 2.0.0, whatever the
+     * serializer): each entity with its `__persistence_metadata` when its serialized form is a JSON
+     * object, as a JSON string otherwise.
      */
     public function store(): void
     {
@@ -188,49 +224,55 @@ class SingleFileRepository extends AbstractFileRepository
             return;
         }
 
-        if ($this->serializer->getFileExtension() === 'json') {
-            $list = [];
-            foreach ($this->entities as $entity) {
-                $json = $this->serializer->serialize($entity);
-                $decodedEntity = json_decode($json, true);
-                $list[] = $decodedEntity !== null ? $decodedEntity : $json;
+        $list = [];
+        foreach ($this->entities as $id => $entity) {
+            $serialized = $this->serializer->serialize($entity);
+            $decodedEntity = json_decode($serialized, true);
+            if (!is_array($decodedEntity) || ($decodedEntity !== [] && array_is_list($decodedEntity))) {
+                // Not a JSON object: embedded as a string, there is no object to carry the metadata.
+                $list[] = $serialized;
+                continue;
             }
-
-            $payload = [
-                "__meta" => [
-                    "repository_id" => $this->repositoryId,
-                    "entity_type" => $this->entityClass,
-                    "updated_at" => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
-                    "count" => count($list),
-                ],
-                "entities" => $list,
-            ];
-
-            $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if ($encoded === false) {
-                throw new RepositoryException("Failed to encode the single entity document: " . json_last_error_msg());
+            if (isset($this->metadataMap[(string)$id])) {
+                $decodedEntity[self::PERSISTENCE_METADATA_KEY] = self::exportMetadata($this->metadataMap[(string)$id]);
             }
-
-            $this->writeAtomic($this->storagePath, $encoded, $this->lockFilePath());
-        } else {
-            // Deprecated 1.5.0, removed in 2.0.0 (use JsonEntitySerializer): see store() docblock.
-            $serializedList = [];
-            foreach ($this->entities as $entity) {
-                $serializedList[] = $this->serializer->serialize($entity);
-            }
-
-            $payload = [
-                "__meta" => [
-                    "repository_id" => $this->repositoryId,
-                    "entity_type" => $this->entityClass,
-                    "updated_at" => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
-                    "count" => count($serializedList),
-                ],
-                "entities" => $serializedList,
-            ];
-
-            $this->writeAtomic($this->storagePath, serialize($payload), $this->lockFilePath());
+            $list[] = $decodedEntity;
         }
+
+        $payload = [
+            "__meta" => [
+                "repository_id" => $this->repositoryId,
+                "entity_type" => $this->entityClass,
+                "updated_at" => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
+                "count" => count($list),
+            ],
+            "entities" => $list,
+        ];
+
+        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($encoded === false) {
+            throw new RepositoryException("Failed to encode the single entity document: " . json_last_error_msg());
+        }
+
+        $this->writeAtomic($this->storagePath, $encoded, $this->lockFilePath());
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * ReadWrite (2.0.0): the document is re-read under the exclusive lock and written back with this
+     * instance's metadata records, like any write, so that closing never overwrites what another
+     * instance or process wrote since this one last loaded (until 1.14 close() stored the in-memory map
+     * as it was). Snapshot stores the in-memory map, as before.
+     */
+    public function close(): void
+    {
+        if ($this->persistenceDefinition === PersistenceDefinition::ReadWrite) {
+            $this->mutateUnderLock(static fn(): bool => true);
+            return;
+        }
+
+        parent::close();
     }
 
     /**
@@ -242,9 +284,9 @@ class SingleFileRepository extends AbstractFileRepository
 
         $this->mutateUnderLock(function () use ($entity): bool {
             $this->entities[(string)$entity->getEntityId()] = $entity;
+            $this->recordWriteMetadata($entity);
             return true;
         });
-        $this->recordWriteMetadata($entity);
     }
 
     /**
@@ -258,15 +300,11 @@ class SingleFileRepository extends AbstractFileRepository
             foreach ($collectionOfEntities as $entity) {
                 if ($entity instanceof IEntity) {
                     $this->entities[(string)$entity->getEntityId()] = $entity;
+                    $this->recordWriteMetadata($entity);
                 }
             }
             return true;
         });
-        foreach ($collectionOfEntities as $entity) {
-            if ($entity instanceof IEntity) {
-                $this->recordWriteMetadata($entity);
-            }
-        }
     }
 
     /**
@@ -301,9 +339,9 @@ class SingleFileRepository extends AbstractFileRepository
                 return false;
             }
             unset($this->entities[$id]);
+            $this->forgetMetadata($entity);
             return true;
         });
-        $this->forgetMetadata($entity);
 
         return $removed;
     }
@@ -339,9 +377,9 @@ class SingleFileRepository extends AbstractFileRepository
 
         $this->mutateUnderLock(function (): bool {
             $this->entities = [];
+            $this->clearMetadata();
             return true;
         });
-        $this->clearMetadata();
     }
 
     /**

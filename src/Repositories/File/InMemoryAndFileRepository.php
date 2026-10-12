@@ -36,7 +36,7 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPersistentRepository<T>
- * @version    1.5.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -106,7 +106,7 @@ class InMemoryAndFileRepository extends AbstractRepository implements
      * persisted entities without an explicit warmup() call.
      *
      * @param string $storagePath Single file path (e.g. storage/customers.json)
-     * @param IEntitySerializer $serializer Serializer for the L2 file (JsonEntitySerializer with the entity class; PhpNativeEntitySerializer is deprecated since 1.5.0)
+     * @param IEntitySerializer $serializer Serializer for the L2 file (JsonEntitySerializer with the entity class; the L2 document is JSON whatever the serializer, since 2.0.0)
      * @param IVolatileRepository<T>|null $cache Optional L1 repository (default: new InMemoryRepository)
      * @param string|null $repositoryId Optional repository identifier (default: "hybrid_" + file name)
      * @param PersistenceDefinition $persistenceDefinition Persistence mode of both tiers (default: ReadWrite, write-through)

@@ -25,7 +25,7 @@ use UnitEnum;
  *
  * - getFieldByName() / getMethodByName() walk the class hierarchy and find PRIVATE and protected
  *   members declared in superclasses, exactly as the Java original does. The specification paths
- *   that receive a property NAME as text (PropertyAccessor, last resolution step, and the delta of
+ *   that receive a property NAME as text (the shared property accessor `PropertyAccess`, last resolution step, and the delta of
  *   SpecificationHelper::updateEntityState()) only use such a field when isSpecifiable() says the
  *   author of the class opted in with #[Specifiable] (since 1.6.1); getFieldValue()/setFieldValue()
  *   stay unrestricted utilities for code that calls them explicitly.
@@ -47,7 +47,7 @@ use UnitEnum;
  * mutable static flags DO_COPY_OBJECTS / DO_COPY_ENTITIES / RECURSIVE_COPYING_DEPTH_TRESHOLD, which are
  * parameters of the copy methods here instead of process-wide state.
  *
- * @version    1.6.1
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Helpers
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,12 +60,15 @@ final class ReflectionUtils
     public const DEFAULT_RECURSIVE_COPYING_DEPTH_THRESHOLD = 5;
 
     /**
-     * Attribute names that mark a non-public property as specifiable: this library's own and the
-     * ALinq one, compared by name so that ALinq is not a dependency.
+     * Attribute names that mark a non-public property as specifiable: this library's own, the ALinq
+     * one (compared by name so that ALinq is not a dependency) and, since 2.0.0, the one of the shared
+     * property accessor (antevemus/adeep-property-access), which recognizes the same three on the
+     * read path: a property marked with any of them is read and written alike.
      */
     public const SPECIFIABLE_ATTRIBUTES = [
         Specifiable::class,
         'Antevemus\\ALinq\\Attributes\\Specifiable',
+        'Antevemus\\ADeepPropertyAccess\\Attributes\\Specifiable',
     ];
 
     /** Prefixes tried by getMethodByNameWithPossiblePrefix() when none are given (Java ParameterizedSpecification). */
@@ -205,8 +208,9 @@ final class ReflectionUtils
     /**
      * Tells whether the author of the class opted the property in to access by name: the property
      * carries #[Specifiable], or the class that DECLARES it does (a marker on a parent or on a
-     * subclass does not count). Both Antevemus\ASpecification\Attributes\Specifiable and
-     * Antevemus\ALinq\Attributes\Specifiable are accepted, by name.
+     * subclass does not count). Antevemus\ASpecification\Attributes\Specifiable,
+     * Antevemus\ALinq\Attributes\Specifiable and (2.0.0) Antevemus\ADeepPropertyAccess\Attributes\Specifiable
+     * are accepted, by name.
      *
      * Public properties need no marker; this method only reports the marker and is what the
      * name-based specification paths consult before touching a private or protected property.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 
 /**
  * RuleDefinition - Canonical Immutable Implementation of Business Rule Definition
@@ -18,11 +19,11 @@ use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
  * - Automatic type normalization (RuleAction, int, float, string)
  * - Support for open-ended parameters and contextual metadata
  * - Applicability columns of the catalog row (product, plan, validity window) hydrated into parameters (RN-17)
- * - English vocabulary since 1.7.0: fromArray() reads the English keys and, as legacy, the Portuguese
- *   keys of 1.6.x (English wins when both are present); the Portuguese getters remain as deprecated
- *   aliases, removed in 2.0.0
+ * - English vocabulary since 1.7.0, only English since 2.0.0: fromArray() refuses a Portuguese key of
+ *   1.6.x (LEGACY_KEYS, LEGACY_APPLICABILITY_COLUMNS, also inside `parameters`) and a Portuguese action
+ *   value with LegacyVocabularyException; the deprecated Portuguese getters were removed
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -39,13 +40,40 @@ final readonly class RuleDefinition implements IRuleDefinition
 
     /**
      * Portuguese names of the applicability columns up to 1.6.x (canonical => legacy). Read as legacy
-     * from catalog rows and from `parameters` when the English key is absent; removed in 2.0.0.
+     * until 1.14.x; since 2.0.0 refused in a catalog row and inside `parameters`
+     * (LegacyVocabularyException).
      */
     public const LEGACY_APPLICABILITY_COLUMNS = [
         'product_code' => 'codigo_produto',
         'plan_code' => 'codigo_plano',
         'valid_from' => 'data_inicio_vigencia',
         'valid_until' => 'data_fim_vigencia',
+    ];
+
+    /**
+     * Portuguese keys of a catalog row read by fromArray() up to 1.14.x (legacy => canonical), synonyms
+     * included; refused since 2.0.0 (LegacyVocabularyException). The applicability columns are in
+     * LEGACY_APPLICABILITY_COLUMNS.
+     */
+    public const LEGACY_KEYS = [
+        'codigo' => 'code',
+        'nome' => 'name',
+        'descricao' => 'description',
+        'tipo_regra' => 'rule_type',
+        'tipo' => 'rule_type',
+        'acao_ao_violar' => 'violation_action',
+        'acao' => 'violation_action',
+        'valor_inteiro' => 'int_value',
+        'valor_decimal' => 'decimal_value',
+        'valor_texto' => 'text_value',
+        'fundamento_legal' => 'legal_basis',
+        'mensagem_violacao' => 'violation_message',
+        'condicional_expressao' => 'condition_expression',
+        'prioridade' => 'priority',
+        'escopo' => 'scope',
+        'cenario' => 'scenario',
+        'parametros' => 'parameters',
+        'ativo' => 'active',
     ];
 
     /**
@@ -89,86 +117,93 @@ final readonly class RuleDefinition implements IRuleDefinition
     /**
      * Instantiates a rule definition from an associative database record.
      *
-     * Canonical keys: `code`, `name`, `description`, `rule_type`, `violation_action`, `int_value`,
+     * Keys: `code`, `name`, `description`, `rule_type`, `violation_action`, `int_value`,
      * `decimal_value`, `text_value`, `legal_basis`, `violation_message`, `condition_expression`,
      * `priority`, `scope`, `scenario`, `parameters`, `active` and the applicability columns
-     * `product_code`, `plan_code`, `valid_from`, `valid_until`. The Portuguese keys of 1.6.x are
-     * accepted as legacy (`codigo`, `nome`, `descricao`, `tipo_regra`/`tipo`, `acao_ao_violar`/`acao`,
+     * `product_code`, `plan_code`, `valid_from`, `valid_until`. The Portuguese keys of 1.6.x (read as
+     * legacy up to 1.14.x: `codigo`, `nome`, `descricao`, `tipo_regra`/`tipo`, `acao_ao_violar`/`acao`,
      * `valor_inteiro`, `valor_decimal`, `valor_texto`, `fundamento_legal`, `mensagem_violacao`,
      * `condicional_expressao`, `prioridade`, `escopo`, `cenario`, `parametros`, `ativo`,
-     * `codigo_produto`, `codigo_plano`, `data_inicio_vigencia`, `data_fim_vigencia`); when both are
-     * present the English key wins. No runtime notice is raised for a legacy key (catalog data is not
-     * code); the action value accepts the legacy Portuguese values too (RuleAction::fromOrDefault()).
+     * `codigo_produto`, `codigo_plano`, `data_inicio_vigencia`, `data_fim_vigencia`), the Portuguese
+     * applicability keys inside `parameters` and the Portuguese action values are refused since 2.0.0
+     * with LegacyVocabularyException, which points to the UPDATE statements of UPGRADE-2.0.md.
      *
      * @param array<string, mixed> $row Relational record (e.g. rule catalog table row)
      * @return self
+     * @throws LegacyVocabularyException When the row carries Portuguese vocabulary of 1.x
      */
     public static function fromArray(array $row): self
     {
-        $actionRaw = self::pick($row, 'violation_action', 'acao_ao_violar', 'acao');
+        $subject = sprintf('rule catalog row "%s" key', is_scalar($row['code'] ?? null) ? (string) $row['code'] : '?');
+        LegacyVocabularyException::assertNoLegacyKeys($row, self::LEGACY_KEYS, $subject);
+        LegacyVocabularyException::assertNoLegacyKeys($row, array_flip(self::LEGACY_APPLICABILITY_COLUMNS), $subject);
+
+        $actionRaw = $row['violation_action'] ?? null;
         $action = $actionRaw instanceof RuleAction
             ? $actionRaw
             : RuleAction::fromOrDefault(is_string($actionRaw) ? $actionRaw : null);
 
-        $activeRaw = self::pick($row, 'active', 'ativo') ?? true;
+        $activeRaw = $row['active'] ?? true;
         $active = is_bool($activeRaw)
             ? $activeRaw
             : ($activeRaw === 'Y' || $activeRaw === '1' || $activeRaw === 1 || $activeRaw === 'true');
 
-        $intRaw = self::pick($row, 'int_value', 'valor_inteiro');
-        $decimalRaw = self::pick($row, 'decimal_value', 'valor_decimal');
+        $intRaw = $row['int_value'] ?? null;
+        $decimalRaw = $row['decimal_value'] ?? null;
 
-        $parametersRaw = self::pick($row, 'parameters', 'parametros');
+        $parametersRaw = $row['parameters'] ?? null;
         $parameters = is_array($parametersRaw) ? $parametersRaw : [];
+        self::assertNoLegacyParameters($parameters, (string) ($row['code'] ?? '?'));
 
-        // RN-17: applicability columns are copied into parameters under the English key; an explicit
-        // entry (English or legacy key) prevails, a null or empty column means "no restriction".
-        foreach (self::LEGACY_APPLICABILITY_COLUMNS as $column => $legacy) {
-            if (array_key_exists($column, $parameters) || array_key_exists($legacy, $parameters)) {
+        // RN-17: applicability columns are copied into parameters; an explicit entry prevails, a null or
+        // empty column means "no restriction".
+        foreach (self::APPLICABILITY_COLUMNS as $column) {
+            if (array_key_exists($column, $parameters)) {
                 continue;
             }
-            $value = self::pick($row, $column, $legacy);
+            $value = $row[$column] ?? null;
             if ($value !== null && $value !== '') {
                 $parameters[$column] = $value;
             }
         }
 
         return new self(
-            code: (string) (self::pick($row, 'code', 'codigo') ?? ''),
-            name: (string) (self::pick($row, 'name', 'nome') ?? ''),
-            ruleType: (string) (self::pick($row, 'rule_type', 'tipo_regra', 'tipo') ?? ''),
+            code: (string) ($row['code'] ?? ''),
+            name: (string) ($row['name'] ?? ''),
+            ruleType: (string) ($row['rule_type'] ?? ''),
             violationAction: $action,
-            description: self::stringOrNull(self::pick($row, 'description', 'descricao')),
+            description: self::stringOrNull($row['description'] ?? null),
             intValue: $intRaw !== null && $intRaw !== '' ? (int) $intRaw : null,
             decimalValue: $decimalRaw !== null && $decimalRaw !== '' ? (float) $decimalRaw : null,
-            textValue: self::stringOrNull(self::pick($row, 'text_value', 'valor_texto')),
-            legalBasis: self::stringOrNull(self::pick($row, 'legal_basis', 'fundamento_legal')),
-            violationMessage: self::stringOrNull(self::pick($row, 'violation_message', 'mensagem_violacao')),
-            conditionExpression: self::stringOrNull(self::pick($row, 'condition_expression', 'condicional_expressao')),
-            priority: (int) (self::pick($row, 'priority', 'prioridade') ?? 0),
-            scope: self::stringOrNull(self::pick($row, 'scope', 'escopo')),
-            scenario: self::stringOrNull(self::pick($row, 'scenario', 'cenario')),
+            textValue: self::stringOrNull($row['text_value'] ?? null),
+            legalBasis: self::stringOrNull($row['legal_basis'] ?? null),
+            violationMessage: self::stringOrNull($row['violation_message'] ?? null),
+            conditionExpression: self::stringOrNull($row['condition_expression'] ?? null),
+            priority: (int) ($row['priority'] ?? 0),
+            scope: self::stringOrNull($row['scope'] ?? null),
+            scenario: self::stringOrNull($row['scenario'] ?? null),
             parameters: $parameters,
             active: $active
         );
     }
 
     /**
-     * Returns the value of the first key present with a non-null value (canonical key first).
+     * Refuses the Portuguese applicability keys of 1.6.x inside `parameters` (read as legacy up to
+     * 1.14.x when the English key was absent). Shared by fromArray() and InMemoryRuleCatalog, which also
+     * receives rules built in code.
      *
-     * @param array<string, mixed> $row
-     * @param string ...$keys Canonical key followed by its legacy synonyms
-     * @return mixed
+     * @param array<array-key, mixed> $parameters Rule parameters
+     * @param string $ruleCode Rule code (error message)
+     * @return void
+     * @throws LegacyVocabularyException
      */
-    private static function pick(array $row, string ...$keys): mixed
+    public static function assertNoLegacyParameters(array $parameters, string $ruleCode): void
     {
-        foreach ($keys as $key) {
-            if (isset($row[$key])) {
-                return $row[$key];
-            }
-        }
-
-        return null;
+        LegacyVocabularyException::assertNoLegacyKeys(
+            $parameters,
+            array_flip(self::LEGACY_APPLICABILITY_COLUMNS),
+            sprintf('parameters of rule "%s": key', $ruleCode)
+        );
     }
 
     private static function stringOrNull(mixed $value): ?string
@@ -270,102 +305,5 @@ final readonly class RuleDefinition implements IRuleDefinition
     public function isActive(): bool
     {
         return $this->active;
-    }
-
-    // ------------------------------------------------------------------
-    // Portuguese aliases of 1.6.x (not part of IRuleDefinition since 1.7.0)
-    // ------------------------------------------------------------------
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getCode(). */
-    public function getCodigo(): string
-    {
-        return $this->getCode();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getName(). */
-    public function getNome(): string
-    {
-        return $this->getName();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getDescription(). */
-    public function getDescricao(): ?string
-    {
-        return $this->getDescription();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getRuleType(). */
-    public function getTipoRegra(): string
-    {
-        return $this->getRuleType();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getViolationAction(). */
-    public function getAcaoAoViolar(): RuleAction
-    {
-        return $this->getViolationAction();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getIntValue(). */
-    public function getValorInteiro(): ?int
-    {
-        return $this->getIntValue();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getDecimalValue(). */
-    public function getValorDecimal(): ?float
-    {
-        return $this->getDecimalValue();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getTextValue(). */
-    public function getValorTexto(): ?string
-    {
-        return $this->getTextValue();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getLegalBasis(). */
-    public function getFundamentoLegal(): ?string
-    {
-        return $this->getLegalBasis();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getViolationMessage(). */
-    public function getMensagemViolacao(): ?string
-    {
-        return $this->getViolationMessage();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getConditionExpression(). */
-    public function getCondicionalExpressao(): ?string
-    {
-        return $this->getConditionExpression();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getPriority(). */
-    public function getPrioridade(): int
-    {
-        return $this->getPriority();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getScope(). */
-    public function getEscopo(): ?string
-    {
-        return $this->getScope();
-    }
-
-    /** @deprecated 1.7.0 Removed in 2.0.0; use getScenario(). */
-    public function getCenario(): ?string
-    {
-        return $this->getScenario();
-    }
-
-    /**
-     * @return array<string, mixed>
-     * @deprecated 1.7.0 Removed in 2.0.0; use getParameters().
-     */
-    public function getParametros(): array
-    {
-        return $this->getParameters();
     }
 }

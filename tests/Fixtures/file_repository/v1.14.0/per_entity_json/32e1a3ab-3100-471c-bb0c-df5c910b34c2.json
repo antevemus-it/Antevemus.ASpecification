@@ -1,0 +1,18 @@
+{
+    "customer": "per-entity Ana",
+    "amountCents": 12345,
+    "placedAt": {
+        "__type": "DateTime",
+        "atom": "2026-01-15T10:30:00-03:00"
+    },
+    "tags": [
+        "vip"
+    ],
+    "entityId": "32e1a3ab-3100-471c-bb0c-df5c910b34c2",
+    "timeOfCreation": {
+        "__type": "DateTime",
+        "atom": "2026-10-12T01:54:19+00:00"
+    },
+    "version": null,
+    "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+}

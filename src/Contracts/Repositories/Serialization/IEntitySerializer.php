@@ -10,15 +10,19 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
  * IEntitySerializer - Agnostic Contract for Entity Serialization and Deserialization
  *
  * Defines the standardized interface for bidirectional conversion between
- * IEntity instances and string representations (JSON, native binary serialization, etc.),
+ * IEntity instances and string representations (JSON, or any other textual format),
  * ensuring type fidelity, values, and unique identity preservation.
+ *
+ * A serializer serializes ONE entity (2.0.0): the document that holds several entities, and the
+ * persistence metadata stored next to each one, belong to the repository (SingleFileRepository writes
+ * a JSON envelope whatever the serializer). The PHP-native serializer of 1.x was removed in 2.0.0.
  *
  * Features:
  * - Entity serialization to formatted string
  * - Deserialization from string to target concrete entity class instance
  * - Provision of format metadata (Content-Type and recommended file extension)
  *
- * @version    1.1.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -53,7 +57,7 @@ interface IEntitySerializer
     public function getContentType(): string;
 
     /**
-     * Returns the recommended default file extension (e.g. json, bin).
+     * Returns the recommended default file extension (e.g. json).
      *
      * @return string
      */

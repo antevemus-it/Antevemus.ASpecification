@@ -7,6 +7,7 @@ namespace Antevemus\ASpecification\Engine;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Exception;
@@ -24,9 +25,10 @@ use InvalidArgumentException;
  * - Exact scope/scenario matching for documents (no cross-scope leakage); null scenario = scope-global only
  * - Native descending priority sorting
  * - Applicability filters (product_code, plan_code, reference_date) read from the rule's parameters (RN-17);
- *   the Portuguese keys of 1.6.x are read as legacy when the English key is absent (1.7.0)
+ *   the Portuguese keys of 1.6.x (read as legacy from 1.7.0 to 1.14.x) are refused since 2.0.0, in the
+ *   filters and in the parameters, with LegacyVocabularyException
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -45,8 +47,9 @@ class InMemoryRuleCatalog implements IRuleCatalog
     public const FILTER_REFERENCE_DATE = 'reference_date';
 
     /**
-     * Portuguese names of the reserved `$filters` keys up to 1.6.x (canonical => legacy), read when the
-     * English key is absent; removed in 2.0.0.
+     * Portuguese names of the reserved `$filters` keys up to 1.6.x (canonical => legacy), read as legacy
+     * until 1.14.x; refused since 2.0.0 (LegacyVocabularyException): the filters usually come from the
+     * validation context, and a key that is not read silently changes which rules apply.
      */
     public const LEGACY_FILTER_KEYS = [
         self::FILTER_PRODUCT => 'codigo_produto',
@@ -101,6 +104,9 @@ class InMemoryRuleCatalog implements IRuleCatalog
     /** {@inheritdoc} */
     public function findRules(string $scope, ?string $scenario = null, array $filters = []): array
     {
+        // Refused even when no rule would read it (2.0.0): the caller must learn the key is dead.
+        LegacyVocabularyException::assertNoLegacyKeys($filters, array_flip(self::LEGACY_FILTER_KEYS), 'filter (validation context) key');
+
         $matched = [];
 
         foreach ($this->rules as $rule) {
@@ -163,17 +169,19 @@ class InMemoryRuleCatalog implements IRuleCatalog
      * `valid_until`) and the reserved keys of `$filters`, with AND semantics mirroring scope and
      * scenario: a restriction only passes when the filter brings the same value, so a missing filter
      * excludes every restricted rule and never excludes a global one. The validity window is evaluated
-     * only when `reference_date` is given (inclusive, by day). Unknown filter keys are ignored. The
-     * Portuguese keys of 1.6.x are read, in both arrays, when the English key is absent.
+     * only when `reference_date` is given (inclusive, by day). Unknown filter keys are ignored, except
+     * the Portuguese names of the reserved keys and of the restrictions (1.6.x), refused since 2.0.0.
      *
      * @param IRuleDefinition $rule
      * @param array<string, mixed> $filters
      * @return bool
      * @throws InvalidArgumentException When a date value cannot be read as a date
+     * @throws LegacyVocabularyException When the filters or the rule parameters use a Portuguese key of 1.x
      */
     protected function ruleMatchesFilters(IRuleDefinition $rule, array $filters): bool
     {
         $restrictions = $rule->getParameters();
+        RuleDefinition::assertNoLegacyParameters($restrictions, $rule->getCode());
 
         foreach ([self::FILTER_PRODUCT, self::FILTER_PLAN] as $key) {
             $required = self::restriction($restrictions, $key);
@@ -206,19 +214,23 @@ class InMemoryRuleCatalog implements IRuleCatalog
     }
 
     /**
-     * Reads a reserved `$filters` key, falling back to its Portuguese name of 1.6.x.
+     * Reads a reserved `$filters` key. Its Portuguese name of 1.6.x (read as fallback up to 1.14.x) is
+     * refused since 2.0.0.
      *
      * @param array<string, mixed> $filters
      * @param string $key One of the FILTER_* constants
      * @return mixed
+     * @throws LegacyVocabularyException When $filters carries the Portuguese name of a reserved key
      */
     public static function filterValue(array $filters, string $key): mixed
     {
-        return $filters[$key] ?? (isset(self::LEGACY_FILTER_KEYS[$key]) ? ($filters[self::LEGACY_FILTER_KEYS[$key]] ?? null) : null);
+        LegacyVocabularyException::assertNoLegacyKeys($filters, array_flip(self::LEGACY_FILTER_KEYS), 'filter (validation context) key');
+
+        return $filters[$key] ?? null;
     }
 
     /**
-     * Reads an applicability restriction from the rule parameters, falling back to its Portuguese name of 1.6.x.
+     * Reads an applicability restriction from the rule parameters.
      *
      * @param array<string, mixed> $parameters
      * @param string $key One of RuleDefinition::APPLICABILITY_COLUMNS
@@ -226,9 +238,7 @@ class InMemoryRuleCatalog implements IRuleCatalog
      */
     private static function restriction(array $parameters, string $key): mixed
     {
-        $legacy = RuleDefinition::LEGACY_APPLICABILITY_COLUMNS[$key] ?? null;
-
-        return $parameters[$key] ?? ($legacy !== null ? ($parameters[$legacy] ?? null) : null);
+        return $parameters[$key] ?? null;
     }
 
     /**

@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Repositories\Pdo\Mapping;
 
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Helpers\ReflectionUtils;
 use Antevemus\ASpecification\Repositories\Pdo\Exceptions\EntityMappingException;
 use Antevemus\ASpecification\Repositories\Pdo\PdoValueConverter;
@@ -15,7 +16,6 @@ use DateTimeInterface;
 use DateTimeZone;
 use InvalidArgumentException;
 use ReflectionClass;
-use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionProperty;
 use Throwable;
@@ -52,7 +52,7 @@ use UnitEnum;
  * A mapped property is read and written by reflection even when it is private, protected or readonly
  * (a readonly property can be initialized by hydration but never changed afterwards). Reading a
  * property by name from a SPECIFICATION is another matter: it follows the rule of
- * PropertyAccessor (a public property, a public getter, or #[Specifiable]), see findQueryColumn().
+ * the shared property accessor, `PropertyAccess` (a public property, a public getter, or #[Specifiable]), see findQueryColumn().
  *
  * Since 1.13.0 (forward 031), all optional:
  * - defaults of the mapping: timezone() (#[Table(timezone:)]) for the temporal columns that declare no
@@ -77,7 +77,7 @@ use UnitEnum;
  *   (column(..., trueValue:, falseValue:), #[Column]) or as defaults (booleanAs(Char, 'S', 'N'),
  *   #[Table]); 'Y'/'N' unless given
  *
- * @version    1.14.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo\Mapping
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -135,6 +135,9 @@ final class EntityMapping
 
     /** @var ReflectionClass<IEntity> */
     private readonly ReflectionClass $class;
+
+    /** Instance without constructor used to ask the shared accessor what a name reaches (readableByName()). */
+    private ?object $probe = null;
 
     /** @var array<class-string, self> Mappings read from attributes, by class */
     private static array $attributeCache = [];
@@ -977,7 +980,7 @@ final class EntityMapping
      * The column a specification property name compiles to, or null with the reason.
      *
      * A name maps to a column only when the property is mapped AND a specification may read it by
-     * name, the rule PropertyAccessor applies in memory: a public property, a public getter
+     * name, the rule the shared property accessor (`PropertyAccess`) applies in memory: a public property, a public getter
      * (`getX()`, `x()`, `isX()`, `hasX()`) or #[Specifiable]. So the same specification is refused by
      * the database exactly where it fails in memory, and an unmarked private column is never a read
      * oracle through SQL. `entityId` (IEntity::getEntityId()) always means the identifier column.
@@ -1000,8 +1003,7 @@ final class EntityMapping
             return null;
         }
 
-        if ($this->hasPublicReader($property) || $this->reflection[$property]->isPublic()
-            || ReflectionUtils::isSpecifiable($this->reflection[$property])) {
+        if ($this->readableByName($property)) {
             return $mapped;
         }
 
@@ -1496,18 +1498,24 @@ final class EntityMapping
         }
     }
 
-    private function hasPublicReader(string $property): bool
+    /**
+     * Whether a specification may read the property by name: asked to the shared property accessor
+     * itself (2.0.0), on an instance built without constructor, so that SQL refuses exactly what the
+     * accessor refuses in memory (a getter with a required parameter, `__call()` or a name starting
+     * with `__` no longer count; until 1.14 this class kept its own copy of the getter rule).
+     *
+     * @param string $property Mapped property name
+     * @return bool
+     */
+    private function readableByName(string $property): bool
     {
-        foreach (['get' . ucfirst($property), $property, 'is' . ucfirst($property), 'has' . ucfirst($property)] as $method) {
-            if ($this->class->hasMethod($method)) {
-                $reflection = new ReflectionMethod($this->entityClass, $method);
-                if ($reflection->isPublic() && !$reflection->isStatic()) {
-                    return true;
-                }
-            }
-        }
+        try {
+            $this->probe ??= $this->class->newInstanceWithoutConstructor();
 
-        return false;
+            return PropertyAccess::hasProperty($this->probe, $property);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

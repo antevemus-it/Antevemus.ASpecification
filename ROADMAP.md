@@ -142,22 +142,22 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
-## 🔮 v2.0.0 — Zero `unserialize` & Shared Accessor
+## ✅ v2.0.0 — Zero `unserialize` & Shared Accessor (Shipped in v2.0.0)
 
-### 13. PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope 🗑️
-- **Description:** `PhpNativeEntitySerializer` and the `.bin` branch are removed; the single-file envelope is always JSON and owned by the repository, the serializer only serialises the entity; existing `.bin` files fail with the migration recipe. Per-entity persistence metadata (`__persistence_metadata`, documented by the 006 data delta and never produced) is written and hydrated by the file repositories in the same format change.
-- **Goal:** `grep unserialize src/` returns nothing. Declared breaking.
+### 13. PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope 🗑️ (Shipped in v2.0.0)
+- **Description:** `PhpNativeEntitySerializer` and the `.bin` branch are removed; the single-file envelope is always JSON and owned by the repository, the serializer only serialises the entity; existing `.bin` files (single-file envelopes and file-per-entity `<id>.bin`) fail with a `RepositoryException` that points to the conversion recipe of `UPGRADE-2.0.md`, which runs on 1.14.x (proved on the real v1.14.0, fixtures in the suite). Per-entity persistence metadata (`__persistence_metadata`, documented by the 006 data delta and never produced) is written and hydrated by both file repositories, with the real names of `EntityPersistenceMetaData` and `write_count` counting the first write as in Domian; reads reach the file with the next write, `store()` or `close()`. A single-file document that is not JSON is refused instead of being read as empty. The same major removes the Portuguese vocabulary of the rule engine, legacy since v1.7.0: a Portuguese key or action value is refused with `LegacyVocabularyException`, and `UPGRADE-2.0.md` carries the SQL that migrates a catalog (run in the suite on SQLite and before the release on PostgreSQL 17, MySQL 8.4 and MariaDB 11.4).
+- **Goal:** `grep unserialize src/` returns nothing (a test of Module 5 keeps it so). Declared breaking.
 
-### 14. Shared Property Accessor with ALinq 🧩
-- **Description:** `PropertyAccessor` and the ALinq `ALinqPropertyAccess` ship the same resolution order as two copies. Extracting one package both libraries depend on changes the dependency graph of both (ALinq roadmap milestone 11).
-- **Goal:** One accessor, one contract test.
+### 14. Shared Property Accessor with ALinq 🧩 (Shipped in v2.0.0)
+- **Description:** `PropertyAccessor` and the ALinq `ALinqPropertyAccess` shipped the same resolution order as two copies. The resolution now lives in `antevemus/adeep-property-access` (1.0.0, same author, no dependencies), which both libraries require; every internal reader of this library calls it, `Helpers\PropertyAccessor` is a deprecated facade until 3.0 and `Attributes\Specifiable` stays (recognized by name). The package fixed a defect common to both copies (a getter with a required parameter threw) and settled four edge cases where they disagreed (ALinq roadmap milestone 11 is its counterpart, in ALinq 2.0).
+- **Goal:** One accessor, one contract test (in the package; this library tests that it delegates and keeps no copy).
 
 ---
 
 ## 🗓️ Unscheduled
 
 ### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
-- **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps zero runtime dependencies.
+- **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps a single runtime dependency, from the same author and with no dependencies of its own (`antevemus/adeep-property-access`).
 
 ### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here: the core has no `fromArray`/`jsonSerialize` of specifications yet).
@@ -175,6 +175,10 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 ### 22. Accent-Insensitive Text Comparison 🔤
 - **Description:** Since v1.14.0 the case-insensitive text operators ignore case only, in memory and in every database, so `contains('jose', false)` does not match `José`. An explicit comparison option that also ignores accents (the .NET `CompareOptions.IgnoreCase | IgnoreNonSpace`; note that .NET's `InvariantCultureIgnoreCase` still distinguishes `e` and `é`), with the same answer in memory (Unicode decomposition without combining marks) and in SQL (accent-insensitive collations on MySQL/MariaDB, `unaccent` or a nondeterministic ICU collation on PostgreSQL; refused where the database cannot answer it, such as SQLite).
 - **Goal:** Accent-insensitive search as a declared choice, never as a side effect of the column collation.
+
+### 23. Write-Behind Hybrid Repository (Domian `INMEMORY_AND_FILE`) 🗃️
+- **Description:** `InMemoryAndFileRepository` is write-through (`put()` writes the file at once). Domian's `INMEMORY_AND_FILE` mode is write-behind: `put()` touches memory only, `persist()` writes, `load()` reloads, and one metadata record counts the repository's reads and writes; `isMemoryBased()` answers by mode. The 1.5.0 notes and forward 020 (RN-08) scheduled it for 2.0.0 together with the persisted metadata; the 2.0.0 forward (033) delivered the metadata and left this mode out because it is additive (a new mode chosen by `PersistenceDefinition`, nothing removed), so it fits a MINOR.
+- **Goal:** Memory-speed writes with explicit, batched persistence, as in Domian.
 
 ---
 

@@ -1,0 +1,19 @@
+{
+    "customer": "per-entity Carla",
+    "amountCents": 500000,
+    "placedAt": {
+        "__type": "DateTime",
+        "atom": "2026-03-31T23:59:59-03:00"
+    },
+    "tags": [
+        "b2b",
+        "net30"
+    ],
+    "entityId": "bb75b64d-b2bf-45d5-ab5c-3454e501cd2b",
+    "timeOfCreation": {
+        "__type": "DateTime",
+        "atom": "2026-10-12T01:54:19+00:00"
+    },
+    "version": null,
+    "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+}

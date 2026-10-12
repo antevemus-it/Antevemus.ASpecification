@@ -12,10 +12,10 @@ namespace Antevemus\ASpecification\StateMachine;
  * being processed and the `snapshot` BEFORE the event (RN-04: every region sees the same
  * pre-event state, so region order never changes the outcome).
  *
- * Property paths work through the library's PropertyAccessor: `context.role`,
+ * Property paths work through the shared property accessor (`PropertyAccess`): `context.role`,
  * `event.payload.motive`, `event.type`, `snapshot.states.pending`.
  *
- * @version    1.8.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

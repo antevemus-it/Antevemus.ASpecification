@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Contracts\Engine\IDocumentPresenceEvaluator;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\Exceptions\InvalidConditionalExpressionException;
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\MissingAlternativeSetException;
 use Antevemus\ASpecification\Spec;
 
@@ -20,7 +21,9 @@ use Antevemus\ASpecification\Spec;
  *
  * Features:
  * - Pluggable document presence evaluator (IDocumentPresenceEvaluator)
- * - Intelligent default mechanism for inspecting documents in domain entities or arrays
+ * - Default presence evaluator: `hasDocument($type)`, `getDocuments()`, `->documents`, `['documents']`,
+ *   then an array key named after the document type; the Portuguese protocol of 1.x (`hasDocumento()`,
+ *   `getDocumentos()`, `->documentos`, `['documentos']`) is refused since 2.0.0 (LegacyVocabularyException)
  * - Alternative document sets (e.g. Tax ID or Passport or Driver License); an ANY / ONE_OF_SET rule
  *   without `alternative_set_code` is rejected at compilation (MissingAlternativeSetException),
  *   mirroring the relational catalog constraint, never grouped by guesswork
@@ -29,7 +32,7 @@ use Antevemus\ASpecification\Spec;
  *   compilation (InvalidConditionalExpressionException), never silently applied
  * - One aggregated failure per failing set, listing the accepted documents
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -180,56 +183,59 @@ class DocumentGroupSpecificationBuilder
             /** {@inheritdoc} */
             public function hasDocument(object|array $target, string $documentTypeCode, array $context = []): bool
             {
-                $tipo = strtolower(trim($documentTypeCode));
+                $type = strtolower(trim($documentTypeCode));
 
-                // English names are canonical since 1.7.0 (hasDocument(), getDocuments(),
-                // ->documents, ['documents']); the Portuguese ones are read as legacy until 2.0.0.
+                // The holder protocol, in this order: hasDocument($type), getDocuments(), ->documents,
+                // ['documents'], then an array key named after the type.
                 if (is_object($target)) {
-                    if (method_exists($target, 'hasDocument')) {
-                        return (bool) $target->hasDocument($tipo);
+                    if (is_callable([$target, 'hasDocument'])) {
+                        return (bool) $target->hasDocument($type);
                     }
-                    if (method_exists($target, 'getDocuments')) {
-                        $docs = $target->getDocuments();
-                        if (is_array($docs)) {
-                            return in_array($tipo, array_map('strtolower', $docs), true)
-                                || isset($docs[$tipo]);
+                    if (is_callable([$target, 'getDocuments'])) {
+                        $documents = $target->getDocuments();
+                        if (is_array($documents)) {
+                            return self::listed($type, $documents);
                         }
                     }
                     if (isset($target->documents) && is_array($target->documents)) {
-                        return in_array($tipo, array_map('strtolower', $target->documents), true)
-                            || isset($target->documents[$tipo]);
+                        return self::listed($type, $target->documents);
                     }
-                    if (method_exists($target, 'hasDocumento')) {
-                        return (bool) $target->hasDocumento($tipo);
-                    }
-                    if (method_exists($target, 'getDocumentos')) {
-                        $docs = $target->getDocumentos();
-                        if (is_array($docs)) {
-                            return in_array($tipo, array_map('strtolower', $docs), true)
-                                || isset($docs[$tipo]);
+                    // The Portuguese protocol of 1.x (hasDocumento(), getDocumentos(), ->documentos) was
+                    // read as legacy until 1.14.x; since 2.0.0 it is refused rather than taken for a
+                    // holder without documents.
+                    foreach (['hasDocumento' => 'hasDocument', 'getDocumentos' => 'getDocuments'] as $legacy => $english) {
+                        if (is_callable([$target, $legacy])) {
+                            throw new LegacyVocabularyException($legacy . '()', $english . '()', 'document holder method');
                         }
                     }
-                    if (isset($target->documentos) && is_array($target->documentos)) {
-                        return in_array($tipo, array_map('strtolower', $target->documentos), true)
-                            || isset($target->documentos[$tipo]);
+                    if (isset($target->documentos)) {
+                        throw new LegacyVocabularyException('documentos', 'documents', 'document holder property');
                     }
                 }
 
                 if (is_array($target)) {
                     if (isset($target['documents']) && is_array($target['documents'])) {
-                        return in_array($tipo, array_map('strtolower', $target['documents']), true)
-                            || isset($target['documents'][$tipo]);
+                        return self::listed($type, $target['documents']);
                     }
-                    if (isset($target['documentos']) && is_array($target['documentos'])) {
-                        return in_array($tipo, array_map('strtolower', $target['documentos']), true)
-                            || isset($target['documentos'][$tipo]);
+                    if (array_key_exists('documentos', $target)) {
+                        throw new LegacyVocabularyException('documentos', 'documents', 'document holder key');
                     }
-                    if (isset($target[$tipo])) {
-                        return !empty($target[$tipo]);
+                    if (isset($target[$type])) {
+                        return !empty($target[$type]);
                     }
                 }
 
                 return false;
+            }
+
+            /**
+             * @param string $type Lower-case document type
+             * @param array<array-key, mixed> $documents A list of types or a map keyed by type
+             */
+            private static function listed(string $type, array $documents): bool
+            {
+                return in_array($type, array_map(static fn(mixed $d): string => strtolower((string) $d), $documents), true)
+                    || isset($documents[$type]);
             }
         };
     }

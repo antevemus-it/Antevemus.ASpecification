@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
+use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Results\FailureSeverity;
 
 /**
@@ -18,9 +19,11 @@ use Antevemus\ASpecification\Results\FailureSeverity;
  * - Flexible string converter with fallback support
  * - Mapping to the FailureSeverity carried by engine failures (toSeverity, 1.5.0)
  * - English values since 1.7.0 (`block`, `warn`, `log`); the Portuguese values of 1.6.x
- *   (`bloquear`, `alertar`, `apenas_log`) are still read by fromOrDefault() (legacy)
+ *   (`bloquear`, `alertar`, `apenas_log`), read as legacy up to 1.14.x, are refused since 2.0.0 with
+ *   LegacyVocabularyException (never mapped to the default action in silence)
+ * - fromMetadata() (2.0.0): the action recorded in failure metadata, shared by the engine and the verdict
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,14 +37,23 @@ enum RuleAction: string
     case LOG = 'log';
 
     /**
-     * Portuguese values used up to 1.6.x, mapped to the canonical value. Accepted on read by
-     * fromOrDefault() (catalog rows and failure metadata written before 1.7.0); never produced.
-     * Legacy since 1.7.0, removed in 2.0.0: store the English values (block, warn, log).
+     * Portuguese values used up to 1.6.x (legacy => canonical). Read as legacy from 1.7.0 to 1.14.x;
+     * since 2.0.0 fromOrDefault() refuses them with LegacyVocabularyException: store the English values
+     * (block, warn, log), see the UPDATE statements of UPGRADE-2.0.md.
      */
     public const LEGACY_PORTUGUESE_VALUES = [
         'bloquear' => 'block',
         'alertar' => 'warn',
         'apenas_log' => 'log',
+    ];
+
+    /**
+     * Portuguese metadata keys that carried the action up to 1.14.x (legacy => canonical). A failure
+     * whose metadata still uses one is refused by fromMetadata() since 2.0.0.
+     */
+    public const LEGACY_METADATA_KEYS = [
+        'acao' => 'action',
+        'acao_ao_violar' => 'violation_action',
     ];
 
     /**
@@ -90,14 +102,17 @@ enum RuleAction: string
     }
 
     /**
-     * Resolves the action from an input string, using the default fallback if invalid.
+     * Resolves the action from an input string, using the default fallback if null or empty.
      *
-     * Accepts the canonical values (`block`, `warn`, `log`) and, as legacy, the Portuguese values of
-     * 1.6.x (`bloquear`, `alertar`, `apenas_log`), case-insensitively.
+     * Accepts the canonical values (`block`, `warn`, `log`), case-insensitively. A Portuguese value of
+     * 1.6.x (`bloquear`, `alertar`, `apenas_log`) is refused since 2.0.0: mapping it to the default would
+     * turn a warning into a block (or the opposite) without anyone noticing. Any other unknown value
+     * falls back to the default, as before.
      *
-     * @param string|null $action Action string (e.g. 'block', 'warn', 'log'; legacy 'bloquear', 'alertar', 'apenas_log')
-     * @param self $default Default action if value is null or unrecognized
+     * @param string|null $action Action string ('block', 'warn', 'log')
+     * @param self $default Default action if value is null, empty or unrecognized
      * @return self
+     * @throws LegacyVocabularyException When the value is one of the Portuguese values of 1.6.x
      */
     public static function fromOrDefault(?string $action, self $default = self::BLOCK): self
     {
@@ -106,8 +121,33 @@ enum RuleAction: string
         }
 
         $key = strtolower(trim($action));
-        $legacy = self::LEGACY_PORTUGUESE_VALUES[$key] ?? null;
+        if (isset(self::LEGACY_PORTUGUESE_VALUES[$key])) {
+            throw new LegacyVocabularyException($action, self::LEGACY_PORTUGUESE_VALUES[$key], 'violation action value');
+        }
 
-        return self::tryFrom($key) ?? ($legacy !== null ? self::from($legacy) : $default);
+        return self::tryFrom($key) ?? $default;
+    }
+
+    /**
+     * Resolves the action recorded in the metadata of a failure: `action`, then `violation_action`
+     * (a RuleAction or its value), the default when neither is present. Shared by the engine (failure
+     * stamping and severity) and RuleEngineVerdict, so that severity and triage never disagree.
+     *
+     * @param array<string, mixed> $metadata Failure metadata
+     * @param self $default Action when the metadata records none
+     * @return self
+     * @throws LegacyVocabularyException When the metadata uses a Portuguese key of 1.x (`acao`,
+     *                                   `acao_ao_violar`) or a Portuguese action value
+     */
+    public static function fromMetadata(array $metadata, self $default = self::BLOCK): self
+    {
+        LegacyVocabularyException::assertNoLegacyKeys($metadata, self::LEGACY_METADATA_KEYS, 'failure metadata key');
+
+        $raw = $metadata['action'] ?? $metadata['violation_action'] ?? null;
+        if ($raw instanceof self) {
+            return $raw;
+        }
+
+        return is_string($raw) ? self::fromOrDefault($raw, $default) : $default;
     }
 }

@@ -8,7 +8,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Linq\Exceptions\NonTranslatableLinqException;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Specifications\AndSpecification;
@@ -35,7 +35,7 @@ use Closure;
  *
  * Features:
  * - Compilation of composite specifications (AND, OR, NOT, NOR) to short-circuit operators (&&, ||)
- * - Evaluation of PropertySpecification integrated with PropertyAccessor (dot notation, arrays, getters)
+ * - Evaluation of PropertySpecification through the shared property accessor (`PropertyAccess`: dot notation, arrays, getters)
  * - Evaluation of relational and pattern leaves (=, !=, <, <=, >, >=, regex, wildcard, case-insensitive)
  * - Direct execution compatible with ALinqCollection::where() and ALinqQueryBuilder
  * - Set membership (InSpecification, 1.5.0) compiled to `in_array($candidate, $values, true)`
@@ -57,7 +57,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    1.11.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -247,7 +247,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Compile property inspection using PropertyAccessor.
+     * Compile property inspection using the shared property accessor (`PropertyAccess`).
      */
     private function compilePropertySpecification(PropertySpecification $specification): Closure
     {
@@ -267,7 +267,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
                 return false;
             }
 
-            if (!PropertyAccessor::hasProperty($candidate, $propertyName)) {
+            if (!PropertyAccess::hasProperty($candidate, $propertyName)) {
                 throw new \InvalidArgumentException(
                     sprintf(
                         'Property "%s" not found or not accessible on candidate of type "%s"',
@@ -277,7 +277,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
                 );
             }
 
-            return $innerPredicate(PropertyAccessor::getValue($candidate, $propertyName));
+            return $innerPredicate(PropertyAccess::getValue($candidate, $propertyName));
         };
     }
 

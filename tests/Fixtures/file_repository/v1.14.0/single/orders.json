@@ -1,0 +1,63 @@
+{
+    "__meta": {
+        "repository_id": "orders.json",
+        "entity_type": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder",
+        "updated_at": "2026-10-12T01:54:45+00:00",
+        "count": 3
+    },
+    "entities": [
+        {
+            "customer": "single Ana",
+            "amountCents": 12345,
+            "placedAt": {
+                "__type": "DateTime",
+                "atom": "2026-01-15T10:30:00-03:00"
+            },
+            "tags": [
+                "vip"
+            ],
+            "entityId": "41e5aa85-4395-4a1b-aadb-84ea40da583b",
+            "timeOfCreation": {
+                "__type": "DateTime",
+                "atom": "2026-10-12T01:54:19+00:00"
+            },
+            "version": null,
+            "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+        },
+        {
+            "customer": "single Bruno",
+            "amountCents": 990,
+            "placedAt": {
+                "__type": "DateTime",
+                "atom": "2026-02-01T08:00:00+00:00"
+            },
+            "tags": [],
+            "entityId": "df09e536-61a0-44b8-a5e0-57f77c25c169",
+            "timeOfCreation": {
+                "__type": "DateTime",
+                "atom": "2026-10-12T01:54:19+00:00"
+            },
+            "version": null,
+            "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+        },
+        {
+            "customer": "single Carla",
+            "amountCents": 500000,
+            "placedAt": {
+                "__type": "DateTime",
+                "atom": "2026-03-31T23:59:59-03:00"
+            },
+            "tags": [
+                "b2b",
+                "net30"
+            ],
+            "entityId": "480a1b95-b1bb-427b-a914-24d2f7d1029a",
+            "timeOfCreation": {
+                "__type": "DateTime",
+                "atom": "2026-10-12T01:54:19+00:00"
+            },
+            "version": null,
+            "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+        }
+    ]
+}

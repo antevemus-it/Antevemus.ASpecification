@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v1.14.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v1.14.0)
+[![Latest Version](https://img.shields.io/badge/Release-v2.0.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(8277%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(11245%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -46,7 +46,7 @@
   - $O(1)$ early branch pruning in query search trees through specification disjointness, over a materialised topological index of the DAG (`findAll` 45 % to 77 % faster than the recursive walk, see `tests/Benchmark/REPORT-dag-index.md`).
   - TTL and auto-prune on volatile repositories (`withTtl()`, `prune()`, injectable clock), inherited across partitions.
   - In-memory (`InMemoryRepository`), null (`NullRepository`), and test-double (`FakePartitionRepository`) implementations, and a database one, `PdoRepository` (Module 22).
-  - Decoupled disk storage (`FilePerEntityRepository`, `SingleFileRepository`) with pluggable serialization (`JsonEntitySerializer`; `PhpNativeEntitySerializer` is deprecated since v1.5.0 and removed in v2.0.0, because it is the only `unserialize()` in the library: load an existing `.bin` with it and store with the JSON serializer to migrate).
+  - Decoupled disk storage (`FilePerEntityRepository`, `SingleFileRepository`) with pluggable entity serialization (`JsonEntitySerializer`) inside a JSON document owned by the repository, with the persistence metadata of each entity (reads, writes, first and last of each) written next to it and hydrated on load. Zero `unserialize()` since v2.0.0: the PHP-native serializer was removed, and a `.bin` file of 1.x is refused with the conversion recipe of [UPGRADE-2.0.md](UPGRADE-2.0.md), to run on 1.14.x.
   - Hybrid $L1$ (RAM) + $L2$ (Disk) tiering via `InMemoryAndFileRepository`.
 - 🔒 **Concurrency & Atomic Locking**: `ISynchronizer` primitives wired into every repository (shared readers, exclusive writer, reentrant per execution context): the in-process `SemaphoreSynchronizer` (permit counter, Fiber-aware) and atomic file locks (`flock`) across processes for the file repositories. `SysVSemaphoreSynchronizer` (`ext-sysvsem`) shares the same reader/writer lock between processes through SysV IPC semaphores.
 - ⏱️ **Nanosecond Benchmarking & Diagnostics**: High-resolution stopwatches (`StopWatch` via `hrtime`) and hierarchical diagnostic utilities (`InstrumentationUtils`).
@@ -71,7 +71,7 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 | **Multi-DBMS SQL Query Visitor** | ❌ None | ❌ Rare / single engine only | ✅ **15 drivers, 10 dialects** (PostgreSQL, MySQL, SQL Server, Oracle, Firebird, SQLite, Db2, Informix, DuckDB, ANSI) |
 | **Adianti Framework Database Bridge** | ❌ Not applicable | ❌ None | ✅ Native `TCriteria` & `TFilter`, automatic De Morgan inversion, strict precedence |
 | **ALinq Synergy & Functional LINQ** | ❌ None | ❌ None | ✅ Direct AST compiler for short-circuit LINQ predicates & `ALinqBridge` |
-| **Deep Nested Property Resolution** | ⚠️ Strict reflection | ⚠️ Public getters only | ✅ **Dot-notation** (`PropertyAccessor`) for deep objects and associative arrays |
+| **Deep Nested Property Resolution** | ⚠️ Strict reflection | ⚠️ Public getters only | ✅ **Dot-notation** (`PropertyAccess`, shared with ALinq) for deep objects and associative arrays |
 | **Database-Driven Dynamic Rule Engine** | ❌ None | ❌ None | ✅ Dynamic compilation from relational catalog tables (`RuleDefinition`) |
 | **Document Matrix Requirement Algebra** | ❌ None | ❌ None | ✅ `ALL`, `ANY`, `ONE_OF_SET` aggregation modes with rich verdict reports |
 | **Fluent Chaining & Natural Domain DSL** | ⚠️ Basic | ⚠️ Partial | ✅ Natural English syntax (`Spec::specify()->where()->and()->or()`) + helpers (`prop()`, `is()`, `not()`) |
@@ -92,7 +92,10 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
   - `ext-curl` *(optional: `HttpDataSource`, the concurrent HTTP fetching of the `DataResolver`, Module 21; without it an HTTP source is refused when registered and `CallableDataSource` keeps working)*
   - `ext-pdo` *(optional, with the driver of your database: `PdoRepository` (Modules 22, 25 and 26), the PDO stores of the state machine, `PdoRuleCatalog` and the PDO domain event outbox and trigger state store (Modules 23 and 24))*
-- **Optional package**: `antevemus/alinq-collection` `^1.5.1` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; from 1.4.1 on, ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package).
+- **Dependency**: one, from the same author, with no dependencies of its own: [`antevemus/adeep-property-access`](https://github.com/antevemus-it/Antevemus.ADeepPropertyAccess) `^1.0` (since v2.0.0), the property accessor shared with ALinq, so that both libraries read the same value from the same candidate (example 10.1). Composer installs it.
+- **Optional package**: `antevemus/alinq-collection` `^1.5.1 || ^2.0` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package, and its 2.0 resolves properties through the same shared accessor).
+
+> **Upgrading from 1.x?** Read [UPGRADE-2.0.md](UPGRADE-2.0.md) first: `.bin` files of the PHP-native serializer and rule catalogs with Portuguese values are converted on 1.14.x, before the upgrade.
 
 ---
 
@@ -227,6 +230,8 @@ $repo = InMemoryAndFileRepository::create(
 $repo->put($newCustomer); // Stored in RAM and synchronized to disk atomically
 ```
 
+The document is JSON whatever the serializer, and every entity carries its persistence metadata (`__persistence_metadata`: read and write counters, first and last read and write) next to its data, so `getEntityMetaData()` answers the same in a new process (since v2.0.0).
+
 ---
 
 ### 6. High-Precision Benchmarking & Telemetry
@@ -250,7 +255,7 @@ echo InstrumentationUtils::formatMemoryUsage() . "\n";
 
 Compile dynamic rules and mandatory document matrices directly from relational database tables (e.g. PostgreSQL, MySQL):
 
-> **Vocabulary note.** Since v1.7.0 the rule engine is English end to end: getters (`getCode()`, `getIntValue()`, `getViolationMessage()`, `getLegalBasis()`), named parameters (`scope:`, `scenario:`), `fromArray()` keys and catalog columns (`code`, `rule_type`, `violation_action`, `product_code`, `valid_from`...), context keys (`product_code`, `plan_code`, `reference_date`) and the action values `block`/`warn`/`log`. The Portuguese vocabulary of v1.6 is legacy until v2.0.0: the Portuguese getters remain on `RuleDefinition`/`DocumentRuleDefinition` as deprecated aliases, `fromArray()`, the catalogs and `RuleAction::fromOrDefault()` still read the Portuguese keys and action values, and `PdoRuleCatalog` reads tables created with the old schema through two presets (below). Portuguese named arguments (`escopo:`) no longer work, since PHP has no parameter aliases; the [CHANGELOG](CHANGELOG.md) has the full table.
+> **Vocabulary note.** The rule engine is English end to end: getters (`getCode()`, `getIntValue()`, `getViolationMessage()`, `getLegalBasis()`), named parameters (`scope:`, `scenario:`), `fromArray()` keys and catalog columns (`code`, `rule_type`, `violation_action`, `product_code`, `valid_from`...), context keys (`product_code`, `plan_code`, `reference_date`), failure metadata (`action`, `rule_code`, `legal_basis`...) and the action values `block`/`warn`/`log`. The Portuguese vocabulary of v1.6, legacy from v1.7.0 to v1.14.x, is refused since v2.0.0 with `LegacyVocabularyException`, never ignored: a Portuguese key or action value in a catalog, a context key, a table role, a handler's metadata key. [UPGRADE-2.0.md](UPGRADE-2.0.md) has the key table and the SQL that migrates a catalog; `PdoRuleCatalog` still reads tables created with the old schema through two presets (below), which map names only.
 
 ```php
 use Antevemus\ASpecification\Spec;
@@ -293,7 +298,7 @@ use Antevemus\ASpecification\Engine\PdoRuleCatalog;
 // Optional: read only the rules in force on a date (validity window filtered in SQL)
 $catalog = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
 
-// Tables created with the Portuguese schema of v1.5/v1.6 (regra_negocio...) stay readable without migration
+// Tables created with the Portuguese schema of v1.5/v1.6 (regra_negocio...) are read by name; their action values must be English since v2.0 (UPGRADE-2.0.md)
 $legacyCatalog = new PdoRuleCatalog(
     $pdo,
     'rental_guarantee',
@@ -399,8 +404,8 @@ $criteriaFromInstance = $spec->toCriteria();
 
 Native high-performance interoperability with the **[`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection)** framework:
 
-#### 10.1 Deep Property Resolution with Dot-Notation (`PropertyAccessor`)
-Evaluate nested properties on objects (with getters or Boolean methods) and multidimensional associative arrays without reflection bottlenecks:
+#### 10.1 Deep Property Resolution with Dot-Notation (`PropertyAccess`)
+Evaluate nested properties on objects (with getters or Boolean methods) and multidimensional associative arrays without reflection bottlenecks. Since v2.0.0 the resolution lives in [`antevemus/adeep-property-access`](https://github.com/antevemus-it/Antevemus.ADeepPropertyAccess), shared with ALinq (one accessor, one contract test); `Helpers\PropertyAccessor` remains as a deprecated facade until v3.0:
 
 ```php
 use Antevemus\ASpecification\Spec;
@@ -417,11 +422,11 @@ $result = $vipInNY->evaluate($user);
 // $result->isSatisfied === true
 ```
 
-Each segment resolves in this order, first match wins: array or `ArrayAccess` key; public method `getX()`, `x()`, `isX()`, `hasX()`; public initialized property or `__get` guarded by `__isset`; public property; and, last, a private or protected property **marked `#[Specifiable]`** by the author of the class (since v1.6.1). The property name may come from a request (a filter or an ordering built by a screen), so private state is reachable by name only when its author opts in. An unmarked non-public property behaves as a property that does not exist: the property specification is an evaluation error, `PropertyAccessor::hasProperty()` answers `false`, and a delta (`updateWithDelta()`) that names it throws `InvalidArgumentException` unless the entity has a public setter for it.
+Each segment resolves in this order, first match wins: array or `ArrayAccess` key; public method `getX()`, `x()`, `isX()`, `hasX()` without required parameters (never `__call()`, never a name starting with `__`); public initialized property or `__get` guarded by `__isset`; public property; and, last, a private or protected property **marked `#[Specifiable]`** by the author of the class (since v1.6.1). The property name may come from a request (a filter or an ordering built by a screen), so private state is reachable by name only when its author opts in. An unmarked non-public property behaves as a property that does not exist: the property specification is an evaluation error, `PropertyAccess::hasProperty()` answers `false`, and a delta (`updateWithDelta()`) that names it throws `InvalidArgumentException` unless the entity has a public setter for it.
 
 ```php
+use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Attributes\Specifiable;
-use Antevemus\ASpecification\Helpers\PropertyAccessor;
 use Antevemus\ASpecification\Spec;
 
 final class Account
@@ -434,11 +439,11 @@ final class Account
 $account = new Account();
 
 Spec::property('status', Spec::equalTo('active'))->isSatisfiedBy($account);        // true
-PropertyAccessor::hasProperty($account, 'passwordHash');                            // false
+PropertyAccess::hasProperty($account, 'passwordHash');                              // false
 Spec::property('passwordHash', Spec::startsWith('h'))->evaluate($account)->isError; // true, as a missing property
 ```
 
-`#[Specifiable]` on a class covers every property **declared by that class** (not those of its parent nor of its subclasses). `#[Antevemus\ALinq\Attributes\Specifiable]` is accepted as the same marker, by name.
+`#[Specifiable]` on a class covers every property **declared by that class** (not those of its parent nor of its subclasses). `#[Antevemus\ALinq\Attributes\Specifiable]` and `#[Antevemus\ADeepPropertyAccess\Attributes\Specifiable]` are accepted as the same marker, by name.
 
 #### 10.2 AST Compiler to LINQ Predicates (`ALinqSpecificationVisitor`)
 Compile specification trees into a zero-overhead native `Closure(mixed $candidate): bool` using short-circuit logical operators (`&&`, `||`, `!`):
@@ -1894,10 +1899,10 @@ src/
 │   ├── Pdo/                  # PdoRepository; Mapping/ (Table, Column, Id, Version, EntityMapping, IdStrategy, ColumnType) (Module 22, v1.11.0)
 │   │                         # v1.13.0: PdoAggregateQuery, InQuerySpecification; Mapping/ CreatedAt, UpdatedAt, SoftDelete, BooleanStorage, ManyToOne, OneToMany, RelationMapping (Modules 25 and 26)
 │   │                         # v1.14.0: JoinTableHop; Mapping/ ManyToMany; Exceptions/ DataIntegrityException (Modules 25 and 26)
-│   └── Serialization/        # JsonEntitySerializer, PhpNativeEntitySerializer
+│   └── Serialization/        # JsonEntitySerializer (the PHP-native serializer was removed in v2.0.0)
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
 ├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
-│   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException
+│   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException, LegacyVocabularyException (v2.0.0)
 │   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
 │   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET
 ├── Sql/                       # SQL Query Visitor & Multi-DBMS Engine (Module 12)
@@ -1937,7 +1942,7 @@ src/
 │   ├── DataResolver.php      # resolve()/evaluate(); ResolutionPolicy concurrent()/tiered()/sequential()
 │   ├── HttpDataSource.php    # URL template with encoded parameters, fetched through curl_multi
 │   └── CallableDataSource.php # Any synchronous callable; DataSourceRegistry, IDataCache, InMemoryDataCache
-├── Helpers/                   # PropertyAccessor (dot-notation), StopWatch, InstrumentationUtils
+├── Helpers/                   # PropertyAccessor (deprecated facade of antevemus/adeep-property-access, v2.0.0), StopWatch, InstrumentationUtils
 ├── DSL/                       # Global helper functions for fluent domain syntax
 └── Spec.php                   # Unified static facade
 ```
@@ -1963,18 +1968,18 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 2: Entities & Domain Identifiers... ✅ PASS (59 assertions)
 • [SUITE] Module 3: In-Memory Repositories & Base... ✅ PASS (90 assertions)
 • [SUITE] Module 4: DAG Partitioning Architecture... ✅ PASS (94 assertions)
-• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (115 assertions)
+• [SUITE] Module 5: File Persistence & Hybrid Decorator... ✅ PASS (214 assertions)
 • [SUITE] Module 6: Concurrency Utilities & RW-Lock... ✅ PASS (97 assertions)
 • [SUITE] Module 7: Predicates, Factories, Helpers & Visitor... ✅ PASS (61 assertions)
 • [SUITE] Module 8: Notification Pattern & SpecificationResult... ✅ PASS (151 assertions)
 • [SUITE] Module 9: Facade Spec, Fluent Chaining & DSL... ✅ PASS (204 assertions)
 • [SUITE] Module 10: Java Parity, Telemetry & Remainder... ✅ PASS (65 assertions)
-• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (409 assertions)
+• [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (859 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (516 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (209 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (270 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (1987 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
-• [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (550 assertions)
+• [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (1252 assertions)
 • [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (618 assertions)
 • [SUITE] Module 18: State Machine Runner & Persistence... ✅ PASS (700 assertions)
 • [SUITE] Module 19: Use Case & Shared Result (UseCaseResult)... ✅ PASS (408 assertions)
@@ -1988,15 +1993,15 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 
 ====================================================================
  FINAL RESULT: 26/26 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 8277 | DURATION: ~21s | REGRESSIONS: 0
+ TOTAL ASSERTIONS: 11245 | DURATION: ~21s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 247 tests and 10 416 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 247 tests and 13 384 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
-- **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, `PropertyAccessor` dot-notation resolution and the `InMemoryRepository` bridge methods.
+- **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, the shared dot-notation accessor (`antevemus/adeep-property-access`) and the `InMemoryRepository` bridge methods.
 - **Multi-DBMS Compatibility:** 15 drivers (10 SQL dialects) certified with proper identifier quoting and bound prepared statements. `PdoRepository` runs its contract battery in SQLite in the suite and, through `tests/Fixtures/pdo_repository/run_portability.sh`, against PostgreSQL 17 and MySQL 8.4 in disposable containers.
 - **Adianti Database Bridge:** Full translation to `TCriteria`/`TFilter` with De Morgan logic inversion and strict precedence.
 
@@ -2024,8 +2029,8 @@ Key highlights & upcoming roadmap:
 11a. **Specification-Driven State Machine** (the reserved `RequirementState`, now expressible as a machine) (Shipped in v1.8.0)
 11b. **Use Cases With a Result Shared With the State Machine** (Shipped in v1.8.0)
 12. **Specification `simplify()`** (Shipped in v1.9.0)
-13. **PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope** (v2.0.0)
-14. **Shared Property Accessor with ALinq** (v2.0.0)
+13. **PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope** (persisted per-entity metadata) (Shipped in v2.0.0)
+14. **Shared Property Accessor with ALinq** (`antevemus/adeep-property-access`) (Shipped in v2.0.0)
 15. **Concurrent Data Resolution for I/O-Bound Specifications** (core shipped in v1.10.0)
 15b. **Fibers/Revolt Adapter for Non-HTTP Sources** (satellite package `antevemus/aspecification-async`)
 16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis)
@@ -2038,6 +2043,7 @@ Key highlights & upcoming roadmap:
 21b. **`PdoRepository` Follow-ups** (lifecycle columns and soft delete, hooks, SQL log, batch insert, bulk update by specification, projections and aggregates, subqueries, `ManyToOne`/`OneToMany` relationships with eager loading in batch) (Shipped in v1.13.0)
 21c. **`PdoRepository` Follow-ups II** (`ManyToMany`, marking a hand-built collection as loaded, `iterate()` with relations over unbuffered MySQL, `CHAR(1)` booleans) (Shipped in v1.14.0)
 22. **Accent-Insensitive Text Comparison** (an explicit option that ignores case and accents, with the same answer in memory and in SQL)
+23. **Write-Behind Hybrid Repository** (the Domian `INMEMORY_AND_FILE` mode: memory now, disk on `persist()`)
 
 ---
 

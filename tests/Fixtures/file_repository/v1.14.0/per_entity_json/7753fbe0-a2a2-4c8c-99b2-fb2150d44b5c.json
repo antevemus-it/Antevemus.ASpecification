@@ -1,0 +1,16 @@
+{
+    "customer": "per-entity Bruno",
+    "amountCents": 990,
+    "placedAt": {
+        "__type": "DateTime",
+        "atom": "2026-02-01T08:00:00+00:00"
+    },
+    "tags": [],
+    "entityId": "7753fbe0-a2a2-4c8c-99b2-fb2150d44b5c",
+    "timeOfCreation": {
+        "__type": "DateTime",
+        "atom": "2026-10-12T01:54:19+00:00"
+    },
+    "version": null,
+    "__class": "Antevemus\\ASpecification\\Tests\\Support\\UpgradeOrder"
+}

@@ -27,19 +27,22 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *   shows), the rule is reported ONCE: a single failure with the rule code and the rule's
  *   `violation_message` (or its name). A raw composite such as `lessThanOrEqualTo` (an OR of two
  *   leaves) would otherwise surface two technical failures for one business rule. The technical
- *   messages are preserved in `metadata['original_message']` / `metadata['original_messages']` (legacy Portuguese keys `mensagem_original` / `mensagens_originais` kept until 2.0.0).
- * - `metadata` always receives `acao`, `fundamento_legal`, `regra`, `tipo_regra`, `nome_regra`
- *   and `prioridade` under the handler's own keys.
+ *   messages are preserved in `metadata['original_message']` / `metadata['original_messages']`.
+ * - `metadata` always receives `action`, `rule_code`, `rule_type`, `rule_name`, `priority`,
+ *   `original_message` and, when the rule has one, `legal_basis`, under the handler's own keys.
  * - Evaluation errors (`isError`) keep their `evaluation_error` marker, so the verdict blocks them
  *   regardless of the rule action.
  * - Every reported failure carries a FailureSeverity (1.5.0) resolved exactly as the verdict
  *   triages it: an evaluation error is ERROR; otherwise the effective action (the handler's
- *   `acao` when it recorded one, the rule's otherwise) maps BLOCK → ERROR, WARN → WARNING,
+ *   `action` when it recorded one, the rule's otherwise) maps BLOCK → ERROR, WARN → WARNING,
  *   LOG → INFO. A severity set explicitly on a customized (coded) failure is kept.
- * - The metadata keys above are unchanged in 1.7.0; `acao` now carries the English action value
- *   (`block`, `warn`, `log`), and the legacy Portuguese values are still triaged on read.
+ * - English keys only since 2.0.0: the Portuguese duplicates written up to 1.14.x (`acao`, `regra`,
+ *   `tipo_regra`, `nome_regra`, `prioridade`, `mensagem_original`, `fundamento_legal`,
+ *   `mensagens_originais`, `falhas_originais`) are gone, and a handler that still records its action
+ *   under `acao`/`acao_ao_violar`, or a Portuguese action value, is refused with
+ *   LegacyVocabularyException (RuleAction::fromMetadata()) instead of being triaged by the rule's action.
  *
- * @version    1.7.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -169,7 +172,7 @@ final class RuleBoundSpecification extends AbstractSpecification
 
         $metadata = array_merge(
             $this->ruleMetadata($first->message),
-            ['original_messages' => $messages, 'original_failures' => count($failures), 'mensagens_originais' => $messages, 'falhas_originais' => count($failures)],
+            ['original_messages' => $messages, 'original_failures' => count($failures)],
             $metadata
         );
 
@@ -191,8 +194,7 @@ final class RuleBoundSpecification extends AbstractSpecification
      */
     private function ruleMetadata(string $originalMessage): array
     {
-        // English keys are canonical since 1.7.0; the Portuguese ones are kept as legacy
-        // duplicates for consumers that read them, and are removed in 2.0.0.
+        // English keys only (the Portuguese duplicates of 1.7.0 to 1.14.x were removed in 2.0.0).
         $ruleMetadata = [
             'action' => $this->rule->getViolationAction()->value,
             'rule_code' => $this->rule->getCode(),
@@ -200,17 +202,10 @@ final class RuleBoundSpecification extends AbstractSpecification
             'rule_name' => $this->rule->getName(),
             'priority' => $this->rule->getPriority(),
             'original_message' => $originalMessage,
-            'acao' => $this->rule->getViolationAction()->value,
-            'regra' => $this->rule->getCode(),
-            'tipo_regra' => $this->rule->getRuleType(),
-            'nome_regra' => $this->rule->getName(),
-            'prioridade' => $this->rule->getPriority(),
-            'mensagem_original' => $originalMessage,
         ];
         $legalBasis = $this->rule->getLegalBasis();
         if ($legalBasis !== null && trim($legalBasis) !== '') {
             $ruleMetadata['legal_basis'] = $legalBasis;
-            $ruleMetadata['fundamento_legal'] = $legalBasis;
         }
 
         return $ruleMetadata;
@@ -226,16 +221,12 @@ final class RuleBoundSpecification extends AbstractSpecification
     {
         $metadata = array_merge($this->ruleMetadata($failure->message), $failure->metadata);
 
-        // The handler's action wins over the rule's, whatever language the handler wrote it in:
-        // both keys carry the same effective action (English canonical, Portuguese legacy until 2.0.0).
-        $handlerAction = $failure->metadata['action'] ?? $failure->metadata['violation_action']
-            ?? $failure->metadata['acao'] ?? $failure->metadata['acao_ao_violar'] ?? null;
-        if ($handlerAction !== null) {
-            $effective = $handlerAction instanceof RuleAction
-                ? $handlerAction
-                : RuleAction::fromOrDefault(is_string($handlerAction) ? $handlerAction : null);
+        // The handler's action (`action` or `violation_action`) wins over the rule's; a Portuguese key or
+        // value recorded by the handler is refused (2.0.0) rather than triaged by the rule's action.
+        $handled = array_key_exists('action', $failure->metadata) || array_key_exists('violation_action', $failure->metadata);
+        $effective = RuleAction::fromMetadata($failure->metadata, $this->rule->getViolationAction());
+        if ($handled) {
             $metadata['action'] = $effective->value;
-            $metadata['acao'] = $effective->value;
         }
 
         return new SpecificationFailure(
@@ -251,8 +242,8 @@ final class RuleBoundSpecification extends AbstractSpecification
     /**
      * Resolves the severity of a stamped failure with the same precedence RuleEngineVerdict uses to
      * triage it, so that severity and verdict bucket never disagree: an evaluation error is ERROR;
-     * otherwise the effective action (`action`, `violation_action`, legacy `acao`/`acao_ao_violar`, default `block`) is
-     * mapped by RuleAction::toSeverity().
+     * otherwise the effective action (RuleAction::fromMetadata(): `action`, `violation_action`, default
+     * `block`) is mapped by RuleAction::toSeverity().
      *
      * @param array<string, mixed> $metadata Final metadata of the failure (rule data under handler data)
      * @return FailureSeverity
@@ -263,11 +254,6 @@ final class RuleBoundSpecification extends AbstractSpecification
             return FailureSeverity::ERROR;
         }
 
-        $actionRaw = $metadata['action'] ?? $metadata['violation_action'] ?? $metadata['acao'] ?? $metadata['acao_ao_violar'] ?? null;
-        $action = $actionRaw instanceof RuleAction
-            ? $actionRaw
-            : RuleAction::fromOrDefault(is_string($actionRaw) ? $actionRaw : null);
-
-        return $action->toSeverity();
+        return RuleAction::fromMetadata($metadata)->toSeverity();
     }
 }

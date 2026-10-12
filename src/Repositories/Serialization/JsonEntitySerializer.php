@@ -18,11 +18,13 @@ use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySeriali
  * Features:
  * - Formatted JSON serialization with type retention (__class)
  * - Reflective hydration preserving encapsulation
- * - Entity document without persistence envelope: per-entity persistence metadata lives in the
- *   repository session (IPersistentRepository::getEntityMetaData), never in the document; a
- *   "__persistence_metadata" block written by other tools is ignored on read (BUG-20261007-5MWT)
+ * - Serializes the entity only (2.0.0): the file repositories own the document around it and write
+ *   the per-entity persistence metadata next to the entity data ("__persistence_metadata"),
+ *   stripping it before deserialize(); a block that still reaches deserialize() (a document written
+ *   by other tools) is ignored, never hydrated into the entity (BUG-20261007-5MWT)
+ * - The only serializer shipped since the PHP-native one was removed in 2.0.0
  *
- * @version    1.4.0
+ * @version    2.0.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -85,8 +87,9 @@ class JsonEntitySerializer implements IEntitySerializer
         }
 
         // A document may wrap the entity in "__entity_data" (envelope written by other tools).
-        // Any "__persistence_metadata" next to it is ignored: metadata is never part of the
-        // entity document and deserialize() always returns the plain entity (BUG-20261007-5MWT).
+        // Any "__persistence_metadata" next to it is ignored: the metadata belongs to the repository
+        // (which strips it before calling this method) and deserialize() always returns the plain
+        // entity (BUG-20261007-5MWT).
         $rawEntityData = isset($decoded["__entity_data"]) && is_array($decoded["__entity_data"])
             ? $decoded["__entity_data"]
             : $decoded;

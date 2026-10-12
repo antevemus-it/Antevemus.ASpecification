@@ -10,7 +10,6 @@ use Antevemus\ASpecification\Repositories\File\FilePerEntityRepository;
 use Antevemus\ASpecification\Repositories\File\InMemoryAndFileRepository;
 use Antevemus\ASpecification\Repositories\File\FileNameSanitizer;
 use Antevemus\ASpecification\Repositories\Serialization\JsonEntitySerializer;
-use Antevemus\ASpecification\Repositories\Serialization\PhpNativeEntitySerializer;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
@@ -21,6 +20,10 @@ use Antevemus\ASpecification\Repositories\InMemoryRepository;
 use Antevemus\ASpecification\Entities\AbstractUUIDEntity;
 use Antevemus\ASpecification\Tests\Support\ChildWriterEntity;
 use Antevemus\ASpecification\Tests\Support\CountingSpecification;
+use Antevemus\ASpecification\Tests\Support\UpgradeOrder;
+use Antevemus\ASpecification\Repositories\File\AbstractFileRepository;
+use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
+use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use RecursiveIteratorIterator;
 use RecursiveDirectoryIterator;
 
@@ -44,9 +47,13 @@ class Module5_FileRepositoriesTest extends TestCase
         mkdir($tmp, 0777, true);
 
         try {
-            $this->testNativeSerializerIsDeprecatedButBehavesIdentically();
-            $this->testBinEnvelopeDoesNotInstantiateArbitraryClasses($tmp);
-            $this->testBinRoundTripStillWorks($tmp);
+            // 2.0.0 (forward 033, D8): sem serializer nativo, envelope JSON-only, .bin recusado.
+            $this->testNativeSerializerIsGoneAndSrcHasNoUnserialize();
+            $this->testBinEnvelopeIsRefusedWithoutInstantiatingAnything($tmp);
+            $this->testV114BinFixturesAreRefusedWithTheUpgradeGuide($tmp);
+            $this->testV114FixturesConvertedByTheRecipeAreReadBy200($tmp);
+            $this->testNonJsonContentIsRefusedNotReadAsEmpty($tmp);
+            $this->testEnvelopeIsJsonWhateverTheSerializer($tmp);
             $this->testTwoInstancesOnSameFileDoNotOverwriteEachOther($tmp);
             $this->testConcurrentProcessesDoNotLoseUpdates($tmp);
             $this->testReadmeExample5HybridFactory($tmp);
@@ -54,6 +61,10 @@ class Module5_FileRepositoriesTest extends TestCase
             $this->testPersistenceEnvelopeIsIgnoredOnRead();
             $this->testSerializedDocumentCarriesNoPersistenceEnvelope($tmp);
             $this->testFileRepositoriesRecordSessionMetadata($tmp);
+            // 2.0.0 (forward 033, D8; forward 020 RN-08; delta de dados do 006 §4): metadados no arquivo.
+            $this->testPersistenceMetadataIsWrittenAndHydrated($tmp);
+            $this->testReadsReachTheFileOnStoreAndClose($tmp);
+            $this->testMalformedPersistenceMetadataIsRefused($tmp);
 
             // Forward 017 (v1.5.0), RN-04: iterate*() lazy nos repositórios de arquivo.
             $this->testRn04FileRepositoriesIterateLazily($tmp);
@@ -239,10 +250,15 @@ class Module5_FileRepositoriesTest extends TestCase
         $back = $ser->deserialize($json, TestFileEntity::class);
         $this->assertEquals('Plain', $back->title);
 
+        // 2.0.0: o envelope é do repositório, que grava os metadados ao lado da entidade; o
+        // serializer continua serializando só a entidade (acima) e o deserialize a recebe sem eles.
         $path = $tmp . '/no_envelope.json';
         $repo = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
         $repo->put($entity);
-        $this->assertFalse(str_contains((string) file_get_contents($path), '__persistence_metadata'));
+        $stored = json_decode((string) file_get_contents($path), true);
+        $this->assertTrue(isset($stored['entities'][0]['__persistence_metadata']), 'o documento do repositório carrega os metadados');
+        $this->assertFalse(array_key_exists('__is_persistent_envelope', $stored['entities'][0]));
+        $this->assertEquals('Plain', $stored['entities'][0]['title']);
     }
 
     /**
@@ -265,12 +281,13 @@ class Module5_FileRepositoriesTest extends TestCase
             $repo->put($e);
             $meta = $repo->getEntityMetaData($e);
             $this->assertTrue($meta instanceof IEntityPersistenceMetaData, "{$label}: put() registra metadados");
-            $this->assertEquals(0, $meta->getWriteCount(), "{$label}: a criação não conta como reescrita");
+            // 2.0.0 (forward 020 RN-08, paridade Domian): a primeira gravação conta (antes: 0)
+            $this->assertEquals(1, $meta->getWriteCount(), "{$label}: a criação conta como a primeira gravação");
             $this->assertTrue($meta->getFirstWrite() !== null, "{$label}: a criação marca a primeira gravação");
             $this->assertEquals(0, $meta->getReadCount());
 
             $repo->put($e);
-            $this->assertEquals(1, $repo->getEntityMetaData($e)->getWriteCount(), "{$label}: segundo put() incrementa a escrita");
+            $this->assertEquals(2, $repo->getEntityMetaData($e)->getWriteCount(), "{$label}: segundo put() incrementa a escrita");
 
             $found = $repo->findAll($all);
             $this->assertCount(1, $found);
@@ -288,11 +305,13 @@ class Module5_FileRepositoriesTest extends TestCase
             $this->assertTrue($repo->getEntityMetaData($e) === null, "{$label}: clear() esquece todos os metadados");
         }
 
-        // Semântica de sessão: nova instância sobre o mesmo arquivo não herda metadados
+        // 2.0.0: nova instância sobre o mesmo arquivo herda os metadados gravados (antes: só da sessão);
+        // carregar do disco não é uma leitura servida
         $persisted = new TestFileEntity('Persisted');
         $single->put($persisted);
         $reopened = new SingleFileRepository($tmp . '/meta_single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
-        $this->assertTrue($reopened->getEntityMetaData($persisted) === null, 'metadados são da sessão corrente, não do arquivo (carregar do disco não é uma leitura servida)');
+        $this->assertEquals(1, $reopened->getEntityMetaData($persisted)->getWriteCount(), 'metadados hidratados do arquivo');
+        $this->assertEquals(0, $reopened->getEntityMetaData($persisted)->getReadCount(), 'carregar não conta leitura');
         $reopened->findAll($all);
         $this->assertEquals(1, $reopened->getEntityMetaData($persisted)->getReadCount());
         $this->assertEquals(1, $reopened->countAllEntities());
@@ -308,101 +327,6 @@ class Module5_FileRepositoriesTest extends TestCase
         $this->assertThrows(RepositoryException::class, function () use ($single, $persisted): void {
             $single->makePartition()->getEntityMetaData($persisted);
         });
-    }
-
-    /**
-     * Constrói o PhpNativeEntitySerializer (depreciado na 1.5.0, forward 020 RN-01) capturando o
-     * E_USER_DEPRECATED do construtor, para que a suíte rode sem o aviso vazar e prove que ele é emitido.
-     *
-     * @param class-string $entityClass
-     * @param list<string>|null $captured Recebe as mensagens capturadas
-     * @return PhpNativeEntitySerializer
-     */
-    private function nativeSerializer(string $entityClass, ?array &$captured = null): PhpNativeEntitySerializer
-    {
-        $captured = [];
-        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
-            $captured[] = $message;
-            return true;
-        }, E_USER_DEPRECATED);
-        try {
-            $serializer = new PhpNativeEntitySerializer($entityClass);
-        } finally {
-            restore_error_handler();
-        }
-        $this->assertCount(1, $captured, 'o construtor do serializer nativo deve emitir exatamente um E_USER_DEPRECATED');
-
-        return $serializer;
-    }
-
-    /**
-     * Forward 020 RN-01 (D1 a): PhpNativeEntitySerializer depreciado na 1.5.0 (removido na 2.0.0).
-     * O construtor emite E_USER_DEPRECATED apontando o JsonEntitySerializer; o comportamento é idêntico.
-     */
-    private function testNativeSerializerIsDeprecatedButBehavesIdentically(): void
-    {
-        $serializer = $this->nativeSerializer(TestFileEntity::class, $captured);
-        $this->assertTrue(str_contains($captured[0], 'deprecated since 1.5.0'), $captured[0]);
-        $this->assertTrue(str_contains($captured[0], 'removed in 2.0.0'), $captured[0]);
-        $this->assertTrue(str_contains($captured[0], 'JsonEntitySerializer'), $captured[0]);
-
-        $docblock = (string) (new \ReflectionClass(PhpNativeEntitySerializer::class))->getDocComment();
-        $this->assertTrue(str_contains($docblock, '@deprecated 1.5.0 Removed in 2.0.0; use JsonEntitySerializer'), 'docblock @deprecated');
-
-        // Comportamento idêntico ao da 1.4.x.
-        $entity = new TestFileEntity('Nativo');
-        $payload = $serializer->serialize($entity);
-        $this->assertEquals(serialize($entity), $payload, 'serialize() continua sendo o serialize() nativo');
-        $restored = $serializer->deserialize($payload, TestFileEntity::class);
-        $this->assertInstanceOf(TestFileEntity::class, $restored);
-        $this->assertEquals($entity->getEntityId(), $restored->getEntityId());
-        $this->assertEquals('Nativo', $restored->title);
-        $this->assertEquals('bin', $serializer->getFileExtension());
-        $this->assertEquals('application/x-php-serialized', $serializer->getContentType());
-        $this->assertThrows(RepositoryException::class, fn() => $serializer->deserialize(serialize(new M5WakeupGadget()), TestFileEntity::class));
-    }
-
-    /**
-     * BUG-20261007-HIJG (reprodução): objeto gravado no envelope .bin não pode ser instanciado.
-     * Antes da correção o envelope era lido com allowed_classes => true e o __wakeup executava.
-     */
-    private function testBinEnvelopeDoesNotInstantiateArbitraryClasses(string $tmp): void
-    {
-        $binPath = $tmp . '/poisoned.bin';
-        M5WakeupGadget::$woke = false;
-        file_put_contents($binPath, serialize([
-            '__meta'   => ['repository_id' => 'x', 'entity_type' => TestFileEntity::class, 'count' => 1],
-            'entities' => [new M5WakeupGadget()],
-        ]));
-
-        $repo = new SingleFileRepository(
-            $binPath,
-            TestFileEntity::class,
-            PersistenceDefinition::ReadWrite,
-            $this->nativeSerializer(TestFileEntity::class)
-        );
-
-        $this->assertEquals(0, $repo->countAllEntities(), 'Objeto fora da whitelist não pode virar entidade');
-        $this->assertFalse(M5WakeupGadget::$woke, 'unserialize do envelope .bin instanciou classe fora da whitelist');
-    }
-
-    /**
-     * BUG-20261007-HIJG (regressão): entidades legítimas no .bin continuam sendo reconstruídas pela whitelist.
-     */
-    private function testBinRoundTripStillWorks(string $tmp): void
-    {
-        $binPath = $tmp . '/legit.bin';
-        $ser = $this->nativeSerializer(TestFileEntity::class);
-
-        $repo = new SingleFileRepository($binPath, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
-        $repo->put(new TestFileEntity('Bin'));
-        $this->assertTrue(file_exists($binPath));
-
-        $reopened = new SingleFileRepository($binPath, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
-        $this->assertEquals(1, $reopened->countAllEntities());
-        $found = array_values($reopened->findAll(new AllEntitiesSpecification()));
-        $this->assertInstanceOf(TestFileEntity::class, $found[0]);
-        $this->assertEquals('Bin', $found[0]->title);
     }
 
     /**
@@ -556,5 +480,338 @@ class Module5_FileRepositoriesTest extends TestCase
         $this->assertTrue($iterator->current() instanceof TestFileEntity);
         $this->assertEquals(1, $spec->evaluations);
         $hybrid->close();
+    }
+
+    // ------------------------------------------------------------------
+    // 2.0.0 (forward 033, D8): serializer nativo removido, envelope JSON-only
+    // ------------------------------------------------------------------
+
+    /**
+     * D8: a classe saiu e a meta do marco 13 vale como teste (`grep -rn unserialize src/` vazio,
+     * inclusive em comentário).
+     */
+    private function testNativeSerializerIsGoneAndSrcHasNoUnserialize(): void
+    {
+        $this->assertFalse(
+            class_exists('Antevemus\ASpecification\Repositories\Serialization\PhpNativeEntitySerializer'),
+            'PhpNativeEntitySerializer foi removido na 2.0.0'
+        );
+
+        $hits = [];
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/src', RecursiveDirectoryIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            if ($file->isFile() && str_contains((string) file_get_contents($file->getPathname()), 'unserialize')) {
+                $hits[] = $file->getPathname();
+            }
+        }
+        $this->assertEquals([], $hits, 'src/ não pode conter "unserialize" (marco 13): ' . implode(', ', $hits));
+    }
+
+    /**
+     * BUG-20261007-HIJG (regressão, 2.0.0): o envelope .bin envenenado nem chega a ser lido; a
+     * recusa vem antes de qualquer instanciação e aponta o guia de atualização.
+     */
+    private function testBinEnvelopeIsRefusedWithoutInstantiatingAnything(string $tmp): void
+    {
+        $binPath = $tmp . '/poisoned.bin';
+        M5WakeupGadget::$woke = false;
+        file_put_contents($binPath, serialize([
+            '__meta'   => ['repository_id' => 'x', 'entity_type' => TestFileEntity::class, 'count' => 1],
+            'entities' => [new M5WakeupGadget()],
+        ]));
+
+        $error = $this->assertThrows(RepositoryException::class, fn() => new SingleFileRepository(
+            $binPath,
+            TestFileEntity::class,
+            PersistenceDefinition::ReadWrite,
+            new JsonEntitySerializer(TestFileEntity::class)
+        ));
+        $this->assertTrue(str_contains($error->getMessage(), 'UPGRADE-2.0.md'), $error->getMessage());
+        $this->assertFalse(M5WakeupGadget::$woke, 'nada do envelope .bin pode ser instanciado');
+        $this->assertTrue(str_starts_with((string) file_get_contents($binPath), 'a:2:{'), 'o arquivo recusado fica intacto');
+    }
+
+    /**
+     * Copia uma fixture (tests/Fixtures/file_repository/v1.14.0/...) para o diretório temporário: os
+     * repositórios criam arquivos de lock ao lado do documento e a fixture versionada não pode sujar.
+     */
+    private function copyFixture(string $relative, string $target): string
+    {
+        $source = dirname(__DIR__) . '/Fixtures/file_repository/v1.14.0/' . $relative;
+        if (is_dir($source)) {
+            @mkdir($target, 0777, true);
+            foreach (glob($source . '/*') as $file) {
+                copy($file, $target . '/' . basename($file));
+            }
+        } else {
+            @mkdir(dirname($target), 0777, true);
+            copy($source, $target);
+        }
+
+        return $target;
+    }
+
+    /**
+     * RN-04 (b): arquivos .bin gravados pela v1.14.0 real (PhpNativeEntitySerializer, fixtures
+     * versionadas) são recusados pela 2.0.0 com a mensagem que cita o UPGRADE-2.0.md e a receita
+     * na 1.14.x, nos dois repositórios de arquivo; nunca lidos como vazios.
+     */
+    private function testV114BinFixturesAreRefusedWithTheUpgradeGuide(string $tmp): void
+    {
+        $json = new JsonEntitySerializer(UpgradeOrder::class);
+        $expectMessage = function (\Throwable $e, string $label): void {
+            $this->assertTrue(str_contains($e->getMessage(), 'UPGRADE-2.0.md'), "{$label}: cita o guia: " . $e->getMessage());
+            $this->assertTrue(str_contains($e->getMessage(), '1.14.x'), "{$label}: a conversão roda na 1.14.x");
+            $this->assertTrue(str_contains($e->getMessage(), 'PhpNativeEntitySerializer'), "{$label}: nomeia o formato");
+        };
+
+        // SingleFileRepository: o envelope serialize() da 1.14.0, em qualquer modo que leia
+        $single = $this->copyFixture('single/orders.bin', $tmp . '/v114/orders.bin');
+        foreach ([PersistenceDefinition::ReadWrite, PersistenceDefinition::ReadOnly, PersistenceDefinition::Snapshot] as $mode) {
+            $e = $this->assertThrows(RepositoryException::class, fn() => new SingleFileRepository($single, UpgradeOrder::class, $mode, $json));
+            $expectMessage($e, "single {$mode->name}");
+            $this->assertTrue(str_contains($e->getMessage(), $single), 'nomeia o arquivo');
+        }
+        $this->assertEquals(AbstractFileRepository::UPGRADE_GUIDE, 'UPGRADE-2.0.md');
+        $this->assertTrue(is_file(dirname(__DIR__, 2) . '/' . AbstractFileRepository::UPGRADE_GUIDE), 'o guia citado existe na raiz do pacote');
+
+        // FilePerEntityRepository: o diretório da 1.14.0 com <id>.bin
+        $dir = $this->copyFixture('per_entity_bin', $tmp . '/v114/orders');
+        $repo = new FilePerEntityRepository($dir, UpgradeOrder::class, PersistenceDefinition::ReadWrite, $json);
+        $all = new AllEntitiesSpecification(UpgradeOrder::class);
+        $expectMessage($this->assertThrows(RepositoryException::class, fn() => $repo->findAll($all)), 'dir findAll');
+        $expectMessage($this->assertThrows(RepositoryException::class, fn() => iterator_to_array($repo->iterate($all))), 'dir iterate');
+        $expectMessage($this->assertThrows(RepositoryException::class, fn() => $repo->countAllEntities()), 'dir count');
+
+        $known = new UpgradeOrder('probe', 1, new \DateTimeImmutable());
+        $idOf = basename((string) glob($dir . '/*.bin')[0], '.bin');
+        $ref = new \ReflectionProperty(\Antevemus\ASpecification\Entities\AbstractUUIDEntity::class, 'entityId');
+        $probe = (new \ReflectionClass(UpgradeOrder::class))->newInstanceWithoutConstructor();
+        $ref->setValue($probe, $idOf);
+        $expectMessage($this->assertThrows(RepositoryException::class, fn() => $repo->findSingle(new UniqueEntitySpecification($probe))), 'dir findSingle por id');
+        $expectMessage($this->assertThrows(RepositoryException::class, fn() => $repo->contains($probe)), 'dir contains');
+        $this->assertFalse($repo->contains($known), 'id sem .bin nem .json: simplesmente não existe');
+        $this->assertCount(3, glob($dir . '/*.bin'), 'nada foi apagado nem regravado');
+    }
+
+    /**
+     * RN-04 (a), última etapa na suíte: o JSON produzido pela receita do UPGRADE-2.0.md executada na
+     * v1.14.0 real sobre as fixtures .bin (prova completa no relatório da E2) é lido pela 2.0.0 com
+     * os mesmos valores: propriedades privadas e readonly, data com fuso, lista. Arquivo da 1.x não
+     * traz metadados: getEntityMetaData() é null até a primeira leitura ou gravação.
+     */
+    private function testV114FixturesConvertedByTheRecipeAreReadBy200(string $tmp): void
+    {
+        $json = new JsonEntitySerializer(UpgradeOrder::class);
+        $all = new AllEntitiesSpecification(UpgradeOrder::class);
+        $describe = static fn(UpgradeOrder $o): string => implode('|', [$o->getCustomer(), $o->getAmountCents(), $o->getPlacedAt()->format(DATE_ATOM), implode(',', $o->tags)]);
+        $expected = [
+            'Ana|12345|2026-01-15T10:30:00-03:00|vip',
+            'Bruno|990|2026-02-01T08:00:00+00:00|',
+            'Carla|500000|2026-03-31T23:59:59-03:00|b2b,net30',
+        ];
+
+        $single = new SingleFileRepository($this->copyFixture('single/orders.json', $tmp . '/v114json/orders.json'), UpgradeOrder::class, PersistenceDefinition::ReadWrite, $json);
+        $dir = new FilePerEntityRepository($this->copyFixture('per_entity_json', $tmp . '/v114json/orders'), UpgradeOrder::class, PersistenceDefinition::ReadWrite, $json);
+
+        foreach (['single' => $single, 'per-entity' => $dir] as $label => $repo) {
+            $orders = array_values($repo->findAll($all));
+            $this->assertCount(3, $orders, "{$label}: as três entidades convertidas");
+            $rows = array_map(static fn(UpgradeOrder $o): string => preg_replace('/^(single|per-entity) /', '', $describe($o)), $orders);
+            sort($rows);
+            $this->assertEquals($expected, $rows, "{$label}: mesmos valores que a 1.14.0 lia do .bin");
+            foreach ($orders as $order) {
+                $this->assertTrue((bool) preg_match('/^[0-9a-f-]{36}$/', (string) $order->getEntityId()), "{$label}: id preservado");
+            }
+        }
+
+        // Sem metadados no arquivo da 1.x; a 2.0.0 passa a gravá-los na próxima escrita
+        $order = array_values($dir->findAll($all))[0];
+        $this->assertEquals(2, $dir->getEntityMetaData($order)->getReadCount(), 'duas leituras servidas nesta instância');
+        $this->assertTrue($dir->getEntityMetaData($order)->getFirstWrite() === null, 'histórico de escrita desconhecido, não "agora"');
+        $dir->put($order);
+        $file = json_decode((string) file_get_contents($dir->getFilePath($order->getEntityId())), true);
+        $this->assertEquals(1, $file['__persistence_metadata']['write_count']);
+        $this->assertEquals(2, $file['__persistence_metadata']['read_count']);
+        $this->assertEquals($order->getCustomer(), $file['customer'], 'a entidade continua no mesmo documento');
+    }
+
+    /**
+     * 2.0.0 (Fixed): conteúdo que não é um documento JSON de entidades era lido como repositório vazio e
+     * sobrescrito pela próxima gravação; agora é recusado e o arquivo fica intacto.
+     */
+    private function testNonJsonContentIsRefusedNotReadAsEmpty(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        foreach (['garbage' => "not json at all\n", 'list' => '[1, 2, 3]', 'object' => '{"rows": []}'] as $label => $content) {
+            $path = $tmp . "/corrupt_{$label}.json";
+            file_put_contents($path, $content);
+            $e = $this->assertThrows(RepositoryException::class, fn() => new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser));
+            $this->assertTrue(str_contains($e->getMessage(), 'not a single-file entity document'), "{$label}: " . $e->getMessage());
+            $this->assertEquals($content, file_get_contents($path), "{$label}: arquivo intacto");
+        }
+
+        // Vazio continua sendo repositório vazio; JSON da 1.x (sem metadados) continua legível
+        file_put_contents($tmp . '/empty.json', "  \n");
+        $this->assertEquals(0, (new SingleFileRepository($tmp . '/empty.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser))->countAllEntities());
+        $old = new TestFileEntity('one-dot-x');
+        file_put_contents($tmp . '/v1x.json', json_encode(['__meta' => ['count' => 1], 'entities' => [json_decode($ser->serialize($old), true)]]));
+        $repo = new SingleFileRepository($tmp . '/v1x.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $this->assertTrue($repo->getEntityMetaData($old) === null, 'documento da 1.x não traz metadados');
+        $this->assertEquals(1, $repo->countAllEntities());
+    }
+
+    /**
+     * D8: o envelope é sempre JSON e do repositório, qualquer que seja o serializer; a saída de um
+     * serializer que não produz objeto JSON vai como string, sem metadados, e volta intacta.
+     */
+    private function testEnvelopeIsJsonWhateverTheSerializer(string $tmp): void
+    {
+        $custom = new class implements IEntitySerializer {
+            public function serialize(IEntity $entity): string
+            {
+                return 'title=' . $entity->title . ';id=' . $entity->getEntityId();
+            }
+            public function deserialize(string $data, string $entityClass): IEntity
+            {
+                parse_str(str_replace(';', '&', $data), $fields);
+                $entity = (new \ReflectionClass(TestFileEntity::class))->newInstanceWithoutConstructor();
+                (new \ReflectionProperty(\Antevemus\ASpecification\Entities\AbstractUUIDEntity::class, 'entityId'))->setValue($entity, (string) $fields['id']);
+                $entity->title = (string) $fields['title'];
+                return $entity;
+            }
+            public function getContentType(): string
+            {
+                return 'text/plain';
+            }
+            public function getFileExtension(): string
+            {
+                return 'txt';
+            }
+        };
+
+        $path = $tmp . '/custom_serializer.store';
+        $repo = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $custom);
+        $entity = new TestFileEntity('custom');
+        $repo->put($entity);
+
+        $document = json_decode((string) file_get_contents($path), true);
+        $this->assertTrue(is_array($document), 'o envelope é JSON mesmo com serializer não-JSON');
+        $this->assertEquals('title=custom;id=' . $entity->getEntityId(), $document['entities'][0], 'a entidade vai como string');
+        $this->assertEquals(1, $document['__meta']['count']);
+
+        $reopened = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $custom);
+        $back = array_values($reopened->findAll(new AllEntitiesSpecification()))[0];
+        $this->assertEquals('custom', $back->title);
+        $this->assertEquals((string) $entity->getEntityId(), (string) $back->getEntityId());
+        $this->assertTrue($reopened->getEntityMetaData($entity)->getFirstWrite() === null, 'sem objeto JSON não há onde gravar metadados: só os da sessão');
+    }
+
+    // ------------------------------------------------------------------
+    // 2.0.0: __persistence_metadata gravado e hidratado (delta 006 §4, forward 020 RN-08)
+    // ------------------------------------------------------------------
+
+    /**
+     * Os dois repositórios de arquivo gravam o bloco com os nomes reais da EntityPersistenceMetaData,
+     * e outra instância (outro processo) o hidrata: contadores e datas sobrevivem ao reabrir.
+     */
+    private function testPersistenceMetadataIsWrittenAndHydrated(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $all = new AllEntitiesSpecification(TestFileEntity::class);
+        $keys = ['read_count', 'write_count', 'first_read_at', 'last_read_at', 'first_write_at', 'last_write_at'];
+        @mkdir($tmp . '/meta2', 0777, true);
+
+        $factories = [
+            'single' => fn(): SingleFileRepository => new SingleFileRepository($tmp . '/meta2/single.json', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser),
+            'per-entity' => fn(): FilePerEntityRepository => new FilePerEntityRepository($tmp . '/meta2/dir', TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser),
+        ];
+        foreach ($factories as $label => $open) {
+            $repo = $open();
+            $e = new TestFileEntity("meta {$label}");
+            $repo->put($e);
+            $repo->put($e);
+            $first = $repo->getEntityMetaData($e)->getFirstWrite();
+
+            $raw = $label === 'single'
+                ? json_decode((string) file_get_contents($tmp . '/meta2/single.json'), true)['entities'][0]
+                : json_decode((string) file_get_contents($repo->getFilePath($e->getEntityId())), true);
+            $this->assertEquals($keys, array_keys($raw['__persistence_metadata']), "{$label}: nomes reais da EntityPersistenceMetaData");
+            $this->assertEquals(2, $raw['__persistence_metadata']['write_count'], "{$label}: duas gravações");
+            $this->assertEquals(0, $raw['__persistence_metadata']['read_count']);
+            $this->assertTrue($raw['__persistence_metadata']['first_read_at'] === null);
+            $this->assertEquals("meta {$label}", $raw['title'], "{$label}: o bloco fica ao lado dos campos da entidade");
+
+            $other = $open();
+            $meta = $other->getEntityMetaData($e);
+            $this->assertTrue($meta !== null, "{$label}: outra instância hidrata o registro");
+            $this->assertEquals(2, $meta->getWriteCount());
+            $this->assertEquals($first->format('Y-m-d\TH:i:s.uP'), $meta->getFirstWrite()->format('Y-m-d\TH:i:s.uP'), "{$label}: data com microssegundos preservada");
+            $this->assertEquals(0, $meta->getReadCount(), "{$label}: hidratar não conta leitura");
+
+            $other->put($e);
+            $this->assertEquals(3, $other->getEntityMetaData($e)->getWriteCount(), "{$label}: a gravação continua a contagem persistida");
+            $found = array_values($other->findAll($all));
+            $this->assertEquals("meta {$label}", $found[0]->title, "{$label}: o bloco não vaza para a entidade");
+            $other->close();
+        }
+    }
+
+    /**
+     * Leituras servidas chegam ao arquivo com a próxima gravação, store() ou close(); no ReadWrite o
+     * close() relê o documento sob lock e não apaga o que outra instância gravou nesse meio-tempo.
+     */
+    private function testReadsReachTheFileOnStoreAndClose(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $all = new AllEntitiesSpecification(TestFileEntity::class);
+
+        // SingleFileRepository (ReadWrite)
+        $path = $tmp . '/reads/single.json';
+        @mkdir($tmp . '/reads', 0777, true);
+        $reader = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $a = new TestFileEntity('A');
+        $reader->put($a);
+        $reader->findAll($all);
+        $reader->findAll($all);
+        $writer = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $b = new TestFileEntity('B');
+        $writer->put($b);
+        $reader->close();
+        $check = new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadOnly, $ser);
+        $this->assertEquals(2, $check->getEntityMetaData($a)->getReadCount(), 'as leituras do leitor chegaram ao arquivo no close()');
+        $this->assertEquals(1, $check->getEntityMetaData($b)->getWriteCount());
+        $this->assertEquals(2, $check->countAllEntities(), 'close() do leitor não apagou B (gravado por outra instância depois que ele carregou)');
+
+        // FilePerEntityRepository: store()/close() gravam o bloco das entidades lidas
+        $dirPath = $tmp . '/reads/dir';
+        $dir = new FilePerEntityRepository($dirPath, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser);
+        $c = new TestFileEntity('C');
+        $dir->put($c);
+        $dir->findAll($all);
+        $onDisk = fn(): array => json_decode((string) file_get_contents($dir->getFilePath($c->getEntityId())), true)['__persistence_metadata'];
+        $this->assertEquals(0, $onDisk()['read_count'], 'a leitura ainda não foi gravada');
+        $dir->store();
+        $this->assertEquals(1, $onDisk()['read_count'], 'store() grava as leituras servidas');
+        $this->assertEquals(1, $onDisk()['write_count'], 'sem contar uma gravação da entidade');
+        $dir->findSingle(new UniqueEntitySpecification($c));
+        $dir->close();
+        $this->assertEquals(2, $onDisk()['read_count'], 'close() também');
+        $this->assertEquals('C', json_decode((string) file_get_contents($dir->getFilePath($c->getEntityId())), true)['title']);
+    }
+
+    /** Um bloco de metadados malformado é recusado, nunca trocado por um registro vazio em silêncio. */
+    private function testMalformedPersistenceMetadataIsRefused(string $tmp): void
+    {
+        $ser = new JsonEntitySerializer(TestFileEntity::class);
+        $e = new TestFileEntity('bad meta');
+        $entity = json_decode($ser->serialize($e), true);
+        foreach (['not an object' => 'x', 'negative' => ['write_count' => -1], 'text count' => ['read_count' => '3'], 'bad date' => ['first_write_at' => 'yesterday-ish']] as $label => $block) {
+            $path = $tmp . '/badmeta/' . md5($label) . '.json';
+            @mkdir(dirname($path), 0777, true);
+            file_put_contents($path, json_encode(['entities' => [$entity + ['__persistence_metadata' => $block]]]));
+            $error = $this->assertThrows(RepositoryException::class, fn() => new SingleFileRepository($path, TestFileEntity::class, PersistenceDefinition::ReadWrite, $ser));
+            $this->assertTrue(str_contains($error->getMessage(), '__persistence_metadata') && str_contains($error->getMessage(), (string) $e->getEntityId()), "{$label}: " . $error->getMessage());
+        }
     }
 }
