@@ -65,7 +65,7 @@ jobs:
       - name: Install dependencies with the optional ALinq package
         run: |
           composer install --no-interaction --no-progress --prefer-dist
-          composer require --dev --no-interaction --no-progress "antevemus/alinq-collection:^1.5"
+          composer require --dev --no-interaction --no-progress "antevemus/alinq-collection:^2.0.0"
 
       - name: PHPUnit
         run: vendor/bin/phpunit --no-coverage
