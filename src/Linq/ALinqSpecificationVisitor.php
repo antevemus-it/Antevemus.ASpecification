@@ -23,6 +23,7 @@ use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
+use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Closure;
 
@@ -44,6 +45,9 @@ use Closure;
  *   method on the item, the result filtered by the compiled result specification
  * - External data (ExternalDataSpecification, 1.10.0) is refused with NonTranslatableLinqException:
  *   its data is resolved per candidate by a DataResolver, never once per item of a filter
+ * - Text compared ignoring case and accents (TextComparison::IgnoreCaseAndAccents, 2.1.0) evaluated by
+ *   the leaf itself, which folds the candidate as it folded the literal (equalIgnoreCaseAndAccents()
+ *   reaches the default delegation)
  *
  * Null values (1.11.0), as the core: a null property value is handed to the compiled inner predicate
  * (`isNull()` under a property matches it, a comparison does not), and the AND/OR/NOT/NOR predicates
@@ -57,7 +61,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    2.0.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -176,6 +180,11 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
 
             $specification instanceof MethodParameterizedSpecification =>
                 $this->compileMethodCall($specification),
+
+            // 2.1.0: the pattern of an accent-insensitive literal is written over the folded text, so
+            // the candidate must be folded first, which the leaf itself does (TextComparison).
+            $specification instanceof LiteralPatternSpecification && $specification->ignoresAccents() =>
+                fn(mixed $candidate): bool => $specification->isSatisfiedBy($candidate),
 
             $specification instanceof RegexSpecification =>
                 fn(mixed $candidate): bool => is_string($candidate) && preg_match($specification->getPattern(), $candidate) === 1,

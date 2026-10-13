@@ -6,15 +6,15 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.0.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.0.0)
+[![Latest Version](https://img.shields.io/badge/Release-v2.1.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.1.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Suites%20Pass%20(11245%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Suites%20Pass%20(11940%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
 
 > **Enterprise Specification Pattern Framework for PHP 8.2+** (PHP 8.4 only for the optional ALinq integration)  
-> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, concurrent resolution of the external data I/O-bound rules depend on, a repository over PDO whose queries are specifications compiled to SQL (with lifecycle columns, batch and set-based operations and relationships loaded in batch), and domain events emitted when an entity starts or stops satisfying a specification, on a write or by the mere passage of time.
+> Independent, unofficial PHP reimplementation and evolution of the acclaimed Java [Domian](https://domian.sourceforge.net/index.html) framework, grounded in the seminal paper [Specifications](http://www.martinfowler.com/apsupp/spec.pdf) by Eric Evans and Martin Fowler. Enhanced with natural-language fluent chaining, zero-exception Notification Pattern with rich diagnostic telemetry, relational database Dynamic Rule Engine, multi-DBMS SQL Query Visitor (15 drivers, 10 SQL dialects), Adianti Framework TCriteria Builder, Directed Acyclic Graph (DAG) partitioned repositories, hybrid persistence, high-concurrency IPC primitives, a specification-driven state machine, use cases with a result shared between both, concurrent resolution of the external data I/O-bound rules depend on, a repository over PDO whose queries are specifications compiled to SQL (with lifecycle columns, batch and set-based operations and relationships loaded in batch), domain events emitted when an entity starts or stops satisfying a specification, on a write or by the mere passage of time, declared feature flags with targeting and an audit trail, and text comparison that ignores case and accents with the same answer in memory and in SQL. Every promise of its algebra is checked against the evaluation by a soundness bench.
 
 ---
 
@@ -41,7 +41,7 @@
 - 🔗 **TCriteria Builder & Adianti Database Bridge (Module 13)**: Seamless compilation of domain specifications into native `Adianti\Database\TCriteria` and `TFilter` objects, with automatic De Morgan logic inversion for negations, strict parenthesis precedence, and chained pagination (`limit`, `offset`), sorting (`orderBy`, `direction`) and grouping (`groupBy`).
 - 🧩 **Dynamic Rule Engine & Document Matrix (Module 11)**: Dynamic runtime rule compilation driven by relational database catalogs (`RuleDefinition`), operational severity triage (`BLOCK`, `WARN`, `LOG`), and document requirement Boolean algebra (`ALL`, `ANY`, `ONE_OF_SET`).
 - ✂️ **Partial Satisfaction (`remainderUnsatisfiedBy`)**: Isolate at runtime precisely which sub-clauses failed for a given candidate entity.
-- 📐 **Complete Boolean & Venn Set Algebra**: Rigorous logical composition (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), Venn set subsumption calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) and structural tautology/contradiction detection (`isTautology()`, `isContradiction()`): it proves `A ∧ ¬A`, `A ∨ ¬A`, conjunctions of disjoint operands, `in([])` and the absorbing identities (`alwaysTrue()`/`alwaysFalse()`); it is conservative (`false` means "not proven", there is no SAT solving), and the rule engine reports degenerate catalog rules as `RuleCompilationWarning`; `simplify()` returns an equivalent, smaller tree (identity, double negation, idempotence, subsumption, proven contradictions and tautologies) without touching annotated nodes, with an opt-in in the rule engine (example 12).
+- 📐 **Complete Boolean & Venn Set Algebra**: Rigorous logical composition (`AND`, `OR`, `NOT`, `NOR / Joint Denial`), Venn set subsumption calculus (`isGeneralizationOf`, `isSpecialCaseOf`, `isDisjointWith`) and structural tautology/contradiction detection (`isTautology()`, `isContradiction()`): it proves `A ∧ ¬A`, `A ∨ ¬A`, conjunctions of disjoint operands, `in([])` and the absorbing identities (`alwaysTrue()`/`alwaysFalse()`); it is conservative (`false` means "not proven", there is no SAT solving), and the rule engine reports degenerate catalog rules as `RuleCompilationWarning`; `simplify()` returns an equivalent, smaller tree (identity, double negation, idempotence, subsumption, proven contradictions and tautologies) without touching annotated nodes, with an opt-in in the rule engine (example 12). Since v2.1.0 a soundness bench checks every promise of the algebra against the evaluation of every concrete specification class (Code Quality).
 - 🗄️ **Repository Architecture & DAG Partitioning**:
   - $O(1)$ early branch pruning in query search trees through specification disjointness, over a materialised topological index of the DAG (`findAll` 45 % to 77 % faster than the recursive walk, see `tests/Benchmark/REPORT-dag-index.md`).
   - TTL and auto-prune on volatile repositories (`withTtl()`, `prune()`, injectable clock), inherited across partitions.
@@ -57,6 +57,8 @@
 - 🧱 **PDO Repository Follow-ups (Modules 25 and 26)**: lifecycle columns (`#[CreatedAt]`, `#[UpdatedAt]`, `#[SoftDelete]` with `withTrashed()`/`onlyTrashed()`/`forceRemove()`), hooks on the repository (`beforePut`, `afterPut`, `beforeRemove`, `afterRemove`), a SQL log without parameter values by default (`IQueryLogger`), booleans stored as 1/0 and default time zones per mapping and per repository; `insertAll()` with multi-row `INSERT`s and `putAll()` with one existence `SELECT` per batch; `updateWhere()`, `select()` projections, `aggregate()->groupBy()->sum()/avg()/min()/max()/count()` and `Spec::inQuery()` subqueries; `#[ManyToOne]`/`#[OneToMany]` relationships loaded explicitly in batch with `with()` (one query per relation, never N+1), compositions saved and removed with their parent, and orphans removed only from collections that were loaded; `#[ManyToMany]` associations through a join table (only the links are written), `markLoaded()` for aggregates built by hand, `iterate()` with relations in pages that work on MySQL unbuffered queries, and `CHAR(1)` `'Y'`/`'N'` booleans read strictly (examples 17.1 to 17.3).
 - 📡 **Domain Events From Specifications (Module 23)**: `SpecificationTrigger` binds a specification to an enter and an exit event; `TriggeringRepository` decorates any repository and publishes the crossings of every write to an outbox (in memory or PDO, reference DDL `resources/sql/domain_events.ansi.sql`) written in the same transaction, delivered after the commit by `DomainEventDispatcher` with a deterministic idempotency key and a payload without personal data; `MachineEventBridge` sends an event to the state machine (example 18).
 - ⏰ **Domain Events From the Passage of Time (Module 24)**: `SpecificationTrigger::timed()` builds its specification from "now"; `TriggerSweeper`, run by a cron, finds the entities that crossed since their last recorded state (`ITriggerStateStore`, in memory or PDO, table `domain_event_trigger_state`) and publishes through the same outbox, one transaction and one compare-and-set per crossing; `baseline()` introduces a trigger over existing data without a flood of events; `TriggeringRepository` keeps the same state, so a write and a sweep never publish one crossing twice (example 18.1).
+- 🚩 **Declared Feature Flags (Module 27)**: a flag is declared once in code (`FeatureFlagRegistry`: texts, origin, target) and switched in the database (`PdoFeatureFlagStore` over the reference DDL `resources/sql/feature_flags.ansi.sql` or over existing tables); born off; on = switch on, inside its validity window and the subject in the target (a subject list editable without a deploy and a specification in code); every answer has a reason mapped to OpenFeature's; an unreadable store is off and reported, never silent; changes require a reason, are compare-and-set and write their history in the same transaction; `spec('flag')` composes with any specification (example 19).
+- 🔤 **Text Comparison Without Accents (Module 28)**: `TextComparison::IgnoreCaseAndAccents` in `contains()`, `startsWith()`, `endsWith()` and `equalIgnoreCaseAndAccents()` (`configuracao` finds `Configuração`, `ß` stays `ß`), with the same answer in memory, in ALinq, in PostgreSQL, MySQL and MariaDB, and refused where a database cannot give it (example 20).
 
 ---
 
@@ -89,11 +91,12 @@ While most PHP specification libraries stop at primitive Boolean checks (`isSati
 - **PHP Extensions**:
   - `ext-json` (for JSON entity serialization; required)
   - `ext-mbstring` (required since v1.5.0: Unicode-aware case-insensitive string specifications, `mb_strtolower`)
+  - `ext-intl` *(optional: `TextComparison::IgnoreCaseAndAccents`, the text comparison that also ignores accents, example 20; without it that option is refused with `MissingExtensionException` and everything else works)*
   - `ext-sysvsem` *(optional: `SysVSemaphoreSynchronizer`, the reader/writer lock shared between processes through SysV IPC semaphores, Linux/Unix)*
   - `ext-curl` *(optional: `HttpDataSource`, the concurrent HTTP fetching of the `DataResolver`, Module 21; without it an HTTP source is refused when registered and `CallableDataSource` keeps working)*
   - `ext-pdo` *(optional, with the driver of your database: `PdoRepository` (Modules 22, 25 and 26), the PDO stores of the state machine, `PdoRuleCatalog` and the PDO domain event outbox and trigger state store (Modules 23 and 24))*
 - **Dependency**: one, from the same author, with no dependencies of its own: [`antevemus/adeep-property-access`](https://github.com/antevemus-it/Antevemus.ADeepPropertyAccess) `^1.0` (since v2.0.0), the property accessor shared with ALinq, so that both libraries read the same value from the same candidate (example 10.1). Composer installs it.
-- **Optional package**: `antevemus/alinq-collection` `^1.5.1 || ^2.0` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package, and its 2.0 resolves properties through the same shared accessor).
+- **Optional package**: `antevemus/alinq-collection` `^2.1.0` for `ALinqBridge` (typed `IALinqCollection`/`IALinqLazyCollection` returns), `ALinqSpecificationVisitor` and O(1) lazy streaming over `IRepository::iterate()` (requires PHP 8.4; ALinq reads a non-public property only when it is marked `#[Specifiable]`, the same rule as this package, and its 2.0 resolves properties through the same shared accessor).
 
 > **Upgrading from 1.x?** Read [UPGRADE-2.0.md](UPGRADE-2.0.md) first: `.bin` files of the PHP-native serializer and rule catalogs with Portuguese values are converted on 1.14.x, before the upgrade.
 
@@ -629,6 +632,8 @@ $engine->validate((object) ['status' => 'CLOSED'], 'rental_contract')->getFailur
 
 Two limits, both stated in the docblocks. The equivalence holds for **non-null candidates**, the same premise as `isTautology()`/`isContradiction()`: `AND`/`OR`/`NOT` reject `null` whatever their operands, and the node left after simplification may not (`alwaysTrue()->and(alwaysTrue())` rejects `null`, `alwaysTrue()` accepts it). And it is an equivalence of **truth value only**: removing a redundant branch may remove one that would have raised an exception, and the default messages of unannotated nodes may change; only annotated messages and codes are guaranteed. Nothing simplifies by itself: the SQL, TCriteria and ALinq visitors compile the tree as given, and the rule engine simplifies only when asked.
 
+**The algebra never promises more than the evaluation delivers** (since v2.1.0). `equals()`, subsumption, disjointness, `isTautology()`/`isContradiction()`, `simplify()`, the deduplication of `and()`/`or()` and the partition lookup are checked by a soundness bench against the evaluation of every concrete specification class over boundary candidates (Code Quality); where they disagreed, the algebra now proves less. Two consequences are worth knowing. **Date-times are compared by instant**: `equalTo()`, `notEqual()` and `in()` compare a `DateTimeInterface` by its instant, whatever its class and time zone, as the relational leaves, `at()` and the SQL visitor already did, so `Spec::equalTo(new DateTimeImmutable('2025-01-01 10:00', new DateTimeZone('UTC')))` accepts `new DateTime('2025-01-01 07:00', new DateTimeZone('America/Sao_Paulo'))` in memory as in the database (up to 2.0.0 memory compared instances); other objects are compared by identity, in the evaluation and in `equals()`. And **integer bounds are not closed**: the relational leaves accept any number, so `greaterThan(10)` and `lessThan(11)` are not disjoint (`10.5` satisfies both) and their conjunction is not simplified away; an opt-in integer mode is on the roadmap (milestone 25).
+
 ### 13. Declarative Method Calls (`MethodParameterizedSpecification`)
 
 `where()` reads a property; `whereMethod()` / `Spec::calling()` call a public method of the candidate with arguments declared as data and apply a specification to the result. Unlike `must(closure)`, the method name and the arguments are data: the specification has structural `equals()`, a rule name and can be described in a catalog. A missing method is an evaluation error, never a silent `false`.
@@ -660,7 +665,7 @@ Spec::calling('isEligibleFor', [new DateTimeImmutable('2026-12-01')], Spec::isTr
     ->evaluate(new stdClass())->isError;                                          // true
 ```
 
-The SQL and TCriteria visitors refuse a method call as a non-translatable leaf (like `must()`); the ALinq visitor compiles it.
+The SQL and TCriteria visitors refuse a method call as a non-translatable leaf (like `must()`); the ALinq visitor compiles it. A date-time argument is passed by instant (since v2.1.0): the method receives a copy of the same class at the same instant, in the default time zone of PHP (`date_default_timezone_get()`), whatever zone it was declared in, so two calls that `equals()` declares equal also answer the same.
 
 ### 14. Spec-Driven State Machine (Modules 17 and 18)
 
@@ -1866,6 +1871,126 @@ count($events->findByEntity(Invoice::class, 'INV-4'));                      // 1
 - **`limit`** bounds the crossings handled by one call: loop while `limitReached()`. `SweepReport` gives the counts, the events, the lost compare-and-sets, the evaluation errors (also sent to the `IDomainEventErrorReporter`) and two cost counters (`entitiesLoaded()`, `statesRead()`).
 - **Limits:** one sweeper per concrete entity class (the states are keyed by it; an entity of another class found in the repository is reported, never recorded); on MySQL with unbuffered queries, give the sweeper a repository on its own connection (it reads states while the entity cursor is open); the plain triggers of the set are not swept (they only change on writes), but `baseline()` records them too.
 
+### 19. Declared Feature Flags With Targeting and an Audit Trail (Module 27)
+
+`Antevemus\ASpecification\FeatureFlags` turns "is this feature on for this customer?" into a declared, audited decision. A flag is declared once, in code: its code, the texts a settings screen shows (name, description, category, audience, what turning it on and off does), where it came from and, optionally, its target. The database holds only what changes at run time: the switch, the validity window, the subject list and the history (reference DDL [`resources/sql/feature_flags.ansi.sql`](resources/sql/feature_flags.ansi.sql), portable SQL in the conventions of the other DDLs of the package). Every flag is born off, and every answer has a reason.
+
+```php
+use Antevemus\ASpecification\FeatureFlags\Exceptions\StaleFeatureFlagException;
+use Antevemus\ASpecification\FeatureFlags\FeatureFlagDefinition;
+use Antevemus\ASpecification\FeatureFlags\FeatureFlagReason;
+use Antevemus\ASpecification\FeatureFlags\FeatureFlagRegistry;
+use Antevemus\ASpecification\FeatureFlags\FeatureFlags;
+use Antevemus\ASpecification\FeatureFlags\PdoFeatureFlagStore;
+use Antevemus\ASpecification\Specifications\PredicateSpecification;
+
+final class Agency
+{
+    public function __construct(public readonly int $unitId, public readonly string $plan = 'basic') {}
+}
+
+// $pdo: once, with your migration tool, resources/sql/feature_flags.ansi.sql
+$registry = new FeatureFlagRegistry([
+    new FeatureFlagDefinition(
+        'renewal_notice',
+        'Renewal notice to agencies',
+        impactOn: 'Agencies start receiving the renewal e-mail.',
+        impactOff: 'Agencies stop receiving it.',
+        origin: 'task 0033',
+        subjectKey: 'unitId',
+    ),
+]);
+$flags = new FeatureFlags($registry, new PdoFeatureFlagStore($pdo));
+
+$seven = new Agency(unitId: 7);
+$flags->isEnabled('renewal_notice', $seven);                              // false: every flag is born off
+
+// The pilot: on, but only for agency 7 (a subject list, changed without a deploy)
+$flags->toggle('renewal_notice', true, 'Pilot approved by the board', actor: 42);
+$flags->addSubject('renewal_notice', 7, 'Pilot: agency 7 only', actor: 42);
+
+$flags->isEnabled('renewal_notice', $seven);                              // true
+$flags->evaluate('renewal_notice', new Agency(unitId: 8))->reason === FeatureFlagReason::NOT_IN_TARGET; // true
+$flags->isEnabled('not_declared');                                        // false (UNKNOWN_FLAG), never an exception
+
+// A flag is a specification: compose it with any other rule
+$notify = $flags->spec('renewal_notice')->and(new PredicateSpecification(fn(Agency $a): bool => $a->plan !== 'trial'));
+$notify->isSatisfiedBy($seven);                                           // true
+
+try {
+    $flags->toggle('renewal_notice', true, 'Second click on a stale screen');
+} catch (StaleFeatureFlagException $e) {
+    // it is already on: every change is a compare-and-set, and nothing was written
+}
+$flags->history('renewal_notice')[0]->reason;                             // 'Pilot: agency 7 only' (most recent first)
+```
+
+- **When a flag is on.** Its switch is on, **and** the reference instant is inside its validity window (`valid_from`/`valid_until`, both inclusive, a date-only bound covering the whole day; `withAsOf()` evaluates at another instant), **and** the subject is in its target. The target has two parts, both optional and combined with AND: the subject list stored with the flag (`addSubject()`/`removeSubject()`; an empty list is no restriction; the key is read from the subject through `subjectKey` with the shared accessor, and a string or integer subject is the key itself) and a specification declared in code (`target: Spec::property('plan', Spec::in('pro', 'enterprise'))`). With a target, a null subject is not in it.
+- **Every answer has a reason.** `evaluate()` returns a `FeatureFlagEvaluation` (value, `FeatureFlagReason`, subject key, error; `toMetadata()`), and the failure of `spec()` carries the same metadata. The reasons map to those of [OpenFeature](https://openfeature.dev), so a provider can be written over the service later: `ENABLED` → `STATIC`, `TARGETING_MATCH` → `TARGETING_MATCH`, `DISABLED` → `DISABLED`, `NOT_IN_TARGET` and `OUTSIDE_VALIDITY` → `DEFAULT`, `UNKNOWN_FLAG` → `ERROR` (`FLAG_NOT_FOUND`), `ERROR` → `ERROR` (`GENERAL`).
+- **Reading never throws and never fails in silence.** A code that is not declared is off, whatever the database says. When the store cannot be read (no table yet, the connection down) or the target throws, the flag is off with the reason `ERROR` (fail closed) and the exception goes to the `IFeatureFlagErrorReporter` given to the service, once per load; `evaluate()->error` and `lastError()` keep it for a settings screen. As a specification such a flag is a plain failure with the reason `error`, so `not()` sees it off, and its metadata never carry the exception's message.
+- **Changes.** `toggle()`, `addSubject()` and `removeSubject()` each run in one transaction with their history row and require a reason (whitespace collapsed, 10 to 1 000 characters by default, `InvalidFeatureFlagReasonException`). Each is a compare-and-set: turning on expects off, so a second click on a stale screen throws `StaleFeatureFlagException` and writes nothing. Turning on an undeclared flag throws `UndeclaredFeatureFlagException` (it would have no effect); turning it off stays allowed, to clean up an orphan row. A declared flag without a row gets one, off, on its first change. The service records the actor and the origin (`FeatureFlags::ORIGIN_UI`, `ORIGIN_MIGRATION`, `ORIGIN_SCRIPT`, or a text of your own); who may change a flag is your application's decision.
+- **One query per service instance**: the state of every flag and the subject lists are read on the first evaluation (flags `LEFT JOIN` subjects) and kept; `refresh()` reads again, and a change made through the instance refreshes it. Build one service per request.
+- **Listing.** `all()` is what a settings screen needs: the declared flags in declaration order, then those found only in the database (marked as not declared), each with its texts (the code's win), state, subjects and last change; `history($code, $limit)` is the trail, most recent first.
+
+`InMemoryFeatureFlagStore` has the same contract (the same test battery runs against both, and against PostgreSQL 17, MySQL 8.4 and MariaDB 11.4). Existing tables are read where they are, with the conventions of `PdoRuleCatalog`: table names by role, column names by role (canonical column => real column; `null` for a feature the table does not have), the Boolean storage of each role and a history table shared with other audit trails:
+
+```php
+use Antevemus\ASpecification\FeatureFlags\PdoFeatureFlagStore;
+use Antevemus\ASpecification\Repositories\Pdo\Mapping\BooleanStorage;
+
+// An integer switch with soft delete, no validity window, no subject lists, and an audit table
+// shared with other trails (identity key, 'true'/'false' as text, local time without offset)
+$store = new PdoFeatureFlagStore(
+    $pdo,
+    tables: ['flag' => 'app_feature_flags', 'change' => 'audit_trail', 'subject' => null],
+    columns: [
+        'flag' => ['valid_from' => null, 'valid_until' => null, 'version' => null, 'deleted_at' => 'deleted_at'],
+        'change' => ['change_id' => 'id', 'flag_code' => 'entity_key', 'subject_key' => null, 'old_enabled' => 'old_value', 'new_enabled' => 'new_value'],
+    ],
+    changeScope: ['entity_type' => 'feature_flag', 'field' => 'enabled'],  // written on every row, required on every read
+    booleans: ['flag' => BooleanStorage::Integer, 'change' => ['true', 'false']],
+    timestampFormat: 'Y-m-d H:i:s',
+    timezone: 'America/Sao_Paulo',
+    databaseGeneratedChangeId: true
+);
+```
+
+A stored Boolean outside the declared values is a `FeatureFlagStoreException`, never a silent `false`; a row whose `deleted_at` is set is neither read nor changed. The validity window is written by SQL or a migration (there is no API for it yet), and the DDL carries, commented out, a PostgreSQL trigger that makes the history append-only in the database too. Not in this version: a target named by a rule of the catalog and percentage rollout (roadmap 24b and 24c).
+
+### 20. Text Comparison: Case and Accents (Module 28)
+
+The text operators `contains()`, `startsWith()` and `endsWith()` take a second argument, the comparison: `bool|TextComparison` since v2.1.0. `true` (the default) is `TextComparison::CaseSensitive`, `false` is `TextComparison::IgnoreCase`, and `TextComparison::IgnoreCaseAndAccents` also ignores accents, in the `Spec` facade, the DSL functions and the factory; `Spec::equalIgnoreCaseAndAccents()` is the pair of `equalIgnoreCase()`. Ignoring accents is a declared choice, never a side effect of the column collation.
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
+use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
+
+$search = Spec::property('title', Spec::contains('configuracao', TextComparison::IgnoreCaseAndAccents));
+
+$search->isSatisfiedBy((object) ['title' => 'Configuração do servidor']); // true
+$search->isSatisfiedBy((object) ['title' => 'CONFIGURAÇÃO']);             // true
+Spec::contains('configuracao', false)->isSatisfiedBy('Configuração');     // false: IgnoreCase compares accents
+Spec::contains('strasse', TextComparison::IgnoreCaseAndAccents)
+    ->isSatisfiedBy('Straße');                                            // false: ß is a letter, not s + mark
+Spec::equalIgnoreCaseAndAccents('sao paulo')->isSatisfiedBy('SÃO PAULO');  // true
+
+Spec::toSql($search, 'mysql')->getSql();
+// (`title` IS NOT NULL AND CONVERT(`title` USING utf8mb4) COLLATE utf8mb4_0900_ai_ci LIKE :p1)
+try {
+    Spec::toSql($search, 'sqlite');
+} catch (NonTranslatableSpecificationException $e) {
+    // SQLite cannot answer it as memory does: refused, never a different answer
+}
+```
+
+- **The folding.** Both sides are folded the same way: canonical decomposition (NFD), removal of the nonspacing marks (`\p{Mn}`), canonical composition (NFC) of what is left, then `mb_strtolower()`. `ç`, `ã`, `õ`, `é`, `ê`, `ñ`, `ü` and their capitals fold to the base letter. **Limit:** a letter that is not a base letter plus a mark stays itself, as with .NET's `CompareOptions.IgnoreCase | IgnoreNonSpace`: `ß` is not `ss`, `æ` is not `ae`, `œ` is not `oe`, and `ø`, `đ`, `ł` are not `o`, `d`, `l`. The ALinq visitor uses the same folding.
+- **`ext-intl` is required by this option only** (the `Normalizer` class; a polyfill is not accepted). Without it, building a specification with `IgnoreCaseAndAccents` throws `MissingExtensionException`, which names the extension; `CaseSensitive` and `IgnoreCase` need nothing new, and `TextComparison::isAccentFoldingAvailable()` tells whether the runtime has it.
+- **SQL, with the in-memory answer or not at all.** PostgreSQL folds both sides of the `LIKE` with an expression equal to the in-memory folding (`lower(normalize(regexp_replace(normalize(x, NFD), <marks>, '', 'g'), NFC))`: no extension, `IMMUTABLE`, a UTF8 database; measured on PostgreSQL 17 over the 50 303 letters and marks of the BMP). `new PostgreSqlDialect('unaccent')` uses the function of that extension instead (which maps `ß` to `ss` and `æ` to `ae`, so it answers differently from memory for those letters), or the name of a wrapper of your own. MySQL 8.4 and MariaDB 11.4 compare `CONVERT(col USING utf8mb4) COLLATE utf8mb4_0900_ai_ci LIKE :p` (`new MySqlDialect('utf8mb4_uca1400_ai_ci')` for MariaDB 10.10 to 11.4.4). SQL Server and Oracle are refused (measured: their accent-insensitive collations equate `ß` with `ss` and `æ` with `ae`), and so are SQLite, DuckDB, Db2, Informix, Firebird and ANSI, with `NonTranslatableSpecificationException`; a `PdoRepository` on those databases refuses the query unless `withInMemoryFallback()` was called. `Spec::toCriteria()` refuses it too (`NonTranslatableCriteriaException`): Adianti's `TFilter` concatenates the value it is given, so the folding cannot be applied to it.
+- **Measured limits in the databases.** On MySQL/MariaDB, `ø`, `đ`, `ł` and `ð` match `o`, `d`, `l` and `d`, `й` does not match `и`, and katakana matches hiragana (memory answers the other way in each case); on PostgreSQL a column with the `"C"` collation lowers ASCII letters only, the limit of `IgnoreCase` since v1.14.0.
+- **Indexes.** The comparison uses no ordinary index on the column, and the library creates none. On PostgreSQL the indexable path is a function: declare an `IMMUTABLE` wrapper whose body is `PostgreSqlDialect::builtInAccentFolding('t')` (`CREATE FUNCTION f_fold(t text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE RETURN ...`), give its name to the dialect (`new PostgreSqlDialect('f_fold')`, which then emits `f_fold(lower(col)) LIKE f_fold(lower(:p))`) and back it with an expression index over `f_fold(lower(col))` (a `pg_trgm` one for `contains()`). On MySQL/MariaDB the collation is applied to the converted column, so the condition is not indexable.
+- Wildcards and `regex()` keep their case flag only (roadmap 22b).
+
 ---
 
 ## 🏗️ Directory Structure
@@ -1885,13 +2010,13 @@ src/
 │   ├── Concurrent/           # ISynchronizer
 │   ├── Helpers/              # IStopWatch, IInstrumentationUtils
 │   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog...
-│   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause
+│   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause, ISqlPagination, ISqlAccentInsensitiveLike (v2.1.0)
 ├── Entities/                  # Base entities, UUIDs, and random ID generators
 ├── Specifications/            # Concrete rule implementations
 │   ├── SpecificationSimplifier.php # simplify(): an equivalent, smaller tree (v1.9.0)
 │   ├── Comparison/           # Equal, GreaterThan, LessThan, RelationalOperator
 │   ├── Logical/              # AlwaysTrue, AlwaysFalse, JointDenial (NOR), DefaultValue
-│   ├── String/               # Regex, Wildcard, DateString, EnumName
+│   ├── String/               # Regex, Wildcard, DateString, EnumName; TextComparison, EqualIgnoreCaseAndAccents (v2.1.0)
 │   ├── Collection/           # CollectionSpecification, AllEntities, Unique
 │   └── Reflection/           # MethodParameterizedSpecification (declarative method call; field access is where())
 ├── Repositories/              # Concrete repositories and DAG partitioning
@@ -1942,6 +2067,9 @@ src/
 │   ├── DataResolver.php      # resolve()/evaluate(); ResolutionPolicy concurrent()/tiered()/sequential()
 │   ├── HttpDataSource.php    # URL template with encoded parameters, fetched through curl_multi
 │   └── CallableDataSource.php # Any synchronous callable; DataSourceRegistry, IDataCache, InMemoryDataCache
+├── FeatureFlags/              # Declared feature flags (Module 27, v2.1.0): FeatureFlags, FeatureFlagRegistry, FeatureFlagDefinition, FeatureEnabledSpecification, FeatureFlagReason
+│   ├── Exceptions/           # FeatureFlagException, FeatureFlagStoreException, StaleFeatureFlagException, UndeclaredFeatureFlagException...
+│   └── PdoFeatureFlagStore.php # IFeatureFlagStore over the tables of resources/sql/feature_flags.ansi.sql (or existing ones); InMemoryFeatureFlagStore
 ├── Helpers/                   # PropertyAccessor (deprecated facade of antevemus/adeep-property-access, v2.0.0), StopWatch, InstrumentationUtils
 ├── DSL/                       # Global helper functions for fluent domain syntax
 └── Spec.php                   # Unified static facade
@@ -1957,7 +2085,7 @@ The library features comprehensive unit and integration test coverage with zero 
 php tests/run_all.php
 ```
 
-Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine. Module 22 also prints its benchmark (10 000 rows in SQLite) and, without the `ASPEC_PDO_*` variables, that its PostgreSQL and MySQL runs were skipped, Module 24 its sweeps over 1 000 and 10 000 rows, Module 25 its batch, `updateWhere()`, null/subquery and null/`Char` parity runs and Module 26 its eager loading benchmarks (1 000 parents × 10 children, 1 000 owners × 5 targets) and the peak memory of `iterate()` with relations over 2 000 and 10 000 rows; those lines are omitted here:
+Report below as printed by the runner, with its Portuguese labels translated; the duration depends on the machine. Module 22 also prints its benchmark (10 000 rows in SQLite) and, without the `ASPEC_PDO_*` variables, that its PostgreSQL and MySQL runs were skipped, Module 24 its sweeps over 1 000 and 10 000 rows, Module 25 its batch, `updateWhere()`, null/subquery and null/`Char` parity runs, Module 26 its eager loading benchmarks (1 000 parents × 10 children, 1 000 owners × 5 targets) and the peak memory of `iterate()` with relations over 2 000 and 10 000 rows, Module 27 that its PostgreSQL run was skipped without `ASPEC_PDO_PGSQL_DSN`, and Module 28 that `ext-intl` is missing, so that only the refusal was checked (with `ext-intl` it runs the accent-insensitive battery: about 650 assertions on PHP 8.4); those lines are omitted here:
 
 ```text
 ====================================================================
@@ -1977,7 +2105,7 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (859 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (516 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (209 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (1987 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (2083 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
 • [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (1252 assertions)
 • [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (618 assertions)
@@ -1990,19 +2118,22 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 24: Domain Events From the Passage of Time... ✅ PASS (310 assertions)
 • [SUITE] Module 25: PdoRepository Follow-ups (log, types, lifecycle, batch, set-based queries)... ✅ PASS (608 assertions)
 • [SUITE] Module 26: PdoRepository Relationships (ManyToOne, OneToMany, ManyToMany, eager loading, composition)... ✅ PASS (355 assertions)
+• [SUITE] Module 27: Declared Feature Flags With Targeting and an Audit Trail... ✅ PASS (535 assertions)
+• [SUITE] Module 28: Text Comparison Without Accents (TextComparison::IgnoreCaseAndAccents)... ✅ PASS (64 assertions)
 
 ====================================================================
- FINAL RESULT: 26/26 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 11245 | DURATION: ~21s | REGRESSIONS: 0
+ FINAL RESULT: 28/28 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 11940 | DURATION: ~21s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 247 tests and 13 384 assertions in total). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 307 tests and 70 096 assertions in total, one of them skipped without `ext-intl`). The audit behind it is in `docs/PARIDADE-DOMIAN-2026-10-09.md`. Since v2.1.0 seven of its assertions state that integer bounds are not closed (Domian's leaves are typed `Integer`, these accept any number), each with a note.
+- **Soundness bench of the algebra (v2.1.0):** `tests/PhpUnit/AlgebraSoundnessTest.php` checks every promise of the algebra against the evaluation: `equals()` (same answers and annotated failures), `isGeneralizationOf()`/`isSpecialCaseOf()`, `isDisjointWith()`, `isTautology()`/`isContradiction()`, `simplify()`, the deduplication of `and()`/`or()` and the partition lookup. Its pool of over 700 specifications covers every concrete specification class of `src/` (comparison, `in`, nulls, text with the three `TextComparison` cases, date-times, value objects, collections and entities, method calls, the wrappers of `a()`, user subclasses with predicates of their own, annotated variants) and composites generated with a fixed seed, tried pair by pair against about 80 boundary candidates (the same value in distinct instances, the same instant in other zones and classes, `'1'`/`1`/`true`, `null`, fractions, accents, entities of sibling types). A guard fails the suite when a concrete specification class is missing from the pool. The fixed part runs in the default suite in about 10 seconds; `ASPEC_SOUNDNESS_EXTENDED=1` widens it to about 3 million pairs and `ASPEC_SOUNDNESS_DUMP=<file>` writes the violations as JSON lines. `AlgebraSoundnessCasesTest` keeps a reproduction of each defect it found, and `DateSqlParityTest` compares memory and SQL for the date-time leaves.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](NOTICE.md)).
 - **Modular Factory Architecture:** `SpecificationFactory` decomposed into 8 domain-specialized traits.
 - **ALinq Synergy:** Native integration with [`Antevemus.AlinqCollection`](https://github.com/antevemus-it/Antevemus.AlinqCollection): the `ALinqSpecificationVisitor` compiler, the shared dot-notation accessor (`antevemus/adeep-property-access`) and the `InMemoryRepository` bridge methods.
-- **Multi-DBMS Compatibility:** 15 drivers (10 SQL dialects) certified with proper identifier quoting and bound prepared statements. `PdoRepository` runs its contract battery in SQLite in the suite and, through `tests/Fixtures/pdo_repository/run_portability.sh`, against PostgreSQL 17 and MySQL 8.4 in disposable containers.
+- **Multi-DBMS Compatibility:** 15 drivers (10 SQL dialects) certified with proper identifier quoting and bound prepared statements. `PdoRepository` runs its contract battery in SQLite in the suite and, through `tests/Fixtures/pdo_repository/run_portability.sh`, against PostgreSQL 17 and MySQL 8.4 in disposable containers; the same script runs the feature flag store (Module 27), the date-time parity and the accent-insensitive battery (Module 28, in PHP 8.2 and 8.4 containers with `ext-intl`) against PostgreSQL 17, MySQL 8.4 and MariaDB 11.4.
 - **Adianti Database Bridge:** Full translation to `TCriteria`/`TFilter` with De Morgan logic inversion and strict precedence.
 
 ---
@@ -2042,8 +2173,17 @@ Key highlights & upcoming roadmap:
 21. **PDO-Backed Repository** (the Domian `HibernateRepository`) (Shipped in v1.11.0)
 21b. **`PdoRepository` Follow-ups** (lifecycle columns and soft delete, hooks, SQL log, batch insert, bulk update by specification, projections and aggregates, subqueries, `ManyToOne`/`OneToMany` relationships with eager loading in batch) (Shipped in v1.13.0)
 21c. **`PdoRepository` Follow-ups II** (`ManyToMany`, marking a hand-built collection as loaded, `iterate()` with relations over unbuffered MySQL, `CHAR(1)` booleans) (Shipped in v1.14.0)
-22. **Accent-Insensitive Text Comparison** (an explicit option that ignores case and accents, with the same answer in memory and in SQL)
+22. **Accent-Insensitive Text Comparison** (an explicit option that ignores case and accents, with the same answer in memory and in SQL) (Shipped in v2.1.0)
+22b. **Accent-Insensitive Wildcards and Regular Expressions**
 23. **Write-Behind Hybrid Repository** (the Domian `INMEMORY_AND_FILE` mode: memory now, disk on `persist()`)
+24. **Declared Feature Flags With Targeting and an Audit Trail** (Shipped in v2.1.0)
+24b. **Feature Flag Target by a Catalog Rule**
+24c. **Percentage Rollout of a Feature Flag**
+24d. **An API for the Validity Window of a Feature Flag**
+25. **Optional Integer Mode for the Relational Leaves** (`asInteger()`, `Spec::int()`: integer bounds closed where it is sound)
+26. **Soundness Audit of the Specification Algebra** (a brute-force bench over every specification class; the algebra never promises more than the evaluation delivers) (Shipped in v2.1.0)
+
+Planned for v2.2.0: the two violations of the algebra found by the soundness bench and left for the next MINOR (BUG-20261013-JPQT, BUG-20261013-XEIB; see the ROADMAP).
 
 ---
 

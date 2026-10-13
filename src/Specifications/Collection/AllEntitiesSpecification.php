@@ -21,12 +21,17 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * Features:
  * - Acceptance of any candidate matching the target entity type
  * - Axiomatic generalization over any specification targeting the same type or subtype
- * - Structural equality checking (`equals`)
+ * - Structural equality checking (`equals`, inherited: same concrete class, same target type and
+ *   the same because()/withCode() annotations; up to 2.0.0 it ignored the annotations and took any
+ *   subclass for an equal specification, BUG-20261013-7RQV)
+ * - Universality and type disjointness only for the predicate of this class (2.1.0, forward 037): a
+ *   subclass that redefines isSatisfiedBy() (active customers only) does not generalize every
+ *   instance of the type, and the other side must be bounded by its type to be proven disjoint
  *
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.6.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -71,6 +76,10 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
         if (SpecificationAlgebra::baseGeneralizes($this, $otherSpecification)) {
             return true;
         }
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            // A subclass that redefines isSatisfiedBy() is not "every instance of the type"
+            return false;
+        }
 
         $other = SpecificationAlgebra::resolve($otherSpecification);
         if ($other instanceof NotSpecification) {
@@ -90,21 +99,11 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
             return true;
         }
 
-        $otherType = SpecificationAlgebra::resolve($otherSpecification)->getType();
-        if (SpecificationAlgebra::areTypesDisjoint($otherType, $this->targetType)) {
-            // Only when single inheritance proves it (1.6.0): unrelated interfaces may share an instance.
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Checks structural equality.
-     */
-    public function equals(mixed $other): bool
-    {
-        return $other instanceof self && $other->getType() === $this->targetType;
+        // Only when single inheritance proves it (1.6.0: unrelated interfaces may share an instance) and
+        // the other specification is bounded by its type (2.1.0: ¬all(Order) has the type Order but
+        // accepts customers). A subclass that redefines isSatisfiedBy() may accept other instances.
+        return SpecificationAlgebra::evaluatesAs($this, self::class)
+            && SpecificationAlgebra::provenTypesDisjoint($this->targetType, SpecificationAlgebra::resolve($otherSpecification));
     }
 
     /**

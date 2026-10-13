@@ -9,14 +9,26 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
+use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
+use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LooseEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\SameInstantSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
+use Antevemus\ASpecification\Specifications\String\RegexSpecification;
+use DateTimeInterface;
 
 /**
  * SpecificationAlgebra - Shared axioms of the Venn set algebra of specifications.
@@ -44,7 +56,19 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Where the Domian code and the set algebra disagree the algebra wins; the deviations are
  * documented in docs/paridade-domian-2026-10-09 (lote 1.4.4).
  *
- * @version    1.6.0
+ * Soundness (2.1.0, forward 037): the algebra never promises more than the evaluation delivers.
+ * - Null: AND, OR, NOT, NOR, property restrictions and typed composites refuse a null candidate,
+ *   while some leaves accept it (isNull(), equalTo(null), defaultValue(), alwaysTrue(), ...): a
+ *   specification that refuses null never generalizes one that may accept it (refusesNull()), and the
+ *   negations resolve accordingly (¬notNull() and ¬notEqualTo(null) are the contradiction, ¬∅ is
+ *   notNull(), not the tautology).
+ * - Predicates: the rules of a library leaf hold for the predicate that leaf evaluates; a subclass that
+ *   redefines isSatisfiedBy() gets the shared axioms only (evaluatesAs()).
+ * - Types: a type tells something about the candidates only when the specification is bounded by it
+ *   (isBoundedByType()); provenTypesDisjoint() never reads the type of a negation or of a value-bound
+ *   leaf such as notEqualTo(d) as a bound.
+ *
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -72,7 +96,7 @@ final class SpecificationAlgebra
      */
     public static function resolve(ISpecification $specification): ISpecification
     {
-        if ($specification instanceof InSpecification && $specification->isEmpty()) {
+        if ($specification instanceof InSpecification && $specification->isEmpty() && self::evaluatesAs($specification, InSpecification::class)) {
             // in([]) is the contradiction (RN-07)
             return new AlwaysFalseSpecification();
         }
@@ -96,7 +120,7 @@ final class SpecificationAlgebra
         $resolvedInner = self::resolve($inner);
         if ($resolvedInner instanceof NotSpecification) {
             // ¬¬P with P irreducible
-            return $resolvedInner->getSpecification();
+            return self::doubleNegation($resolvedInner->getSpecification());
         }
 
         return $resolvedInner === $inner ? $specification : new NotSpecification($resolvedInner);
@@ -112,28 +136,38 @@ final class SpecificationAlgebra
     public static function invert(ISpecification $specification): ?ISpecification
     {
         if ($specification instanceof NotSpecification) {
-            return $specification->getSpecification();
+            return self::doubleNegation($specification->getSpecification());
         }
         if ($specification instanceof JointDenialSpecification) {
             return new OrSpecification($specification->getLeftSide(), $specification->getRightSide());
         }
+        // A negation refuses null (NotSpecification): the inverse refuses it too. ¬(x = null) is
+        // x <> null; ¬(x <> null), ¬notNull() are empty (every non-null value satisfies the operand);
+        // ¬∅ is every non-null value, notNull(), not alwaysTrue() (which accepts null). Only a leaf that
+        // evaluates with the predicate of its class is inverted (a subclass may answer otherwise).
         if ($specification instanceof AbstractComparableValueBoundSpecification) {
+            if (!self::evaluatesAs($specification, ...self::RELATIONAL_PREDICATES)) {
+                return null;
+            }
+            if ($specification instanceof NotEqualSpecification && $specification->getValue() === null) {
+                return new AlwaysFalseSpecification($specification->getType());
+            }
             return $specification->invert();
         }
         if ($specification instanceof IsNullSpecification) {
-            return new NotNullSpecification();
+            return self::evaluatesAs($specification, IsNullSpecification::class) ? new NotNullSpecification() : null;
         }
         if ($specification instanceof NotNullSpecification) {
-            return new IsNullSpecification();
+            return self::evaluatesAs($specification, NotNullSpecification::class) ? new AlwaysFalseSpecification() : null;
         }
         if ($specification instanceof AlwaysTrueSpecification) {
             return new AlwaysFalseSpecification($specification->getType());
         }
         if ($specification instanceof AlwaysFalseSpecification) {
-            return new AlwaysTrueSpecification($specification->getType());
+            return new NotNullSpecification();
         }
-        if ($specification instanceof InSpecification && $specification->isEmpty()) {
-            return new AlwaysTrueSpecification();
+        if ($specification instanceof InSpecification && $specification->isEmpty() && self::evaluatesAs($specification, InSpecification::class)) {
+            return new NotNullSpecification();
         }
         if ($specification instanceof AndSpecification || $specification instanceof OrSpecification) {
             $left = self::invert($specification->getLeftSide());
@@ -148,6 +182,21 @@ final class SpecificationAlgebra
         }
 
         return null;
+    }
+
+    /**
+     * ¬¬P: P itself when P refuses null; otherwise P ∧ notNull(), because the outer negation refuses a
+     * null candidate that P may accept (2.1.0: up to 2.0.0 ¬¬isNull() resolved to isNull(), and
+     * ¬¬isNull() was proven to generalize isNull()).
+     *
+     * @param ISpecification<mixed> $specification
+     * @return ISpecification<mixed>
+     */
+    private static function doubleNegation(ISpecification $specification): ISpecification
+    {
+        return self::refusesNull($specification)
+            ? $specification
+            : new AndSpecification($specification, new NotNullSpecification());
     }
 
     // ==========================================
@@ -183,7 +232,7 @@ final class SpecificationAlgebra
             return $this_->isGeneralizationOf($other->getLeftSide())
                 || $this_->isGeneralizationOf($other->getRightSide());
         }
-        if ($other instanceof InSpecification) {
+        if ($other instanceof InSpecification && self::evaluatesAs($other, InSpecification::class)) {
             // X ⊇ in(V) ⇔ X ⊇ equalTo(v) for every v ∈ V (in(V) is the union of the equalities)
             foreach ($other->getValues() as $value) {
                 if (!$this_->isGeneralizationOf(new EqualSpecification($value))) {
@@ -225,7 +274,7 @@ final class SpecificationAlgebra
             return $this_->isDisjointWith($other->getLeftSide())
                 && $this_->isDisjointWith($other->getRightSide());
         }
-        if ($other instanceof InSpecification) {
+        if ($other instanceof InSpecification && self::evaluatesAs($other, InSpecification::class)) {
             // X ⟂ in(V) ⇔ X ⟂ equalTo(v) for every v ∈ V
             foreach ($other->getValues() as $value) {
                 if (!$this_->isDisjointWith(new EqualSpecification($value))) {
@@ -440,19 +489,23 @@ final class SpecificationAlgebra
             return self::isBoundedByType($specification->getBaseSpecification(), $type);
         }
         if ($specification instanceof InSpecification) {
+            if (!self::evaluatesAs($specification, InSpecification::class)) {
+                return false;
+            }
             foreach ($specification->getValues() as $value) {
-                if (!is_object($value) || !$value instanceof $type) {
+                if (!self::valueBoundsCandidatesBy($value, $type)) {
                     return false;
                 }
             }
             return true;
         }
-        if ($specification instanceof AllEntitiesSpecification || $specification instanceof AbstractCompositeSpecification) {
+        if (self::evaluatesAs($specification, AllEntitiesSpecification::class, AbstractCompositeSpecification::class)) {
+            // Only the type check of the class itself bounds the candidates: a subclass or a wrapper that
+            // redefines isSatisfiedBy() (Spec::a($specification)) may accept anything
             return self::canCastFromTo($specification->getType(), $type);
         }
         if ($specification instanceof IValueBoundSpecification) {
-            $value = $specification->getValue();
-            return is_object($value) && self::isEqualityLeaf($specification) && $value instanceof $type;
+            return self::isEqualityLeaf($specification) && self::valueBoundsCandidatesBy($specification->getValue(), $type);
         }
 
         return false;
@@ -532,16 +585,137 @@ final class SpecificationAlgebra
     }
 
     /**
-     * True when the leaf tests equality of a value (not a range, not a difference) in a way that
-     * bounds its candidates by the class of the value. A same-instant equality does not: a DateTime
-     * and a DateTimeImmutable at the same instant both satisfy it (1.6.0).
+     * True when the leaf tests equality of a value (not a range, not a difference, not a loose `==`)
+     * with the predicate of equalTo()/at() (TypeCompatibility::sameValue()).
      *
      * @param ISpecification<mixed> $specification
      */
     private static function isEqualityLeaf(ISpecification $specification): bool
     {
-        return $specification instanceof Comparison\EqualSpecification
-            && !$specification instanceof Comparison\SameInstantSpecification;
+        return $specification instanceof EqualSpecification
+            && self::evaluatesAs($specification, EqualSpecification::class, SameInstantSpecification::class);
+    }
+
+    /**
+     * True when every candidate the same value as $value (TypeCompatibility::sameValue()) is an
+     * instance of $type: the object itself, or, for a date-time, any date-time at the same instant
+     * (DateTime, DateTimeImmutable or a subclass), so only a type every date-time has (2.1.0: up to
+     * 2.0.0 equalTo($immutable) was taken as bounded by DateTimeImmutable).
+     */
+    private static function valueBoundsCandidatesBy(mixed $value, string $type): bool
+    {
+        if ($value instanceof DateTimeInterface) {
+            return is_a(DateTimeInterface::class, $type, true);
+        }
+
+        return is_object($value) && $value instanceof $type;
+    }
+
+    // ==========================================
+    // 3a. Soundness helpers (2.1.0, forward 037)
+    // ==========================================
+
+    /** Library classes whose isSatisfiedBy() is the relational predicate the leaf algebra reasons about. */
+    public const RELATIONAL_PREDICATES = [
+        EqualSpecification::class,
+        NotEqualSpecification::class,
+        LessThanSpecification::class,
+        LessThanOrEqualSpecification::class,
+        GreaterThanSpecification::class,
+        GreaterThanOrEqualSpecification::class,
+        SameInstantSpecification::class,
+    ];
+
+    /** @var array<class-string, class-string> Declaring class of isSatisfiedBy(), per specification class. */
+    private static array $predicateClass = [];
+
+    /**
+     * True when the specification evaluates with the isSatisfiedBy() declared by one of the given
+     * classes. The rules of a library class describe the predicate that class evaluates; a subclass
+     * that redefines isSatisfiedBy() (a user leaf, LooseEqualSpecification under EqualSpecification)
+     * answers otherwise, so it gets the shared axioms only.
+     *
+     * @param ISpecification<mixed> $specification
+     * @param class-string ...$classes
+     */
+    public static function evaluatesAs(ISpecification $specification, string ...$classes): bool
+    {
+        $declaring = self::$predicateClass[$specification::class]
+            ??= (new \ReflectionMethod($specification, 'isSatisfiedBy'))->getDeclaringClass()->getName();
+
+        return in_array($declaring, $classes, true);
+    }
+
+    /**
+     * True when the specification is known never to accept a null candidate (it answers false or
+     * cannot be evaluated), decided from its structure without evaluating it. False means "may accept
+     * null": a predicate, an external data source, a feature flag or an unknown class. A specification
+     * that refuses null generalizes only specifications that refuse it too.
+     *
+     * @param ISpecification<mixed> $specification
+     */
+    public static function refusesNull(ISpecification $specification): bool
+    {
+        if ($specification instanceof Engine\RuleBoundSpecification && self::evaluatesAs($specification, Engine\RuleBoundSpecification::class)) {
+            return self::refusesNull($specification->getInnerSpecification());
+        }
+        if (self::evaluatesAs(
+            $specification,
+            AndSpecification::class,
+            OrSpecification::class,
+            NotSpecification::class,
+            JointDenialSpecification::class,
+            PropertySpecification::class,
+            AbstractCompositeSpecification::class,
+            AllEntitiesSpecification::class,
+            UniqueEntitySpecification::class,
+            CollectionSpecification::class,
+            NotNullSpecification::class,
+            NotEqualSpecification::class,
+            LessThanSpecification::class,
+            LessThanOrEqualSpecification::class,
+            GreaterThanSpecification::class,
+            GreaterThanOrEqualSpecification::class,
+            SameInstantSpecification::class,
+            AlwaysFalseSpecification::class,
+            MethodParameterizedSpecification::class,
+            RegexSpecification::class,
+            String\LiteralPatternSpecification::class,
+            String\WildcardSpecification::class,
+            String\WildcardExpressionMatcherIgnoreCaseStringSpecification::class,
+            String\EqualIgnoreCaseStringSpecification::class,
+            String\EqualIgnoreCaseAndAccentsStringSpecification::class,
+            String\DateStringSpecification::class,
+            String\EnumNameStringSpecification::class,
+            \Antevemus\ASpecification\StateMachine\InStateSpecification::class,
+            \Antevemus\ASpecification\StateMachine\EventOriginSpecification::class,
+            \Antevemus\ASpecification\StateMachine\PayloadHasSpecification::class,
+            \Antevemus\ASpecification\Repositories\Pdo\InQuerySpecification::class
+        )) {
+            return true;
+        }
+        if ($specification instanceof EqualSpecification && self::evaluatesAs($specification, EqualSpecification::class, LooseEqualSpecification::class)) {
+            return $specification->getValue() !== null;
+        }
+        if ($specification instanceof InSpecification && self::evaluatesAs($specification, InSpecification::class)) {
+            return !in_array(null, $specification->getValues(), true);
+        }
+
+        return false;
+    }
+
+    /**
+     * True when no candidate of $other can be an instance of $type: $other is bounded by its own type
+     * (isBoundedByType(): a negation, a value-bound leaf such as notEqualTo($d) or a wrapper is not,
+     * whatever getType() says) and single inheritance proves the two types disjoint.
+     *
+     * @param ISpecification<mixed> $other
+     */
+    public static function provenTypesDisjoint(string $type, ISpecification $other): bool
+    {
+        $otherType = $other->getType();
+
+        return self::areTypesDisjoint($type, $otherType) && self::isBoundedByType($other, $otherType);
     }
 
     // ==========================================

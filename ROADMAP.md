@@ -154,6 +154,32 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
+## ✅ v2.1.0 — Feature Flags, Accent-Insensitive Text & a Sound Algebra (Shipped in v2.1.0)
+
+### 24. Declared Feature Flags With Targeting and an Audit Trail 🚩 (Shipped in v2.1.0)
+- **Description:** `Antevemus\ASpecification\FeatureFlags`, the generalization of a production application's hand-made switches. A flag is declared once, in code (`FeatureFlagRegistry` of `FeatureFlagDefinition`: code, name, description, category, audience, the texts shown when turning it on and off, origin, an optional targeting specification and the path of the subject key); the database holds only the switch, the validity window, the subject lists and the history (reference DDL `resources/sql/feature_flags.ansi.sql`). Every flag is born off. `FeatureFlags::isEnabled()`/`evaluate()`/`spec()`: on = switch on **and** inside the validity window **and** the subject in the target (a subject list editable without a deploy, the pilot "only these two agencies", and a specification in code), with a reason mapped to OpenFeature's; an undeclared flag is off, an unreadable store is off with the reason `ERROR` and the exception goes to an error reporter instead of being swallowed; one load per instance. Changes (`toggle()`, `addSubject()`, `removeSubject()`) require a reason, are compare-and-set (a stale screen is refused, nothing written), refuse to turn on an undeclared flag, and write their history row in the same transaction. `InMemoryFeatureFlagStore` and `PdoFeatureFlagStore` share one contract battery (SQLite, PostgreSQL 17, MySQL 8.4, MariaDB 11.4); the PDO store reads existing tables through table and column maps by role, a shared audit table through fixed column values, and Boolean columns stored as integers or texts. Accepted against the tables of the production application that motivated it, in a disposable database.
+- **Goal:** A flag is a declared, audited, targetable decision with a reason for every answer, and it composes with every other rule as a specification.
+- **Not in this release:** a target by a rule of the catalog (24b), percentage rollout (24c), an API for the validity window (24d).
+
+### 22. Accent-Insensitive Text Comparison 🔤 (Shipped in v2.1.0)
+- **Description:** `TextComparison` (`CaseSensitive`, `IgnoreCase`, `IgnoreCaseAndAccents`) wherever the case flag of `contains()`, `startsWith()` and `endsWith()` was (`true`/`false` keep their meaning), plus `Spec::equalIgnoreCaseAndAccents()`. In memory and in ALinq both sides are decomposed (NFD), stripped of nonspacing marks, recomposed (NFC) and lowered, so `configuracao` finds `Configuração` while `ß`, `æ`, `ø` stay letters of their own (the .NET `IgnoreNonSpace`); the option requires `ext-intl` and is refused clearly without it. In SQL, with the same answer as memory: PostgreSQL through a built-in folding expression (no extension, `IMMUTABLE`; `unaccent` or an indexable wrapper as options), MySQL 8.4 and MariaDB 11.4 through an `_ai_ci` collation; SQL Server and Oracle (measured to diverge), SQLite and the other dialects, and TCriteria refuse it.
+- **Goal:** Accent-insensitive search as a declared choice, never as a side effect of the column collation.
+- **Not in this release:** wildcards and regular expressions without accents (22b).
+
+### 26. Soundness Audit of the Specification Algebra 🧪 (Shipped in v2.1.0)
+- **Description:** The investigation of four defects in `equals()` and date comparison showed a family: the algebra (`equals()`, subsumption, disjointness, tautology and contradiction, `simplify()`, deduplication, partitions) promised more than the evaluation delivers, because the 1.4.4 parity lot and the 1.9.0 `simplify()` were tested with examples chosen by their author. A brute-force bench now checks every promise against the evaluation over a pool that covers every concrete specification class of `src/` (a guard fails the suite when a new class is left out) and boundary candidates; the defects it found were fixed in the same release, each with a reproduction kept in the suite, and the rule became "the algebra never promises more than the evaluation delivers". Date-times are compared by instant by `equalTo()`/`notEqual()`/`in()`, as in SQL; integer bounds are no longer closed without an integer type (milestone 25).
+- **Goal:** `simplify()`, partitions and deduplication can be trusted because a test, not a reviewer, proves that they never change an answer.
+
+---
+
+## 🗓️ v2.2.0 — Planned
+
+Two violations found by the soundness bench of v2.1.0 and decided for the next MINOR (a third, BUG-20261013-ZYEC, was fixed in v2.1.0 together with BUG-20261013-T6CS); each is watched by `AlgebraSoundnessCasesTest::testPendingDecisionsStillHold`, which fails the day its behaviour changes.
+- **BUG-20261013-JPQT (#68):** `defaultValue('string')->isDisjointWith(defaultValue('number'))` is `true`, but `null` satisfies both.
+- **BUG-20261013-XEIB (#70):** `not(lessThan(5.5))` accepts `NAN` and its inversion `greaterThanOrEqualTo(5.5)` does not.
+
+---
+
 ## 🗓️ Unscheduled
 
 ### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
@@ -172,13 +198,28 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.
 
-### 22. Accent-Insensitive Text Comparison 🔤
-- **Description:** Since v1.14.0 the case-insensitive text operators ignore case only, in memory and in every database, so `contains('jose', false)` does not match `José`. An explicit comparison option that also ignores accents (the .NET `CompareOptions.IgnoreCase | IgnoreNonSpace`; note that .NET's `InvariantCultureIgnoreCase` still distinguishes `e` and `é`), with the same answer in memory (Unicode decomposition without combining marks) and in SQL (accent-insensitive collations on MySQL/MariaDB, `unaccent` or a nondeterministic ICU collation on PostgreSQL; refused where the database cannot answer it, such as SQLite).
-- **Goal:** Accent-insensitive search as a declared choice, never as a side effect of the column collation.
+### 22b. Accent-Insensitive Wildcards and Regular Expressions 🔤
+- **Description:** v2.1.0 (milestone 22) gives `TextComparison::IgnoreCaseAndAccents` to `contains()`, `startsWith()`, `endsWith()` and the equality; the wildcard specifications and `regex()` keep their case flag only. The same option for them, with the same folding in memory and in SQL, and refused where a database cannot answer it as memory does.
 
 ### 23. Write-Behind Hybrid Repository (Domian `INMEMORY_AND_FILE`) 🗃️
 - **Description:** `InMemoryAndFileRepository` is write-through (`put()` writes the file at once). Domian's `INMEMORY_AND_FILE` mode is write-behind: `put()` touches memory only, `persist()` writes, `load()` reloads, and one metadata record counts the repository's reads and writes; `isMemoryBased()` answers by mode. The 1.5.0 notes and forward 020 (RN-08) scheduled it for 2.0.0 together with the persisted metadata; the 2.0.0 forward (033) delivered the metadata and left this mode out because it is additive (a new mode chosen by `PersistenceDefinition`, nothing removed), so it fits a MINOR.
 - **Goal:** Memory-speed writes with explicit, batched persistence, as in Domian.
+
+### 24b. Feature Flag Target by a Catalog Rule 🚩
+- **Description:** The target of a flag (milestone 24) is a subject list in the database or a specification in code. A target named by the code of a rule of the catalog (`IRuleCatalog`) would let an operator change who sees a feature without a deploy, with any rule; it needs a lookup of a rule by its code and the serialization of specifications (milestone 16).
+
+### 24c. Percentage Rollout of a Feature Flag 🚩
+- **Description:** Turn a flag on for a stable percentage of the subjects (a deterministic hash of the flag code and the subject key, so a subject keeps its answer between requests and processes), combined with the subject list and the targeting specification, with the percentage changed through the same audited path as the switch.
+
+### 24d. An API for the Validity Window of a Feature Flag 🚩
+- **Description:** v2.1.0 evaluates `valid_from`/`valid_until`, but they are written by SQL or a migration. Setting and clearing the window through the service, with a reason, a compare-and-set and a history row, as `toggle()` does for the switch.
+
+### 25. Optional Integer Mode for the Relational Leaves 🔢
+- **Description:** Since v2.1.0 the algebra no longer closes integer bounds (`x > 10` was taken as `x >= 11`): the relational leaves accept float candidates and the library has no int-typed leaf, so `greaterThan(10)` and `lessThan(11)` are not disjoint (10.5 satisfies both) and `simplify()` no longer collapses them (forward 037, BUG-20261013-ST36). An opt-in integer mode gives the closing back where it is sound, in two forms that coexist:
+  - **`asInteger()` on the leaf:** `Spec::greaterThan(10)->asInteger()`, or `greaterThan(10)->asInteger()` with the DSL function (the method belongs to the leaf, `AbstractComparableValueBoundSpecification`, so both entry points return an object that has it). It returns a new, immutable leaf whose `getType()` is `'int'`; the evaluation refuses a non-integer candidate with `IncompatibleTypeException`, like the other type guards; the algebra closes the bound only when both sides are int-typed.
+  - **`Spec::int()` scope:** a factory scoped to integers whose methods build int-typed leaves (`Spec::int()->greaterThan(10)`, `Spec::int()->between(1, 12)`), more readable when a whole rule is about integers; internally it calls `asInteger()`.
+  - **Narrowed return types:** `Spec::greaterThan()`, `lessThan()`, `greaterThanOrEqualTo()`, `lessThanOrEqualTo()`, `between()` and their DSL functions declare `ISpecification` today, which has no `asInteger()`: it works at runtime but IDEs and static analysis (PHPStan) flag it and autocompletion does not offer it. The relational factories narrow their return type to the leaf class (or a small interface of it), which is compatible for every caller (return types are covariant).
+- **Goal:** Sound interval simplification for integer domains (installments, months, quantities) plus validation for free (`10.5` refused where only integers make sense). First natural consumer: integer rules such as a minimum adjustment periodicity in months. Waits for a real use case.
 
 ---
 

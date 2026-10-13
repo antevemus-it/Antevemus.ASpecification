@@ -35,6 +35,7 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseAndAccentsStringSpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
@@ -72,9 +73,15 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   filters is true for a NULL column (`IS NULL`, `1 = 1`); otherwise the row is already left out. The null checks, equality
  *   to null and a set holding null are already exact. Before 1.11.0, `not(property('age',
  *   greaterThan(18)))` was `(age <= 18)` and left out a row whose age was NULL
+ * - A text comparison that ignores case and accents (TextComparison::IgnoreCaseAndAccents,
+ *   equalIgnoreCaseAndAccents(); 2.1.0) raises NonTranslatableCriteriaException, negated or not: the
+ *   folding is a different SQL expression per database, a TCriteria does not know which database will
+ *   run it, and TFilter renders `variable operator value` with the value quoted inside, so the folding
+ *   cannot wrap the value without concatenating it. Spec::toSql() with the dialect, or a PdoRepository,
+ *   translates it for PostgreSQL and MySQL/MariaDB
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    1.14.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -296,6 +303,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
         if ($specification instanceof ExternalDataSpecification) {
             throw self::externalDataNotTranslatable($specification);
+        }
+
+        if (self::ignoresAccents($specification)) {
+            throw self::accentInsensitiveNotTranslatable($specification);
         }
 
         $col = $this->currentProperty;
@@ -635,6 +646,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             throw self::externalDataNotTranslatable($inner);
         }
 
+        if (self::ignoresAccents($inner)) {
+            throw self::accentInsensitiveNotTranslatable($inner);
+        }
+
         $col = $this->currentProperty;
         if ($col === null) {
             throw new NonTranslatableCriteriaException(
@@ -820,6 +835,27 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 "A method call on the candidate (%s) is evaluated in PHP and cannot be converted to TCriteria; express the rule with property specifications.",
                 $specification->getRuleName()
             )
+        );
+    }
+
+    /**
+     * Whether a leaf compares text ignoring case and accents (2.1.0).
+     */
+    private static function ignoresAccents(ISpecification $specification): bool
+    {
+        return $specification instanceof EqualIgnoreCaseAndAccentsStringSpecification
+            || ($specification instanceof LiteralPatternSpecification && $specification->ignoresAccents());
+    }
+
+    /**
+     * The exception for a text comparison that ignores case and accents (2.1.0): its folding is an
+     * expression of the database, which a TCriteria does not know.
+     */
+    private static function accentInsensitiveNotTranslatable(ISpecification $specification): NonTranslatableCriteriaException
+    {
+        return new NonTranslatableCriteriaException(
+            $specification,
+            "A text comparison that ignores case and accents cannot be converted to TCriteria: the folding is a different SQL expression per database and TFilter cannot wrap its value in it; use Spec::toSql() with the dialect (PostgreSQL, MySQL/MariaDB), a PdoRepository, or evaluate it in PHP."
         );
     }
 

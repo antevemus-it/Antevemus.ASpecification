@@ -223,8 +223,10 @@ class OrSpecification extends AbstractSpecification implements ICompositeSpecifi
             return true;
         }
 
-        return $this->left->isGeneralizationOf($other)
-            || $this->right->isGeneralizationOf($other);
+        // A disjunction refuses null: an alternative that generalizes X makes the disjunction generalize
+        // X only when X refuses null too (2.1.0; isNull() OR x ⊇ isNull() was proven up to 2.0.0)
+        return SpecificationAlgebra::refusesNull($other)
+            && ($this->left->isGeneralizationOf($other) || $this->right->isGeneralizationOf($other));
     }
 
     /**

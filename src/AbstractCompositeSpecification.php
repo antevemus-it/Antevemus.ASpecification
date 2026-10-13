@@ -299,6 +299,10 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
         if ($other instanceof NotNullSpecification || $other instanceof NotSpecification) {
             return false;
         }
+        if (!SpecificationAlgebra::refusesNull($other)) {
+            // A composite refuses a null candidate: it never generalizes one that may accept it (2.1.0)
+            return false;
+        }
         if ($this->isSpecifyingAllInstancesOfItsType()) {
             return SpecificationAlgebra::isBoundedByType($other, $this->type);
         }
@@ -334,10 +338,22 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             return true;
         }
 
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            // A subclass that redefines isSatisfiedBy() (the wrapper of Spec::a($specification)) is not
+            // bounded by its type: the type rules below do not hold for it (2.1.0)
+            return false;
+        }
+
         $other = SpecificationAlgebra::resolve($specification);
-        if ($other instanceof IValueBoundSpecification && !SpecificationAlgebra::isTopType($this->type)) {
+        if ($other instanceof IValueBoundSpecification && !SpecificationAlgebra::isTopType($this->type)
+            && SpecificationAlgebra::evaluatesAs($other, ...SpecificationAlgebra::RELATIONAL_PREDICATES)) {
             $value = $other->getValue();
-            if ($other::class === EqualSpecification::class) {
+            if (SpecificationAlgebra::evaluatesAs($other, EqualSpecification::class)) {
+                if ($value instanceof DateTimeInterface) {
+                    // Since 2.1.0 a date-time value is matched by instant: any date-time at that instant
+                    // (DateTime, DateTimeImmutable, a subclass) satisfies it.
+                    return class_exists($this->type) && !$this->canCastAtLeastOneWay($this->type, DateTimeInterface::class);
+                }
                 // Strict identity: only the value itself satisfies it.
                 return !is_object($value) || !($value instanceof $this->type);
             }
@@ -359,13 +375,10 @@ abstract class AbstractCompositeSpecification extends AbstractSpecification impl
             // conjunction into a false contradiction.
         }
 
-        if (SpecificationAlgebra::areTypesDisjoint($this->type, $other->getType())) {
-            // Unrelated types are disjoint only when single inheritance proves it (1.6.0): two
-            // interfaces, or an interface and a non-final class, may share an instance.
-            return true;
-        }
-
-        return false;
+        // Unrelated types are disjoint only when single inheritance proves it (1.6.0): two interfaces, or
+        // an interface and a non-final class, may share an instance; and only when the other side is
+        // bounded by its type (2.1.0: ¬all(Order) has the type Order and accepts customers).
+        return SpecificationAlgebra::provenTypesDisjoint($this->type, $other);
     }
 
     /**

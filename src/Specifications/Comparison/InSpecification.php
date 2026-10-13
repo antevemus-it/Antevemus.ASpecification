@@ -15,8 +15,9 @@ use DateTimeInterface;
 /**
  * InSpecification - Leaf specification for set membership (`x ∈ V`).
  *
- * The candidate satisfies the specification when it is strictly identical (`===`, the same typed
- * equality as `equalTo()`) to one of the values of the set. It is the leaf behind `Spec::in()`,
+ * The candidate satisfies the specification when it is the same value as one of the values of the set,
+ * with the typed equality of `equalTo()` (TypeCompatibility::sameValue(): `===`, date-times by
+ * instant). It is the leaf behind `Spec::in()`,
  * the factory `in()` / `isOneOfValues()` / `isEitherOfValues()` and the DSL `in()`; `notIn()` is
  * `not(in())`. Before 1.5.0 `in(a, b)` built `equalTo(a) OR equalTo(b)`; the leaf keeps that
  * semantics and adds what the chain could not express: set equality, set algebra and a direct
@@ -25,8 +26,9 @@ use DateTimeInterface;
  * Evaluation:
  * - null satisfies only when null belongs to the set
  * - a candidate equatable with at least one value of the set (same type family, see
- *   TypeCompatibility::isEquatable()) is a member when one of them is `===` to it; values of the
- *   set of another type simply do not match (the set may mix types)
+ *   TypeCompatibility::isEquatable()) is a member when one of them is the same value (`===`, or the
+ *   same instant for date-times); values of the set of another type simply do not match (the set may
+ *   mix types)
  * - a non-null candidate that is equatable with no value of the set is a type error
  *   (IncompatibleTypeException), as `equalTo()` raises it; never a silent false
  * - the empty set is the contradiction: never satisfied, never throws
@@ -39,14 +41,17 @@ use DateTimeInterface;
  * - `in([])` is the contradiction: generalized by everything and disjoint with everything, and
  *   isContradiction() says so (1.6.0, forward 019 RN-09)
  * - `equals()` compares the two sets as sets (order and repetitions are irrelevant)
+ * - only for the predicate of this class: a subclass that redefines isSatisfiedBy() gets the shared
+ *   axioms only, and only equalTo()/at() (not a loose equality) is a point of the set (2.1.0)
  *
- * Membership in the algebra compares date-times by instant, like the relational leaves; evaluation
- * is strict identity, like `equalTo()` (use SameInstantSpecification for dates).
+ * Membership compares date-times by instant, in the evaluation as in the algebra and in SQL
+ * (`"d" IN (...)`), like the relational leaves and `equalTo()` (2.1.0; up to 2.0.0 the evaluation took
+ * only the very same date-time object, BUG-20261013-LIZI). Any other object is a member by identity.
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.6.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -99,8 +104,8 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
     }
 
     /**
-     * True when the value belongs to the set as the algebra sees it (date-times by instant,
-     * everything else by strict identity). Evaluation uses isSatisfiedBy() instead.
+     * True when the value belongs to the set (TypeCompatibility::sameValue(): date-times by instant,
+     * everything else by strict identity), as isSatisfiedBy() decides membership.
      *
      * @param mixed $value
      * @return bool
@@ -108,7 +113,7 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
     public function containsValue(mixed $value): bool
     {
         foreach ($this->values as $member) {
-            if (self::valuesEqual($member, $value)) {
+            if (TypeCompatibility::sameValue($value, $member)) {
                 return true;
             }
         }
@@ -127,7 +132,8 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
         if ($this->values === []) {
             return false;
         }
-        if (in_array($candidate, $this->values, true)) {
+        if (in_array($candidate, $this->values, true)
+            || ($candidate instanceof DateTimeInterface && $this->containsValue($candidate))) {
             return true;
         }
         if ($candidate === null) {
@@ -167,7 +173,9 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
      * {@inheritdoc}
      *
      * Two set specifications are equal when they hold the same set of values (order and
-     * repetitions are irrelevant), with the same custom reason and code.
+     * repetitions are irrelevant), with the same custom reason and code. Members are matched as
+     * isSatisfiedBy() matches a candidate (containsValue(): date-times by instant, anything else by
+     * strict identity), so `in([$d, clone $d])` equals `in([$d])`.
      */
     public function equals(mixed $other): bool
     {
@@ -180,11 +188,13 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
         if ($this->customReason !== $other->customReason || $this->customCode !== $other->customCode) {
             return false;
         }
-        if (count($this->values) !== count($other->values)) {
-            return false;
-        }
         foreach ($other->values as $value) {
             if (!$this->containsValue($value)) {
+                return false;
+            }
+        }
+        foreach ($this->values as $value) {
+            if (!$other->containsValue($value)) {
                 return false;
             }
         }
@@ -204,12 +214,18 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
         if ($this->checkBaseGeneralization($otherSpecification)) {
             return true;
         }
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            // A subclass that redefines isSatisfiedBy() gets the shared axioms only (2.1.0)
+            return false;
+        }
 
         $other = SpecificationAlgebra::resolve($otherSpecification);
-        if ($other instanceof EqualSpecification) {
+        if ($other instanceof EqualSpecification && SpecificationAlgebra::evaluatesAs($other, EqualSpecification::class, SameInstantSpecification::class)) {
+            // equalTo(x)/at(x) accepts the values that are the same value as x, as this set matches them;
+            // a loose equality (`==`) or a user subclass accepts others (2.1.0)
             return $this->containsValue($other->getValue());
         }
-        if ($other instanceof IsNullSpecification) {
+        if ($other instanceof IsNullSpecification && SpecificationAlgebra::evaluatesAs($other, IsNullSpecification::class)) {
             return in_array(null, $this->values, true);
         }
 
@@ -226,11 +242,14 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
      */
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
-        if ($this->values === []) {
+        if ($this->values === [] && SpecificationAlgebra::evaluatesAs($this, self::class)) {
             return true;
         }
         if ($this->checkBaseDisjointness($otherSpecification)) {
             return true;
+        }
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            return false;
         }
 
         $other = SpecificationAlgebra::resolve($otherSpecification);
@@ -253,7 +272,7 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
      */
     public function isSpecialCaseOf(ISpecification $otherSpecification): bool
     {
-        if ($this->values === []) {
+        if ($this->values === [] && SpecificationAlgebra::evaluatesAs($this, self::class)) {
             return true;
         }
 
@@ -267,7 +286,7 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
      */
     public function isContradiction(): bool
     {
-        return $this->values === [];
+        return $this->values === [] && SpecificationAlgebra::evaluatesAs($this, self::class);
     }
 
     /**
@@ -276,17 +295,5 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
     public function __toString(): string
     {
         return 'InSpecification';
-    }
-
-    /**
-     * Value equality as the algebra sees it: date-times by instant, everything else strictly.
-     */
-    private static function valuesEqual(mixed $a, mixed $b): bool
-    {
-        if ($a instanceof DateTimeInterface && $b instanceof DateTimeInterface) {
-            return $a == $b;
-        }
-
-        return $a === $b;
     }
 }

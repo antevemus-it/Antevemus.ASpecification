@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\StateMachine\Persistence\Pdo;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
-use Antevemus\ASpecification\Sql\Dialects\AbstractSqlDialect;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\SqlDialect;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachinePersistenceException;
@@ -87,7 +87,8 @@ final class PdoMachineSchema
     /** @var array<string, string> Canonical column => real column, for every canonical column */
     private readonly array $columns;
 
-    private readonly ISqlDialect $dialect;
+    /** Dialect of the driver; it must paginate (limit() bounds findDue() and the effect outbox). */
+    private readonly ISqlDialect&ISqlPagination $dialect;
 
     /**
      * @param PDO $pdo Connection to the database holding the tables (its error mode is left untouched)
@@ -97,6 +98,8 @@ final class PdoMachineSchema
      *                                       the canonical name
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
+     * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException When the
+     *         driver's dialect does not implement ISqlPagination (limit() could not bound a read)
      */
     public function __construct(
         private readonly PDO $pdo,
@@ -152,7 +155,10 @@ final class PdoMachineSchema
         }
         $this->columns = $map;
 
-        $this->dialect = SqlDialectFactory::create(SqlDialect::fromDriver((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME)));
+        $this->dialect = SqlDialectFactory::createPaginating(
+            SqlDialect::fromDriver((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME)),
+            self::class
+        );
     }
 
     /**
@@ -235,7 +241,7 @@ final class PdoMachineSchema
             throw new InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
         }
 
-        return $this->dialect instanceof AbstractSqlDialect ? $this->dialect->paginate($sql, $limit) : $sql;
+        return $this->dialect->paginate($sql, $limit);
     }
 
     /**

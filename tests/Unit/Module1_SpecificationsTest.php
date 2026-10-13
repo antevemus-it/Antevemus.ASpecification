@@ -170,7 +170,7 @@ class Module1_SpecificationsTest extends TestCase
         $this->assertFalse(Spec::after(new \DateTime('2024-01-01'))->isSatisfiedBy(null));
         $dt = new \DateTime('2024-01-01');
         $this->assertTrue((new EqualSpecification($dt))->isSatisfiedBy($dt), 'objetos: identidade, sem lançar');
-        $this->assertFalse((new EqualSpecification($dt))->isSatisfiedBy(new \DateTime('2024-01-01')));
+        $this->assertTrue((new EqualSpecification($dt))->isSatisfiedBy(new \DateTime('2024-01-01')), 'datas por instante (2.1.0, forward 037 D1; Heliton, 2026-10-13)');
 
         // 5. Subsunção com tipos mistos: false, sem lançar (álgebra estática)
         $this->assertFalse($gt9->isGeneralizationOf(new EqualSpecification("abc")));

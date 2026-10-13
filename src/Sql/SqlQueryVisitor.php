@@ -11,6 +11,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
+use Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use Antevemus\ASpecification\Specifications\AndSpecification;
@@ -31,6 +32,7 @@ use Antevemus\ASpecification\Specifications\PredicateSpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseAndAccentsStringSpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
@@ -78,9 +80,14 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   answer a boolean comparison with a whole condition instead of `col = <literal>` (the PdoRepository
  *   compiler emits `col IN ('Y', 'y')` for a boolean stored as text); here it answers null and the
  *   dialect's literal is used, as before
+ * - Text comparison ignoring case and accents (2.1.0): `contains`/`startsWith`/`endsWith` built with
+ *   TextComparison::IgnoreCaseAndAccents and `equalIgnoreCaseAndAccents()` go through the dialect's
+ *   ISqlAccentInsensitiveLike over the same escaped LIKE pattern as the other text operators; a dialect
+ *   without it, or that answers null (SQLite, SQL Server, Oracle and the others not measured), raises
+ *   NonTranslatableSpecificationException instead of answering differently from memory
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    1.14.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -471,6 +478,12 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof EqualIgnoreCaseStringSpecification =>
                 $this->translateEqualIgnoreCase($col, $specification->getValue()),
 
+            $specification instanceof EqualIgnoreCaseAndAccentsStringSpecification =>
+                $this->accentInsensitiveLikeClause($col, LikePattern::exact($specification->getValue()), $specification),
+
+            $specification instanceof LiteralPatternSpecification && $specification->ignoresAccents() =>
+                $this->accentInsensitiveLikeClause($col, LikePattern::fromLiteral($specification), $specification),
+
             $specification instanceof LiteralPatternSpecification =>
                 $this->translateLiteralPattern($col, $specification),
 
@@ -673,6 +686,37 @@ class SqlQueryVisitor implements ISpecificationVisitor
         $sql = $this->dialect->formatLike($col, $param['name'], $caseSensitive) . $pattern->escapeClause();
 
         return new SqlWhereClause($sql, $param['binding']);
+    }
+
+    /**
+     * Bind a LIKE pattern compared ignoring case and accents (2.1.0): the dialect writes the condition
+     * through ISqlAccentInsensitiveLike, the visitor appends the ESCAPE clause when the pattern needs
+     * it. A dialect that cannot answer as the in-memory comparison refuses the specification.
+     *
+     * @param string $col
+     * @param LikePattern $pattern Pattern of the literal as written
+     * @param ISpecification $specification Leaf being translated, for the exception
+     * @return SqlWhereClause
+     * @throws NonTranslatableSpecificationException When the dialect has no accent-insensitive LIKE
+     */
+    private function accentInsensitiveLikeClause(string $col, LikePattern $pattern, ISpecification $specification): SqlWhereClause
+    {
+        $param = $this->createParameter($pattern->pattern);
+        $condition = $this->dialect instanceof ISqlAccentInsensitiveLike
+            ? $this->dialect->formatAccentInsensitiveLike($col, $param['name'])
+            : null;
+
+        if ($condition === null) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                sprintf(
+                    "a comparison that ignores case and accents has no equivalent in the %s dialect that selects the rows the in-memory evaluation accepts (it is translated for PostgreSQL and MySQL/MariaDB); evaluate it in PHP or compare with TextComparison::IgnoreCase",
+                    $this->dialect->getFamily()
+                )
+            );
+        }
+
+        return new SqlWhereClause($condition . $pattern->escapeClause(), $param['binding']);
     }
 
     /**

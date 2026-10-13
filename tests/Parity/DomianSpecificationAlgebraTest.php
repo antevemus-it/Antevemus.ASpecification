@@ -780,7 +780,8 @@ final class DomianSpecificationAlgebraTest extends TestCase
 
     /**
      * IsDisjointWith_ValueBoundSpecifications_Test.testComparableValueBoundSpecifications_Integer (48 rows):
-     * there is no integer between 10 and 11, so greaterThan(10) ⟂ lessThan(11).
+     * there is no integer between 10 and 11, so greaterThan(10) ⟂ lessThan(11) in Domian (typed Integer).
+     * Since 2.1.0 (forward 037 P2) the library does not close integer bounds: the leaves accept 10.5.
      */
     public function testComparableValueBoundSpecificationsInteger(): void
     {
@@ -813,7 +814,7 @@ final class DomianSpecificationAlgebraTest extends TestCase
             [true, 'greaterThan10', 'lessThanOrEqualTo10'],
             [false, 'greaterThan10', 'greaterThan10'],
             [false, 'greaterThan10', 'greaterThanOrEqualTo10'],
-            [true, 'greaterThan10', 'lessThan11'],
+            [false, 'greaterThan10', 'lessThan11'], // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
             [false, 'greaterThan10', 'lessThanOrEqualTo11'],
             [false, 'greaterThan10', 'greaterThan11'],
             [false, 'greaterThan10', 'greaterThanOrEqualTo11'],
@@ -901,14 +902,14 @@ final class DomianSpecificationAlgebraTest extends TestCase
             [true, 'lessThanOrEqualTo10', 'not(lessThanOrEqualTo11)'],
             [false, 'lessThanOrEqualTo10', 'not(greaterThan11)'],
             [false, 'lessThanOrEqualTo10', 'not(greaterThanOrEqualTo11)'],
-            [true, 'not(lessThanOrEqualTo10)', 'lessThan11'],
+            [false, 'not(lessThanOrEqualTo10)', 'lessThan11'], // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
             [false, 'not(lessThanOrEqualTo10)', 'lessThanOrEqualTo11'],
             [false, 'not(lessThanOrEqualTo10)', 'greaterThan11'],
             [false, 'not(lessThanOrEqualTo10)', 'greaterThanOrEqualTo11'],
             [false, 'not(lessThanOrEqualTo10)', 'not(lessThan11)'],
             [false, 'not(lessThanOrEqualTo10)', 'not(lessThanOrEqualTo11)'],
             [false, 'not(lessThanOrEqualTo10)', 'not(greaterThan11)'],
-            [true, 'not(lessThanOrEqualTo10)', 'not(greaterThanOrEqualTo11)'],
+            [false, 'not(lessThanOrEqualTo10)', 'not(greaterThanOrEqualTo11)'], // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
             [false, 'lessThanOrEqualTo10', 'not(lessThan6)'],
             [false, 'lessThanOrEqualTo10', 'not(lessThanOrEqualTo6)'],
             [false, 'lessThanOrEqualTo10', 'not(greaterThan6)'],
@@ -939,7 +940,7 @@ final class DomianSpecificationAlgebraTest extends TestCase
             [false, 'greaterThan10', 'not(lessThan11)'],
             [false, 'greaterThan10', 'not(lessThanOrEqualTo11)'],
             [false, 'greaterThan10', 'not(greaterThan11)'],
-            [true, 'greaterThan10', 'not(greaterThanOrEqualTo11)'],
+            [false, 'greaterThan10', 'not(greaterThanOrEqualTo11)'], // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
             [false, 'not(greaterThan10)', 'lessThan11'],
             [false, 'not(greaterThan10)', 'lessThanOrEqualTo11'],
             [true, 'not(greaterThan10)', 'greaterThan11'],
@@ -1880,7 +1881,7 @@ final class DomianSpecificationAlgebraTest extends TestCase
         self::assertTrue(Spec::greaterThan(5)->isGeneralizationOf(Spec::greaterThanOrEqualTo(7)));
         self::assertTrue(Spec::greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::greaterThan(5)));
         self::assertFalse(Spec::greaterThan(5)->isGeneralizationOf(Spec::greaterThanOrEqualTo(5)));
-        self::assertTrue(Spec::greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::greaterThan(4)), 'integers: x > 4 ≡ x >= 5');
+        self::assertFalse(Spec::greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::greaterThan(4)), 'no integer closing: 4.5 satisfies only x > 4'); // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
         self::assertFalse(Spec::greaterThanOrEqualTo(5.0)->isGeneralizationOf(Spec::greaterThan(4.0)));
         self::assertTrue(Spec::lessThanOrEqualTo(10)->isGeneralizationOf(Spec::lessThan(5)));
         self::assertTrue(Spec::lessThanOrEqualTo(10)->isGeneralizationOf(Spec::equalTo(10)));
@@ -1909,8 +1910,8 @@ final class DomianSpecificationAlgebraTest extends TestCase
         self::assertTrue(Spec::greaterThanOrEqualTo(5)->isDisjointWith(Spec::lessThan(5)));
         self::assertFalse(Spec::lessThanOrEqualTo(5)->isDisjointWith(Spec::greaterThanOrEqualTo(5)));
         self::assertFalse(Spec::lessThan(5)->isDisjointWith(Spec::greaterThan(3)));
-        self::assertTrue(Spec::greaterThan(10)->isDisjointWith(Spec::lessThan(11)), 'integers: no value between 10 and 11');
-        self::assertTrue(Spec::lessThan(10)->isDisjointWith(Spec::greaterThan(9)));
+        self::assertFalse(Spec::greaterThan(10)->isDisjointWith(Spec::lessThan(11)), 'no integer closing: 10.5 satisfies both'); // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
+        self::assertFalse(Spec::lessThan(10)->isDisjointWith(Spec::greaterThan(9))); // sem fechamento inteiro: a lib não tem folha tipada int e 10.5 satisfaz as duas (2.1.0, forward 037 P2; Heliton, 2026-10-13)
         self::assertFalse(Spec::greaterThan(10.0)->isDisjointWith(Spec::lessThan(11.0)));
         self::assertFalse(Spec::greaterThan(10)->isDisjointWith(Spec::lessThan(12)));
         self::assertTrue(Spec::equalTo(5)->isDisjointWith(Spec::equalTo(6)));

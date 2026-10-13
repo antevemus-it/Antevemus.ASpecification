@@ -17,11 +17,14 @@ use DateTimeInterface;
  * - Strict equality (`===`): both operands must share the same scalar type (int, float, bool,
  *   string), or both be arrays, or both be objects. int and float are distinct types.
  *
+ * The value test of the equality leaves (sameValue(), 2.1.0): date-times by instant, anything else by
+ * strict identity (`===`).
+ *
  * Null candidates are never a type error: each specification keeps its own null semantics.
  * Subsumption algebra uses the boolean predicates (no exception) because it compares two
  * specifications, not a candidate.
  *
- * @version    1.2.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -66,6 +69,22 @@ final class TypeCompatibility
             return true;
         }
         return is_scalar($a) && is_scalar($b) && gettype($a) === gettype($b);
+    }
+
+    /**
+     * True when equalTo()/in() accept $candidate for $value and notEqual() refuses it (2.1.0): two
+     * date-times denote the same value when they denote the same instant, whatever their class or time
+     * zone (as the relational leaves, at() and SQL compare them); anything else is compared strictly
+     * (`===`: scalars by type and value, arrays by type, order and value, other objects by identity).
+     * Up to 2.0.0 date-times were compared by identity here (BUG-20261013-LIZI).
+     */
+    public static function sameValue(mixed $candidate, mixed $value): bool
+    {
+        if ($candidate instanceof DateTimeInterface && $value instanceof DateTimeInterface) {
+            return $candidate == $value;
+        }
+
+        return $candidate === $value;
     }
 
     /**

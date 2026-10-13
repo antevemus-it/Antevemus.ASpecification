@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Sql\Dialects;
 
+use Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use InvalidArgumentException;
@@ -22,15 +23,17 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - Default LIKE search handling with LOWER()
  * - Default pagination in the SQL:2008 form (`OFFSET m ROWS FETCH FIRST n ROWS ONLY`, 1.6.0), which
  *   Oracle 12c+, Firebird 3+ and Db2 accept; dialects with another syntax override formatPagination()
+ * - No LIKE ignoring case and accents by default (ISqlAccentInsensitiveLike answers null, 2.1.0): only
+ *   the dialects measured to answer as the in-memory comparison override it (PostgreSQL, MySQL/MariaDB)
  *
- * @version    1.6.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-abstract class AbstractSqlDialect implements ISqlDialect, ISqlPagination
+abstract class AbstractSqlDialect implements ISqlDialect, ISqlPagination, ISqlAccentInsensitiveLike
 {
     /** Plain identifier segment: letter or underscore, then letters, digits, underscore or dollar. */
     private const SEGMENT = '[A-Za-z_][A-Za-z0-9_$]*';
@@ -124,6 +127,20 @@ abstract class AbstractSqlDialect implements ISqlDialect, ISqlPagination
     public function supportsRegex(): bool
     {
         return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Null: a dialect answers only where its database was measured to select the rows the in-memory
+     * comparison accepts. SQLite has no Unicode decomposition (its LIKE folds ASCII letters only);
+     * the accent-insensitive collations of SQL Server (Latin1_General_CI_AI, Latin1_General_100_CI_AI,
+     * 2022) and Oracle (BINARY_AI, 23ai) also expand `ß` to `ss` (SQL Server `æ` to `ae` as well),
+     * which the in-memory comparison keeps distinct. Measured on 2026-10-12.
+     */
+    public function formatAccentInsensitiveLike(string $column, string $paramPlaceholder): ?string
+    {
+        return null;
     }
 
     /**

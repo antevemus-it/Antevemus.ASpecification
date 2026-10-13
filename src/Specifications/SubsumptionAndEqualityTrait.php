@@ -51,8 +51,8 @@ trait SubsumptionAndEqualityTrait
         }
 
         // Universality: AlwaysTrue / AllEntities with a compatible supertype generalize anything
-        // bounded by their type.
-        if ($this instanceof AlwaysTrueSpecification || $this instanceof AllEntitiesSpecification) {
+        // bounded by their type; a subclass that redefines isSatisfiedBy() is not universal (2.1.0).
+        if (SpecificationAlgebra::evaluatesAs($this, AlwaysTrueSpecification::class, AllEntitiesSpecification::class)) {
             $other = SpecificationAlgebra::resolve($otherSpecification);
             if ($other instanceof NotSpecification && !SpecificationAlgebra::isTopType($this->getType())) {
                 return false;

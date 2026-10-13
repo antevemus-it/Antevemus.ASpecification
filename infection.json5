@@ -1,0 +1,38 @@
+// Mutation testing of the specification algebra (forward 037, D8 item 4; docs/contratos/RELEASING.md).
+// Scope: src/Specifications/ plus src/AbstractSpecification.php and src/AbstractCompositeSpecification.php;
+// every other file of src/ is excluded by the negative look-ahead below (a new top-level folder of src/
+// stays out of scope until it is named here). Runs in the scheduled workflow (.github/workflows/quality.yml)
+// with a coverage driver (pcov); locally:
+//
+//   XDEBUG_MODE=off vendor/bin/infection --threads=max --only-covering-test-cases \
+//       --initial-tests-php-options="-d pcov.enabled=1 -d pcov.directory=$PWD/src"
+//
+// minMsi / minCoveredMsi: the floor registered in RELEASING.md (measured 85.81 / 85.81 on 2026-10-13, 2.1.0,
+// Infection 0.35.6, PHP 8.4 with intl and pcov: 2558 mutants, 2167 killed, 23 errors, 5 time-outs, 363
+// escaped), a little below the measured score; a drop below it fails the run. Raise it when the score goes
+// up, never lower it to make a run pass.
+{
+    "$schema": "vendor/infection/infection/resources/schema.json",
+    "source": {
+        "directories": ["src"],
+        "excludes": [
+            "~^(?!Specifications/|AbstractSpecification\\.php$|AbstractCompositeSpecification\\.php$)~"
+        ]
+    },
+    "timeout": 120,
+    "logs": {
+        "text": "coverage/infection/infection.log",
+        "summary": "coverage/infection/summary.log",
+        "json": "coverage/infection/infection.json",
+        "perMutator": "coverage/infection/per-mutator.md"
+    },
+    "tmpDir": "coverage/infection/tmp",
+    "phpUnit": {
+        "configDir": "."
+    },
+    "mutators": {
+        "@default": true
+    },
+    "minMsi": 84,
+    "minCoveredMsi": 84
+}

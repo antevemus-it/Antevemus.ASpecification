@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Contracts\Factory;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 
 /**
  * IStringSpecificationFactory - Factory contract for string specifications
@@ -13,7 +14,12 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * including case-insensitive comparisons, regular expressions, wildcards,
  * length checks, and format validations.
  *
- * @version    1.1.0
+ * 2.1.0: `contains()`, `startsWith()` and `endsWith()` take `bool|TextComparison` (`true` and `false`
+ * keep their meaning) and `equalIgnoringCaseAndAccents()` is the accent-insensitive pair of
+ * `equalIgnoringCase()`. A factory that implements this interface directly must widen those
+ * parameters and add the method; one that extends AbstractStringSpecificationFactory inherits it.
+ *
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -67,6 +73,23 @@ interface IStringSpecificationFactory extends ISpecificationFactory
      * @return ISpecification<string>
      */
     public function isEqualIgnoringCase(string $value): ISpecification;
+
+    /**
+     * Creates a specification verifying equality ignoring case and accents (2.1.0, requires ext-intl).
+     *
+     * Example:
+     * <code>
+     * $spec = $factory->equalIgnoringCaseAndAccents('sao paulo');
+     * $spec->isSatisfiedBy('São Paulo'); // true
+     * $spec->isSatisfiedBy('SAO PAULO'); // true
+     * $spec->isSatisfiedBy('Santos');    // false
+     * </code>
+     *
+     * @param string $value Comparison target string
+     * @return ISpecification<string> Case- and accent-insensitive equality specification
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException When ext-intl is not loaded
+     */
+    public function equalIgnoringCaseAndAccents(string $value): ISpecification;
 
     /**
      * Creates a specification verifying regular expression match.
@@ -140,28 +163,31 @@ interface IStringSpecificationFactory extends ISpecificationFactory
      * Creates a specification verifying if candidate contains a substring.
      *
      * @param string $substring Substring to search for
-     * @param bool $caseSensitive Whether search is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Substring containment specification
      */
-    public function contains(string $substring, bool $caseSensitive = true): ISpecification;
+    public function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * Creates a specification verifying if candidate starts with a prefix.
      *
      * @param string $prefix Expected prefix
-     * @param bool $caseSensitive Whether check is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Prefix match specification
      */
-    public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification;
+    public function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * Creates a specification verifying if candidate ends with a suffix.
      *
      * @param string $suffix Expected suffix
-     * @param bool $caseSensitive Whether check is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Suffix match specification
      */
-    public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification;
+    public function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * Creates a specification verifying string length.

@@ -62,6 +62,8 @@ $suites = [
     'Módulo 24: Eventos de Domínio pela Passagem do Tempo' => new Module24_TimeBasedDomainEventsTest(),
     'Módulo 25: Complementos do PdoRepository (log, tipos, ciclo de vida, lote, consultas em conjunto)' => new Module25_PdoRepositoryComplementsTest(),
     'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, ManyToMany, carga ansiosa, composição)' => new Module26_PdoRelationshipsTest(),
+    'Módulo 27: Feature Flags Declaradas, com Alvo e Histórico' => new \Antevemus\ASpecification\Tests\Unit\Module27_FeatureFlagsTest(),
+    'Módulo 28: Comparação de Texto sem Acento (TextComparison::IgnoreCaseAndAccents)' => new \Antevemus\ASpecification\Tests\Unit\Module28_AccentInsensitiveTextTest(),
 ];
 
 $startTime = microtime(true);

@@ -203,7 +203,9 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
             return true;
         }
 
-        return $this->left->isGeneralizationOf($other)
+        // A conjunction refuses null: it generalizes X only when X refuses null too (2.1.0)
+        return SpecificationAlgebra::refusesNull($other)
+            && $this->left->isGeneralizationOf($other)
             && $this->right->isGeneralizationOf($other);
     }
 

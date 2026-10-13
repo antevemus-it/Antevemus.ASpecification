@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Specifications\String;
 
+use InvalidArgumentException;
+
 /**
  * LiteralPatternSpecification - Base for prefix, suffix and substring matching of a literal.
  *
@@ -14,10 +16,15 @@ namespace Antevemus\ASpecification\Specifications\String;
  * - In-memory evaluation inherited from RegexSpecification (identical semantics, case flag)
  * - Original literal and case sensitivity exposed to visitors
  * - Position-aware wildcard shaping (`toWildcardPattern()`) independent of the target syntax
+ * - The comparison as a TextComparison (2.1.0): `true`/`false` keep their meaning and
+ *   `TextComparison::IgnoreCaseAndAccents` also ignores accents. With it, the pattern is built over
+ *   the folded literal (TextComparison::foldCaseAndAccents()) and matched against the folded
+ *   candidate; `getLiteral()` still returns the literal as written. A visitor that translates this
+ *   class must check `ignoresAccents()` first: `isCaseSensitive()` alone describes the 1.14 options.
  *
  * @template T
  * @extends RegexSpecification<T>
- * @version    1.14.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -26,17 +33,34 @@ namespace Antevemus\ASpecification\Specifications\String;
  */
 abstract class LiteralPatternSpecification extends RegexSpecification
 {
+    private readonly TextComparison $comparison;
+
     /**
      * @param string $literal Literal text to look for (no pattern syntax)
-     * @param bool $caseSensitive Whether matching is case-sensitive
+     * @param bool|TextComparison $caseSensitive `true` (CaseSensitive), `false` (IgnoreCase) or a TextComparison
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException With
+     *         IgnoreCaseAndAccents when ext-intl is not loaded
+     * @throws InvalidArgumentException With IgnoreCaseAndAccents when the literal is not valid UTF-8
      */
     public function __construct(
         private readonly string $literal,
-        private readonly bool $caseSensitive = true
+        bool|TextComparison $caseSensitive = true
     ) {
+        $this->comparison = TextComparison::of($caseSensitive);
+
+        if ($this->comparison->ignoresAccents()) {
+            $folded = TextComparison::foldCaseAndAccents($literal);
+            if ($folded === null) {
+                throw new InvalidArgumentException('A text compared ignoring case and accents must be valid UTF-8.');
+            }
+            parent::__construct($this->buildPattern(preg_quote($folded, '/')) . 'u');
+
+            return;
+        }
+
         // 1.14.0: the case-insensitive form folds Unicode letters ('É' matches 'é'), like
         // equalIgnoreCase() and the wildcard matcher; `i` alone folded ASCII only.
-        $modifiers = $caseSensitive ? '' : (mb_check_encoding($literal, 'UTF-8') ? 'iu' : 'i');
+        $modifiers = $this->comparison->isCaseSensitive() ? '' : (mb_check_encoding($literal, 'UTF-8') ? 'iu' : 'i');
         parent::__construct($this->buildPattern(preg_quote($literal, '/')) . $modifiers);
     }
 
@@ -51,13 +75,54 @@ abstract class LiteralPatternSpecification extends RegexSpecification
     }
 
     /**
-     * Whether matching is case-sensitive.
+     * Whether matching is case-sensitive (false for IgnoreCase and IgnoreCaseAndAccents).
      *
      * @return bool
      */
     public function isCaseSensitive(): bool
     {
-        return $this->caseSensitive;
+        return $this->comparison->isCaseSensitive();
+    }
+
+    /**
+     * The comparison the specification was built with (2.1.0).
+     *
+     * @return TextComparison
+     */
+    public function getComparison(): TextComparison
+    {
+        return $this->comparison;
+    }
+
+    /**
+     * Whether matching ignores accents (TextComparison::IgnoreCaseAndAccents, 2.1.0).
+     *
+     * @return bool
+     */
+    public function ignoresAccents(): bool
+    {
+        return $this->comparison->ignoresAccents();
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * With IgnoreCaseAndAccents the candidate is folded like the literal before the match; a
+     * candidate that is not valid UTF-8 has no folding and is not satisfied.
+     */
+    public function isSatisfiedBy(mixed $candidate): bool
+    {
+        if (!$this->comparison->ignoresAccents()) {
+            return parent::isSatisfiedBy($candidate);
+        }
+
+        if (!is_string($candidate)) {
+            return false;
+        }
+
+        $folded = TextComparison::foldCaseAndAccents($candidate);
+
+        return $folded !== null && preg_match($this->getPattern(), $folded) === 1;
     }
 
     /**

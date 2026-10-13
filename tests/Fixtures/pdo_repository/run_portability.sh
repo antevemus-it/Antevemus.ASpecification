@@ -3,6 +3,9 @@
 # Module25_PdoRepositoryComplementsTest and Module26_PdoRelationshipsTest against real PostgreSQL 17
 # and MySQL 8.4 in disposable containers (Module 26 also opens an unbuffered MySQL connection); Module 22
 # also runs its text-operator parity on MariaDB 11.4 (1.14.0), which shares the MySQL dialect.
+# Forward 034, RN-02 (2.1.0): Module27_FeatureFlagsTest runs its PdoFeatureFlagStore contract battery
+# on the three of them (PostgreSQL 17, MySQL 8.4 and MariaDB 11.4).
+# Forward 037, D2/D5 (2.1.0): DateSqlParityTest on the three of them, and the soundness bench with ext-intl.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -69,10 +72,57 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();
     echo $suite, " OK ", $t->getAssertionCount(), " assertions\n";
 }
 '
+
+# Forward 037, D5 (2.1.0): memory × SQL parity of the date-time comparison leaves (equalTo/notEqual/in by
+# instant) on the three databases, through PHPUnit (the test reads the same ASPEC_PDO_* variables).
+"${PHP[@]}" vendor/bin/phpunit --do-not-cache-result tests/PhpUnit/DateSqlParityTest.php
+
+# Forward 035, RN-02 and RN-03 (2.1.0): Module28_AccentInsensitiveTextTest. The host PHP runs it as it is
+# (without ext-intl it checks the refusal of TextComparison::IgnoreCaseAndAccents); the accent-insensitive
+# battery needs ext-intl, so it also runs in disposable php:8.2-cli and php:8.4-cli containers with intl,
+# pdo_pgsql and pdo_mysql (each image built once, tagged aspec-portability-php<version>-intl), on the host
+# network against the same three databases, the repository mounted read-only. The PostgreSQL database
+# gets the unaccent extension, the documented option of PostgreSqlDialect.
+docker exec "$PG" psql -U postgres -d aspec -qc 'CREATE EXTENSION IF NOT EXISTS unaccent' >/dev/null
+MODULE28='
+require "tests/bootstrap.php";
+require_once "tests/Unit/Module28_AccentInsensitiveTextTest.php";
+$t = new Antevemus\ASpecification\Tests\Unit\Module28_AccentInsensitiveTextTest();
+$t->run();
+echo "Module28_AccentInsensitiveTextTest (PHP ", PHP_VERSION, extension_loaded("intl") ? ", intl " . INTL_ICU_VERSION : ", sem intl", ") OK ", $t->getAssertionCount(), " assertions\n";
+'
+"${PHP[@]}" -r "$MODULE28"
+for version in 8.2 8.4; do
+    image="aspec-portability-php${version}-intl"
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        docker build -q -t "$image" - >/dev/null <<DOCKERFILE
+FROM php:${version}-cli
+RUN apt-get update && apt-get install -y --no-install-recommends libicu-dev libpq-dev \
+    && docker-php-ext-install intl pdo_pgsql pdo_mysql && rm -rf /var/lib/apt/lists/*
+DOCKERFILE
+    fi
+    mounts=(-v "${ROOT}:/w/Antevemus.ASpecification:ro")
+    if [ -d "${ROOT}/../Antevemus.AlinqCollection" ]; then
+        mounts+=(-v "$(cd "${ROOT}/../Antevemus.AlinqCollection" && pwd):/w/Antevemus.AlinqCollection:ro")
+    fi
+    docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \
+        -e ASPEC_PDO_PGSQL_DSN -e ASPEC_PDO_PGSQL_USER -e ASPEC_PDO_PGSQL_PASSWORD \
+        -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
+        -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
+        "$image" php -d memory_limit=512M -r "$MODULE28"
+    # Forward 037, D2 and D5 (2.1.0): the soundness bench with ext-intl (the accent-insensitive leaves join
+    # the pool) and the date parity, on PHP 8.2 and 8.4.
+    docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \
+        -e ASPEC_PDO_PGSQL_DSN -e ASPEC_PDO_PGSQL_USER -e ASPEC_PDO_PGSQL_PASSWORD \
+        -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
+        -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
+        "$image" php -d memory_limit=512M vendor/bin/phpunit --do-not-cache-result \
+        tests/PhpUnit/AlgebraSoundnessTest.php tests/PhpUnit/AlgebraSoundnessCasesTest.php tests/PhpUnit/DateSqlParityTest.php
+done

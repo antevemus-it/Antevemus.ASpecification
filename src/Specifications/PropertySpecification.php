@@ -390,9 +390,10 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
 
         $other = SpecificationAlgebra::resolve($otherSpecification);
         if ($other instanceof self) {
+            // Types decide only when both sides are bounded by them (2.1.0: a base such as ¬all(Order) has
+            // the type Order and accepts customers)
             $thisType = $this->getType();
-            $otherType = $other->getType();
-            if (SpecificationAlgebra::areTypesDisjoint($thisType, $otherType)) {
+            if (SpecificationAlgebra::isBoundedByType($this, $thisType) && SpecificationAlgebra::provenTypesDisjoint($thisType, $other)) {
                 return true;
             }
             if ($this->propertyName === $other->getPropertyName()) {

@@ -1,0 +1,74 @@
+name: Quality
+
+# Forward 037, D8 items 1 and 4: the scheduled round of the guarantees of the specification algebra.
+# - the extended soundness bench (ASPEC_SOUNDNESS_EXTENDED=1: more and deeper random trees, every composite
+#   pair instead of the pairs of the same family); the fixed part runs on every push (tests.yml);
+# - mutation testing of the algebra with Infection (scope and minimum score in infection.json5, registered
+#   in docs/contratos/RELEASING.md): a score below the minimum fails the run.
+on:
+  schedule:
+    # Mondays, 06:17 UTC.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NO_PROXY: 127.0.0.1,localhost
+
+jobs:
+  soundness-extended:
+    name: Extended soundness bench (PHP 8.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Extended soundness bench
+        env:
+          ASPEC_SOUNDNESS_EXTENDED: '1'
+          ASPEC_SOUNDNESS_DUMP: ${{ runner.temp }}/soundness-violations.jsonl
+        run: vendor/bin/phpunit --no-coverage --do-not-cache-result tests/PhpUnit/AlgebraSoundnessTest.php tests/PhpUnit/AlgebraSoundnessCasesTest.php
+
+      - name: Violations found (JSON lines)
+        if: failure()
+        run: cat "${{ runner.temp }}/soundness-violations.jsonl" || true
+
+  mutation:
+    name: Mutation testing of the algebra (Infection, PHP 8.4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, intl
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Infection
+        run: vendor/bin/infection --threads=max --only-covering-test-cases --no-interaction --no-progress --logger-github=false
+
+      - name: Summary
+        if: always()
+        run: cat coverage/infection/summary.log || true

@@ -18,6 +18,8 @@ env:
   NO_PROXY: 127.0.0.1,localhost
 
 jobs:
+  # The whole suite, the soundness bench of the algebra included (tests/PhpUnit/AlgebraSoundnessTest.php,
+  # fixed part, forward 037 D8), with ext-intl: the accent-insensitive leaves join the bench's pool.
   core:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
@@ -32,12 +34,45 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: json, mbstring, curl, pdo_sqlite, sysvsem
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, intl
           coverage: none
           tools: composer:v2
 
+      - name: Check that ext-intl is loaded
+        run: |
+          php -r 'exit(extension_loaded("intl") ? 0 : 1);'
+
       - name: Validate composer.json
         run: composer validate --strict
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit --no-coverage
+
+      - name: Module runner
+        run: php tests/run_all.php
+
+  # Forward 035: without ext-intl, TextComparison::IgnoreCaseAndAccents and Spec::equalIgnoreCaseAndAccents()
+  # are refused when built (MissingExtensionException) and everything else keeps working.
+  without-intl:
+    name: PHP 8.4 without intl
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, :intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Check that ext-intl is not loaded
+        run: |
+          php -r 'exit(extension_loaded("intl") ? 1 : 0);'
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
@@ -58,17 +93,90 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: json, mbstring, curl, pdo_sqlite, sysvsem
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, intl
           coverage: none
           tools: composer:v2
 
       - name: Install dependencies with the optional ALinq package
         run: |
           composer install --no-interaction --no-progress --prefer-dist
-          composer require --dev --no-interaction --no-progress "antevemus/alinq-collection:^2.0.0"
+          composer require --dev --no-interaction --no-progress "antevemus/alinq-collection:^2.1.0"
 
       - name: PHPUnit
         run: vendor/bin/phpunit --no-coverage
 
       - name: Module runner
         run: php tests/run_all.php
+
+  # Forward 037, D8 item 3: memory × SQL parity on real databases, the suites of
+  # tests/Fixtures/pdo_repository/run_portability.sh (the local runner) through run_parity_suites.sh.
+  sql-parity:
+    name: SQL parity (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.4']
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: aspec
+          POSTGRES_DB: aspec
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aspec"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: aspec
+          MYSQL_DATABASE: aspec
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -paspec"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: aspec
+          MARIADB_DATABASE: aspec
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      ASPEC_PDO_PGSQL_DSN: pgsql:host=127.0.0.1;port=5432;dbname=aspec
+      ASPEC_PDO_PGSQL_USER: postgres
+      ASPEC_PDO_PGSQL_PASSWORD: aspec
+      ASPEC_PDO_MYSQL_DSN: mysql:host=127.0.0.1;port=3306;dbname=aspec;charset=utf8mb4
+      ASPEC_PDO_MYSQL_USER: root
+      ASPEC_PDO_MYSQL_PASSWORD: aspec
+      ASPEC_PDO_MARIADB_DSN: mysql:host=127.0.0.1;port=3307;dbname=aspec;charset=utf8mb4
+      ASPEC_PDO_MARIADB_USER: root
+      ASPEC_PDO_MARIADB_PASSWORD: aspec
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring, curl, pdo_sqlite, pdo_pgsql, pdo_mysql, sysvsem, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Parity suites
+        run: bash tests/Fixtures/pdo_repository/run_parity_suites.sh

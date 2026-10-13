@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\DomainEvents\Outbox;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use Antevemus\ASpecification\DomainEvents\DomainEvent;
 use Antevemus\ASpecification\DomainEvents\DomainEventKind;
 use Antevemus\ASpecification\DomainEvents\Exceptions\DomainEventPersistenceException;
-use Antevemus\ASpecification\Sql\Dialects\AbstractSqlDialect;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\SqlDialect;
 use DateTimeImmutable;
@@ -59,13 +59,16 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
 
     private readonly string $table;
 
-    private readonly ISqlDialect $dialect;
+    /** Dialect of the driver; it must paginate (fetchPending() bounds its scan with LIMIT). */
+    private readonly ISqlDialect&ISqlPagination $dialect;
 
     /**
      * @param PDO $pdo Connection to the database holding the table (its error mode is left untouched)
      * @param string $table Table name
      * @param string $schema Optional schema (or database) qualifying the table; '' = unqualified
      * @throws InvalidArgumentException When the table or the schema is not a plain SQL identifier
+     * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException When the
+     *         driver's dialect does not implement ISqlPagination
      */
     public function __construct(
         private readonly PDO $pdo,
@@ -78,7 +81,10 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
             }
         }
         $this->table = $schema !== '' ? $schema . '.' . $table : $table;
-        $this->dialect = SqlDialectFactory::create(SqlDialect::fromDriver((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME)));
+        $this->dialect = SqlDialectFactory::createPaginating(
+            SqlDialect::fromDriver((string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME)),
+            self::class
+        );
     }
 
     /** The connection. */
@@ -155,9 +161,7 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
             $this->table,
             $open('p', 'p')
         );
-        if ($this->dialect instanceof AbstractSqlDialect) {
-            $sql = $this->dialect->paginate($sql, $limit);
-        }
+        $sql = $this->dialect->paginate($sql, $limit);
 
         return array_slice(array_map($this->hydrate(...), $this->fetchAll($sql, $params)), 0, $limit);
     }

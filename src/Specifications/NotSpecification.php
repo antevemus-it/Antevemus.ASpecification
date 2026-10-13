@@ -200,7 +200,8 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
      * {@inheritdoc}
      *
      * ¬A ⊇ X: when the negation resolves to a positive form (¬(x < 10) is x >= 10) that form
-     * decides; otherwise ¬A ⊇ ¬B ⇔ B ⊇ A, and ¬A ⊇ X ⇔ X ⟂ A.
+     * decides; otherwise ¬A ⊇ ¬B ⇔ B ⊇ A, and ¬A ⊇ X ⇔ X ⟂ A for an X that refuses null (the
+     * negation never accepts null, 2.1.0).
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
@@ -226,7 +227,9 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
             }
         }
 
-        return $self->getSpecification()->isDisjointWith($other);
+        // ¬A refuses null whatever A is, so ¬A ⊇ X ⇔ X ⟂ A holds only when X refuses null too (2.1.0;
+        // up to 2.0.0 ¬A ⊇ isNull() was proven from isNull() ⟂ A)
+        return SpecificationAlgebra::refusesNull($other) && $self->getSpecification()->isDisjointWith($other);
     }
 
     /**

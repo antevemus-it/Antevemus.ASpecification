@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\DomainEvents\State;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
 use Antevemus\ASpecification\DomainEvents\Exceptions\DomainEventPersistenceException;
 use Antevemus\ASpecification\DomainEvents\Outbox\DomainEventSupport;
-use Antevemus\ASpecification\Sql\Dialects\AbstractSqlDialect;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\SqlDialect;
 use DateTimeImmutable;
@@ -65,7 +65,8 @@ final class PdoTriggerStateStore implements ITriggerStateStore
 
     private readonly string $table;
 
-    private readonly ISqlDialect $dialect;
+    /** Dialect of the driver; it must paginate (findSatisfied() bounds its scan with LIMIT). */
+    private readonly ISqlDialect&ISqlPagination $dialect;
 
     private readonly bool $postgres;
 
@@ -76,6 +77,8 @@ final class PdoTriggerStateStore implements ITriggerStateStore
      * @param string $table Table name
      * @param string $schema Optional schema (or database) qualifying the table; '' = unqualified
      * @throws InvalidArgumentException When the table or the schema is not a plain SQL identifier
+     * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException When the
+     *         driver's dialect does not implement ISqlPagination
      */
     public function __construct(
         private readonly PDO $pdo,
@@ -89,7 +92,7 @@ final class PdoTriggerStateStore implements ITriggerStateStore
         }
         $this->table = $schema !== '' ? $schema . '.' . $table : $table;
         $driver = (string) $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $this->dialect = SqlDialectFactory::create(SqlDialect::fromDriver($driver));
+        $this->dialect = SqlDialectFactory::createPaginating(SqlDialect::fromDriver($driver), self::class);
         $this->postgres = $driver === 'pgsql';
         $this->mysql = $driver === 'mysql';
     }
@@ -176,9 +179,7 @@ final class PdoTriggerStateStore implements ITriggerStateStore
             $this->table,
             $after
         );
-        if ($this->dialect instanceof AbstractSqlDialect) {
-            $sql = $this->dialect->paginate($sql, $limit);
-        }
+        $sql = $this->dialect->paginate($sql, $limit);
 
         return array_slice(array_map($this->hydrate(...), $this->fetchAll($sql, $params)), 0, $limit);
     }

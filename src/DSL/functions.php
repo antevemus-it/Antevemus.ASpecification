@@ -14,10 +14,11 @@ declare(strict_types=1);
  * - Logical predicate composition (allOf, anyOf, not, nor, noneOf)
  * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in, notIn)
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
- * - String evaluation and pattern matching (matches, contains, startsWith, endsWith)
+ * - String evaluation and pattern matching (matches, contains, startsWith, endsWith); the text operators
+ *   take `bool|TextComparison`, TextComparison::IgnoreCaseAndAccents ignoring accents too (2.1.0)
  * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    1.6.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,6 +32,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 use DateTimeInterface;
 
 /**
@@ -542,10 +544,11 @@ function matches(string $pattern): ISpecification
  * Creates a specification checking if a string contains the given substring.
  *
  * @param string $substring Search substring
- * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+ *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
  * @return ISpecification Substring containment specification
  */
-function contains(string $substring, bool $caseSensitive = true): ISpecification
+function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification
 {
     return Spec::contains($substring, $caseSensitive);
 }
@@ -554,10 +557,11 @@ function contains(string $substring, bool $caseSensitive = true): ISpecification
  * Creates a specification checking if a string starts with the given prefix.
  *
  * @param string $prefix Expected prefix
- * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+ *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
  * @return ISpecification String prefix specification
  */
-function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
+function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification
 {
     return Spec::startsWith($prefix, $caseSensitive);
 }
@@ -566,10 +570,11 @@ function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
  * Creates a specification checking if a string ends with the given suffix.
  *
  * @param string $suffix Expected suffix
- * @param bool $caseSensitive Case sensitivity toggle (default: true)
+ * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+ *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
  * @return ISpecification String suffix specification
  */
-function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
+function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification
 {
     return Spec::endsWith($suffix, $caseSensitive);
 }

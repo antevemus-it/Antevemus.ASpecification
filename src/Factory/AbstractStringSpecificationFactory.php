@@ -6,13 +6,18 @@ namespace Antevemus\ASpecification\Factory;
 
 use Antevemus\ASpecification\Contracts\Factory\IStringSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseAndAccentsStringSpecification;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 
 /**
  * AbstractStringSpecificationFactory - Base abstract factory for string specifications
  *
  * Provides default alias methods and validation helpers for concrete string specifications.
  *
- * @version    1.1.0
+ * 2.1.0: the text operators take `bool|TextComparison` and `equalIgnoringCaseAndAccents()` has a
+ * default implementation here, so a subclass written for 2.0 only needs the wider parameter type.
+ *
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -97,6 +102,14 @@ abstract class AbstractStringSpecificationFactory implements IStringSpecificatio
     /**
      * {@inheritdoc}
      */
+    public function equalIgnoringCaseAndAccents(string $value): ISpecification
+    {
+        return new EqualIgnoreCaseAndAccentsStringSpecification($value);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     abstract public function matchesRegex(string $pattern): ISpecification;
 
     /**
@@ -136,17 +149,17 @@ abstract class AbstractStringSpecificationFactory implements IStringSpecificatio
     /**
      * {@inheritdoc}
      */
-    abstract public function contains(string $substring, bool $caseSensitive = true): ISpecification;
+    abstract public function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * {@inheritdoc}
      */
-    abstract public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification;
+    abstract public function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * {@inheritdoc}
      */
-    abstract public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification;
+    abstract public function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * {@inheritdoc}

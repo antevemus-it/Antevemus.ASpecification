@@ -41,6 +41,7 @@ use Antevemus\ASpecification\Specifications\String\ContainsSpecification;
 use Antevemus\ASpecification\Specifications\String\EndsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\StartsWithSpecification;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
 use Antevemus\ASpecification\Factory\Traits\CollectionSpecificationOperationsTrait;
@@ -280,19 +281,19 @@ final class SpecificationFactory implements
             }
 
             /** {@inheritdoc} */
-            public function contains(string $substring, bool $caseSensitive = true): ISpecification
+            public function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification
             {
                 return new ContainsSpecification($substring, $caseSensitive);
             }
 
             /** {@inheritdoc} */
-            public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
+            public function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification
             {
                 return new StartsWithSpecification($prefix, $caseSensitive);
             }
 
             /** {@inheritdoc} */
-            public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
+            public function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification
             {
                 return new EndsWithSpecification($suffix, $caseSensitive);
             }
@@ -670,16 +671,24 @@ final class SpecificationFactory implements
                 return false;
             }
 
-            /** The wrapper denotes exactly the wrapped predicate: equality and algebra delegate to it. */
+            /**
+             * The wrapper denotes exactly the wrapped predicate, so the algebra delegates to it; equality
+             * is structural (2.1.0, forward 037): another wrapper of an equal specification with the same
+             * because()/withCode(), which change what evaluate() reports. Up to 2.0.0 the annotations were
+             * ignored and the wrapper equaled the bare specification while the bare one did not equal the
+             * wrapper (asymmetric), so simplify() and the partitions merged nodes reporting differently.
+             */
             public function equals(mixed $other): bool
             {
                 if ($this === $other) {
                     return true;
                 }
-                if ($other instanceof self) {
-                    return $this->inner->equals($other->inner);
-                }
-                return $this->inner->equals($other);
+
+                return $other instanceof self
+                    && $other::class === static::class
+                    && $this->customReason === $other->customReason
+                    && $this->customCode === $other->customCode
+                    && $this->inner->equals($other->inner);
             }
 
             /** {@inheritdoc} */

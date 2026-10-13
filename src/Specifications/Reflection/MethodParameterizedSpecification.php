@@ -12,7 +12,9 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 use BackedEnum;
 use DateTime;
+use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 
 /**
  * MethodParameterizedSpecification - Declarative method call on the candidate.
@@ -30,7 +32,13 @@ use DateTimeInterface;
  * Arguments (RN-02): a positional list of values representable without code: scalars, null, arrays of
  * those, BackedEnum and DateTimeInterface. A closure, any other object or a resource is rejected with
  * InvalidArgumentException at construction. A mutable DateTime is copied on construction and on every
- * call, so neither the caller nor the called method can change the specification.
+ * call, so neither the caller nor the called method can change the specification. A date-time argument
+ * is passed by instant (2.1.0, forward 018 RN-04): the method receives a copy of the same class at the
+ * same instant, shown in the default time zone of PHP (date_default_timezone_get()) whatever zone it
+ * was declared in, so two calls whose date-time arguments denote the same instant receive the same
+ * arguments and answer the same, as equals() promises. Up to 2.0.0 the argument kept its own zone, and
+ * `calling('day', [$utc])` equaled `calling('day', [$saoPaulo])` although a method reading the local
+ * date (`format('Y-m-d')`) answered differently.
  *
  * Evaluation (RN-03), the same path where() uses for a property value:
  * - a null or non-object candidate does not satisfy;
@@ -46,7 +54,9 @@ use DateTimeInterface;
  *
  * Identity and algebra (RN-04, RN-05):
  * - equals(): same method, arguments equal position by position (=== for scalars and enum cases,
- *   date-times by instant, arrays element by element) and equal result specifications;
+ *   date-times by instant, arrays element by element) and equal result specifications; the class of a
+ *   date-time argument (DateTime or DateTimeImmutable) is kept in the call but is not part of the
+ *   identity: a method must not answer differently for the two classes at the same instant;
  * - with another method call of the same method and arguments, isGeneralizationOf()/isDisjointWith()
  *   delegate to the result specifications; any other pair is decided by the shared axioms only
  *   (conservative: "not proven");
@@ -59,7 +69,7 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.0.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Reflection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -177,7 +187,7 @@ class MethodParameterizedSpecification extends AbstractSpecification implements 
             ));
         }
 
-        return $candidate->{$this->methodName}(...self::copyArguments($this->arguments));
+        return $candidate->{$this->methodName}(...self::callArguments($this->arguments, new DateTimeZone(date_default_timezone_get())));
     }
 
     /**
@@ -390,6 +400,28 @@ class MethodParameterizedSpecification extends AbstractSpecification implements 
                 $arguments[$key] = clone $argument;
             } elseif (is_array($argument)) {
                 $arguments[$key] = self::copyArguments($argument);
+            }
+        }
+
+        return $arguments;
+    }
+
+    /**
+     * The arguments as the method receives them (recursively): each date-time a copy of the same class
+     * at the same instant in the given zone (by instant, RN-04), everything else as is.
+     *
+     * @param array<mixed> $arguments
+     * @return array<mixed>
+     */
+    private static function callArguments(array $arguments, DateTimeZone $zone): array
+    {
+        foreach ($arguments as $key => $argument) {
+            if ($argument instanceof DateTime) {
+                $arguments[$key] = (clone $argument)->setTimezone($zone);
+            } elseif ($argument instanceof DateTimeImmutable) {
+                $arguments[$key] = $argument->setTimezone($zone);
+            } elseif (is_array($argument)) {
+                $arguments[$key] = self::callArguments($argument, $zone);
             }
         }
 

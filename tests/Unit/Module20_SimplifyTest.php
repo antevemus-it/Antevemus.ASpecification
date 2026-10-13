@@ -277,11 +277,11 @@ class Module20_SimplifyTest extends TestCase
         $plainAndAnnotated = Spec::simplify(new AndSpecification($annotated, $a));
         $this->assertTrue($plainAndAnnotated === $annotated, 'the unannotated twin is dropped, the annotated one kept');
 
-        // equals() alone is not trusted for annotations: the composite wrapper of a leaf (a(leaf))
-        // compares only the wrapped leaf, so two wrappers with different because() are "equal".
+        // Wrappers of a leaf (a(leaf)) with different because(): until 2.0 the wrapper's equals() ignored
+        // the annotation; since 2.1.0 it compares it, and simplify() keeps or merges them by annotation.
         $wrappedX = Spec::getFactory()->a(Spec::isNull())->because('X');
         $wrappedY = Spec::getFactory()->a(Spec::isNull())->because('Y');
-        $this->assertTrue($wrappedX->equals($wrappedY), 'precondition: the wrapper ignores annotations in equals()');
+        $this->assertFalse($wrappedX->equals($wrappedY), 'the wrapper compares its annotations in equals() (2.1.0, forward 037 D4 case 6; Heliton, 2026-10-13)');
         $wrappers = new AndSpecification($wrappedX, $wrappedY);
         $this->assertTrue(Spec::simplify($wrappers) === $wrappers, 'different annotations behind equal wrappers: kept');
         $this->assertTrue(Spec::simplify(new AndSpecification($wrappedX, clone $wrappedX)) === $wrappedX, 'same annotation behind equal wrappers: merged');

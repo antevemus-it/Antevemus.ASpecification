@@ -11,7 +11,7 @@ use DateTimeInterface;
  *
  * Validates whether the candidate is strictly greater than the configured threshold (number,
  * string or date-time instant), providing interval subsumption ($x > 10 \supseteq x > 50$)
- * and disjointness ($x > 10 \perp x <= 10$; for integers $x > 10 \perp x < 11$).
+ * and disjointness ($x > 10 \perp x <= 10$; integer bounds are not closed since 2.1.0).
  *
  * Features:
  * - Strict magnitude comparison (`>`) on numbers, strings and DateTimeInterface
@@ -20,7 +20,7 @@ use DateTimeInterface;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    1.4.4
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

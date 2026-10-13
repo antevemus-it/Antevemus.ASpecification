@@ -46,7 +46,11 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Equivalence (D4): the result is guaranteed to have the same truth value (isSatisfiedBy) as the
  * input for every non-null candidate. Nothing else is promised: removing a redundant branch may
  * remove a branch that would have raised an exception, and unannotated default failure messages may
- * differ. A null candidate is rejected by every AND/OR/NOT node, whatever its operands; when the
+ * differ. The reverse never happens (2.1.0, forward 037, bugs #69 and #71): AND/OR evaluate left to
+ * right and stop at the first deciding operand, so subsumption removes an operand that comes before
+ * the operand that stays only when the operands it would expose raise only where it raised (read
+ * from the type guards of the leaves, never by evaluating), and the absorbing constant takes the
+ * place of the first removed operand; the result raises only where the input raised. A null candidate is rejected by every AND/OR/NOT node, whatever its operands; when the
  * root of the tree is simplified away the remaining node answers for null on its own (for example
  * alwaysTrue() accepts it), as isTautology()/isContradiction() already assume non-null candidates.
  * A property value, on the other hand, may be null (1.11.0: it reaches the inner specification), so
@@ -64,7 +68,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Automatic use (D6): no visitor and no engine simplifies by itself; the rule engine offers it
  * as an opt-in (DynamicSpecificationEngine::withSimplification()).
  *
- * @version    1.11.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -294,17 +298,7 @@ final class SpecificationSimplifier
             // Contradictory conjunction → false; tautological disjunction → true. The operands that
             // hold annotations stay (D3); the others are replaced by the absorbing constant.
             if (count($operands) >= 2 && self::provesAbsorption($operands, $isConjunction)) {
-                $kept = array_values(array_filter($operands, static fn(ISpecification $s): bool => !self::isDisposable($s)));
-                $alreadyAbsorbing = false;
-                foreach ($kept as $operand) {
-                    if (self::isAbsorbing($operand, $isConjunction)) {
-                        $alreadyAbsorbing = true;
-                        break;
-                    }
-                }
-                if (!$alreadyAbsorbing) {
-                    $kept[] = $isConjunction ? new AlwaysFalseSpecification($type) : new AlwaysTrueSpecification($type);
-                }
+                $kept = self::absorb($operands, $isConjunction, $type);
                 if (count($kept) >= $minimum && self::countNodesOf($kept) < self::countNodesOf($operands)) {
                     $operands = $kept;
                     $changed = true;
@@ -336,7 +330,14 @@ final class SpecificationSimplifier
                 }
             }
 
-            // Subsumption: A ∧ B = A and A ∨ B = B when A ⊆ B.
+            // Subsumption: A ∧ B = A and A ∨ B = B when A ⊆ B (2.1.0, bug #71: never trading an answer for
+            // an error). AND/OR stop at the first deciding operand. When the operand that stays (the
+            // witness) comes first, it answers wherever the chain answers, and dropping the later one
+            // changes nothing but the errors it could raise. When the redundant operand comes first, it
+            // may decide alone (A true in A ∨ B, B false in B ∧ A); without it, the operands up to the
+            // witness are evaluated on those candidates, so they must not raise where it did not
+            // (raisesOnlyWhere()): greaterThan(6) ∨ notEqual(1) answers 9.5 at greaterThan(6), and
+            // notEqual(1) raises on a float.
             for ($i = 0; $i < $count; $i++) {
                 for ($j = 0; $j < $count; $j++) {
                     if ($i === $j || $count <= $minimum || !self::isSpecialCase($operands[$i], $operands[$j])) {
@@ -344,6 +345,10 @@ final class SpecificationSimplifier
                     }
                     // Conjunction: the general operand (B) is redundant; disjunction: the special one (A).
                     $redundant = $isConjunction ? $j : $i;
+                    $witness = $isConjunction ? $i : $j;
+                    if ($witness > $redundant && !self::laterOperandsRaiseOnlyWhere($operands, $redundant, $witness)) {
+                        continue;
+                    }
                     if (self::isDisposable($operands[$redundant])) {
                         unset($operands[$redundant]);
                         $operands = array_values($operands);
@@ -355,6 +360,201 @@ final class SpecificationSimplifier
         } while ($changed);
 
         return $operands;
+    }
+
+    /**
+     * The operands of a chain proven contradictory (conjunction) or tautological (disjunction), with the
+     * disposable ones replaced by the absorbing constant, which takes the place of the first operand
+     * removed (2.1.0, bug #69). The operands before it are evaluated as in the original chain, and the
+     * constant decides before any later operand is reached, so the result never raises where the
+     * original answered: up to 2.0.0 the constant went last, after the kept annotated operands, which
+     * the original might never have reached (isNull() ∧ equalTo(5) ∧ at(d).withCode(C) answered false
+     * at isNull() for `true`; the simplified at(d) ∧ false raised). No constant is added when a kept
+     * operand that absorbs the chain by itself comes before the first removed one.
+     *
+     * @param list<ISpecification<mixed>> $operands
+     * @return list<ISpecification<mixed>>
+     */
+    private static function absorb(array $operands, bool $isConjunction, string $type): array
+    {
+        $kept = [];
+        $constantPlaced = false;
+        foreach ($operands as $operand) {
+            if (!self::isDisposable($operand)) {
+                $kept[] = $operand;
+                if (!$constantPlaced && self::isAbsorbing($operand, $isConjunction)) {
+                    // A kept absorbing operand decides here, before anything removed: no constant needed
+                    $constantPlaced = true;
+                }
+                continue;
+            }
+            if (!$constantPlaced) {
+                $kept[] = $isConjunction ? new AlwaysFalseSpecification($type) : new AlwaysTrueSpecification($type);
+                $constantPlaced = true;
+            }
+        }
+
+        return $kept;
+    }
+
+    // ==========================================
+    // 2a. Where an operand may raise (2.1.0, bug #71)
+    // ==========================================
+
+    /**
+     * Kinds of non-null candidate, as the type guards of the leaves tell them apart. Null needs no kind:
+     * an AND/OR/NOR node refuses it before evaluating any operand.
+     */
+    private const EVERY_KIND = ['int', 'float', 'string', 'bool', 'array', 'date', 'object'];
+
+    /**
+     * True when every operand after $redundant up to $witness answers (never raises) on every candidate
+     * the redundant operand answers: dropping the redundant one then never makes the chain raise where
+     * it answered.
+     *
+     * @param list<ISpecification<mixed>> $operands
+     */
+    private static function laterOperandsRaiseOnlyWhere(array $operands, int $redundant, int $witness): bool
+    {
+        for ($k = $redundant + 1; $k <= $witness; $k++) {
+            if (!self::raisesOnlyWhere($operands[$k], $operands[$redundant])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * True when $later raises only on candidates where $earlier raises too, decided from the structure
+     * (never by evaluating): the kinds of candidate each one answers without raising
+     * (answeringKinds()), or, for two restrictions of the same property over the same base, the kinds
+     * of value their inner specifications answer.
+     *
+     * @param ISpecification<mixed> $later
+     * @param ISpecification<mixed> $earlier
+     */
+    private static function raisesOnlyWhere(ISpecification $later, ISpecification $earlier): bool
+    {
+        $laterKinds = self::answeringKinds($later);
+        if ($laterKinds !== null && array_diff(self::EVERY_KIND, $laterKinds) === []) {
+            return true;
+        }
+        if ($later::class === PropertySpecification::class && $earlier::class === PropertySpecification::class
+            && $later->getPropertyName() === $earlier->getPropertyName()) {
+            try {
+                $sameBase = $later->getBaseSpecification() === $earlier->getBaseSpecification()
+                    || $later->getBaseSpecification()->equals($earlier->getBaseSpecification());
+            } catch (\Throwable) {
+                $sameBase = false;
+            }
+            if ($sameBase) {
+                return self::raisesOnlyWhere($later->getPropertySpecification(), $earlier->getPropertySpecification());
+            }
+        }
+        $earlierKinds = self::answeringKinds($earlier);
+        if ($laterKinds === null || $earlierKinds === null) {
+            return false;
+        }
+
+        return array_diff($earlierKinds, $laterKinds) === [];
+    }
+
+    /**
+     * The kinds of non-null candidate (EVERY_KIND) a specification answers without raising, read from its
+     * structure; null when unknown (a class whose evaluation is not known here, a subclass that
+     * redefines isSatisfiedBy(), a property restriction, a method call). The type guards of the
+     * comparison leaves are the main source of errors: equalTo(1)/notEqual(1) raise on a float, a
+     * relational leaf on a value of another family, at() on anything but a date-time.
+     *
+     * @param ISpecification<mixed> $specification
+     * @return list<string>|null
+     */
+    private static function answeringKinds(ISpecification $specification): ?array
+    {
+        $as = static fn(string ...$classes): bool => SpecificationAlgebra::evaluatesAs($specification, ...$classes);
+
+        if ($as(
+            Comparison\IsNullSpecification::class,
+            Comparison\NotNullSpecification::class,
+            AlwaysTrueSpecification::class,
+            AlwaysFalseSpecification::class,
+            String\RegexSpecification::class,
+            String\LiteralPatternSpecification::class,
+            String\WildcardSpecification::class,
+            String\WildcardExpressionMatcherIgnoreCaseStringSpecification::class,
+            String\EqualIgnoreCaseStringSpecification::class,
+            String\EqualIgnoreCaseAndAccentsStringSpecification::class,
+            String\DateStringSpecification::class,
+            String\EnumNameStringSpecification::class
+        )) {
+            return self::EVERY_KIND;
+        }
+        if ($as(Comparison\EqualSpecification::class, Comparison\NotEqualSpecification::class) && $specification instanceof Comparison\AbstractComparableValueBoundSpecification) {
+            return self::kindsEquatableWith($specification->getValue());
+        }
+        if ($as(Comparison\SameInstantSpecification::class)) {
+            return ['date'];
+        }
+        if ($as(
+            Comparison\LessThanSpecification::class,
+            Comparison\LessThanOrEqualSpecification::class,
+            Comparison\GreaterThanSpecification::class,
+            Comparison\GreaterThanOrEqualSpecification::class
+        ) && $specification instanceof Comparison\AbstractComparableValueBoundSpecification) {
+            $value = $specification->getValue();
+            return match (true) {
+                is_int($value), is_float($value) => ['int', 'float'],
+                is_string($value) => ['string'],
+                $value instanceof \DateTimeInterface => ['date'],
+                default => [],
+            };
+        }
+        if ($as(Comparison\InSpecification::class) && $specification instanceof Comparison\InSpecification) {
+            if ($specification->getValues() === []) {
+                return self::EVERY_KIND;
+            }
+            $kinds = [];
+            foreach ($specification->getValues() as $value) {
+                $kinds = array_merge($kinds, self::kindsEquatableWith($value));
+            }
+            return $kinds;
+        }
+        if ($as(NotSpecification::class) && $specification instanceof NotSpecification) {
+            return self::answeringKinds($specification->getSpecification());
+        }
+        if ($as(AndSpecification::class, OrSpecification::class, JointDenialSpecification::class)
+            && ($specification instanceof AndSpecification || $specification instanceof OrSpecification || $specification instanceof JointDenialSpecification)) {
+            $left = self::answeringKinds($specification->getLeftSide());
+            $right = self::answeringKinds($specification->getRightSide());
+            if ($left === null || $right === null) {
+                return null;
+            }
+            // Both operands may be evaluated
+            return array_values(array_intersect($left, $right));
+        }
+
+        return null;
+    }
+
+    /**
+     * Kinds of candidate a strict equality with $value accepts without raising (TypeCompatibility::
+     * isEquatable()): every kind for null, objects for an object, arrays for an array, the same
+     * scalar type for a scalar.
+     *
+     * @return list<string>
+     */
+    private static function kindsEquatableWith(mixed $value): array
+    {
+        return match (true) {
+            $value === null => self::EVERY_KIND,
+            is_object($value) => ['date', 'object'],
+            is_array($value) => ['array'],
+            is_int($value) => ['int'],
+            is_float($value) => ['float'],
+            is_string($value) => ['string'],
+            default => ['bool'],
+        };
     }
 
     /**

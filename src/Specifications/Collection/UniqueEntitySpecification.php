@@ -8,6 +8,7 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 
 /**
  * UniqueEntitySpecification - Entity identity uniqueness leaf specification.
@@ -20,10 +21,26 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  * - Immediate disjointness against distinct uniqueness specifications
  * - Structural equality checking by identity and entity class
  *
+ * Equality and algebra (2.1.0, BUG-20261013-7RQV):
+ * - equals() is the structural one: same concrete class, same target class, the same identifier as
+ *   the evaluation reads it (its text: `1` and `'1'` are the same identifier) and the same
+ *   because()/withCode() annotations. The reference entity kept for getEntity() is not read by the
+ *   evaluation and takes no part. IEntity::class is not a wildcard in equals(): `unique(1)` (any
+ *   entity) and `unique(1, Customer::class)` accept different candidates. Up to 2.0.0 equals()
+ *   ignored the annotations, accepted any subclass and treated IEntity::class as a wildcard, which
+ *   made the equality non-transitive and let simplify(), and()/or() and the partitions merge
+ *   specifications that answer differently.
+ * - The wildcard lives in the algebra: `unique(id, A)` generalizes `unique(id, B)` when A is
+ *   IEntity::class or B is A or a subclass of A; two of them are disjoint when the identifiers
+ *   differ or no entity can be of both classes. Annotations do not change what is accepted, so the
+ *   algebra ignores them. A subclass that redefines isSatisfiedBy() gets the shared axioms only.
+ * - Against any other specification, disjoint only when that one is bounded by its type and the
+ *   types are disjoint (forward 037: `unique(1, Customer)` and `all(Vip)` share Vip#1).
+ *
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +52,9 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     private readonly ?IEntity $entity;
     private readonly mixed $expectedId;
     private readonly string $entityClass;
+
+    /** @var array<class-string, bool> Whether a class evaluates with this class's own isSatisfiedBy(). */
+    private static array $ownPredicateByClass = [];
 
     /**
      * @param T|string|int $entityOrId Reference entity instance or scalar identifier
@@ -105,8 +125,17 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
         if ($otherSpecification === null) {
             throw new \InvalidArgumentException('The specification cannot be null');
         }
+        if (SpecificationAlgebra::baseGeneralizes($this, $otherSpecification)) {
+            return true;
+        }
 
-        return $this->equals($otherSpecification);
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+
+        return $other instanceof self
+            && self::hasOwnPredicate($this)
+            && self::hasOwnPredicate($other)
+            && self::sameIdentifierText($this->expectedId, $other->expectedId)
+            && ($this->entityClass === IEntity::class || is_a($other->entityClass, $this->entityClass, true));
     }
 
     /**
@@ -118,32 +147,79 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
             throw new \InvalidArgumentException('The specification cannot be null');
         }
 
-        if ($otherSpecification instanceof self) {
-            return !$this->equals($otherSpecification);
-        }
-
-        $otherType = $otherSpecification->getType();
-        if ($otherType !== 'mixed' && $this->entityClass !== IEntity::class && !is_a($this->entityClass, $otherType, true)) {
+        if (SpecificationAlgebra::baseDisjoint($this, $otherSpecification)) {
             return true;
         }
+        $other = SpecificationAlgebra::resolve($otherSpecification);
+        if ($other instanceof self) {
+            if (!self::hasOwnPredicate($this) || !self::hasOwnPredicate($other)) {
+                return false;
+            }
+            if (!self::isTextual($this->expectedId) || !self::isTextual($other->expectedId)) {
+                return false;
+            }
+            // Different identifiers, or no entity can be of both classes (IEntity::class takes any).
+            return (string) $this->expectedId !== (string) $other->expectedId
+                || ($this->entityClass !== IEntity::class && $other->entityClass !== IEntity::class
+                    && SpecificationAlgebra::areTypesDisjoint($this->entityClass, $other->entityClass));
+        }
 
-        return false;
+        // Any other specification: disjoint when no entity of this class can be one of its candidates,
+        // which needs the other side to be bounded by its type and the two types to be disjoint (2.1.0;
+        // up to 2.0.0 `unique(1, Customer) ⟂ all(Vip)` because Customer is not a Vip, although Vip#1
+        // satisfies both, and anything with a type, ¬all(Order) or notEqualTo($d) included, was taken
+        // as bounded by it).
+        return self::hasOwnPredicate($this) && SpecificationAlgebra::provenTypesDisjoint($this->entityClass, $other);
     }
 
     /**
-     * Checks structural equality.
+     * {@inheritdoc}
+     *
+     * The structural equals() reads this class's state as the evaluation does: the identifier by its
+     * text (the evaluation compares `(string)` forms) and not the reference entity (never read). Only
+     * for this very class: a subclass may evaluate otherwise, so it gets the strict comparison of
+     * every property unless it says otherwise.
      */
-    public function equals(mixed $other): bool
+    protected function propertyValuesEqual(string $declaringClass, string $property, mixed $mine, mixed $theirs): bool
     {
-        if (!$other instanceof self) {
-            return false;
+        if ($declaringClass === self::class && static::class === self::class) {
+            if ($property === 'entity') {
+                return true;
+            }
+            if ($property === 'expectedId') {
+                return self::sameIdentifierText($mine, $theirs);
+            }
         }
 
-        $sameType = ($this->entityClass === IEntity::class || $other->getType() === IEntity::class)
-            ? true
-            : $other->getType() === $this->entityClass;
+        return parent::propertyValuesEqual($declaringClass, $property, $mine, $theirs);
+    }
 
-        return $sameType && (string)$other->getExpectedId() === (string)$this->expectedId;
+    /**
+     * True when the evaluation cannot tell the two identifiers apart: both have a text form and the
+     * texts are equal; any other identifier only matches itself.
+     */
+    private static function sameIdentifierText(mixed $a, mixed $b): bool
+    {
+        if (self::isTextual($a) && self::isTextual($b)) {
+            return (string) $a === (string) $b;
+        }
+
+        return $a === $b;
+    }
+
+    private static function isTextual(mixed $value): bool
+    {
+        return $value === null || is_scalar($value) || $value instanceof \Stringable;
+    }
+
+    /**
+     * True when the specification evaluates with this class's own isSatisfiedBy() (the algebra of
+     * identifiers and classes holds only for it).
+     */
+    private static function hasOwnPredicate(self $specification): bool
+    {
+        return self::$ownPredicateByClass[$specification::class]
+            ??= (new \ReflectionMethod($specification, 'isSatisfiedBy'))->getDeclaringClass()->getName() === self::class;
     }
 
     /**

@@ -20,7 +20,7 @@ declare(strict_types=1);
  *
  * @template T
  * @implements ISpecification<T>
- * @version    1.9.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -48,6 +48,14 @@ abstract class AbstractSpecification implements ISpecification
 {
     protected ?string $customReason = null;
     protected ?string $customCode = null;
+
+    /**
+     * Reflection of the declared instance properties of each concrete class, ancestors included
+     * (see instanceProperties()). Metadata of the class, never instance state: equals() skips it.
+     *
+     * @var array<class-string, list<\ReflectionProperty>>
+     */
+    private static array $instancePropertiesByClass = [];
 
     /**
      * {@inheritdoc}
@@ -407,11 +415,24 @@ abstract class AbstractSpecification implements ISpecification
     /**
      * {@inheritdoc}
      *
-     * Default structural equality: same concrete class and every declared property
+     * Default structural equality: same concrete class and every instance property
      * holding an equal value. Nested specifications are compared through their own
-     * equals(), date-time values by instant, arrays element by element, scalars
-     * strictly. Being the same class is never sufficient on its own (two leaves of
-     * the same class with different parameters are different specifications).
+     * equals(), arrays element by element, scalars strictly and any other object
+     * (a value object, a date-time, an enum case, a closure, a service) by identity
+     * (see specificationValuesEqual()); a class whose evaluation reads a property in a
+     * coarser way (a bound compared by instant, an identifier compared by its text)
+     * says so in propertyValuesEqual(). Being the same class is never sufficient on its
+     * own (two leaves of the same class with different parameters are different
+     * specifications).
+     *
+     * The properties are those of the whole class chain, this base included:
+     * `private` properties declared by an ancestor are part of the predicate too (the
+     * literal, the comparison and the pattern of `contains()`, kept by
+     * LiteralPatternSpecification and RegexSpecification). Up to 2.0.0 only
+     * ReflectionObject::getProperties() was read, which omits them, so `contains('a')`
+     * equaled `contains('b')`. The base's own state (the `because()` reason and the
+     * `withCode()` code) changes the result of evaluate(), so it takes part; static
+     * properties are class state, not part of an instance's predicate, and are skipped.
      *
      * @param mixed $other Object to compare against
      * @return bool True when both specifications denote the same predicate
@@ -425,23 +446,27 @@ abstract class AbstractSpecification implements ISpecification
             return false;
         }
 
-        $refThis = new \ReflectionObject($this);
-        $refOther = new \ReflectionObject($other);
-
-        foreach ($refThis->getProperties() as $prop) {
-            $name = $prop->getName();
-            if (!$refOther->hasProperty($name)) {
-                return false;
-            }
-            $otherProp = $refOther->getProperty($name);
+        foreach (self::instanceProperties(static::class) as $prop) {
             $thisInit = $prop->isInitialized($this);
-            if ($thisInit !== $otherProp->isInitialized($other)) {
+            if ($thisInit !== $prop->isInitialized($other)) {
                 return false;
             }
             if (!$thisInit) {
                 continue;
             }
-            if (!self::specificationValuesEqual($prop->getValue($this), $otherProp->getValue($other))) {
+            if (!$this->propertyValuesEqual($prop->getDeclaringClass()->getName(), $prop->getName(), $prop->getValue($this), $prop->getValue($other))) {
+                return false;
+            }
+        }
+
+        // Dynamic properties (a class marked #[AllowDynamicProperties]), compared both ways.
+        $thisDynamic = self::dynamicProperties($this);
+        $otherDynamic = self::dynamicProperties($other);
+        if (count($thisDynamic) !== count($otherDynamic)) {
+            return false;
+        }
+        foreach ($thisDynamic as $name => $value) {
+            if (!array_key_exists($name, $otherDynamic) || !self::specificationValuesEqual($value, $otherDynamic[$name])) {
                 return false;
             }
         }
@@ -450,7 +475,85 @@ abstract class AbstractSpecification implements ISpecification
     }
 
     /**
-     * Compares two property values for structural specification equality.
+     * Declared instance properties of a class and of all its ancestors, one entry per storage
+     * slot: an ancestor's `private` property is a slot of its own (even when a descendant declares
+     * a property of the same name) and is read through the class that declares it. Cached per
+     * class, since the list depends only on the class.
+     *
+     * @param class-string $class
+     * @return list<\ReflectionProperty>
+     */
+    private static function instanceProperties(string $class): array
+    {
+        if (isset(self::$instancePropertiesByClass[$class])) {
+            return self::$instancePropertiesByClass[$class];
+        }
+
+        $properties = [];
+        for ($level = new ReflectionClass($class); $level !== false; $level = $level->getParentClass()) {
+            foreach ($level->getProperties() as $prop) {
+                // An inherited non-private property is listed again by every descendant: keep it once,
+                // at the level that declares it.
+                if ($prop->isStatic() || $prop->getDeclaringClass()->getName() !== $level->getName()) {
+                    continue;
+                }
+                $properties[] = $prop;
+            }
+        }
+
+        return self::$instancePropertiesByClass[$class] = $properties;
+    }
+
+    /**
+     * Dynamic (undeclared) properties of an object, by name.
+     *
+     * @return array<string, mixed>
+     */
+    private static function dynamicProperties(object $object): array
+    {
+        $dynamic = [];
+        foreach ((new \ReflectionObject($object))->getProperties() as $prop) {
+            if (!$prop->isDefault() && !$prop->isStatic()) {
+                $dynamic[$prop->getName()] = $prop->getValue($object);
+            }
+        }
+
+        return $dynamic;
+    }
+
+    /**
+     * Compares the values one declared property holds in two instances of the same concrete class
+     * (equals() calls it for every slot of the class chain). The default is
+     * specificationValuesEqual(). A class whose evaluation reads a property in a coarser way than
+     * that overrides it for that property only, and must keep the rule: two values may be called
+     * equal only when no candidate can tell them apart (same answer and same result), never more
+     * loosely than the evaluation (2.1.0, BUG-20261013-2DAZ).
+     *
+     * @param class-string $declaringClass Class that declares the property (an ancestor's private slot is its own)
+     * @param string $property Property name
+     * @param mixed $mine Value held by this instance
+     * @param mixed $theirs Value held by the other instance
+     * @return bool
+     */
+    protected function propertyValuesEqual(string $declaringClass, string $property, mixed $mine, mixed $theirs): bool
+    {
+        return self::specificationValuesEqual($mine, $theirs);
+    }
+
+    /**
+     * Compares two property values for structural specification equality: nested specifications
+     * through their own equals(), arrays element by element (same keys), and everything else by
+     * strict identity (`===`): scalars by type and value, objects (value objects, date-times, enum
+     * cases, closures, services) by identity.
+     *
+     * Identity is the strictest comparison (it never calls two different objects equal), so it is never
+     * looser than an evaluation: equalTo()/notEqual() test an object candidate with `===`, and two
+     * leaves holding distinct objects answer differently even when the objects look alike. Up to 2.0.0
+     * objects were compared with `==` (so `equalTo(new Money('1'))` equaled `equalTo(new Money(1))`,
+     * and `Money(null)` equaled `Money(false)`), and simplify() merged leaves that answer differently.
+     * A date-time is compared by identity here too, the safe answer for a class that does not say how
+     * it reads it; the comparison leaves, which compare date-times by instant since 2.1.0
+     * (BUG-20261013-LIZI), say so in propertyValuesEqual().
      *
      * @param mixed $a
      * @param mixed $b
@@ -460,9 +563,6 @@ abstract class AbstractSpecification implements ISpecification
     {
         if ($a instanceof ISpecification && $b instanceof ISpecification) {
             return $a->equals($b);
-        }
-        if ($a instanceof \DateTimeInterface && $b instanceof \DateTimeInterface) {
-            return $a == $b;
         }
         if (is_array($a) && is_array($b)) {
             if (count($a) !== count($b)) {
@@ -474,12 +574,6 @@ abstract class AbstractSpecification implements ISpecification
                 }
             }
             return true;
-        }
-        if ($a instanceof \Closure || $b instanceof \Closure) {
-            return $a === $b;
-        }
-        if (is_object($a) && is_object($b)) {
-            return $a::class === $b::class && $a == $b;
         }
 
         return $a === $b;

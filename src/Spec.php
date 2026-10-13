@@ -22,9 +22,11 @@ declare(strict_types=1);
  * - Simplification of a specification tree (simplify, 1.9.0)
  * - External data leaf resolved concurrently by a DataResolver (external, 1.10.0)
  * - Subquery over another PdoRepository (inQuery, 1.13.0)
+ * - Text comparison ignoring case and accents (TextComparison::IgnoreCaseAndAccents in contains,
+ *   startsWith, endsWith; equalIgnoreCaseAndAccents; 2.1.0, requires ext-intl)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    1.13.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -43,6 +45,7 @@ use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 use DateTimeInterface;
 
 final class Spec
@@ -760,13 +763,30 @@ final class Spec
     }
 
     /**
+     * Specifies string equals target value ignoring case and accents (2.1.0, requires ext-intl).
+     *
+     * `Spec::equalIgnoreCaseAndAccents('sao paulo')` accepts `'São Paulo'` and `'SAO PAULO'`; letters
+     * that are not a base letter plus a mark stay distinct (`'strasse'` does not match `'Straße'`).
+     * The factory name, `Spec::equalIgnoringCaseAndAccents()`, reaches the same leaf.
+     *
+     * @param string $value Expected string
+     * @return ISpecification
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException When ext-intl is not loaded
+     */
+    public static function equalIgnoreCaseAndAccents(string $value): ISpecification
+    {
+        return self::getFactory()->equalIgnoringCaseAndAccents($value);
+    }
+
+    /**
      * Specifies string contains given substring.
      *
      * @param string $substring Search substring
-     * @param bool $caseSensitive Case sensitivity toggle (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function contains(string $substring, bool $caseSensitive = true): ISpecification
+    public static function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return self::getFactory()->contains($substring, $caseSensitive);
     }
@@ -775,10 +795,11 @@ final class Spec
      * Specifies string begins with prefix.
      *
      * @param string $prefix Expected prefix
-     * @param bool $caseSensitive Case sensitivity toggle (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
+    public static function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return self::getFactory()->startsWith($prefix, $caseSensitive);
     }
@@ -787,10 +808,11 @@ final class Spec
      * Specifies string ends with suffix.
      *
      * @param string $suffix Expected suffix
-     * @param bool $caseSensitive Case sensitivity toggle (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
+    public static function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return self::getFactory()->endsWith($suffix, $caseSensitive);
     }

@@ -13,13 +13,15 @@ use DateTimeInterface;
  * DateTimeInterface values denote the same instant when their timestamps are equal, whatever
  * their class (DateTime/DateTimeImmutable) or time zone. It is an EqualSpecification for the
  * algebra and the translators (`=`), so `at(d) ⟂ before(d)`, `before(d + 1) ⊇ at(d)` and
- * `at(d) ⟂ not(at(d))` hold.
+ * `at(d) ⟂ not(at(d))` hold. Since 2.1.0 equalTo() also compares date-times by instant (forward 037,
+ * D1), so the inverse of at(d) is notEqualTo(d) again (as up to 2.0.0), and `at(d)` and `equalTo(d)`
+ * accept the same date-times (at() raises on a candidate that is not a date-time).
  *
  * The reference date is cloned when it is a mutable DateTime.
  *
  * @template T of DateTimeInterface
  * @extends EqualSpecification<T>
- * @version    1.4.4
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

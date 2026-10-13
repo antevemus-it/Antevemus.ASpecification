@@ -14,20 +14,22 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * NotNullSpecification - Leaf specification validating that the candidate is not null.
  *
  * Checks directly whether the candidate value or object is strictly different from null.
- * As in Domian, it sits "on top of everything": it is a generalization of every other
- * specification (no specification is satisfied by null except the tautology), and it is
- * disjoint only with the contradiction, with `isNull()` and with the negation of a
- * specification that generalizes it.
+ * As in Domian, it sits "on top of everything": it is a generalization of every specification that
+ * never accepts null, and it is disjoint only with the contradiction, with `isNull()` and with the
+ * negation of a specification that generalizes it.
  *
  * Features:
  * - Direct non-null verification (`!== null`)
  * - Universal candidate acceptance across types ('mixed')
- * - Universal generalization (`isGeneralizationOf` is always true)
+ * - Generalization of every specification that refuses null (2.1.0, forward 037: up to 2.0.0 it
+ *   claimed to generalize everything, isNull(), equalTo(null), defaultValue() and alwaysTrue()
+ *   included, which accept null; SpecificationAlgebra::refusesNull())
+ * - A subclass that redefines isSatisfiedBy() gets the shared axioms only
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,12 +62,17 @@ class NotNullSpecification extends AbstractSpecification implements ILeafSpecifi
     /**
      * {@inheritdoc}
      *
-     * Every specification is a special case of "not null" (Domian: NotNullSpecification is on top
-     * of everything).
+     * Every specification that never accepts null is a special case of "not null" (Domian:
+     * NotNullSpecification is on top of everything); one that may accept null is not.
      */
     public function isGeneralizationOf(ISpecification $otherSpecification): bool
     {
-        return true;
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            return SpecificationAlgebra::baseGeneralizes($this, $otherSpecification);
+        }
+
+        return SpecificationAlgebra::baseGeneralizes($this, $otherSpecification)
+            || SpecificationAlgebra::refusesNull(SpecificationAlgebra::resolve($otherSpecification));
     }
 
     /**
@@ -74,7 +81,11 @@ class NotNullSpecification extends AbstractSpecification implements ILeafSpecifi
     public function isDisjointWith(ISpecification $otherSpecification): bool
     {
         $other = SpecificationAlgebra::resolve($otherSpecification);
-        if ($other instanceof IsNullSpecification || $other instanceof AlwaysFalseSpecification) {
+        if ($other instanceof AlwaysFalseSpecification) {
+            return true;
+        }
+        if ($other instanceof IsNullSpecification && SpecificationAlgebra::evaluatesAs($this, self::class)
+            && SpecificationAlgebra::evaluatesAs($other, IsNullSpecification::class)) {
             return true;
         }
 

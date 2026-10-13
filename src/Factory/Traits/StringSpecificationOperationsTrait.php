@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Factory\Traits;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
 
 /**
  * StringSpecificationOperationsTrait - Trait aggregating string and textual expression operations (IStringSpecificationFactory).
@@ -16,8 +17,9 @@ use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
  * - Blank string and length validation
  * - Case-insensitive comparisons and regex matching
  * - Wildcard pattern matching and substring containment (contains, startsWith, endsWith)
+ * - Accent-insensitive text comparison (TextComparison::IgnoreCaseAndAccents, equalIgnoringCaseAndAccents; 2.1.0)
  *
- * @version    1.4.4
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -89,6 +91,21 @@ trait StringSpecificationOperationsTrait
     public function isEqualIgnoringCase(string $value): ISpecification
     {
         return $this->stringFactory->isEqualIgnoringCase($value);
+    }
+
+    /**
+     * Creates a specification verifying string equality ignoring case and accents (2.1.0).
+     *
+     * Both strings are folded by TextComparison::foldCaseAndAccents(): `'sao paulo'` matches
+     * `'São Paulo'`, `'strasse'` does not match `'Straße'`. Requires ext-intl.
+     *
+     * @param string $value Target string for comparison
+     * @return ISpecification<string> Case- and accent-insensitive equality specification
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException When ext-intl is not loaded
+     */
+    public function equalIgnoringCaseAndAccents(string $value): ISpecification
+    {
+        return $this->stringFactory->equalIgnoringCaseAndAccents($value);
     }
 
     /**
@@ -184,10 +201,11 @@ trait StringSpecificationOperationsTrait
      * Creates a specification verifying whether a string contains a substring.
      *
      * @param string $substring Substring to search for
-     * @param bool $caseSensitive Whether search is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Substring containment specification
      */
-    public function contains(string $substring, bool $caseSensitive = true): ISpecification
+    public function contains(string $substring, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return $this->stringFactory->contains($substring, $caseSensitive);
     }
@@ -196,10 +214,11 @@ trait StringSpecificationOperationsTrait
      * Creates a specification verifying whether a string starts with a prefix.
      *
      * @param string $prefix Expected prefix
-     * @param bool $caseSensitive Whether prefix check is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Prefix specification
      */
-    public function startsWith(string $prefix, bool $caseSensitive = true): ISpecification
+    public function startsWith(string $prefix, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return $this->stringFactory->startsWith($prefix, $caseSensitive);
     }
@@ -208,10 +227,11 @@ trait StringSpecificationOperationsTrait
      * Creates a specification verifying whether a string ends with a suffix.
      *
      * @param string $suffix Expected suffix
-     * @param bool $caseSensitive Whether suffix check is case-sensitive (default: true)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.1.0, requires ext-intl)
      * @return ISpecification<string> Suffix specification
      */
-    public function endsWith(string $suffix, bool $caseSensitive = true): ISpecification
+    public function endsWith(string $suffix, bool|TextComparison $caseSensitive = true): ISpecification
     {
         return $this->stringFactory->endsWith($suffix, $caseSensitive);
     }

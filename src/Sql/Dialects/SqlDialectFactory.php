@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Sql\Dialects;
 
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
+use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
+use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
 use Antevemus\ASpecification\Sql\SqlDialect;
 
 /**
@@ -16,8 +18,10 @@ use Antevemus\ASpecification\Sql\SqlDialect;
  * - Resolution of 15 driver names (sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql,
  *   sqlite, ansi, db2, informix, duckdb) into 10 dialect classes
  * - Immutable instance caching for high performance
+ * - Resolution of a dialect that must paginate (createPaginating(), 2.1.0): refused up front when it
+ *   does not implement ISqlPagination
  *
- * @version    1.6.0
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -62,5 +66,34 @@ final class SqlDialectFactory
         };
 
         return self::$instances[$key] = $instance;
+    }
+
+    /**
+     * Resolves a dialect for a consumer whose reads rely on a row limit (2.1.0).
+     *
+     * The PDO stores that bound a scan with LIMIT (PdoTriggerStateStore::findSatisfied(),
+     * PdoDomainEventOutbox::fetchPending(), PdoMachineSchema::limit()) used to apply the limit only
+     * when the dialect was an AbstractSqlDialect and to run the statement without any limit
+     * otherwise. The limit is what keeps those scans bounded, so a dialect without ISqlPagination is
+     * now refused here, when the consumer is built, instead of silently reading every row later.
+     * Every dialect of the library implements ISqlPagination; an external one implementing only
+     * ISqlDialect is the one refused.
+     *
+     * @param ISqlDialect|SqlDialect|string $dialect Enum, string, or pre-existing instance
+     * @param string $consumer Name of the consumer, for the message
+     * @return ISqlDialect&ISqlPagination
+     * @throws UnsupportedSqlOperationException When the dialect does not implement ISqlPagination
+     */
+    public static function createPaginating(ISqlDialect|SqlDialect|string $dialect, string $consumer): ISqlDialect&ISqlPagination
+    {
+        $instance = self::create($dialect);
+        if (!$instance instanceof ISqlPagination) {
+            throw new UnsupportedSqlOperationException(
+                sprintf('LIMIT (%s, required by %s)', ISqlPagination::class, $consumer),
+                $instance->getFamily()
+            );
+        }
+
+        return $instance;
     }
 }

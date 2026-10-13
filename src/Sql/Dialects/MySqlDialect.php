@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Sql\Dialects;
 
+use InvalidArgumentException;
+
 /**
  * MySqlDialect - Specialized Dialect for MySQL and MariaDB
  *
@@ -13,7 +15,17 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  * Pagination (1.6.0): `LIMIT n OFFSET m`; MySQL has no OFFSET without LIMIT, so an offset alone
  * carries the documented maximum `LIMIT 18446744073709551615`.
  *
- * @version    1.14.0
+ * Text comparison ignoring case and accents (2.1.0, TextComparison::IgnoreCaseAndAccents):
+ * `CONVERT(col USING utf8mb4) COLLATE utf8mb4_0900_ai_ci LIKE :p`. LIKE compares character by
+ * character, so the expansions of the collation (`ß` = `ss`, `æ` = `ae`) do not apply and those
+ * letters stay distinct, as in memory. Measured on MySQL 8.4 and MariaDB 11.4.13 (which accepts the
+ * MySQL name as an alias of `utf8mb4_uca1400_ai_ci` and answers the same), on `utf8mb4_bin` and
+ * `latin1` columns: the pt-BR, es, fr and de battery answers as in memory. Limit: the Unicode collation
+ * algorithm makes a letter with a stroke a base letter plus a secondary difference, so `ø`, `đ` and
+ * `ł` match `o`, `d` and `l` here and not in memory. The collation is configurable (a MariaDB older
+ * than 11.4.5 needs `utf8mb4_uca1400_ai_ci`). The comparison does not use an index on the column.
+ *
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -22,6 +34,21 @@ namespace Antevemus\ASpecification\Sql\Dialects;
  */
 class MySqlDialect extends AbstractSqlDialect
 {
+    /**
+     * @param string $accentInsensitiveCollation `utf8mb4` collation, accent- and case-insensitive,
+     *        used by the accent-insensitive LIKE (default `utf8mb4_0900_ai_ci`, MySQL 8.0+ and
+     *        MariaDB 11.4.5+; `utf8mb4_uca1400_ai_ci` for MariaDB 10.10 to 11.4.4)
+     * @throws InvalidArgumentException When the name is not a `utf8mb4_` collation identifier
+     */
+    public function __construct(private readonly string $accentInsensitiveCollation = 'utf8mb4_0900_ai_ci')
+    {
+        if (preg_match('/^utf8mb4_[A-Za-z0-9_]+$/', $accentInsensitiveCollation) !== 1) {
+            throw new InvalidArgumentException(
+                "The accent-insensitive collation must be a utf8mb4_ collation name, '{$accentInsensitiveCollation}' given."
+            );
+        }
+    }
+
     /** {@inheritdoc} */
     public function getFamily(): string
     {
@@ -71,6 +98,27 @@ class MySqlDialect extends AbstractSqlDialect
     public function supportsRegex(): bool
     {
         return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * `CONVERT(col USING utf8mb4) COLLATE <collation> LIKE :p`: the explicit collation of the column
+     * side decides the comparison, whatever the column's own charset and collation.
+     */
+    public function formatAccentInsensitiveLike(string $column, string $paramPlaceholder): ?string
+    {
+        return "CONVERT({$column} USING utf8mb4) COLLATE {$this->accentInsensitiveCollation} LIKE {$paramPlaceholder}";
+    }
+
+    /**
+     * The collation of the accent-insensitive LIKE.
+     *
+     * @return string
+     */
+    public function getAccentInsensitiveCollation(): string
+    {
+        return $this->accentInsensitiveCollation;
     }
 
     /** {@inheritdoc} `LIMIT n OFFSET m`; an offset alone needs the maximum limit in MySQL. */

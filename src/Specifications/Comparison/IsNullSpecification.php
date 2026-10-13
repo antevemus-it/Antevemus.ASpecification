@@ -7,7 +7,6 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
-use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 
 /**
@@ -15,12 +14,14 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  *
  * Named leaf behind `isNull()`. It is the logical inverse of NotNullSpecification, so the
  * algebra knows that `isNull ⟂ isNotNull`, `not(isNull) ≡ isNotNull` and that `isNull` is
- * disjoint with every value-bound leaf whose reference value is not null.
+ * disjoint with every specification that never accepts null (SpecificationAlgebra::refusesNull():
+ * a value-bound leaf whose reference value is not null, AND/OR/NOT, a property restriction, ...).
+ * A subclass that redefines isSatisfiedBy() gets the shared axioms only (2.1.0).
  *
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    2.1.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -53,13 +54,13 @@ class IsNullSpecification extends AbstractSpecification implements ILeafSpecific
         if (SpecificationAlgebra::baseDisjoint($this, $otherSpecification)) {
             return true;
         }
-        $other = SpecificationAlgebra::resolve($otherSpecification);
-        if ($other instanceof NotNullSpecification) {
-            return true;
+        if (!SpecificationAlgebra::evaluatesAs($this, self::class)) {
+            // A subclass that redefines isSatisfiedBy() may accept more than null
+            return false;
         }
-        if ($other instanceof IValueBoundSpecification) {
-            return $other->getValue() !== null;
-        }
+        // isNull() accepts null only: it is disjoint with every specification that refuses null
+        // (2.1.0: up to 2.0.0 the value of any IValueBoundSpecification decided, a user leaf included)
+        return SpecificationAlgebra::refusesNull(SpecificationAlgebra::resolve($otherSpecification));
 
         return false;
     }
