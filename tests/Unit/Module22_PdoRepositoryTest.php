@@ -37,6 +37,7 @@ use Antevemus\ASpecification\Tests\Support\PdoColor;
 use Antevemus\ASpecification\Tests\Support\PdoCounter;
 use Antevemus\ASpecification\Tests\Support\PdoCountingRepository;
 use Antevemus\ASpecification\Tests\Support\PdoNullParityRow;
+use Antevemus\ASpecification\Tests\Support\NullParityTrees;
 use Antevemus\ASpecification\Tests\Support\PdoPriority;
 use Antevemus\ASpecification\Tests\Support\PdoRecordingPdo;
 use Antevemus\ASpecification\Tests\Support\PdoSecretHolder;
@@ -1199,7 +1200,8 @@ class Module22_PdoRepositoryTest extends TestCase
         $this->assertTrue(Spec::anyOf(Spec::property('note', Spec::isNull()), Spec::property('note', Spec::equalTo('n2')))->isSatisfiedBy($noNote));
         $this->assertFalse(Spec::property('note', Spec::anyOf(Spec::isNull(), Spec::equalTo('n2')))->isSatisfiedBy($noNote));
         $this->assertEquals('("views" IS NOT NULL AND "views" > :p1)', Spec::toSql(Spec::property('views', Spec::greaterThan(10)), 'sqlite')->toSql());
-        $this->assertEquals('(views IS NULL OR views <= 10)', Spec::toCriteria(Spec::not(Spec::property('views', Spec::greaterThan(10))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals('((views IS NULL OR views <= 10))', Spec::toCriteria(Spec::not(Spec::property('views', Spec::greaterThan(10))))->dump());
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -1246,14 +1248,14 @@ class Module22_PdoRepositoryTest extends TestCase
         $this->assertEquals(count($rows), $repository->count(Spec::alwaysTrue()), "{$family}: linhas da paridade gravadas");
 
         mt_srand(20261011);
-        $this->parityAnnotation = 0;
+        $generator = new NullParityTrees();
         $violations = [];
         $withNullRow = 0;
         $nullDecided = 0;
         $notOverComparison = 0;
 
         for ($i = 0; $i < $trees; $i++) {
-            $tree = $this->parityTree(3);
+            $tree = $generator->tree(3);
             $label = sprintf('#%d %s', $i, (string) $tree);
 
             // (a) memória
@@ -1342,96 +1344,5 @@ class Module22_PdoRepositoryTest extends TestCase
             $notOverComparison,
             $nullDecided
         ));
-    }
-
-    private int $parityAnnotation = 0;
-
-    /** Árvore de linha: property() combinadas por and/or/not/nor. */
-    private function parityTree(int $depth): ISpecification
-    {
-        if ($depth === 0 || mt_rand(0, 9) < 3) {
-            return $this->parityAnnotate($this->parityProperty(), 20);
-        }
-
-        $d = $depth - 1;
-        $tree = match (mt_rand(0, 6)) {
-            0, 1 => Spec::not($this->parityTree($d)),
-            2 => $this->parityTree($d)->and($this->parityTree($d)),
-            3 => $this->parityTree($d)->or($this->parityTree($d)),
-            4 => Spec::nor($this->parityTree($d), $this->parityTree($d)),
-            5 => Spec::allOf($this->parityTree($d), $this->parityTree($d), $this->parityTree($d)),
-            default => Spec::anyOf($this->parityTree($d), $this->parityTree($d)),
-        };
-
-        return $this->parityAnnotate($tree, 15);
-    }
-
-    /** Uma property() sobre n, m ou s, com folha ou composição de valores dentro. */
-    private function parityProperty(): ISpecification
-    {
-        $column = ['n', 'm', 's'][mt_rand(0, 2)];
-        $leaf = fn(): ISpecification => $this->parityAnnotate($column === 's' ? $this->parityStringLeaf() : $this->parityIntLeaf(), 15);
-        $inner = match (mt_rand(0, 9)) {
-            0 => Spec::not($leaf()),
-            1 => Spec::allOf($leaf(), $leaf()),
-            2 => Spec::anyOf($leaf(), $leaf()),
-            default => $leaf(),
-        };
-
-        return Spec::property($column, $this->parityAnnotate($inner, 10));
-    }
-
-    private function parityIntLeaf(): ISpecification
-    {
-        $v = fn(): int => [0, 1, 5, 9, 10][mt_rand(0, 4)];
-
-        return match (mt_rand(0, 13)) {
-            0 => Spec::greaterThan($v()),
-            1 => Spec::greaterThanOrEqualTo($v()),
-            2 => Spec::lessThan($v()),
-            3 => Spec::lessThanOrEqualTo($v()),
-            4, 5 => Spec::equalTo($v()),
-            6 => Spec::equalTo(null),
-            7 => Spec::notEqual($v()),
-            8 => Spec::in($v(), $v()),
-            9 => Spec::in($v(), null),
-            10 => Spec::allOf(Spec::greaterThanOrEqualTo(1), Spec::lessThanOrEqualTo($v())),
-            11 => Spec::notIn($v(), $v()),
-            12 => Spec::isNotNull(),
-            default => Spec::isNull(),
-        };
-    }
-
-    private function parityStringLeaf(): ISpecification
-    {
-        return match (mt_rand(0, 13)) {
-            0 => Spec::startsWith(['a', 'b', 'ch', 'k'][mt_rand(0, 3)]),
-            1 => Spec::endsWith(['a', 'e', 'i', 'y'][mt_rand(0, 3)]),
-            2, 3 => Spec::contains(['an', 'e', 'i', 'pp'][mt_rand(0, 3)]),
-            4, 5 => Spec::equalTo(['apple', 'kiwi', 'zzz'][mt_rand(0, 2)]),
-            6 => Spec::equalTo(null),
-            7 => Spec::notEqual('apple'),
-            8 => Spec::in('apple', 'kiwi'),
-            9 => Spec::in('banana', null),
-            10 => Spec::greaterThan(['b', 'c'][mt_rand(0, 1)]),
-            11 => Spec::lessThan('c'),
-            12 => Spec::isNotNull(),
-            default => Spec::isNull(),
-        };
-    }
-
-    /** because() e/ou withCode() com probabilidade (por cento), valores únicos. */
-    private function parityAnnotate(ISpecification $node, int $percent): ISpecification
-    {
-        if (mt_rand(1, 100) > $percent) {
-            return $node;
-        }
-        $n = ++$this->parityAnnotation;
-
-        return match (mt_rand(0, 2)) {
-            0 => $node->because("M{$n}"),
-            1 => $node->withCode("C{$n}"),
-            default => $node->because("M{$n}")->withCode("C{$n}"),
-        };
     }
 }

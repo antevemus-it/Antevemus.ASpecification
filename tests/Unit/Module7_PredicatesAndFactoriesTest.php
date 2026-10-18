@@ -175,7 +175,8 @@ class Module7_PredicatesAndFactoriesTest extends TestCase
         // 1.11.0 mudou: a comparação negada aceita o status NULL, como em memória (antes: status <> 'A' sozinho)
         $this->assertEquals("((status IS NULL OR status <> 'A') AND (status IS NULL OR status <> 'B'))", Spec::toCriteria(Spec::nor($a, $b))->dump());
         $this->assertEquals("((status IS NULL OR status <> 'A') AND ((status IS NULL OR status <> 'B') AND (status IS NULL OR status <> 'C')))", Spec::toCriteria($none)->dump());
-        $this->assertEquals("(status = 'A' OR status = 'B')", Spec::toCriteria(Spec::not(Spec::nor($a, $b)))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status = 'A' OR status = 'B'))", Spec::toCriteria(Spec::not(Spec::nor($a, $b)))->dump());
 
         // ALinq
         $predicate = ALinqSpecificationVisitor::createPredicate($none);

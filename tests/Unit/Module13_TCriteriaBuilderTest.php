@@ -7,10 +7,14 @@ namespace Antevemus\ASpecification\Tests\Unit;
 use Adianti\Database\TCriteria;
 use Adianti\Database\TExpression;
 use Adianti\Database\TFilter;
+use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Criteria\CriteriaSpecificationVisitor;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
 use Antevemus\ASpecification\Criteria\Exceptions\UnsafeCriteriaValueException;
 use Antevemus\ASpecification\Criteria\TCriteriaBuilder;
 use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Sql\SqlWhereClause;
+use Antevemus\ASpecification\Tests\Support\NullParityTrees;
 use Antevemus\ASpecification\Tests\TestCase;
 
 /**
@@ -74,6 +78,289 @@ class Module13_TCriteriaBuilderTest extends TestCase
         // 1.11.0: semântica de nulo da memória no TCriteria (a prova gerativa nos três bancos está no Módulo 22)
         $this->testNullSemanticsFollowMemory();
         $this->testRealAdiantiEmitsNullChecks();
+
+        // BUG-20261013-4CLQ (#72): a disjunção no topo recebia o soft delete e os PREFILTERS do TRepository
+        // por AND no mesmo objeto e vazava linhas apagadas e de outras unidades.
+        $this->testDisjunctionAtTheRootSurvivesRepositoryFilters();
+        $this->testCompiledCriteriaKeepsItsAnswerUnderAndFilters();
+        $this->testRealAdiantiRepositoryKeepsSoftDeleteAndPrefilters();
+    }
+
+    /**
+     * O que o TRepository do Adianti faz com o critério do chamador em load()/count()/update()/delete()
+     * (lib/adianti/database/TRepository.php:305-316 da 8.7.0, igual de 8.1 a 8.7): acrescenta, no MESMO
+     * objeto e com AND, o filtro de soft delete (DELETEDAT) e TCriteria::create(PREFILTERS).
+     */
+    private static function asRepositoryDoes(TCriteria $criteria): TCriteria
+    {
+        $criteria->add(new TFilter('deleted_at', 'IS', null));
+        $criteria->add(TCriteria::create(['unit_id' => 1]));
+
+        return $criteria;
+    }
+
+    /**
+     * Linhas de fronteira do #72: n, m (NULL, 1, 5, 9), s (NULL e quatro textos), apagada ou não, unidade
+     * 1 ou 2; o modelo enxerga só a unidade 1 viva. Devolve o PDO (SQLite em memória) e as linhas.
+     *
+     * @return array{0: \PDO, 1: list<object>}
+     */
+    private static function scopedRows(): array
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE t4clq (id INTEGER PRIMARY KEY, n INTEGER NULL, m INTEGER NULL, s VARCHAR(10) NULL, deleted_at VARCHAR(20) NULL, unit_id INTEGER NOT NULL)');
+        $insert = $pdo->prepare('INSERT INTO t4clq (id, n, m, s, deleted_at, unit_id) VALUES (?, ?, ?, ?, ?, ?)');
+        $rows = [];
+        $id = 0;
+        foreach (NullParityTrees::INTS as $n) {
+            foreach (NullParityTrees::INTS as $m) {
+                foreach (NullParityTrees::STRINGS as $str) {
+                    foreach ([null, '2026-01-01'] as $deletedAt) {
+                        foreach ([1, 2] as $unit) {
+                            $rows[] = $row = (object) ['id' => ++$id, 'n' => $n, 'm' => $m, 's' => $str, 'deleted_at' => $deletedAt, 'unit_id' => $unit];
+                            $insert->execute([$row->id, $n, $m, $str, $deletedAt, $unit]);
+                        }
+                    }
+                }
+            }
+        }
+
+        return [$pdo, $rows];
+    }
+
+    /** @return list<int> */
+    private static function idsWhere(\PDO $pdo, string $where, array $parameters = []): array
+    {
+        $statement = $pdo->prepare('SELECT id FROM t4clq WHERE ' . $where . ' ORDER BY id');
+        $statement->execute($parameters);
+
+        return array_map('intval', $statement->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * A avaliação em memória AND linha viva AND unidade 1 (o que o modelo deveria devolver).
+     *
+     * @param list<object> $rows
+     * @return list<int>
+     */
+    private static function expectedScoped(array $rows, ISpecification $spec): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if ($row->deleted_at === null && $row->unit_id === 1 && $spec->isSatisfiedBy($row)) {
+                $ids[] = $row->id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * BUG-20261013-4CLQ (#72), reprodução: Spec::toCriteria(A->or(B)) devolvia `(A OR B)` com o OR no
+     * topo do objeto; o TRepository acrescentava `deleted_at IS NULL` e `(unit_id = 1)` com AND no mesmo
+     * objeto e o dump() saía `(A OR B AND deleted_at IS NULL AND (unit_id = 1))` = `A OR (B AND ...)`:
+     * linhas apagadas e de outras unidades no resultado. Toda forma de raiz com OR no topo (or, anyOf,
+     * not de and, not de nor, comparação negada, conjunto com null, not de igualdade), por todo caminho
+     * público que devolve TCriteria, e a composição por mergeCriteria(). Regressão: raiz AND e folha saem
+     * com o SQL de antes; as propriedades do critério continuam no objeto devolvido.
+     */
+    private function testDisjunctionAtTheRootSurvivesRepositoryFilters(): void
+    {
+        [$pdo, $rows] = self::scopedRows();
+
+        // 1. O cenário do registro: o critério efetivo agrupa a disjunção
+        $or = Spec::property('n', Spec::equalTo(1))->or(Spec::property('n', Spec::equalTo(5)));
+        $criteria = Spec::toCriteria($or);
+        $this->assertEquals('((n = 1 OR n = 5))', $criteria->dump(), '4CLQ: a raiz OR sai aninhada num critério próprio');
+        self::asRepositoryDoes($criteria);
+        $this->assertEquals('((n = 1 OR n = 5) AND deleted_at IS NULL AND (unit_id = 1))', $criteria->dump());
+        $this->assertEquals(self::expectedScoped($rows, $or), self::idsWhere($pdo, $criteria->dump()), '4CLQ: sem linha apagada nem de outra unidade');
+
+        // 2. Toda forma de raiz × todo caminho público × add() do TRepository e mergeCriteria()
+        $shapes = [
+            'or()'                  => $or,
+            'anyOf()'               => Spec::anyOf(Spec::property('n', Spec::equalTo(1)), Spec::property('m', Spec::equalTo(5))),
+            'not(and())'            => Spec::not(Spec::property('n', Spec::equalTo(1))->and(Spec::property('m', Spec::equalTo(5)))),
+            'not(nor())'            => Spec::not(Spec::nor(Spec::property('n', Spec::equalTo(1)), Spec::property('m', Spec::equalTo(5)))),
+            'not(property(gt))'     => Spec::not(Spec::property('n', Spec::greaterThan(1))),
+            'property(in(1, null))' => Spec::property('n', Spec::in(1, null)),
+            'not(property(anyOf))'  => Spec::not(Spec::property('n', Spec::anyOf(Spec::isNull(), Spec::equalTo(1)))),
+            'not(property(allOf))'  => Spec::not(Spec::property('n', Spec::allOf(Spec::greaterThan(1), Spec::lessThan(9)))),
+            'not(property(equal))'  => Spec::not(Spec::property('s', Spec::equalTo('apple'))),
+            'or() anotado'          => $or->because('motivo')->withCode('C1'),
+            'and() (controle)'      => Spec::property('n', Spec::equalTo(1))->and(Spec::property('m', Spec::equalTo(5))),
+            'folha (controle)'      => Spec::property('n', Spec::equalTo(1)),
+            'nor() (controle)'      => Spec::nor(Spec::property('n', Spec::equalTo(1)), Spec::property('m', Spec::equalTo(5))),
+        ];
+        $paths = [
+            'Spec::toCriteria'                  => fn(ISpecification $s): TCriteria => Spec::toCriteria($s),
+            '$spec->toCriteria'                 => fn(ISpecification $s): TCriteria => $s->toCriteria(),
+            'TCriteriaBuilder::fromSpecification' => fn(ISpecification $s): TCriteria => TCriteriaBuilder::fromSpecification($s),
+            'TCriteriaBuilder::create'          => fn(ISpecification $s): TCriteria => TCriteriaBuilder::create($s),
+            'TCriteriaBuilder->build'           => fn(ISpecification $s): TCriteria => (new TCriteriaBuilder($s))->build(),
+            'criteriaBuilder->toCriteria'       => fn(ISpecification $s): TCriteria => Spec::criteriaBuilder($s)->toCriteria(),
+            'visitor->buildCriteria'            => fn(ISpecification $s): TCriteria => (new CriteriaSpecificationVisitor())->buildCriteria($s),
+        ];
+        foreach ($shapes as $shape => $spec) {
+            $expected = self::expectedScoped($rows, $spec);
+            foreach ($paths as $path => $compile) {
+                $repository = self::asRepositoryDoes($compile($spec));
+                $this->assertEquals($expected, self::idsWhere($pdo, $repository->dump()), "4CLQ {$shape} via {$path}: " . $repository->dump());
+
+                // O chamador mescla o critério compilado no dele (mergeCriteria copia os operadores)
+                $caller = new TCriteria();
+                $caller->add(new TFilter('deleted_at', 'IS', null));
+                $caller->mergeCriteria($compile($spec));
+                $caller->add(TCriteria::create(['unit_id' => 1]));
+                $this->assertEquals($expected, self::idsWhere($pdo, $caller->dump()), "4CLQ {$shape} via {$path} + mergeCriteria(): " . $caller->dump());
+            }
+        }
+
+        // 3. Regressão: raiz AND e folha não ganham parênteses (mesmo SQL de antes)
+        $this->assertEquals('(n = 1 AND m = 5)', Spec::toCriteria($shapes['and() (controle)'])->dump());
+        $this->assertEquals('(n = 1)', Spec::toCriteria($shapes['folha (controle)'])->dump());
+        $this->assertEquals('(n = 1 AND m = 5 AND deleted_at IS NULL AND (unit_id = 1))', self::asRepositoryDoes(Spec::toCriteria($shapes['and() (controle)']))->dump());
+        $this->assertEquals("(n IS NOT NULL AND (n IS NULL OR n = 1))", Spec::toCriteria(Spec::property('n', Spec::anyOf(Spec::isNull(), Spec::equalTo(1))))->dump(), 'raiz AND com OR aninhado: inalterada');
+
+        // 4. As propriedades do critério ficam no objeto devolvido, também com a raiz agrupada
+        $properties = ['order' => 'n', 'direction' => 'desc', 'limit' => 7, 'offset' => 14, 'group' => 'unit_id'];
+        foreach ([
+            'fromSpecification' => TCriteriaBuilder::fromSpecification($or, null, $properties),
+            'Spec::toCriteria'  => Spec::toCriteria($or, properties: $properties),
+            'fluente'           => Spec::criteriaBuilder($or)->orderBy('n', 'desc')->limit(7)->offset(14)->groupBy('unit_id')->build(),
+        ] as $label => $built) {
+            foreach ($properties as $property => $value) {
+                $this->assertEquals($value, $built->getProperty($property), "4CLQ {$label}: propriedade {$property}");
+            }
+            $this->assertEquals('((n = 1 OR n = 5))', $built->dump(), "4CLQ {$label}");
+        }
+
+        // 5. Um visitor reaproveitado agrupa em toda chamada; o de uma raiz AND não herda a marca de outra
+        $visitor = new CriteriaSpecificationVisitor();
+        $this->assertEquals('((n = 1 OR n = 5))', $visitor->buildCriteria($or)->dump());
+        $this->assertEquals('(n = 1 AND m = 5)', $visitor->buildCriteria($shapes['and() (controle)'])->dump());
+        $this->assertEquals('((n = 1 OR n = 5))', $visitor->buildCriteria($or)->dump());
+    }
+
+    /**
+     * BUG-20261013-4CLQ (#72), propriedade: para as árvores do gerador da paridade de nulos (Módulo 22,
+     * NullParityTrees, semente fixa), o critério compilado, depois de receber os filtros por AND como o
+     * TRepository faz (e por mergeCriteria()), filtra no banco o mesmo que `memória AND viva AND unidade
+     * 1`, linha a linha, sobre as linhas de fronteira (NULL em cada coluna, apagadas, outra unidade). A
+     * mesma propriedade vale para o caminho SQL da biblioteca (Spec::toSql() + SqlWhereClause::and(), a
+     * composição do PdoRepository). Não vacuidade: a composição antiga (a raiz do visitor sem agrupar)
+     * vaza em parte das árvores, e essas árvores entram na conta.
+     */
+    private function testCompiledCriteriaKeepsItsAnswerUnderAndFilters(int $trees = 400): void
+    {
+        [$pdo, $rows] = self::scopedRows();
+        mt_srand(20261013);
+        $generator = new NullParityTrees();
+        $violations = [];
+        $oldCompositionLeaks = 0;
+        $filterMattered = 0;
+
+        for ($i = 0; $i < $trees; $i++) {
+            $tree = $generator->tree(3);
+            $expected = self::expectedScoped($rows, $tree);
+            $label = sprintf('#%d %s', $i, (string) $tree);
+
+            $repository = self::asRepositoryDoes(Spec::toCriteria($tree));
+            if (self::idsWhere($pdo, $repository->dump()) !== $expected) {
+                $violations[] = "TRepository: {$label} | " . $repository->dump();
+            }
+
+            $caller = new TCriteria();
+            $caller->add(new TFilter('deleted_at', 'IS', null));
+            $caller->mergeCriteria(Spec::toCriteria($tree));
+            $caller->add(TCriteria::create(['unit_id' => 1]));
+            if (self::idsWhere($pdo, $caller->dump()) !== $expected) {
+                $violations[] = "mergeCriteria: {$label} | " . $caller->dump();
+            }
+
+            $sql = Spec::toSql($tree, 'sqlite')
+                ->and(new SqlWhereClause('deleted_at IS NULL'))
+                ->and(new SqlWhereClause('(unit_id = 1)'));
+            if (self::idsWhere($pdo, $sql->toSql(), $sql->getParameters()) !== $expected) {
+                $violations[] = "SQL: {$label} | " . $sql->toSql();
+            }
+
+            // Não vacuidade: a raiz como o visitor a monta, sem o agrupamento (a composição da 2.1.0)
+            $root = (new CriteriaSpecificationVisitor())->visit($tree);
+            if (!$root instanceof TCriteria) {
+                $wrapped = new TCriteria();
+                $wrapped->add($root);
+                $root = $wrapped;
+            }
+            if (self::idsWhere($pdo, self::asRepositoryDoes($root)->dump()) !== $expected) {
+                $oldCompositionLeaks++;
+            }
+            foreach ($rows as $row) {
+                if (($row->deleted_at !== null || $row->unit_id !== 1) && $tree->isSatisfiedBy($row)) {
+                    $filterMattered++;
+                    break;
+                }
+            }
+        }
+
+        $this->assertEquals([], $violations, count($violations) . ' violações' . PHP_EOL . implode(PHP_EOL, array_slice($violations, 0, 5)));
+        $this->assertTrue($oldCompositionLeaks > $trees / 10, "4CLQ: só {$oldCompositionLeaks} árvores em que a composição antiga vazava");
+        $this->assertTrue($filterMattered > $trees / 2, "4CLQ: só {$filterMattered} árvores aceitaram linha apagada ou de outra unidade em memória");
+        fwrite(STDOUT, sprintf(
+            "    [4CLQ] %d árvores × %d linhas: critério + filtros do TRepository = mergeCriteria = SQL + and() = memória AND filtro (a composição antiga vazava em %d)\n",
+            $trees,
+            count($rows),
+            $oldCompositionLeaks
+        ));
+    }
+
+    /**
+     * BUG-20261013-4CLQ (#72) com as classes REAIS do Adianti (processo filho): TRepository::load(),
+     * count() e delete() (soft delete: UPDATE de deleted_at) de um modelo com DELETEDAT e PREFILTERS, em
+     * modo literal e prepared, mais mergeCriteria(), para as formas de raiz com OR e 60 árvores geradas.
+     * Roda com cada Adianti encontrado ao lado do repositório (template 8.7.0 e o dog food); sem nenhum,
+     * avisa e segue (RN-07).
+     */
+    private function testRealAdiantiRepositoryKeepsSoftDeleteAndPrefilters(): void
+    {
+        $base = dirname(__DIR__, 3);
+        $candidates = array_filter([
+            $base . '/Antevemus.AdiantiTemplates/adianti-template-8.7.0/lib/adianti',
+            $base . '/Antevemus.AflowEngine/lib/adianti',
+        ], static fn(string $dir): bool => is_file($dir . '/database/TRepository.php'));
+        if ($candidates === []) {
+            fwrite(STDOUT, "    [AVISO] Adianti real não encontrado ao lado do repositório; TRepository real do 4CLQ pulado.\n");
+            return;
+        }
+
+        $probe = dirname(__DIR__) . '/Support/real_adianti_repository_probe.php';
+        foreach ($candidates as $adianti) {
+            $json = (string) shell_exec(sprintf(
+                '%s -d xdebug.mode=off %s %s 2>/dev/null',
+                escapeshellarg(PHP_BINARY),
+                escapeshellarg($probe),
+                escapeshellarg($adianti)
+            ));
+            $out = json_decode($json, true);
+            $this->assertTrue(is_array($out), "Sonda do TRepository real ({$adianti}) não devolveu JSON: " . substr($json, 0, 500));
+            if (!is_array($out)) {
+                continue;
+            }
+
+            foreach ($out['cases'] as $label => $case) {
+                foreach (['plain', 'prepared'] as $mode) {
+                    foreach (['load', 'merge', 'delete'] as $leg) {
+                        $this->assertEquals($case['expected'], $case[$mode][$leg], "4CLQ real {$adianti} {$label} {$mode} {$leg}: " . $case[$mode]['effective']);
+                    }
+                    $this->assertEquals(count($case['expected']), $case[$mode]['count'], "4CLQ real {$label} {$mode} count");
+                }
+            }
+            $this->assertEquals('((n = 1 OR n = 5) AND deleted_at IS NULL AND (unit_id = 1))', $out['cases']['or']['plain']['effective']);
+            $this->assertEquals('(n = 1 AND m = 5 AND deleted_at IS NULL AND (unit_id = 1))', $out['cases']['and']['plain']['effective'], 'raiz AND: mesmo SQL de antes');
+            $this->assertEquals(60, $out['trees']['count']);
+            $this->assertEquals([], $out['trees']['violations'], "4CLQ real {$adianti}: " . implode(PHP_EOL, array_slice($out['trees']['violations'], 0, 5)));
+        }
     }
 
     /**
@@ -89,14 +376,17 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $dump = fn($spec): string => Spec::toCriteria($spec)->dump();
 
         $this->assertEquals('(idade > 18)', $dump(Spec::property('idade', Spec::greaterThan(18))));
-        $this->assertEquals('(idade IS NULL OR idade <= 18)', $dump(Spec::not(Spec::property('idade', Spec::greaterThan(18)))));
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals('((idade IS NULL OR idade <= 18))', $dump(Spec::not(Spec::property('idade', Spec::greaterThan(18)))));
         $this->assertEquals('(idade <= 18)', $dump(Spec::property('idade', Spec::not(Spec::greaterThan(18)))), 'NOT dentro da propriedade recusa o nulo: nada a acrescentar');
         $this->assertEquals('(deleted_at IS NULL)', $dump(Spec::property('deleted_at', Spec::isNull())));
         $this->assertEquals('(deleted_at IS NOT NULL)', $dump(Spec::not(Spec::property('deleted_at', Spec::isNull()))));
-        $this->assertEquals("(status IN ('A') OR status IS NULL)", $dump(Spec::property('status', Spec::in('A', null))));
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status IN ('A') OR status IS NULL))", $dump(Spec::property('status', Spec::in('A', null))));
         $this->assertEquals("(status IS NOT NULL AND (status IS NULL OR status = 'A'))", $dump(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A')))));
-        $this->assertEquals("(status IS NULL OR (status IS NOT NULL AND status <> 'A'))", $dump(Spec::not(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A'))))));
-        $this->assertEquals("(status IS NULL OR status = 'A')", $dump(Spec::anyOf(Spec::property('status', Spec::isNull()), Spec::property('status', Spec::equalTo('A')))));
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status IS NULL OR (status IS NOT NULL AND status <> 'A')))", $dump(Spec::not(Spec::property('status', Spec::anyOf(Spec::isNull(), Spec::equalTo('A'))))));
+        $this->assertEquals("((status IS NULL OR status = 'A'))", $dump(Spec::anyOf(Spec::property('status', Spec::isNull()), Spec::property('status', Spec::equalTo('A')))));
 
         // No banco (SQLite, dump literal do stub): mesma resposta que a memória, linha a linha
         $pdo = new \PDO('sqlite::memory:');
@@ -132,10 +422,12 @@ class Module13_TCriteriaBuilderTest extends TestCase
             return;
         }
 
-        $this->assertEquals('(idade IS NULL OR idade <= 18)', $out['notGreaterThan']['dump']);
-        $this->assertEquals('(idade IS NULL OR idade <= :p)', preg_replace('/:par_\d+/', ':p', $out['notGreaterThan']['prepared']));
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals('((idade IS NULL OR idade <= 18))', $out['notGreaterThan']['dump']);
+        $this->assertEquals('((idade IS NULL OR idade <= :p))', preg_replace('/:par_\d+/', ':p', $out['notGreaterThan']['prepared']));
         $this->assertEquals("(status IS NOT NULL AND (status IS NULL OR status = 'A'))", $out['anyOfNullInside']['dump']);
-        $this->assertEquals("(status IS NULL OR (status IS NOT NULL AND status <> 'A'))", $out['notAnyOfNullInside']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status IS NULL OR (status IS NOT NULL AND status <> 'A')))", $out['notAnyOfNullInside']['dump']);
     }
 
     /**
@@ -171,14 +463,16 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // 5. De Morgan: NOT REGEXP com a mesma flag
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?i)^abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^abc/i'))))->dump());
-        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?-i)^Abc')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^Abc/'))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((code IS NULL OR code NOT REGEXP '(?i)^abc'))", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^abc/i'))))->dump());
+        $this->assertEquals("((code IS NULL OR code NOT REGEXP '(?-i)^Abc'))", Spec::toCriteria(Spec::not(Spec::property('code', Spec::regex('/^Abc/'))))->dump());
 
         // 6. Regressão: padrão legado sem delimitadores (só por construção direta; a fábrica o recusa) vai inalterado
         $legacy = new \Antevemus\ASpecification\Specifications\String\RegexSpecification('^[0-9]+$');
         $this->assertEquals("(cpf REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', $legacy))->dump());
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(cpf IS NULL OR cpf NOT REGEXP '^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', $legacy)))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((cpf IS NULL OR cpf NOT REGEXP '^[0-9]+$'))", Spec::toCriteria(Spec::not(Spec::property('cpf', $legacy)))->dump());
 
         // 7. Regressão: a guarda de valores continua inspecionando o padrão regex (bug #2); um padrão
         //    delimitado nunca começa por NOESC:/(SELECT, e com a flag inline o valor tampouco
@@ -200,7 +494,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(code REGEXP :p)", preg_replace('/:par_\d+/', ':p', $out['regexIgnoreCase']['prepared']));
         $this->assertEquals("(code REGEXP '(?-i)^Abc')", $out['regexSensitive']['dump']);
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(code IS NULL OR code NOT REGEXP '(?i)^abc')", $out['notRegexIgnoreCase']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((code IS NULL OR code NOT REGEXP '(?i)^abc'))", $out['notRegexIgnoreCase']['dump']);
         $this->assertEquals("(cpf REGEXP '^[0-9]+$')", $out['regexLegacy']['dump']);
     }
 
@@ -231,8 +526,9 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // 4. De Morgan: NOT LIKE, com e sem ESCAPE
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(name IS NULL OR name NOT LIKE 'Ab%')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::startsWith('Ab'))))->dump());
-        $this->assertEquals("(promo IS NULL OR promo NOT LIKE '%50!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('promo', Spec::contains('50%'))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((name IS NULL OR name NOT LIKE 'Ab%'))", Spec::toCriteria(Spec::not(Spec::property('name', Spec::startsWith('Ab'))))->dump());
+        $this->assertEquals("((promo IS NULL OR promo NOT LIKE '%50!%%' ESCAPE '!'))", Spec::toCriteria(Spec::not(Spec::property('promo', Spec::contains('50%'))))->dump());
 
         // 5. Composição com irmãs: a folha sensível continua sensível ao lado de uma insensível
         $mixed = Spec::property('name', Spec::startsWith('Ab'))->and(Spec::property('sigla', Spec::equalIgnoreCase('sp')));
@@ -246,7 +542,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         //    (desde o bug #33 a sensibilidade sai como flag inline: (?-i) para um padrão sem i)
         $this->assertEquals("(cpf REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::property('cpf', Spec::regex('/^[0-9]+$/')))->dump());
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(cpf IS NULL OR cpf NOT REGEXP '(?-i)^[0-9]+$')", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((cpf IS NULL OR cpf NOT REGEXP '(?-i)^[0-9]+$'))", Spec::toCriteria(Spec::not(Spec::property('cpf', Spec::regex('/^[0-9]+$/'))))->dump());
     }
 
     /**
@@ -260,7 +557,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(name LIKE 'a!_b_' ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::like('a_b?')))->dump());
         $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", Spec::toCriteria(Spec::property('name', Spec::wildcardExpressionMatcherIgnoreCase('a_b*')))->dump());
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(name IS NULL OR name NOT LIKE '100!%%' ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('name', Spec::wildcard('100%*'))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((name IS NULL OR name NOT LIKE '100!%%' ESCAPE '!'))", Spec::toCriteria(Spec::not(Spec::property('name', Spec::wildcard('100%*'))))->dump());
         $this->assertEquals("(name LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', Spec::toCriteria(Spec::property('name', Spec::wildcard('100%*')))->dump(true)));
 
         // Regressão: sem caracteres especiais do LIKE, saída idêntica à anterior (sem ESCAPE)
@@ -286,7 +584,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(promo LIKE '%50!%!_off!!%' ESCAPE '!')", $out['containsEscaped']['dump']);
         $this->assertEquals("(promo LIKE :p ESCAPE '!')", preg_replace('/:par_\d+/', ':p', $out['containsEscaped']['prepared']));
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(name IS NULL OR name NOT LIKE 'Ab%')", $out['notStartsWith']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((name IS NULL OR name NOT LIKE 'Ab%'))", $out['notStartsWith']['dump']);
         $this->assertEquals("(name LIKE '100!%%' ESCAPE '!')", $out['wildcardEscaped']['dump']);
         $this->assertEquals("(UPPER(name) LIKE UPPER('a!_b%') ESCAPE '!')", $out['wildcardEscapedIgnoreCase']['dump']);
         $this->assertEquals("(name LIKE 'Ab%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['affixMixedAnd']['dump']);
@@ -426,7 +725,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         // 1.14.0: % e _ no valor são texto (antes 'a_b' também casava 'axb')
         $this->assertEquals("(UPPER(code) LIKE UPPER('a!_b') ESCAPE '!')", Spec::toCriteria(Spec::property('code', Spec::equalIgnoreCase('a_b')))->dump());
-        $this->assertEquals("(code IS NULL OR UPPER(code) NOT LIKE UPPER('50!%') ESCAPE '!')", Spec::toCriteria(Spec::not(Spec::property('code', Spec::equalIgnoreCase('50%'))))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((code IS NULL OR UPPER(code) NOT LIKE UPPER('50!%') ESCAPE '!'))", Spec::toCriteria(Spec::not(Spec::property('code', Spec::equalIgnoreCase('50%'))))->dump());
 
         // Critério raiz com o flag explicitamente desligado: a folha continua insensível
         $c1->setCaseInsensitive(false);
@@ -443,12 +743,14 @@ class Module13_TCriteriaBuilderTest extends TestCase
             ->or(Spec::property('nome', Spec::wildcard('A*'))
             ->and(Spec::property('cidade', Spec::wildcardExpressionMatcherIgnoreCase('são*'))));
         $c3 = TCriteriaBuilder::fromSpecification($nested);
-        $this->assertEquals("(uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(cidade) LIKE UPPER('são%')))", $c3->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(cidade) LIKE UPPER('são%'))))", $c3->dump());
 
         // De Morgan: NOT de folha insensível vira NOT LIKE, ainda insensível
         $c4 = TCriteriaBuilder::fromSpecification(Spec::not(Spec::property('sigla', Spec::equalIgnoreCase('sp'))));
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp'))", $c4->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp')))", $c4->dump());
 
         // Um critério raiz insensível continua valendo para folhas sensíveis (comportamento do Adianti, inalterado)
         $c5 = TCriteriaBuilder::fromSpecification(Spec::property('nome', Spec::wildcard('Jo*')));
@@ -472,9 +774,11 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $this->assertEquals("(UPPER(sigla) LIKE UPPER('sp'))", $out['equalIgnoreCase']['dump']);
         $this->assertEquals("(UPPER(cidade) LIKE UPPER('são%'))", $out['wildcardIgnoreCase']['dump']);
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp'))", $out['notEqualIgnoreCase']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((sigla IS NULL OR UPPER(sigla) NOT LIKE UPPER('sp')))", $out['notEqualIgnoreCase']['dump']);
         $this->assertEquals("(nome LIKE 'Jo%' AND UPPER(sigla) LIKE UPPER('sp'))", $out['mixedAnd']['dump']);
-        $this->assertEquals("(uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(sigla) LIKE UPPER('sp')))", $out['nestedOr']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((uf = 'RJ' OR (nome LIKE 'A%' AND UPPER(sigla) LIKE UPPER('sp'))))", $out['nestedOr']['dump']);
 
         // Modo prepared: UPPER() envolve o placeholder, o literal segue como parâmetro
         $prepared = preg_replace('/:par_\d+/', ':p', $out['mixedAnd']['prepared']);
@@ -602,7 +906,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
         $specOr = Spec::property('status', Spec::equal('ativo'))
             ->or(Spec::property('status', Spec::equal('pendente')));
         $cOr = TCriteriaBuilder::fromSpecification($specOr);
-        $this->assertEquals("(status = 'ativo' OR status = 'pendente')", $cOr->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status = 'ativo' OR status = 'pendente'))", $cOr->dump());
     }
 
     private function testNestedPrecedence(): void
@@ -652,7 +957,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
             ->and(Spec::property('bloqueado', Spec::equal(false)));
         $notAnd = Spec::not($specAnd);
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("((ativo IS NULL OR ativo <> TRUE) OR (bloqueado IS NULL OR bloqueado <> FALSE))", TCriteriaBuilder::fromSpecification($notAnd)->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("(((ativo IS NULL OR ativo <> TRUE) OR (bloqueado IS NULL OR bloqueado <> FALSE)))", TCriteriaBuilder::fromSpecification($notAnd)->dump());
 
         // De Morgan: NOT(A OR B) => NOT A AND NOT B
         $specOr = Spec::property('status', Spec::equal('A'))
@@ -770,8 +1076,9 @@ class Module13_TCriteriaBuilderTest extends TestCase
         // Negação, null no conjunto, vazio
         $this->assertEquals("(status NOT IN ('A','B'))", Spec::toCriteria(Spec::property('status', Spec::notIn('A', 'B')))->dump());
         // 1.11.0 mudou: o NOT sobre a propriedade aceita a coluna NULL, como em memória (antes sem `col IS NULL OR`)
-        $this->assertEquals("(status IS NULL OR status NOT IN ('A','B'))", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', 'B'))))->dump());
-        $this->assertEquals("(status IN ('A') OR status IS NULL)", Spec::toCriteria(Spec::property('status', Spec::in('A', null)))->dump());
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status IS NULL OR status NOT IN ('A','B')))", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', 'B'))))->dump());
+        $this->assertEquals("((status IN ('A') OR status IS NULL))", Spec::toCriteria(Spec::property('status', Spec::in('A', null)))->dump());
         $this->assertEquals("(status NOT IN ('A') AND status IS NOT NULL)", Spec::toCriteria(Spec::not(Spec::property('status', Spec::in('A', null))))->dump());
         $this->assertEquals("(1 = 0)", Spec::toCriteria(Spec::property('status', Spec::in()))->dump());
         // 1.11.0 mudou: notIn() é um NOT dentro da propriedade, que recusa o valor nulo como em memória (antes: (1 = 1))
@@ -795,7 +1102,8 @@ class Module13_TCriteriaBuilderTest extends TestCase
 
         $this->assertEquals("(status IN ('A','B'))", $out['inList']['dump']);
         $this->assertEquals("(status NOT IN ('A','B'))", $out['notInList']['dump']);
-        $this->assertEquals("(status IN ('A') OR status IS NULL)", $out['inWithNull']['dump']);
+        // #72 (BUG-20261013-4CLQ) mudou: a raiz com OR no topo sai aninhada, segura para o add(..., AND) do TRepository (antes sem o par externo de parênteses)
+        $this->assertEquals("((status IN ('A') OR status IS NULL))", $out['inWithNull']['dump']);
         $this->assertEquals("(n IN (1,2,3))", $out['inIntegers']['dump']);
         $this->assertTrue(str_contains($out['inList']['prepared'], 'status IN ('), 'modo prepared: ' . $out['inList']['prepared']);
     }

@@ -79,9 +79,18 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   run it, and TFilter renders `variable operator value` with the value quoted inside, so the folding
  *   cannot wrap the value without concatenating it. Spec::toSql() with the dialect, or a PdoRepository,
  *   translates it for PostgreSQL and MySQL/MariaDB
+ * - The criteria handed to the caller is safe to receive more conditions by AND (BUG-20261013-4CLQ).
+ *   TRepository::load()/count()/update()/delete() of Adianti add the soft delete filter (DELETEDAT) and
+ *   the PREFILTERS of the model to the SAME object with `add(..., AND)`, and TCriteria::dump() does not
+ *   group what is already there; mergeCriteria() copies the expressions with their operators. A root
+ *   built with OR at its top level (`or()`, `anyOf()`, `not(and())`, a negated comparison
+ *   `(col IS NULL OR ...)`, a set holding null) would become `a OR b AND deleted_at IS NULL AND (...)`
+ *   = `a OR (b AND ...)`: deleted rows and rows of other units leaked. buildCriteria() now nests such
+ *   a root in a criteria of its own, `((a OR b))`; a root whose top level is AND, or a single filter,
+ *   goes out as before
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    2.1.0
+ * @version    2.1.1
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -106,6 +115,15 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     private int $nullTolerantFilters = 0;
 
     /**
+     * The criteria built by this visitor whose top-level operator is OR (BUG-20261013-4CLQ). Every
+     * TCriteria of the tree is built by combine() with ONE operator, so the visitor records it instead of
+     * reading the private operators of TCriteria back.
+     *
+     * @var \WeakMap<TCriteria, true>
+     */
+    private \WeakMap $disjunctions;
+
+    /**
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
      * @throws CriteriaBuilderException If the Adianti TCriteria class is not loaded
      */
@@ -118,10 +136,17 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         }
 
         $this->fieldMapper = FieldMapper::from($fieldMapper);
+        $this->disjunctions = new \WeakMap();
     }
 
     /**
      * Public entrypoint to compile a specification tree into a complete TCriteria instance.
+     *
+     * The criteria returned is safe for the caller (or TRepository) to `add()` more conditions with AND
+     * (BUG-20261013-4CLQ): a root whose top-level operator is OR is nested in a criteria of its own, so
+     * `add($filter)` gives `((a OR b) AND filter)`, never `(a OR b AND filter)`. A root whose top level
+     * is AND, or a single filter, is returned as before (the same SQL). The returned criteria carries the
+     * default properties of a new TCriteria; TCriteriaBuilder sets limit/offset/order/direction/group on it.
      *
      * @param ISpecification $specification
      * @return TCriteria
@@ -130,12 +155,33 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         $expression = $this->visit($specification);
 
-        if ($expression instanceof TCriteria) {
+        if ($expression instanceof TCriteria && !isset($this->disjunctions[$expression])) {
             return $expression;
         }
 
         $criteria = new TCriteria();
         $criteria->add($expression);
+        return $criteria;
+    }
+
+    /**
+     * The criteria `(left operator right)`, recorded as a disjunction when the operator is OR (see
+     * buildCriteria()). Every TCriteria of the compiled tree is built here.
+     *
+     * @param TExpression $left
+     * @param TExpression $right
+     * @param string $operator TExpression::AND_OPERATOR or TExpression::OR_OPERATOR
+     * @return TCriteria
+     */
+    private function combine(TExpression $left, TExpression $right, string $operator): TCriteria
+    {
+        $criteria = new TCriteria();
+        $criteria->add($left);
+        $criteria->add($right, $operator);
+        if ($operator === TExpression::OR_OPERATOR) {
+            $this->disjunctions[$criteria] = true;
+        }
+
         return $criteria;
     }
 
@@ -253,11 +299,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             $this->nullTolerantFilters++;
         }
 
-        $criteria = new TCriteria();
-        $criteria->add(new TFilter($column, $operator === TExpression::AND_OPERATOR ? 'IS NOT' : 'IS', null));
-        $criteria->add($expression, $operator);
-
-        return $criteria;
+        return $this->combine(new TFilter($column, $operator === TExpression::AND_OPERATOR ? 'IS NOT' : 'IS', null), $expression, $operator);
     }
 
     /**
@@ -270,10 +312,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function buildBinaryCriteria(ISpecification $left, ISpecification $right, string $operator): TCriteria
     {
-        $criteria = new TCriteria();
-        $criteria->add($this->visit($left));
-        $criteria->add($this->visit($right), $operator);
-        return $criteria;
+        $leftExpression = $this->visit($left);
+
+        return $this->combine($leftExpression, $this->visit($right), $operator);
     }
 
     /**
@@ -417,10 +458,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             return $inFilter;
         }
 
-        $criteria = new TCriteria();
-        $criteria->add($inFilter);
-        $criteria->add($nullFilter, $negated ? TExpression::AND_OPERATOR : TExpression::OR_OPERATOR);
-        return $criteria;
+        return $this->combine($inFilter, $nullFilter, $negated ? TExpression::AND_OPERATOR : TExpression::OR_OPERATOR);
     }
 
     /**
@@ -613,10 +651,9 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function buildBinaryNotCriteria(ISpecification $left, ISpecification $right, string $operator): TCriteria
     {
-        $criteria = new TCriteria();
-        $criteria->add($this->visitNot($left));
-        $criteria->add($this->visitNot($right), $operator);
-        return $criteria;
+        $leftExpression = $this->visitNot($left);
+
+        return $this->combine($leftExpression, $this->visitNot($right), $operator);
     }
 
     /**
@@ -712,11 +749,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
         // A comparison is false for a null value in memory, so its negation is true there (1.11.0):
         // `col IS NULL OR <inverted comparison>`, where SQL alone would answer unknown
-        $criteria = new TCriteria();
-        $criteria->add($this->nullTolerant(new TFilter($col, 'IS', null)));
-        $criteria->add($negated, TExpression::OR_OPERATOR);
-
-        return $criteria;
+        return $this->combine($this->nullTolerant(new TFilter($col, 'IS', null)), $negated, TExpression::OR_OPERATOR);
     }
 
     /**

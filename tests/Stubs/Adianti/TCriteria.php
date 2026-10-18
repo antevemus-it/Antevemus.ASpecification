@@ -48,6 +48,19 @@ class TCriteria extends TExpression
         return $criteria;
     }
 
+    /**
+     * Espelha o TCriteria real (lib/adianti/database/TCriteria.php:70-78, 8.7.0): o clone copia cada
+     * expressão (TRepository::dump() clona o critério antes de anexar o filtro de soft delete).
+     */
+    public function __clone()
+    {
+        $expressions = [];
+        foreach ($this->expressions as $key => $expression) {
+            $expressions[$key] = clone $expression;
+        }
+        $this->expressions = $expressions;
+    }
+
     public function add(TExpression $expression, ?string $operator = TExpression::AND_OPERATOR): void
     {
         if (empty($this->expressions)) {
@@ -66,6 +79,33 @@ class TCriteria extends TExpression
     public function getOperators(): array
     {
         return $this->operators;
+    }
+
+    /**
+     * Espelha o TCriteria real (TCriteria.php:119-131, 8.7.0): copia as expressões do outro critério
+     * COM os operadores delas, sem agrupar; o primeiro operador (nulo) vira AND. Um critério cuja
+     * raiz tem OR no topo, mesclado assim, deixa a disjunção solta no critério de quem mescla
+     * (BUG-20261013-4CLQ). Lê as listas privadas do outro objeto, como o real.
+     */
+    public function mergeCriteria(TCriteria $criteria): void
+    {
+        foreach ($criteria->expressions as $key => $expression) {
+            $this->add($expression, $criteria->operators[$key] ?? TExpression::AND_OPERATOR);
+        }
+    }
+
+    /**
+     * Espelha o TCriteria real (TCriteria.php:144-158, 8.7.0): as variáveis do modo prepared de todas
+     * as expressões, na ordem (TRepository::load() as passa ao execute() quando prep = 1).
+     */
+    public function getPreparedVars(): array
+    {
+        $preparedVars = [];
+        foreach ($this->expressions as $expression) {
+            $preparedVars = array_merge($preparedVars, (array) $expression->getPreparedVars());
+        }
+
+        return $preparedVars;
     }
 
     public function isEmpty(): bool
