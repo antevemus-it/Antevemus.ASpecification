@@ -17,7 +17,7 @@ use InvalidArgumentException;
  * Under evaluate() this exception becomes an evaluation-error result (SpecificationResult::error),
  * never a rule failure. Under isSatisfiedBy() it propagates.
  *
- * @version    1.2.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,9 +34,10 @@ class IncompatibleTypeException extends InvalidArgumentException
     public function __construct(
         public readonly string $ruleName,
         public readonly mixed $candidate,
-        public readonly mixed $value
+        public readonly mixed $value,
+        ?string $message = null
     ) {
-        parent::__construct(sprintf(
+        parent::__construct($message ?? sprintf(
             '%s cannot compare candidate of type %s with value of type %s; coerce explicitly or use a loose comparison.',
             $ruleName,
             get_debug_type($candidate),

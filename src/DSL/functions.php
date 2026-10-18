@@ -18,7 +18,7 @@ declare(strict_types=1);
  *   take `bool|TextComparison`, TextComparison::IgnoreCaseAndAccents ignoring accents too (2.1.0)
  * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -742,7 +742,8 @@ function anObjectEqualTo(mixed $value): ISpecification
 }
 
 /**
- * Domian `blankString()`: null or a blank string (null IS blank, unlike isBlank()).
+ * Domian `blankString()`: a text that is blank (empty or whitespace). Since 2.2.0 null is NOT blank
+ * (it is not a text); isBlank() rejects it as well. Only the untyped defaultValue() accepts null.
  *
  * @return ISpecification
  */
@@ -762,7 +763,7 @@ function isBlankString(): ISpecification
 }
 
 /**
- * Domian `defaultNumber()`: null or zero.
+ * Domian `defaultNumber()`: a number that is zero (int or float). Since 2.2.0 null is NOT accepted.
  *
  * @return ISpecification
  */
@@ -782,7 +783,8 @@ function isDefaultNumber(): ISpecification
 }
 
 /**
- * Domian `defaultValueOfType(T)`: null or the default value of the given type only.
+ * Domian `defaultValueOfType(T)`: the default value of the given type only (blank text, zero, false,
+ * []); since 2.2.0 null is NOT accepted, as default(T) of a non-nullable type.
  *
  * @param string $type Restricting type (string, number, bool, array)
  * @return ISpecification

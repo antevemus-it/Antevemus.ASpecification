@@ -8,12 +8,16 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Entities\AbstractEntity;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Specifications\Comparison\InSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\IsNullSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException;
+use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
+use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use DateTime;
 use DateTimeImmutable;
@@ -151,8 +155,12 @@ final class AscClock
  * - #71 (BUG-20261013-T6CS): subsumption dropped an operand that decided first, and the operand left
  *   raised where the original chain answered
  * - #69 (BUG-20261013-ZYEC): the absorbing constant went after the kept annotated operands
+ * - P1 / #68 (BUG-20261013-JPQT, 2.2.0): typed default values accepted null, so the two the algebra declared
+ *   disjoint shared a candidate; a typed default now refuses null ("is a text and it is blank")
+ * - P4 / #70 (BUG-20261013-XEIB, 2.2.0): NAN satisfied ¬(x < v) and not its inversion x >= v; the ordered
+ *   leaves now refuse it as a candidate and as a bound
  *
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -346,6 +354,81 @@ final class AlgebraSoundnessCasesTest extends TestCase
         self::assertTrue(Spec::greaterThan(10)->isDisjointWith(Spec::lessThanOrEqualTo(10)));
         self::assertTrue(Spec::greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::greaterThan(5)));
         self::assertTrue(Spec::notEqual(5)->isGeneralizationOf(Spec::lessThanOrEqualTo(4)));
+    }
+
+    /**
+     * #68 (P1): a typed default value is "a value of that type and its default" (2.2.0, decision of the
+     * maintainer): null is not a text nor a number, so isBlankString() and defaultNumber() refuse it and
+     * two typed defaults of different types are disjoint for real. The untyped defaultValue() is unchanged.
+     */
+    public function testP1TypedDefaultValuesRefuseNullSoDifferentTypesAreDisjoint(): void
+    {
+        $blank = new DefaultValueSpecification('string');
+        $zero = new DefaultValueSpecification('number');
+        self::assertFalse($blank->isSatisfiedBy(null), 'null is not a text');
+        self::assertFalse($zero->isSatisfiedBy(null), 'null is not a number');
+        self::assertFalse((new DefaultValueSpecification('bool'))->isSatisfiedBy(null));
+        self::assertFalse((new DefaultValueSpecification('array'))->isSatisfiedBy(null));
+        self::assertTrue($blank->isSatisfiedBy('   ') && $blank->isSatisfiedBy('') && !$blank->isSatisfiedBy(0));
+        self::assertTrue($zero->isSatisfiedBy(0) && $zero->isSatisfiedBy(0.0) && !$zero->isSatisfiedBy(''));
+        self::assertTrue($blank->isDisjointWith($zero) && $zero->isDisjointWith($blank), 'no candidate satisfies both');
+        self::assertTrue(Spec::isBlankString()->isDisjointWith(Spec::createDefaultNumberSpecification()));
+        self::assertInstanceOf(AlwaysFalseSpecification::class, Spec::simplify(new AndSpecification($blank, $zero)), 'the conjunction is a proven contradiction');
+        self::assertTrue($blank->isDisjointWith(Spec::not($blank)));
+
+        // The untyped default is unchanged: null, the blank text, zero, false and [] are default values of some type
+        $any = new DefaultValueSpecification();
+        self::assertTrue($any->isSatisfiedBy(null) && $any->isSatisfiedBy('') && $any->isSatisfiedBy(0) && $any->isSatisfiedBy(false) && $any->isSatisfiedBy([]));
+        self::assertFalse($any->isDisjointWith($blank) || $any->isDisjointWith($zero), 'the untyped default shares a candidate with every typed one');
+    }
+
+    /**
+     * #70 (P4): NAN is unordered (NAN < v, NAN > v and NAN == v are all false), so ¬(x < v) accepted it
+     * and its inversion x >= v did not. The ordered leaves now refuse it as a candidate
+     * (IncompatibleTypeException, as a text against a number) and as a bound (InvalidArgumentException);
+     * the inversion holds for every candidate they answer, and the equality leaves keep answering it.
+     */
+    public function testP4NanIsRefusedByTheOrderedLeavesSoTheInversionHolds(): void
+    {
+        $refused = static function (callable $probe): bool {
+            try {
+                $probe();
+                return false;
+            } catch (IncompatibleTypeException) {
+                return true;
+            }
+        };
+        $leaves = ['lt' => Spec::lessThan(5.5), 'lte' => Spec::lessThanOrEqualTo(5.5), 'gt' => Spec::greaterThan(5.5), 'gte' => Spec::greaterThanOrEqualTo(5.5)];
+        foreach ($leaves as $label => $leaf) {
+            self::assertTrue($refused(static fn() => $leaf->isSatisfiedBy(NAN)), "{$label} refuses NAN");
+            self::assertTrue($refused(static fn() => Spec::not($leaf)->isSatisfiedBy(NAN)), "not({$label}) refuses NAN as well");
+            $inverse = SpecificationAlgebra::invert($leaf);
+            self::assertNotNull($inverse, "{$label} is still invertible");
+            self::assertTrue($refused(static fn() => $inverse->isSatisfiedBy(NAN)), "the inversion of {$label} refuses NAN as well");
+            self::assertTrue($refused(static fn() => Spec::property('n', $leaf)->isSatisfiedBy((object) ['n' => NAN])), "property({$label}) refuses NAN");
+        }
+        self::assertTrue(Spec::greaterThanOrEqualTo(5.5)->isGeneralizationOf(Spec::not(Spec::lessThan(5.5))), 'the inversion ¬(x < v) ≡ x >= v is kept');
+        self::assertTrue(Spec::not(Spec::lessThan(5.5))->isSatisfiedBy(6) && Spec::greaterThanOrEqualTo(5.5)->isSatisfiedBy(6));
+        self::assertFalse(Spec::not(Spec::lessThan(5.5))->isSatisfiedBy(5) || Spec::greaterThanOrEqualTo(5.5)->isSatisfiedBy(5));
+        self::assertTrue(Spec::lessThan(5.5)->isSatisfiedBy(INF) === false && Spec::greaterThan(5.5)->isSatisfiedBy(INF), 'INF is ordered and stays accepted');
+
+        foreach (['lessThan', 'lessThanOrEqualTo', 'greaterThan', 'greaterThanOrEqualTo'] as $factory) {
+            try {
+                Spec::$factory(NAN);
+                self::fail("{$factory}(NAN) was accepted as a bound");
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('NAN', $e->getMessage());
+            }
+        }
+        self::assertTrue(Spec::lessThan(INF)->isSatisfiedBy(5.5), 'INF is accepted as a bound');
+
+        // The equality leaves answer NAN, consistently with their inversion: NAN is equal to nothing
+        self::assertFalse(Spec::equalTo(5.5)->isSatisfiedBy(NAN));
+        self::assertTrue(Spec::notEqual(5.5)->isSatisfiedBy(NAN));
+        self::assertTrue(Spec::not(Spec::equalTo(5.5))->isSatisfiedBy(NAN));
+        self::assertFalse(Spec::in(5.5, 6.5)->isSatisfiedBy(NAN));
+        self::assertFalse(Spec::equalTo(NAN)->isSatisfiedBy(NAN), 'equalTo(NAN) accepts nothing, as === does');
+        self::assertFalse((new DefaultValueSpecification('number'))->isSatisfiedBy(NAN), 'NAN is not zero');
     }
 
     /** #71: simplify() never raises where the original answered (forward 025 D4 allows only fewer errors). */

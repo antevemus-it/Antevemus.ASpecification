@@ -279,7 +279,7 @@ final class AsbEven extends AbstractSpecification
  * and deeper random trees, every composite pair instead of the pairs of the same family);
  * ASPEC_SOUNDNESS_DUMP=<file> writes every violation found as JSON lines (diagnosis).
  *
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -560,23 +560,6 @@ final class AlgebraSoundnessTest extends TestCase
         self::assertNoViolations($violations);
     }
 
-    /**
-     * The pending decisions left out of the bench (pendingDecision()) still hold: when one is decided
-     * and the algebra changes, this test fails and the exception must leave the bench with it.
-     */
-    public function testPendingDecisionsStillHold(): void
-    {
-        // P1: null satisfies both, the algebra still says disjoint (Domian parity: blankString ⟂ zero)
-        $blank = new DefaultValueSpecification('string');
-        $zero = new DefaultValueSpecification('number');
-        self::assertTrue($blank->isSatisfiedBy(null) && $zero->isSatisfiedBy(null));
-        self::assertTrue($blank->isDisjointWith($zero), 'P1 decided: remove it from pendingDecision()');
-
-        // P4: NAN satisfies ¬(x < 5.5) and not its inverse x >= 5.5
-        self::assertTrue(Spec::not(Spec::lessThan(5.5))->isSatisfiedBy(NAN) && !Spec::greaterThanOrEqualTo(5.5)->isSatisfiedBy(NAN));
-        self::assertTrue(Spec::greaterThanOrEqualTo(5.5)->isGeneralizationOf(Spec::not(Spec::lessThan(5.5))), 'P4 decided: add NAN to the candidates');
-    }
-
     // ==========================================
     // The world: candidates, specifications and their answers
     // ==========================================
@@ -632,6 +615,7 @@ final class AlgebraSoundnessTest extends TestCase
             'null' => null,
             '0' => 0, '1' => 1, '2' => 2, '5' => 5, '6' => 6, '10' => 10, '-1' => -1,
             '1.0' => 1.0, '4.5' => 4.5, '5.0' => 5.0, '5.5' => 5.5, '9.5' => 9.5, '10.5' => 10.5,
+            'NAN' => NAN, // 2.2.0 (#70): refused by the ordered leaves, equal to nothing for the equality ones
             "''" => '', "'1'" => '1', "'5'" => '5', "'10'" => '10', "'9'" => '9', "'1a'" => '1a', "'1e1'" => '1e1',
             "'a'" => 'a', "'b'" => 'b', "'ab'" => 'ab', "'A'" => 'A', "'abc'" => 'abc', "'ação'" => 'ação', "'acao'" => 'acao', "'AÇÃO'" => 'AÇÃO',
             "'2026-01-01'" => '2026-01-01', "'Gold'" => 'Gold',
@@ -1153,27 +1137,19 @@ final class AlgebraSoundnessTest extends TestCase
     /**
      * Candidates on which a known violation waits for a decision of the maintainer, because an old test
      * asserts the promise (forward 037, D6: the test is not changed in silence). Null when the pair is not
-     * concerned. Kept in sync with testPendingDecisionsStillHold().
+     * concerned. When a decision is pending, AlgebraSoundnessCasesTest must watch it, so that the
+     * exception leaves the bench the day the algebra changes.
      *
-     * - P1: defaultValue(T) ⟂ defaultValue(U) for T ≠ U, although null satisfies both
-     *   (tests/Parity/DomianSpecificationAlgebraTest.php, testDefaultValueSpecifications: blankString ⟂ zero).
-     * - P4 (not in the candidate pool): NAN is unordered, so the inversion ¬(x < v) ≡ x >= v fails for it
-     *   (¬(NAN < 5.5) is true, NAN >= 5.5 is false); deciding needs a change of evaluation (refuse NAN as
-     *   an incompatible type) or the loss of the inversion of every numeric leaf.
+     * Nothing is pending since 2.2.0: P1 (BUG-20261013-JPQT, #68: a typed default value refuses null, so
+     * the typed defaults the algebra declares disjoint share no candidate) and P4 (BUG-20261013-XEIB, #70:
+     * NAN is refused by the ordered leaves and is in the pool) were decided; their reproductions live in
+     * AlgebraSoundnessCasesTest.
      *
      * @return list<int>|null
      */
     private static function pendingDecision(string $promise, int $i, int $j): ?array
     {
-        $world = self::world();
-        $a = $world['specs'][$i]['spec'];
-        $b = $world['specs'][$j]['spec'];
-        $skip = [];
-        if ($promise === 'isDisjointWith' && $a instanceof DefaultValueSpecification && $b instanceof DefaultValueSpecification) {
-            $skip[] = 0; // P1: null
-        }
-
-        return $skip === [] ? null : $skip;
+        return null;
     }
 
     /**

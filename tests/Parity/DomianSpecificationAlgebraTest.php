@@ -90,7 +90,7 @@ enum AlgebraGender
  *    dense, so after(today) and before(tomorrow) intersect; only the timestamp table is ported.
  *  - where() twice and and(name, spec) before where() do not throw (deliberate PHP relaxation).
  *
- * @version    1.4.4
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Parity
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -608,14 +608,16 @@ final class DomianSpecificationAlgebraTest extends TestCase
     {
         $blankString = Spec::isBlankString();
         $zero = Spec::createDefaultNumberSpecification();
-        self::assertTrue($blankString->isSatisfiedBy(null));
+        // 2.2.0 (#68, BUG-20261013-JPQT) mudou, Domian espera true: um valor-padrão TIPADO é "é texto e está em
+        // branco" / "é número e é zero", como default(T) de tipo não anulável; null fica só no defaultValue() sem tipo
+        self::assertFalse($blankString->isSatisfiedBy(null));
         self::assertTrue($blankString->isSatisfiedBy('   '));
         self::assertFalse($blankString->isSatisfiedBy(0));
         self::assertTrue($zero->isSatisfiedBy(0));
-        self::assertTrue($zero->isSatisfiedBy(null));
+        self::assertFalse($zero->isSatisfiedBy(null)); // 2.2.0 (#68): idem
         self::assertFalse($zero->isSatisfiedBy(''));
         self::assertFalse($blankString->isDisjointWith($blankString));
-        self::assertTrue($blankString->isDisjointWith($zero));
+        self::assertTrue($blankString->isDisjointWith($zero)); // 2.2.0: continua true, agora sem o null em comum
         $negatedBlankString = Spec::not($blankString);
         $negatedZero = Spec::not($zero);
         self::assertFalse($negatedBlankString->isDisjointWith($negatedBlankString));
@@ -2157,7 +2159,7 @@ final class DomianSpecificationAlgebraTest extends TestCase
         self::assertTrue(Spec::isDefaultNumber()->isSatisfiedBy(0));
         self::assertFalse(Spec::isDefaultNumber()->isSatisfiedBy(''));
         self::assertTrue(Spec::createBlankStringSpecification()->equals(Spec::blankString()));
-        self::assertTrue(Spec::isBlankString()->isSatisfiedBy(null));
+        self::assertFalse(Spec::isBlankString()->isSatisfiedBy(null)); // 2.2.0 (#68) mudou, Domian espera true: null não é texto
         self::assertTrue(Spec::isBlankString()->isSatisfiedBy("\r\n"));
         self::assertFalse(Spec::isBlankString()->isSatisfiedBy(0));
         self::assertTrue(Spec::isDefaultValueOfType('bool')->isSatisfiedBy(false));
@@ -2183,7 +2185,7 @@ final class DomianSpecificationAlgebraTest extends TestCase
         self::assertInstanceOf(AllEntitiesSpecification::class, \Antevemus\ASpecification\DSL\allEntities());
         self::assertInstanceOf(NotNullSpecification::class, \Antevemus\ASpecification\DSL\allObjects());
         self::assertTrue(\Antevemus\ASpecification\DSL\isGreaterThanOrEqualTo(5)->equals(Spec::greaterThanOrEqualTo(5)));
-        self::assertTrue(\Antevemus\ASpecification\DSL\blankString()->isSatisfiedBy(null));
+        self::assertFalse(\Antevemus\ASpecification\DSL\blankString()->isSatisfiedBy(null)); // 2.2.0 (#68) mudou: idem
         self::assertTrue(\Antevemus\ASpecification\DSL\isEnum(AlgebraGender::class)->isSatisfiedBy('MALE'));
         self::assertInstanceOf(AlwaysTrueSpecification::class, \Antevemus\ASpecification\DSL\createTautology());
     }

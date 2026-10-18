@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.1.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.1.1)
+[![Latest Version](https://img.shields.io/badge/Release-v2.2.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.2.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Suites%20Pass%20(11940%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Suites%20Pass%20(12307%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -2195,7 +2195,7 @@ Principais destaques:
 25. **Modo Inteiro Opcional para as Folhas Relacionais** (`asInteger()`, `Spec::int()`: limites inteiros fechados onde for correto)
 26. **Auditoria de Solidez da Álgebra de Especificações** (bancada por força bruta sobre toda classe de especificação; a álgebra nunca promete mais do que a avaliação entrega) (entregue na v2.1.0)
 
-Planejado para a v2.2.0: as duas violações da álgebra achadas pela bancada de solidez e deixadas para a próxima MINOR (BUG-20261013-JPQT, BUG-20261013-XEIB; ver o ROADMAP).
+26b. **Decisões pendentes da bancada de solidez** (um valor-padrão tipado, `isBlankString()`/`defaultNumber()`/`defaultValueOfType()`, é "um valor daquele tipo, e o seu padrão" e recusa `null`, que só o `defaultValue()` sem tipo aceita; `NAN` é recusado pelas folhas ordenadas como candidato e como limite, de modo que `not(lessThan(v))` e `greaterThanOrEqualTo(v)` concordam em todo candidato que respondem) (Entregue na v2.2.0)
 
 ---
 

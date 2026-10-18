@@ -16,7 +16,7 @@ use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
  * - Boolean algebra (allOf, anyOf, not, neitherOf)
  * - Expressive DSL aliases (shouldBeAllOf, isBoth, shouldBeOneOf, either, etc.)
  *
- * @version    1.4.4
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -315,7 +315,8 @@ trait LogicalSpecificationOperationsTrait
     // ==========================================
 
     /**
-     * Domian `defaultValueOfType(T)`: null or the default value of the given type only.
+     * Domian `defaultValueOfType(T)`: the default value of the given type only (blank text, zero,
+     * false, []); since 2.2.0 null is NOT accepted, as default(T) of a non-nullable type.
      *
      * @param string $type 'string', 'number', 'int', 'float', 'bool' or 'array'
      * @return ISpecification
@@ -348,7 +349,7 @@ trait LogicalSpecificationOperationsTrait
     }
 
     /**
-     * Domian `defaultNumber()`: null or zero.
+     * Domian `defaultNumber()`: a number that is zero (int or float). Since 2.2.0 null is NOT accepted.
      *
      * @return ISpecification
      */

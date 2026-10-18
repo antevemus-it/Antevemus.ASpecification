@@ -172,11 +172,11 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
-## 🗓️ v2.2.0 — Planned
+## ✅ v2.2.0 — Pending Decisions of the Soundness Bench (Shipped in v2.2.0)
 
-Two violations found by the soundness bench of v2.1.0 and decided for the next MINOR (a third, BUG-20261013-ZYEC, was fixed in v2.1.0 together with BUG-20261013-T6CS); each is watched by `AlgebraSoundnessCasesTest::testPendingDecisionsStillHold`, which fails the day its behaviour changes.
-- **BUG-20261013-JPQT (#68):** `defaultValue('string')->isDisjointWith(defaultValue('number'))` is `true`, but `null` satisfies both.
-- **BUG-20261013-XEIB (#70):** `not(lessThan(5.5))` accepts `NAN` and its inversion `greaterThanOrEqualTo(5.5)` does not.
+### 26b. Pending Decisions of the Soundness Bench 🧪 (Shipped in v2.2.0)
+- **Description:** The two violations the soundness bench of v2.1.0 found and left for a decision (a third, BUG-20261013-ZYEC, was fixed in v2.1.0 together with BUG-20261013-T6CS), in both the algebra and the evaluation disagreed, and the bench does not say which side is wrong. **BUG-20261013-JPQT (#68):** `defaultValue('string')->isDisjointWith(defaultValue('number'))` was `true` although `null` satisfied both; the evaluation was the wrong side: a typed default value is "a value of that type and its default" (`isBlankString()` a blank text, `defaultNumber()` zero, as `default(T)` of a non-nullable type), so it now refuses `null`, which only the untyped `defaultValue()` accepts, and the disjointness holds for every candidate; three Domian parity assertions that asserted `null` as blank or zero are inverted with a note. **BUG-20261013-XEIB (#70):** `not(lessThan(5.5))` accepted `NAN` and its inversion `greaterThanOrEqualTo(5.5)` did not, because `NAN` is unordered; the ordered leaves now refuse it as a candidate (`IncompatibleTypeException`) and as a bound (`InvalidArgumentException`), the inversion of every numeric leaf is kept, the equality leaves keep answering it, and `NAN` joins the candidate pool of the bench. No decision is pending; the hook of the bench stays for the next one.
+- **Goal:** The bench runs without exceptions: every promise of the algebra is checked on every candidate of the pool, `NAN` included.
 
 ---
 

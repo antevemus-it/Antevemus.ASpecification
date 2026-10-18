@@ -19,7 +19,7 @@ use Antevemus\ASpecification\Specifications\String\TextComparison;
  * - Wildcard pattern matching and substring containment (contains, startsWith, endsWith)
  * - Accent-insensitive text comparison (TextComparison::IgnoreCaseAndAccents, equalIgnoringCaseAndAccents; 2.1.0)
  *
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -296,8 +296,9 @@ trait StringSpecificationOperationsTrait
     // ==========================================
 
     /**
-     * Domian `blankString()`: null or a blank string (DefaultValueSpecification<String>).
-     * Unlike isBlank() (a regular expression that rejects null), null IS blank here.
+     * Domian `blankString()`: a text that is blank (DefaultValueSpecification<String>: empty or
+     * whitespace). Since 2.2.0 null is NOT blank here either (it is not a text), as in isBlank();
+     * only the untyped defaultValue() accepts null.
      *
      * @return ISpecification
      */

@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
 
 use Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException;
 use DateTimeInterface;
+use InvalidArgumentException;
 
 /**
  * TypeCompatibility - Type guards for comparison and equality leaf specifications.
@@ -24,7 +25,7 @@ use DateTimeInterface;
  * Subsumption algebra uses the boolean predicates (no exception) because it compares two
  * specifications, not a candidate.
  *
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -42,6 +43,9 @@ final class TypeCompatibility
      */
     public static function isOrderable(mixed $a, mixed $b): bool
     {
+        if (self::isUnordered($a) || self::isUnordered($b)) {
+            return false;
+        }
         if (self::isNumber($a) && self::isNumber($b)) {
             return true;
         }
@@ -97,9 +101,41 @@ final class TypeCompatibility
         if ($candidate === null) {
             return;
         }
+        if (self::isUnordered($candidate)) {
+            throw new IncompatibleTypeException($ruleName, $candidate, $value, sprintf(
+                '%s cannot order the candidate NAN: it is unordered (NAN < v, NAN > v and NAN == v are all false), so the leaf and its inversion would disagree on it; refuse it before evaluating, or compare it with equalTo()/notEqual().',
+                $ruleName
+            ));
+        }
         if (!self::isOrderable($candidate, $value)) {
             throw new IncompatibleTypeException($ruleName, $candidate, $value);
         }
+    }
+
+    /**
+     * The bound of an ordered leaf (`<`, `<=`, `>`, `>=`) must order something: NAN is refused at
+     * construction (2.2.0, BUG-20261013-XEIB), because `x < NAN`, `x > NAN` and `x == NAN` are all
+     * false for every x, so the leaf would accept no candidate and its inversion every one.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function assertOrderableBound(mixed $value, string $ruleName): void
+    {
+        if (self::isUnordered($value)) {
+            throw new InvalidArgumentException(sprintf(
+                '%s cannot take NAN as its bound: NAN orders nothing (x < NAN, x > NAN and x == NAN are all false for every x), so the leaf would accept no candidate and its inversion would accept every one.',
+                $ruleName
+            ));
+        }
+    }
+
+    /**
+     * True for the one value PHP cannot order: a float NAN (2.2.0). It is neither a number nor a
+     * text for the purposes of isOrderable(); the equality rules still answer it (NAN equals nothing).
+     */
+    public static function isUnordered(mixed $v): bool
+    {
+        return is_float($v) && is_nan($v);
     }
 
     /**

@@ -15,7 +15,7 @@ use DateTimeInterface;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    1.4.4
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -29,6 +29,7 @@ class LessThanOrEqualSpecification extends AbstractComparableValueBoundSpecifica
      */
     public function __construct(int|float|string|DateTimeInterface $value)
     {
+        TypeCompatibility::assertOrderableBound($value, 'LessThanOrEqualSpecification');
         parent::__construct($value);
     }
 

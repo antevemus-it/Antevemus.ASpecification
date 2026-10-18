@@ -20,7 +20,7 @@ use DateTimeInterface;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    2.1.0
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -34,6 +34,7 @@ class GreaterThanSpecification extends AbstractComparableValueBoundSpecification
      */
     public function __construct(int|float|string|DateTimeInterface $value)
     {
+        TypeCompatibility::assertOrderableBound($value, 'GreaterThanSpecification');
         parent::__construct($value);
     }
 

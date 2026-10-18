@@ -17,8 +17,13 @@ use InvalidArgumentException;
  * Port of the Domian `DefaultValueSpecification<T>`: null, false, 0 and the blank string are
  * default values. Untyped (the default, `defaultValue()`), it accepts the default value of any
  * type; typed (`blankString()` = 'string', `defaultNumber()` = 'number', `defaultValueOfType(T)`),
- * it accepts only null and the default value of that type, and two differently typed instances
- * are disjoint (a blank string is never zero).
+ * it accepts the default value of that type ONLY: a blank string for 'string', zero for 'number',
+ * false for 'bool', [] for 'array'. Since 2.2.0 (BUG-20261013-JPQT) a typed instance refuses null:
+ * "is a text and it is blank", "is a number and it is zero", as default(T) of a non-nullable type
+ * in C# (only the untyped defaultValue() accepts null, as default(T?) does). Up to 2.1.0 a typed
+ * instance accepted null, as Domian's does, and the two typed instances it declared disjoint shared
+ * that candidate. Two differently typed instances are disjoint: a blank string is never zero, and
+ * null is neither.
  *
  * Features:
  * - Empty string and whitespace detection
@@ -29,7 +34,7 @@ use InvalidArgumentException;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.4.4
+ * @version    2.2.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -52,7 +57,8 @@ class DefaultValueSpecification extends AbstractSpecification implements ILeafSp
     public function isSatisfiedBy(mixed $candidate): bool
     {
         if ($candidate === null) {
-            return true;
+            // null is the default value of some type, not a value of a given type (2.2.0)
+            return $this->normalizedType() === null;
         }
         if ($candidate instanceof DateTimeInterface) {
             throw new InvalidArgumentException("Cannot check for default value of a DateTime object as it is a timestamp");
@@ -100,6 +106,9 @@ class DefaultValueSpecification extends AbstractSpecification implements ILeafSp
         if (SpecificationAlgebra::baseDisjoint($this, $otherSpecification)) {
             return true;
         }
+        // Two typed defaults of different types share no candidate: each accepts values of its own
+        // type only, and null none of them (2.2.0, BUG-20261013-JPQT). An untyped default shares the
+        // default value of every type, so it is never disjoint with a typed one
         $other = SpecificationAlgebra::resolve($otherSpecification);
         if ($other instanceof self) {
             $a = $this->normalizedType();
