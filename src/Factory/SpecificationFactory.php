@@ -68,7 +68,7 @@ use DateTimeInterface;
  * - Immutable constructor with static factory create()
  * - Domian SpecificationFactory names kept as aliases (allEntities, isGreaterThan, blankString, isEnum, ...)
  *
- * @version    1.5.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -262,16 +262,16 @@ final class SpecificationFactory implements
             }
 
             /** {@inheritdoc} */
-            public function matchesRegex(string $pattern): ISpecification
+            public function matchesRegex(string $pattern, ?TextComparison $comparison = null): ISpecification
             {
                 $this->validateRegexPattern($pattern);
-                return new RegexSpecification($pattern);
+                return new RegexSpecification($pattern, $comparison);
             }
 
             /** {@inheritdoc} */
-            public function matchesWildcard(string $wildcardExpression): ISpecification
+            public function matchesWildcard(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
             {
-                return new WildcardSpecification($wildcardExpression);
+                return new WildcardSpecification($wildcardExpression, $caseSensitive);
             }
 
             /** {@inheritdoc} */

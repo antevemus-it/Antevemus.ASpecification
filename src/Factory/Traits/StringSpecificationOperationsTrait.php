@@ -17,9 +17,10 @@ use Antevemus\ASpecification\Specifications\String\TextComparison;
  * - Blank string and length validation
  * - Case-insensitive comparisons and regex matching
  * - Wildcard pattern matching and substring containment (contains, startsWith, endsWith)
- * - Accent-insensitive text comparison (TextComparison::IgnoreCaseAndAccents, equalIgnoringCaseAndAccents; 2.1.0)
+ * - Accent-insensitive text comparison (TextComparison::IgnoreCaseAndAccents, equalIgnoringCaseAndAccents; 2.1.0;
+ *   wildcard and regex, 2.3.0)
  *
- * @version    2.2.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -119,34 +120,43 @@ trait StringSpecificationOperationsTrait
      * </code>
      *
      * @param string $pattern Regular expression pattern (PCRE)
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string> Regex match specification
      * @throws \InvalidArgumentException If regex pattern is invalid
      */
-    public function matchesRegex(string $pattern): ISpecification
+    public function matchesRegex(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return $this->stringFactory->matchesRegex($pattern);
+        return $this->stringFactory->matchesRegex($pattern, $comparison);
     }
 
     /**
      * Alias for matchesRegex().
      *
      * @param string $pattern Regular expression pattern (PCRE)
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function matchesRegularExpression(string $pattern): ISpecification
+    public function matchesRegularExpression(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return $this->stringFactory->matchesRegularExpression($pattern);
+        return $this->stringFactory->matchesRegularExpression($pattern, $comparison);
     }
 
     /**
      * Alias for matchesRegex().
      *
      * @param string $pattern Regular expression pattern (PCRE)
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function matches(string $pattern): ISpecification
+    public function matches(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return $this->stringFactory->matches($pattern);
+        return $this->stringFactory->matches($pattern, $comparison);
     }
 
     /**
@@ -164,11 +174,13 @@ trait StringSpecificationOperationsTrait
      * </code>
      *
      * @param string $wildcardExpression Wildcard pattern expression (* and ?)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification<string> Wildcard match specification
      */
-    public function matchesWildcard(string $wildcardExpression): ISpecification
+    public function matchesWildcard(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
     {
-        return $this->stringFactory->matchesWildcard($wildcardExpression);
+        return $this->stringFactory->matchesWildcard($wildcardExpression, $caseSensitive);
     }
 
     /**
@@ -177,11 +189,13 @@ trait StringSpecificationOperationsTrait
      * Idiomatic SQL-like usage: "like 'user_%'"
      *
      * @param string $wildcardExpression Wildcard pattern expression (* and ?)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function like(string $wildcardExpression): ISpecification
+    public function like(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
     {
-        return $this->stringFactory->like($wildcardExpression);
+        return $this->stringFactory->like($wildcardExpression, $caseSensitive);
     }
 
     /**
@@ -375,11 +389,13 @@ trait StringSpecificationOperationsTrait
      * Domian alias for matchesWildcard().
      *
      * @param string $wildcardExpression Wildcard expression (* and ?)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification
      */
-    public function matchesWildcardExpression(string $wildcardExpression): ISpecification
+    public function matchesWildcardExpression(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
     {
-        return $this->matchesWildcard($wildcardExpression);
+        return $this->matchesWildcard($wildcardExpression, $caseSensitive);
     }
 
     /**

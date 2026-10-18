@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Sql\Dialects;
 
+use Antevemus\ASpecification\Contracts\Sql\ISqlRegexRewriter;
+use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
+use Antevemus\ASpecification\Sql\SqlWhereClause;
 use InvalidArgumentException;
 
 /**
@@ -27,14 +30,27 @@ use InvalidArgumentException;
  * `ß` to `ss`, `æ` to `ae`, `ø` to `o` and so answers differently from memory for those letters).
  * Neither form uses an ordinary index on the column.
  *
- * @version    2.1.0
+ * Wildcard and regular expression ignoring case and accents (2.3.0): `wildcard()` goes through the same
+ * LIKE (its glob as the LIKE pattern). `regex()` is `<fold(col)> ~* :p`, the column folded by the same
+ * expression (or the configured function) and the body bound with its accents folded in PHP
+ * (TextComparison::foldAccents(), the case kept), with PCRE's word boundaries `\b` and `\B` written as
+ * the `\y` and `\Y` of PostgreSQL's regular expressions (where `\b` is a backspace; rewriteRegexBody(),
+ * which SqlQueryVisitor also applies to `regex()` without a comparison since 2.3.0, bug #73). Measured on
+ * PostgreSQL 17 (forward 039): the battery of pt-BR, es, fr and de words answers as in memory; the
+ * other class shorthands keep the classification of the database, as in `regex()` without a
+ * comparison: `\d` is the ASCII digits only (PCRE with `u` also takes the other decimal digits, 360 code
+ * points of the BMP), `\w` and `\s` differ from PCRE on 605 and 5 code points of the BMP (`²`, `½`,
+ * spacing marks of Indic scripts, no-break spaces), and a "C" collation column classifies only ASCII
+ * letters as `\w`.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class PostgreSqlDialect extends AbstractSqlDialect
+class PostgreSqlDialect extends AbstractSqlDialect implements ISqlRegexRewriter
 {
     /** Plain or schema-qualified function name. */
     private const FUNCTION_NAME = '/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$/';
@@ -105,6 +121,84 @@ class PostgreSqlDialect extends AbstractSqlDialect
         }
 
         return self::builtInAccentFolding($column) . ' LIKE ' . self::builtInAccentFolding($paramPlaceholder);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * `<fold(col)> ~* :p`, the column folded as in formatAccentInsensitiveLike() and the folded body bound
+     * with `\b`/`\B` written as `\y`/`\Y` (rewriteRegexBody()).
+     *
+     * @version 2.3.0
+     */
+    public function accentInsensitiveRegex(string $column, string $paramPlaceholder, string $foldedBody): ?ISqlWhereClause
+    {
+        $folded = $this->accentFoldingFunction !== null
+            ? "{$this->accentFoldingFunction}(lower({$column}))"
+            : self::builtInAccentFolding($column);
+
+        return new SqlWhereClause("{$folded} ~* {$paramPlaceholder}", [$paramPlaceholder => $this->rewriteRegexBody($foldedBody)]);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * PCRE's word boundaries in PostgreSQL's syntax (2.3.0, bug #73): `\b` becomes `\y` and `\B` becomes
+     * `\Y` outside a bracket expression; inside one (with its POSIX classes), and in a `\Q...\E`
+     * quotation, the text is kept (`[\b]` is a backspace in both). Every other character and escape is
+     * kept as it is, so `/\bfoo\b/` binds `\yfoo\y`.
+     *
+     * @version 2.3.0
+     */
+    public function rewriteRegexBody(string $body): string
+    {
+        $out = '';
+        $inBracket = false;
+        $length = strlen($body);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $body[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $body[++$i];
+                if ($next === 'Q') {
+                    // \Q...\E: kept verbatim up to \E (or the end)
+                    $end = strpos($body, '\\E', $i + 1);
+                    $stop = $end === false ? $length : $end + 2;
+                    $out .= '\\Q' . substr($body, $i + 1, $stop - $i - 1);
+                    $i = $stop - 1;
+                    continue;
+                }
+                $out .= !$inBracket && $next === 'b' ? '\\y' : (!$inBracket && $next === 'B' ? '\\Y' : '\\' . $next);
+                continue;
+            }
+            if ($inBracket) {
+                if ($character === '[' && $i + 1 < $length && $body[$i + 1] === ':' && ($close = strpos($body, ':]', $i + 2)) !== false) {
+                    // POSIX class [:alpha:] inside the bracket expression
+                    $out .= substr($body, $i, $close + 2 - $i);
+                    $i = $close + 1;
+                    continue;
+                }
+                if ($character === ']') {
+                    $inBracket = false;
+                }
+                $out .= $character;
+                continue;
+            }
+            $out .= $character;
+            if ($character === '[') {
+                $inBracket = true;
+                // A leading ^ negates; a ] right after the opening (or the ^) is a literal member
+                if ($i + 1 < $length && $body[$i + 1] === '^') {
+                    $out .= '^';
+                    $i++;
+                }
+                if ($i + 1 < $length && $body[$i + 1] === ']') {
+                    $out .= ']';
+                    $i++;
+                }
+            }
+        }
+
+        return $out;
     }
 
     /**

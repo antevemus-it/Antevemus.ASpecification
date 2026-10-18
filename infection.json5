@@ -7,7 +7,7 @@
 //   XDEBUG_MODE=off vendor/bin/infection --threads=max --only-covering-test-cases \
 //       --initial-tests-php-options="-d pcov.enabled=1 -d pcov.directory=$PWD/src"
 //
-// minMsi / minCoveredMsi: the floor registered in RELEASING.md (measured 85.81 / 85.81 on 2026-10-13, 2.1.0,
+// minMsi / minCoveredMsi: the floor registered in RELEASING.md (measured 86.82 / 86.82 on 2026-10-18, 2.2.0, Quality workflow;
 // Infection 0.35.6, PHP 8.4 with intl and pcov: 2558 mutants, 2167 killed, 23 errors, 5 time-outs, 363
 // escaped), a little below the measured score; a drop below it fails the run. Raise it when the score goes
 // up, never lower it to make a run pass.
@@ -33,6 +33,6 @@
     "mutators": {
         "@default": true
     },
-    "minMsi": 84,
-    "minCoveredMsi": 84
+    "minMsi": 85,
+    "minCoveredMsi": 85
 }

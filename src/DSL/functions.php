@@ -15,10 +15,11 @@ declare(strict_types=1);
  * - Identity and relational comparison (is, equalTo, equal, notEqual, greaterThan, lessThan, in, notIn)
  * - Temporal and date validation (before, isBefore, after, isAfter, at, between)
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith); the text operators
- *   take `bool|TextComparison`, TextComparison::IgnoreCaseAndAccents ignoring accents too (2.1.0)
+ *   take `bool|TextComparison`, TextComparison::IgnoreCaseAndAccents ignoring accents too (2.1.0);
+ *   `matchesWildcardExpression()` too and `matches()` an optional TextComparison (2.3.0)
  * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    2.2.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -533,11 +534,14 @@ function isBlank(): ISpecification
  * Creates a specification validating a string against a PCRE regular expression (`preg_match`).
  *
  * @param string $pattern PCRE regex pattern (e.g., '/^[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}$/')
+ * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+ *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+ *        (2.3.0, requires ext-intl)
  * @return ISpecification Regex matching specification
  */
-function matches(string $pattern): ISpecification
+function matches(string $pattern, ?TextComparison $comparison = null): ISpecification
 {
-    return Spec::matches($pattern);
+    return Spec::matches($pattern, $comparison);
 }
 
 /**
@@ -809,11 +813,13 @@ function isEnum(string $enumClass): ISpecification
  * Domian alias for matchesWildcard() / wildcard().
  *
  * @param string $wildcardExpression Wildcard expression (* and ?)
+ * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+ *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
  * @return ISpecification
  */
-function matchesWildcardExpression(string $wildcardExpression): ISpecification
+function matchesWildcardExpression(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
 {
-    return Spec::wildcard($wildcardExpression);
+    return Spec::wildcard($wildcardExpression, $caseSensitive);
 }
 
 /**

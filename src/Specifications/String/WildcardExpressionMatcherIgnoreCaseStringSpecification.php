@@ -19,10 +19,15 @@ use Antevemus\ASpecification\AbstractSpecification;
  * Features:
  * - Unicode case-insensitive glob matching (`mb_strtolower` then `fnmatch`)
  * - Safe rejection of non-string candidates
+ * - 2.3.0: the match is delegated to `new WildcardSpecification($pattern, TextComparison::IgnoreCase)`,
+ *   which holds the same rule; the answers do not change. This class does not extend
+ *   WildcardSpecification, so a visitor written before 2.3.0 that tests `instanceof
+ *   WildcardSpecification` first never translates it as case-sensitive. The accent-insensitive glob is
+ *   `Spec::wildcard($pattern, TextComparison::IgnoreCaseAndAccents)`.
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.5.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,6 +36,9 @@ use Antevemus\ASpecification\AbstractSpecification;
  */
 class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpecification
 {
+    /** The IgnoreCase wildcard that answers for this specification (2.3.0). */
+    private readonly WildcardSpecification $matcher;
+
     /**
      * Initializes the specification with an expected wildcard pattern.
      *
@@ -38,6 +46,7 @@ class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpe
      */
     public function __construct(private readonly string $pattern)
     {
+        $this->matcher = new WildcardSpecification($pattern, TextComparison::IgnoreCase);
     }
 
     /**
@@ -58,12 +67,19 @@ class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpe
      */
     public function isSatisfiedBy(mixed $candidate): bool
     {
-        if (!is_string($candidate)) {
-            return false;
-        }
-        
-        // Unicode-aware (1.5.0, RN-03): both sides lowered with mbstring before fnmatch().
-        return fnmatch(mb_strtolower($this->pattern, 'UTF-8'), mb_strtolower($candidate, 'UTF-8'));
+        // Unicode-aware (1.5.0, RN-03): both sides lowered with mbstring before fnmatch(), by the
+        // IgnoreCase WildcardSpecification since 2.3.0.
+        return $this->matcher->isSatisfiedBy($candidate);
+    }
+
+    /**
+     * The comparison of this specification, always TextComparison::IgnoreCase (2.3.0).
+     *
+     * @return TextComparison
+     */
+    public function getComparison(): TextComparison
+    {
+        return TextComparison::IgnoreCase;
     }
 
     /**

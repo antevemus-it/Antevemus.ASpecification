@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Tests\Unit;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
+use Antevemus\ASpecification\Contracts\Sql\ISqlRegexRewriter;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -17,7 +18,10 @@ use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Sql\Dialects\AnsiSqlDialect;
 use Antevemus\ASpecification\Sql\Dialects\InformixDialect;
+use Antevemus\ASpecification\Sql\Dialects\MySqlDialect;
+use Antevemus\ASpecification\Sql\Dialects\PostgreSqlDialect;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
@@ -36,7 +40,7 @@ use stdClass;
  * todos os dialetos do ecossistema: sqlsrv, oracle, oci, mysql, mssql, ibase, firebird, fbird, dblib, pgsql, sqlite,
  * e desde 1.6.0 db2, informix e duckdb (com paginação em todos os dialetos).
  *
- * @version    1.13.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -68,6 +72,7 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
         $this->testOracleAndFirebirdQuoteIdentifiersInUpperCase();
         $this->testStringAffixesTranslateToLikeInEveryDialect();
         $this->testRegexBindHasNoPhpDelimitersOrModifiers();
+        $this->testBug73RegexWordBoundariesOnPostgreSql();
 
         // Lote de correção #30-#32 (2026-10-07): % e _ literais de like() escapados no LIKE.
         $this->testWildcardLiteralsAreEscapedInLike();
@@ -739,6 +744,39 @@ class Module12_SqlVisitorAndDialectsTest extends TestCase
 
         // Regressão: isBlank() (regex interna) também sai limpo
         $this->assertEquals([':p1' => '^\s*$'], Spec::toSql(Spec::property('name', Spec::isBlank()), 'pgsql')->getBindings());
+    }
+
+    /**
+     * Bug #73 (2.3.0): no PostgreSQL `\b` é backspace e `\B` sinônimo de barra invertida, então
+     * `regex('/\bfoo/')` nunca casava. O corpo passa por ISqlRegexRewriter::rewriteRegexBody() do dialeto:
+     * `\b`/`\B` viram `\y`/`\Y` fora de colchetes; colchetes, classes POSIX e `\Q...\E` ficam intactos. Os
+     * dialetos sem a interface (MySQL/MariaDB, ANSI, Oracle...) recebem o corpo como escrito.
+     */
+    private function testBug73RegexWordBoundariesOnPostgreSql(): void
+    {
+        $bind = fn(string $pattern, string $dialect): array => Spec::toSql(Spec::property('t', Spec::regex($pattern)), $dialect)->getParameters();
+
+        $this->assertEquals([':p1' => '\yfoo\y'], $bind('/\bfoo\b/', 'pgsql'), 'PG: \b vira \y');
+        $this->assertEquals('("t" IS NOT NULL AND "t" ~ :p1)', Spec::toSql(Spec::property('t', Spec::regex('/\bfoo\b/')), 'pgsql')->getSql(), 'o SQL não muda, só o parâmetro');
+        $this->assertEquals([':p1' => '\Yoo\y'], $bind('/\Boo\b/i', 'pgsql'), 'PG: \B vira \Y, também no ~*');
+        $this->assertEquals([':p1' => '[\b]x\y'], $bind('/[\b]x\b/', 'pgsql'), 'colchetes intactos');
+        $this->assertEquals([':p1' => '[]\b]\Y[^]a]\y'], $bind('/[]\b]\B[^]a]\b/', 'pgsql'), '] inicial é membro do colchete');
+        $this->assertEquals([':p1' => '[[:alpha:]\b]\y'], $bind('/[[:alpha:]\b]\b/', 'pgsql'), 'classe POSIX dentro do colchete');
+        $this->assertEquals([':p1' => '\Q\b\E\y'], $bind('/\Q\b\E\b/', 'pgsql'), '\Q...\E intacto');
+        $this->assertEquals([':p1' => '\Qa\b'], $bind('/\Qa\b/', 'pgsql'), '\Q sem \E vai até o fim');
+        $this->assertEquals([':p1' => '\\\\b\d\D\w'], $bind('/\\\\b\d\D\w/', 'pgsql'), 'barra escapada e outros escapes ficam');
+        $this->assertEquals([':p1' => 'a\\'], (new SqlQueryVisitor('pgsql'))->translate(new PropertySpecification(Spec::specify(stdClass::class), 't', new RegexSpecification('/a\/')))->getParameters(), 'barra final solta fica');
+        $this->assertEquals([':p1' => '\yfoo'], $bind('#\bfoo#u', 'pgsql'), 'outro delimitador');
+
+        // Dialetos sem a interface: o corpo como escrito (identidade)
+        foreach (['mysql', 'oracle', 'duckdb', 'db2'] as $dialect) {
+            $this->assertEquals([':p1' => '\bfoo\b'], $bind('/\bfoo\b/', $dialect), "{$dialect}: corpo inalterado");
+        }
+        $this->assertTrue(new PostgreSqlDialect() instanceof ISqlRegexRewriter);
+        $this->assertFalse(new MySqlDialect() instanceof ISqlRegexRewriter);
+        $this->assertFalse(new AnsiSqlDialect() instanceof ISqlRegexRewriter);
+        $this->assertEquals('\yfoo\Y', (new PostgreSqlDialect())->rewriteRegexBody('\bfoo\B'));
+        $this->assertEquals('', (new PostgreSqlDialect())->rewriteRegexBody(''));
     }
 
     /**

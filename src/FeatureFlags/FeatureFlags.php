@@ -13,6 +13,7 @@ use Antevemus\ASpecification\FeatureFlags\Exceptions\UndeclaredFeatureFlagExcept
 use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
 use InvalidArgumentException;
 use Stringable;
 use Throwable;
@@ -29,7 +30,11 @@ use Throwable;
  *   list stored with the flag (empty = no restriction), matched by the subject key read from the
  *   subject through the declared path (`subjectKey`, shared accessor `antevemus/adeep-property-access`;
  *   a string or integer subject is the key itself), AND the specification declared in code (none = no
- *   restriction). With a target, a null subject is not in it
+ *   restriction) AND the rollout percentage (forward 040, D6; none = every subject): the subject is in
+ *   when its bucket, bucket($code, $subjectKey), is below `percent * 100`. The checks run in that
+ *   order and the first that fails gives the reason (DISABLED, OUTSIDE_VALIDITY, NOT_IN_TARGET,
+ *   OUTSIDE_ROLLOUT). With a target or a rollout, a null subject (or a subject without a key) is not
+ *   in it
  * - an undeclared code is off (UNKNOWN_FLAG), whatever the database says: nothing in the code reads it
  * - fail closed: when the store cannot be read (no table, no connection) or the target cannot be
  *   evaluated, the flag is off with the reason ERROR and the failure goes to the error reporter, once
@@ -39,23 +44,33 @@ use Throwable;
  *   When a change runs inside a transaction of the caller that is later rolled back, call refresh()
  * - spec($code): a FeatureEnabledSpecification over the subject, composable with any specification
  *
- * Writing (D5, D6): toggle(), addSubject(), removeSubject(), each in one transaction of the store with
- * its history row:
+ * Writing (D5, D6; forward 040, D1 and D4): toggle(), addSubject(), removeSubject(), setValidity() and
+ * setRollout(), each in one transaction of the store with its history row:
  * - the reason is required: whitespace runs collapsed, the ends trimmed, between the minimum and the
  *   maximum length (10 and 1000 characters by default); the origin is the caller's text (ORIGIN_*)
  * - compare-and-set: turning on expects off, turning off expects on, adding a subject expects it absent,
- *   removing one expects it present; otherwise StaleFeatureFlagException and nothing is written
- * - turning on (or adding a subject to) an undeclared flag is refused (UndeclaredFeatureFlagException):
- *   it would have no effect; turning off and removing subjects stay allowed (cleanup of an orphan row)
+ *   removing one expects it present; the validity window and the rollout percentage expect the
+ *   optimistic version of the row (the one read in the transaction, or the one the caller's screen
+ *   read, `$expectedVersion`), and every change of the switch, the window or the rollout increments it;
+ *   setting the value already stored is refused too; otherwise StaleFeatureFlagException and nothing
+ *   is written
+ * - turning on (or adding a subject, a window or a rollout to) an undeclared flag is refused
+ *   (UndeclaredFeatureFlagException): it would have no effect; turning off and removing subjects stay
+ *   allowed (cleanup of an orphan row)
  * - a declared flag without a row gets one, off, on its first change (the history row then says
  *   `oldEnabled = null`: it did not exist)
  * - who may change a flag is a decision of the application (its roles): the service only records the
  *   actor it is given
  *
  * Listing (D11): all() is the union of the registry and the store (the texts of the code win; a flag
- * only in the store is listed as not declared); history() is the trail, most recent first.
+ * only in the store is listed as not declared), with the window and the rollout of each (forward 040,
+ * D7); history() is the trail, most recent first, each row with its kind (FeatureFlagChangeKind).
  *
- * @version    2.1.0
+ * Rollout bucket (forward 040, D5): bucket() is a contract. The same code and subject key give the same
+ * bucket in every request, process and machine, and in every release of the 2.x line; changing the
+ * hash would move subjects in and out of every running rollout, so it is a MAJOR change.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -81,6 +96,9 @@ final class FeatureFlags
 
     /** Default number of history rows returned. */
     public const DEFAULT_HISTORY_LIMIT = 50;
+
+    /** Number of rollout buckets: a percentage p takes the buckets 0 to p * 100 - 1 (0.01 % each). */
+    public const ROLLOUT_BUCKETS = 10000;
 
     private readonly Closure $clock;
 
@@ -180,7 +198,8 @@ final class FeatureFlags
         }
 
         $listed = $state->subjects !== [];
-        if (!$listed && $definition->target === null) {
+        $rollout = $state->rolloutPercent;
+        if (!$listed && $definition->target === null && $rollout === null) {
             return new FeatureFlagEvaluation($code, FeatureFlagReason::ENABLED);
         }
 
@@ -191,7 +210,9 @@ final class FeatureFlags
 
             return new FeatureFlagEvaluation($code, FeatureFlagReason::ERROR, null, $e);
         }
-        if ($subject === null || ($listed && ($subjectKey === null || !$state->hasSubject($subjectKey)))) {
+        if ($subject === null
+            || ($subjectKey === null && ($listed || $rollout !== null))
+            || ($listed && !$state->hasSubject((string) $subjectKey))) {
             return new FeatureFlagEvaluation($code, FeatureFlagReason::NOT_IN_TARGET, $subjectKey);
         }
 
@@ -216,7 +237,29 @@ final class FeatureFlags
             }
         }
 
+        if ($rollout !== null && $subjectKey !== null) {
+            $bucket = self::bucket($code, $subjectKey);
+            $reason = $bucket < $rollout * 100 ? FeatureFlagReason::TARGETING_MATCH : FeatureFlagReason::OUTSIDE_ROLLOUT;
+
+            return new FeatureFlagEvaluation($code, $reason, $subjectKey, null, $bucket, $rollout);
+        }
+
         return new FeatureFlagEvaluation($code, FeatureFlagReason::TARGETING_MATCH, $subjectKey);
+    }
+
+    /**
+     * The rollout bucket of a subject for a flag, from 0 to 9999 (forward 040, D5): the first 8
+     * hexadecimal digits of `hash('xxh3', $code . "\0" . $subjectKey)` as an unsigned integer, modulo
+     * ROLLOUT_BUCKETS. A subject is in a rollout of p % when its bucket is below p * 100, so raising the
+     * percentage only adds subjects. The code takes part in the hash: two flags at the same percentage
+     * reach independent groups of subjects.
+     *
+     * This is a contract: the same code and key give the same bucket in every request, process and
+     * machine; changing it is a MAJOR change.
+     */
+    public static function bucket(string $code, string $subjectKey): int
+    {
+        return (int) (hexdec(substr(hash('xxh3', $code . "\0" . $subjectKey), 0, 8)) % self::ROLLOUT_BUCKETS);
     }
 
     /**
@@ -370,6 +413,137 @@ final class FeatureFlags
     }
 
     /**
+     * Sets (or clears) the validity window of a declared flag, with a reason, in one transaction with its
+     * history row (forward 040, D1). The flag is on only between $from and $until, both inclusive; a null
+     * bound is open; both null clear the window. The flag gets its row (off) when it has none.
+     *
+     * The change is a compare-and-set of the optimistic version of the row: the version read inside the
+     * transaction, or $expectedVersion when given (the version the caller's screen showed,
+     * FeatureFlagState::$version), so that a change made by someone else in between is not overwritten.
+     *
+     * @param string $code Flag code
+     * @param DateTimeInterface|null $from First instant the flag may be on (null = open)
+     * @param DateTimeInterface|null $until Last instant the flag may be on (null = open)
+     * @param string $reason Why (normalized; between the minimum and the maximum length)
+     * @param string|int|null $actor Who (null = a script without a user)
+     * @param string $origin Where the change came from (ORIGIN_* or the application's text)
+     * @param int|null $expectedVersion Version the caller read (null = the one read in the transaction)
+     * @return FeatureFlagState The stored state after the change
+     * @throws InvalidArgumentException When the code or the origin is not valid, or $from is after $until
+     * @throws InvalidFeatureFlagReasonException When the reason is too short or too long
+     * @throws UndeclaredFeatureFlagException When the flag is not declared
+     * @throws StaleFeatureFlagException When the version is not the expected one, or the window is already this one
+     * @throws FeatureFlagStoreException When the store keeps no validity window, or fails
+     */
+    public function setValidity(
+        string $code,
+        ?DateTimeInterface $from,
+        ?DateTimeInterface $until,
+        string $reason,
+        string|int|null $actor = null,
+        string $origin = self::ORIGIN_UI,
+        ?int $expectedVersion = null
+    ): FeatureFlagState {
+        $definition = $this->declared($code, 'a validity window');
+        if ($from !== null && $until !== null && $from > $until) {
+            throw new InvalidArgumentException(sprintf(
+                'The validity window of feature flag "%s" starts after it ends (%s > %s).',
+                $code,
+                self::instantText($from),
+                self::instantText($until)
+            ));
+        }
+        $reason = $this->normalizeReason($reason);
+        $origin = self::assertOrigin($origin);
+        if (!$this->store->supportsValidity()) {
+            throw new FeatureFlagStoreException(sprintf(
+                'The feature flag store keeps no validity window (columns valid_from, valid_until and version of the flag table): feature flag "%s" cannot get one.',
+                $code
+            ));
+        }
+        $from = $from === null ? null : DateTimeImmutable::createFromInterface($from);
+        $until = $until === null ? null : DateTimeImmutable::createFromInterface($until);
+        $detail = $from === null && $until === null
+            ? 'cleared'
+            : sprintf('%s → %s', $from === null ? 'open' : self::instantText($from), $until === null ? 'open' : self::instantText($until));
+
+        return $this->changeByVersion(
+            $definition,
+            $expectedVersion,
+            $reason,
+            $origin,
+            $actor,
+            FeatureFlagChangeKind::Validity,
+            static fn(FeatureFlagState $state): bool => $state->validFrom == $from && $state->validUntil == $until,
+            static fn(FeatureFlagState $state): string => $detail,
+            fn(int $version, DateTimeImmutable $at): bool => $this->store->compareAndSetValidity($code, $version, $from, $until, $at, $actor),
+            $detail === 'cleared' ? 'has no validity window' : 'already has this validity window'
+        );
+    }
+
+    /**
+     * Sets (or clears) the rollout percentage of a declared flag, with a reason, in one transaction with
+     * its history row (forward 040, D4): with p %, the flag is on only for the subjects whose bucket()
+     * is below p * 100 (and that pass the other checks); null removes the rollout (every subject). The
+     * flag gets its row (off) when it has none. Compare-and-set of the version, as setValidity().
+     *
+     * @param string $code Flag code
+     * @param int|null $percent Rollout percentage, 0 to 100 (null = no rollout)
+     * @param string $reason Why (normalized; between the minimum and the maximum length)
+     * @param string|int|null $actor Who (null = a script without a user)
+     * @param string $origin Where the change came from (ORIGIN_* or the application's text)
+     * @param int|null $expectedVersion Version the caller read (null = the one read in the transaction)
+     * @return FeatureFlagState The stored state after the change
+     * @throws InvalidArgumentException When the code or the origin is not valid, or the percentage is outside 0..100
+     * @throws InvalidFeatureFlagReasonException When the reason is too short or too long
+     * @throws UndeclaredFeatureFlagException When the flag is not declared
+     * @throws StaleFeatureFlagException When the version is not the expected one, or the percentage is already this one
+     * @throws FeatureFlagStoreException When the store keeps no rollout percentage, or fails
+     */
+    public function setRollout(
+        string $code,
+        ?int $percent,
+        string $reason,
+        string|int|null $actor = null,
+        string $origin = self::ORIGIN_UI,
+        ?int $expectedVersion = null
+    ): FeatureFlagState {
+        $definition = $this->declared($code, 'a rollout');
+        if ($percent !== null && ($percent < 0 || $percent > 100)) {
+            throw new InvalidArgumentException(sprintf(
+                'The rollout percentage of feature flag "%s" must be between 0 and 100, %d given.',
+                $code,
+                $percent
+            ));
+        }
+        $reason = $this->normalizeReason($reason);
+        $origin = self::assertOrigin($origin);
+        if (!$this->store->supportsRollout()) {
+            throw new FeatureFlagStoreException(sprintf(
+                'The feature flag store keeps no rollout percentage (columns rollout_percent and version of the flag table): feature flag "%s" cannot get one.',
+                $code
+            ));
+        }
+
+        return $this->changeByVersion(
+            $definition,
+            $expectedVersion,
+            $reason,
+            $origin,
+            $actor,
+            FeatureFlagChangeKind::Rollout,
+            static fn(FeatureFlagState $state): bool => $state->rolloutPercent === $percent,
+            static fn(FeatureFlagState $state): string => sprintf(
+                '%s → %s',
+                $state->rolloutPercent === null ? 'none' : $state->rolloutPercent . '%',
+                $percent === null ? 'none' : $percent . '%'
+            ),
+            fn(int $version, DateTimeImmutable $at): bool => $this->store->compareAndSetRollout($code, $version, $percent, $at, $actor),
+            $percent === null ? 'has no rollout' : sprintf('is already at %d%%', $percent)
+        );
+    }
+
+    /**
      * Every flag: the declared ones in declaration order, then the ones found only in the store (not
      * declared), by code. When the store cannot be read, the declared flags are listed off (see
      * lastError()).
@@ -484,6 +658,102 @@ final class FeatureFlags
             $definition->code,
             get_debug_type($value)
         ));
+    }
+
+    /**
+     * The declaration of a flag about to get a window or a rollout.
+     *
+     * @throws InvalidArgumentException When the code is not valid
+     * @throws UndeclaredFeatureFlagException When it is not declared
+     */
+    private function declared(string $code, string $what): FeatureFlagDefinition
+    {
+        FeatureFlagDefinition::assertCode($code);
+
+        return $this->registry->get($code) ?? throw new UndeclaredFeatureFlagException($code, sprintf(
+            'Feature flag "%s" is not declared in code: giving it %s would have no effect.',
+            $code,
+            $what
+        ));
+    }
+
+    /**
+     * The shared path of setValidity() and setRollout(): in one transaction, creates the row when
+     * missing, reads it, refuses a no-op, compares and sets by version, and appends the history row.
+     *
+     * @param Closure(FeatureFlagState): bool $unchanged True when the stored value is already the requested one
+     * @param Closure(FeatureFlagState): string $detail Detail of the history row, from the state before
+     * @param Closure(int, DateTimeImmutable): bool $compareAndSet The store write, by expected version
+     */
+    private function changeByVersion(
+        FeatureFlagDefinition $definition,
+        ?int $expectedVersion,
+        string $reason,
+        string $origin,
+        string|int|null $actor,
+        FeatureFlagChangeKind $kind,
+        Closure $unchanged,
+        Closure $detail,
+        Closure $compareAndSet,
+        string $noOp
+    ): FeatureFlagState {
+        $code = $definition->code;
+        $at = $this->now();
+        $by = $actor === null ? null : (string) $actor;
+
+        try {
+            $this->store->getTransactionManager()->transactional(function () use ($definition, $code, $expectedVersion, $reason, $origin, $actor, $by, $at, $kind, $unchanged, $detail, $compareAndSet, $noOp): void {
+                $created = $this->store->insertIfAbsent($definition, $at, $actor);
+                $state = $this->store->find($code)
+                    ?? throw new FeatureFlagStoreException(sprintf('Feature flag "%s" has no row after its creation.', $code));
+                $version = $state->version
+                    ?? throw new FeatureFlagStoreException(sprintf('Feature flag "%s" has no version: its window and rollout are changed by version.', $code));
+                if ($expectedVersion !== null && $expectedVersion !== $version) {
+                    throw new StaleFeatureFlagException($code, sprintf(
+                        'Feature flag "%s" changed since it was read (version %d, now %d): reload and try again.',
+                        $code,
+                        $expectedVersion,
+                        $version
+                    ));
+                }
+                if ($unchanged($state)) {
+                    throw new StaleFeatureFlagException($code, sprintf(
+                        'Feature flag "%s" %s (someone else may have changed it): reload and try again.',
+                        $code,
+                        $noOp
+                    ));
+                }
+                if (!$compareAndSet($version, $at)) {
+                    throw new StaleFeatureFlagException($code, sprintf(
+                        'Feature flag "%s" changed since it was read (version %d): reload and try again.',
+                        $code,
+                        $version
+                    ));
+                }
+                $this->store->appendChange(new FeatureFlagChange(
+                    $code,
+                    $created ? null : $state->enabled,
+                    $state->enabled,
+                    $reason,
+                    $origin,
+                    $at,
+                    $by,
+                    null,
+                    $kind,
+                    $detail($state)
+                ));
+            });
+        } finally {
+            $this->refresh();
+        }
+
+        return $this->store->find($code) ?? throw new FeatureFlagStoreException(sprintf('Feature flag "%s" disappeared after its change.', $code));
+    }
+
+    /** An instant as written in a history detail: UTC, ISO 8601 (`2026-11-01T00:00:00+00:00`). */
+    private static function instantText(DateTimeInterface $instant): string
+    {
+        return DateTimeImmutable::createFromInterface($instant)->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM);
     }
 
     /**

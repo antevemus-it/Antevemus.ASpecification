@@ -18,7 +18,12 @@ namespace Antevemus\ASpecification\Contracts\Sql;
  * (TextComparison::foldCaseAndAccents(): NFD, nonspacing marks removed, NFC, lower case), measured
  * against a battery of pt-BR, es, fr and de words with `ß` and `æ` kept distinct from `ss` and `ae`.
  *
- * @version    2.1.0
+ * 2.3.0: `wildcard()` built with IgnoreCaseAndAccents goes through formatAccentInsensitiveLike() (its
+ * glob becomes the LIKE pattern), and `regex()` built with it through accentInsensitiveRegex(), which
+ * answers null by default (AbstractSqlDialect). A class that implements this interface directly must
+ * add the method.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -39,4 +44,23 @@ interface ISqlAccentInsensitiveLike
      * @return string|null
      */
     public function formatAccentInsensitiveLike(string $column, string $paramPlaceholder): ?string;
+
+    /**
+     * The condition "column matches the regular expression" ignoring case and accents, with the value
+     * bound to the placeholder, or null when the dialect cannot answer it as the in-memory evaluation
+     * does (the visitor then refuses the specification) (2.3.0).
+     *
+     * In memory the body, with its accents folded (TextComparison::foldAccents(), case kept), is matched
+     * with the `i` and `u` modifiers against the candidate folded the same way. The visitor passes that
+     * folded body (without PHP delimiters; any modifier other than `i`/`u` was already refused); the
+     * dialect folds the column and returns the condition with the value to bind under $paramPlaceholder,
+     * the body or its rewriting in the syntax of the database.
+     *
+     * @version 2.3.0
+     * @param string $column Pre-escaped column expression
+     * @param string $paramPlaceholder Named parameter placeholder (e.g. ':p1')
+     * @param string $foldedBody Regular expression body with its accents folded
+     * @return ISqlWhereClause|null
+     */
+    public function accentInsensitiveRegex(string $column, string $paramPlaceholder, string $foldedBody): ?ISqlWhereClause;
 }

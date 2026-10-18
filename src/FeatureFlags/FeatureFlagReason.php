@@ -18,10 +18,14 @@ namespace Antevemus\ASpecification\FeatureFlags;
  * | DISABLED         | false | DISABLED           |                        |
  * | NOT_IN_TARGET    | false | DEFAULT            |                        |
  * | OUTSIDE_VALIDITY | false | DEFAULT            |                        |
+ * | OUTSIDE_ROLLOUT  | false | DEFAULT            |                        |
  * | UNKNOWN_FLAG     | false | ERROR              | FLAG_NOT_FOUND         |
  * | ERROR            | false | ERROR              | GENERAL                |
  *
- * @version    2.1.0
+ * OUTSIDE_ROLLOUT (forward 040, D6, 2.3.0): the subject is in the target but its bucket falls outside
+ * the rollout percentage.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -45,6 +49,9 @@ enum FeatureFlagReason: string
     /** The switch is on, but the reference instant is outside the validity window. */
     case OUTSIDE_VALIDITY = 'outside_validity';
 
+    /** The switch is on and the subject is in the target, but its bucket is outside the rollout percentage. */
+    case OUTSIDE_ROLLOUT = 'outside_rollout';
+
     /** The code is not declared in the registry: always off. */
     case UNKNOWN_FLAG = 'unknown_flag';
 
@@ -64,7 +71,7 @@ enum FeatureFlagReason: string
             self::ENABLED => 'STATIC',
             self::TARGETING_MATCH => 'TARGETING_MATCH',
             self::DISABLED => 'DISABLED',
-            self::NOT_IN_TARGET, self::OUTSIDE_VALIDITY => 'DEFAULT',
+            self::NOT_IN_TARGET, self::OUTSIDE_VALIDITY, self::OUTSIDE_ROLLOUT => 'DEFAULT',
             self::UNKNOWN_FLAG, self::ERROR => 'ERROR',
         };
     }

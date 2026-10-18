@@ -279,7 +279,7 @@ final class AsbEven extends AbstractSpecification
  * and deeper random trees, every composite pair instead of the pairs of the same family);
  * ASPEC_SOUNDNESS_DUMP=<file> writes every violation found as JSON lines (diagnosis).
  *
- * @version    2.2.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -739,6 +739,9 @@ final class AlgebraSoundnessTest extends TestCase
         $add('text', "regex('/a/')", new RegexSpecification('/a/'));
         $add('text', "wildcard('a*')", new WildcardSpecification('a*'));
         $add('text', "wildcardIgnoreCase('A*')", new WildcardExpressionMatcherIgnoreCaseStringSpecification('A*'));
+        // 2.3.0 (forward 039): the comparison of wildcard() and regex()
+        $add('text', "wildcard('A*', ignore case)", Spec::wildcard('A*', false));
+        $add('text', "regex('/^A/', ignore case)", Spec::regex('/^A/', TextComparison::IgnoreCase));
         $add('text', "equalIgnoreCase('a')", Spec::equalIgnoreCase('a'));
         $add('text', "equalIgnoreCase('acao')", Spec::equalIgnoreCase('acao'));
         $add('text', "dateString('Y-m-d')", new DateStringSpecification('Y-m-d'));
@@ -751,6 +754,9 @@ final class AlgebraSoundnessTest extends TestCase
             $add('text', "contains('ação', ignore case and accents)", Spec::contains('ação', TextComparison::IgnoreCaseAndAccents));
             $add('text', "equalIgnoreCaseAndAccents('acao')", Spec::equalIgnoreCaseAndAccents('acao'));
             $add('text', "startsWith('a', ignore case and accents)", Spec::startsWith('a', TextComparison::IgnoreCaseAndAccents));
+            // 2.3.0 (forward 039): wildcard and regex with the folding, opaque to the algebra
+            $add('text', "wildcard('*ação*', ignore case and accents)", Spec::wildcard('*ação*', TextComparison::IgnoreCaseAndAccents));
+            $add('text', "regex('/^ac[aã]o$/', ignore case and accents)", Spec::regex('/^ac[aã]o$/', TextComparison::IgnoreCaseAndAccents));
         }
 
         // Date-times

@@ -9,9 +9,12 @@ use Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException
 /**
  * TextComparison - How a text operator compares the candidate with its literal (2.1.0).
  *
- * The second argument of `contains()`, `startsWith()` and `endsWith()` accepts a case of this
- * enum besides the boolean it always took: `true` is `CaseSensitive`, `false` is `IgnoreCase`,
- * and nothing that already worked changes meaning.
+ * The second argument of `contains()`, `startsWith()`, `endsWith()` and, since 2.3.0, `wildcard()`
+ * accepts a case of this enum besides the boolean it always took: `true` is `CaseSensitive`, `false`
+ * is `IgnoreCase`, and nothing that already worked changes meaning. `regex()` takes an optional case
+ * (2.3.0): none keeps the modifiers of the pattern in charge, `IgnoreCase` adds `i` and
+ * `IgnoreCaseAndAccents` adds `iu` and folds the accents of the body and of the candidate
+ * (foldAccents(), which keeps the case so that `\D` stays `\D`).
  *
  * - `CaseSensitive`: the characters must be equal.
  * - `IgnoreCase`: the case of every Unicode letter is ignored (`mb_strtolower`); accents are
@@ -31,7 +34,7 @@ use Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException
  * Spec::contains('configuracao', false)->isSatisfiedBy('Configuração');                                // false
  * </code>
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -120,6 +123,30 @@ enum TextComparison: string
      */
     public static function foldCaseAndAccents(string $text): ?string
     {
+        $bare = self::foldAccents($text);
+
+        return $bare === null ? null : mb_strtolower($bare, 'UTF-8');
+    }
+
+    /**
+     * Folds the accents of a text and keeps its case (2.3.0): NFD, removal of the nonspacing marks
+     * (`\p{Mn}`), NFC. Returns null for a text that is not valid UTF-8, which has no decomposition.
+     *
+     * The folding of a regular expression compared with IgnoreCaseAndAccents: its body cannot be
+     * lowered, since lowering changes the meaning of an escape (`\D` is "not a digit", `\d` is "a
+     * digit"); the case is ignored by the `i` modifier instead. The escapes are ASCII, so removing the
+     * marks leaves them intact.
+     *
+     * Example: `foldAccents('CONFIGURAÇÃO')` gives `'CONFIGURACAO'`; `foldAccents('^cora[cç]\D')`
+     * gives `'^cora[cc]\D'`.
+     *
+     * @version 2.3.0
+     * @param string $text
+     * @return string|null
+     * @throws MissingExtensionException When `ext-intl` is not loaded
+     */
+    public static function foldAccents(string $text): ?string
+    {
         self::assertAccentFoldingAvailable();
 
         if (!mb_check_encoding($text, 'UTF-8')) {
@@ -140,6 +167,6 @@ enum TextComparison: string
         // jamo by NFD would otherwise contain the jamo of a shorter syllable.
         $composed = \Normalizer::normalize($bare, \Normalizer::FORM_C);
 
-        return mb_strtolower($composed === false ? $bare : $composed, 'UTF-8');
+        return $composed === false ? $bare : $composed;
     }
 }

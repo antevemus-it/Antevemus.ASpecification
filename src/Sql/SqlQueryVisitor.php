@@ -12,6 +12,7 @@ use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
 use Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike;
+use Antevemus\ASpecification\Contracts\Sql\ISqlRegexRewriter;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use Antevemus\ASpecification\Specifications\AndSpecification;
@@ -85,9 +86,19 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   ISqlAccentInsensitiveLike over the same escaped LIKE pattern as the other text operators; a dialect
  *   without it, or that answers null (SQLite, SQL Server, Oracle and the others not measured), raises
  *   NonTranslatableSpecificationException instead of answering differently from memory
+ * - Wildcard and regular expression ignoring case and accents (2.3.0): `wildcard()` built with
+ *   IgnoreCaseAndAccents goes through the same ISqlAccentInsensitiveLike LIKE, its glob as the pattern;
+ *   `regex()` built with it through ISqlAccentInsensitiveLike::accentInsensitiveRegex() with the folded
+ *   body (PostgreSQL); a dialect that answers null (MySQL/MariaDB, SQLite and the others) raises
+ *   NonTranslatableSpecificationException. `wildcard()` built with `false`/IgnoreCase is the
+ *   case-insensitive LIKE of wildcardIgnoreCase(), and `regex()` built with IgnoreCase carries the `i`
+ *   modifier, which the dialect's case-insensitive regular expression already translates
+ * - The body of a regular expression goes through the dialect's ISqlRegexRewriter when it has one (2.3.0,
+ *   bug #73): on PostgreSQL `\b`/`\B` are bound as `\y`/`\Y`; before, `regex('/\bfoo/')` bound `\bfoo`,
+ *   a backspace there, and never matched. Dialects without the interface receive the body as written
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -469,8 +480,11 @@ class SqlQueryVisitor implements ISpecificationVisitor
             $specification instanceof IsNullSpecification =>
                 new SqlWhereClause("{$col} IS NULL"),
 
+            $specification instanceof WildcardSpecification && $specification->ignoresAccents() =>
+                $this->accentInsensitiveLikeClause($col, LikePattern::fromGlob($specification->getPattern()), $specification),
+
             $specification instanceof WildcardSpecification =>
-                $this->translateWildcard($col, $specification->getPattern(), true),
+                $this->translateWildcard($col, $specification->getPattern(), $specification->isCaseSensitive()),
 
             $specification instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification =>
                 $this->translateWildcard($col, $specification->getPattern(), false),
@@ -486,6 +500,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
 
             $specification instanceof LiteralPatternSpecification =>
                 $this->translateLiteralPattern($col, $specification),
+
+            $specification instanceof RegexSpecification && $specification->ignoresAccents() =>
+                $this->accentInsensitiveRegexClause($col, $specification),
 
             $specification instanceof RegexSpecification =>
                 $this->translateRegex($col, $specification),
@@ -720,6 +737,44 @@ class SqlQueryVisitor implements ISpecificationVisitor
     }
 
     /**
+     * Translate a regular expression compared ignoring case and accents (2.3.0): the dialect writes the
+     * condition through ISqlAccentInsensitiveLike::accentInsensitiveRegex() over the folded body (the body
+     * of the evaluated pattern); the modifiers follow translateRegex() (`i` and `u` only). A dialect that
+     * cannot answer as the in-memory evaluation refuses the specification.
+     *
+     * @version 2.3.0
+     * @param string $col
+     * @param RegexSpecification $specification
+     * @return SqlWhereClause
+     * @throws UnsupportedSqlOperationException When a modifier other than i/u is present
+     * @throws NonTranslatableSpecificationException When the dialect has no accent-insensitive regular expression
+     */
+    private function accentInsensitiveRegexClause(string $col, RegexSpecification $specification): SqlWhereClause
+    {
+        $unsupported = str_replace(['i', 'u'], '', $specification->getModifiers());
+        if ($unsupported !== '') {
+            throw new UnsupportedSqlOperationException("REGEX modifier \"{$unsupported}\"", $this->dialect->getFamily());
+        }
+
+        $param = $this->createParameter($specification->getBody());
+        $clause = $this->dialect instanceof ISqlAccentInsensitiveLike
+            ? $this->dialect->accentInsensitiveRegex($col, $param['name'], $specification->getBody())
+            : null;
+
+        if ($clause === null) {
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                sprintf(
+                    "a regular expression that ignores case and accents has no equivalent in the %s dialect that selects the rows the in-memory evaluation accepts (it is translated for PostgreSQL); evaluate it in PHP or match with TextComparison::IgnoreCase",
+                    $this->dialect->getFamily()
+                )
+            );
+        }
+
+        return $clause instanceof SqlWhereClause ? $clause : new SqlWhereClause($clause->getSql(), $clause->getParameters());
+    }
+
+    /**
      * Translate regular expressions using active SQL dialect.
      *
      * The bind receives the pattern body without the PHP delimiters. The `i` modifier maps to the
@@ -739,7 +794,11 @@ class SqlQueryVisitor implements ISpecificationVisitor
             throw new UnsupportedSqlOperationException("REGEX modifier \"{$unsupported}\"", $this->dialect->getFamily());
         }
 
-        $param = $this->createParameter($specification->getBody());
+        // Bug #73 (2.3.0): the body in the dialect's syntax (PostgreSQL: \b and \B as \y and \Y)
+        $body = $this->dialect instanceof ISqlRegexRewriter
+            ? $this->dialect->rewriteRegexBody($specification->getBody())
+            : $specification->getBody();
+        $param = $this->createParameter($body);
         $sql = $this->dialect->formatRegex($col, $param['name'], !str_contains($modifiers, 'i'));
         return new SqlWhereClause($sql, $param['binding']);
     }

@@ -78,7 +78,9 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   folding is a different SQL expression per database, a TCriteria does not know which database will
  *   run it, and TFilter renders `variable operator value` with the value quoted inside, so the folding
  *   cannot wrap the value without concatenating it. Spec::toSql() with the dialect, or a PdoRepository,
- *   translates it for PostgreSQL and MySQL/MariaDB
+ *   translates it for PostgreSQL and MySQL/MariaDB. 2.3.0: the same for `wildcard()` and `regex()` built
+ *   with IgnoreCaseAndAccents; `wildcard()` built with `false`/IgnoreCase is the case-insensitive LIKE
+ *   of wildcardIgnoreCase(), and `regex()` built with IgnoreCase carries the `i` modifier (`(?i)`)
  * - The criteria handed to the caller is safe to receive more conditions by AND (BUG-20261013-4CLQ).
  *   TRepository::load()/count()/update()/delete() of Adianti add the soft delete filter (DELETEDAT) and
  *   the PREFILTERS of the model to the SAME object with `add(..., AND)`, and TCriteria::dump() does not
@@ -90,7 +92,7 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   goes out as before
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    2.1.1
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -389,7 +391,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 $this->nullTolerant(new TFilter($col, 'IS', null)),
 
             $specification instanceof WildcardSpecification =>
-                $this->translateWildcard($col, $specification->getPattern(), false),
+                $this->translateWildcard($col, $specification->getPattern(), !$specification->isCaseSensitive()),
 
             $specification instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification =>
                 $this->translateWildcard($col, $specification->getPattern(), true),
@@ -726,7 +728,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 new TFilter($col, 'IS NOT', null),
 
             $inner instanceof WildcardSpecification =>
-                $this->translateNotWildcard($col, $inner->getPattern(), false),
+                $this->translateNotWildcard($col, $inner->getPattern(), !$inner->isCaseSensitive()),
 
             $inner instanceof WildcardExpressionMatcherIgnoreCaseStringSpecification =>
                 $this->translateNotWildcard($col, $inner->getPattern(), true),
@@ -872,12 +874,15 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     }
 
     /**
-     * Whether a leaf compares text ignoring case and accents (2.1.0).
+     * Whether a leaf compares text ignoring case and accents (2.1.0; wildcard and regex, 2.3.0).
      */
     private static function ignoresAccents(ISpecification $specification): bool
     {
+        // RegexSpecification covers contains()/startsWith()/endsWith() (LiteralPatternSpecification) and,
+        // since 2.3.0, regex(); WildcardSpecification is wildcard() (2.3.0)
         return $specification instanceof EqualIgnoreCaseAndAccentsStringSpecification
-            || ($specification instanceof LiteralPatternSpecification && $specification->ignoresAccents());
+            || ($specification instanceof RegexSpecification && $specification->ignoresAccents())
+            || ($specification instanceof WildcardSpecification && $specification->ignoresAccents());
     }
 
     /**
@@ -888,7 +893,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         return new NonTranslatableCriteriaException(
             $specification,
-            "A text comparison that ignores case and accents cannot be converted to TCriteria: the folding is a different SQL expression per database and TFilter cannot wrap its value in it; use Spec::toSql() with the dialect (PostgreSQL, MySQL/MariaDB), a PdoRepository, or evaluate it in PHP."
+            "A text comparison that ignores case and accents cannot be converted to TCriteria: the folding is a different SQL expression per database and TFilter cannot wrap its value in it; use Spec::toSql() with the dialect (PostgreSQL; MySQL/MariaDB except regex()), a PdoRepository, or evaluate it in PHP."
         );
     }
 

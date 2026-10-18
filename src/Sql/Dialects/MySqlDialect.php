@@ -25,7 +25,15 @@ use InvalidArgumentException;
  * `ł` match `o`, `d` and `l` here and not in memory. The collation is configurable (a MariaDB older
  * than 11.4.5 needs `utf8mb4_uca1400_ai_ci`). The comparison does not use an index on the column.
  *
- * @version    2.1.0
+ * Wildcard and regular expression ignoring case and accents (2.3.0): `wildcard()` goes through the same
+ * LIKE (its glob as the LIKE pattern), with the same limits. `regex()` is refused
+ * (accentInsensitiveRegex() answers null, inherited): measured on MySQL 8.4 (`REGEXP_LIKE(col, :p, 'i')`
+ * and `REGEXP`) and MariaDB 11.4 (`REGEXP`) over a column converted to `utf8mb4_0900_ai_ci`, the regular
+ * expression engines (ICU, PCRE2) ignore the collation, so `^cora[cç][aã]o$` finds `coracao` and not
+ * `Coração` (MySQL 54 to 60 and MariaDB 51 to 57 of 240 queries differ from memory, with the body
+ * folded or as written); MySQL and MariaDB have no Unicode normalization function to fold the column.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

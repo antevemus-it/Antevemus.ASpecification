@@ -17,7 +17,11 @@ use Antevemus\ASpecification\Specifications\String\TextComparison;
  * 2.1.0: the text operators take `bool|TextComparison` and `equalIgnoringCaseAndAccents()` has a
  * default implementation here, so a subclass written for 2.0 only needs the wider parameter type.
  *
- * @version    2.1.0
+ * 2.3.0: `matchesRegex()` takes `?TextComparison $comparison = null` and `matchesWildcard()`
+ * `bool|TextComparison $caseSensitive = true`; the aliases forward them. A subclass must declare the
+ * new parameter in its implementations of the two abstract methods.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -110,35 +114,35 @@ abstract class AbstractStringSpecificationFactory implements IStringSpecificatio
     /**
      * {@inheritdoc}
      */
-    abstract public function matchesRegex(string $pattern): ISpecification;
+    abstract public function matchesRegex(string $pattern, ?TextComparison $comparison = null): ISpecification;
 
     /**
      * {@inheritdoc}
      */
-    public function matchesRegularExpression(string $pattern): ISpecification
+    public function matchesRegularExpression(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return $this->matchesRegex($pattern);
+        return $this->matchesRegex($pattern, $comparison);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function matches(string $pattern): ISpecification
+    public function matches(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return $this->matchesRegex($pattern);
+        return $this->matchesRegex($pattern, $comparison);
     }
 
     /**
      * {@inheritdoc}
      */
-    abstract public function matchesWildcard(string $wildcardExpression): ISpecification;
+    abstract public function matchesWildcard(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * {@inheritdoc}
      */
-    public function like(string $wildcardExpression): ISpecification
+    public function like(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification
     {
-        return $this->matchesWildcard($wildcardExpression);
+        return $this->matchesWildcard($wildcardExpression, $caseSensitive);
     }
 
     /**

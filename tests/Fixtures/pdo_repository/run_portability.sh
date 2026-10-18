@@ -6,6 +6,10 @@
 # Forward 034, RN-02 (2.1.0): Module27_FeatureFlagsTest runs its PdoFeatureFlagStore contract battery
 # on the three of them (PostgreSQL 17, MySQL 8.4 and MariaDB 11.4).
 # Forward 037, D2/D5 (2.1.0): DateSqlParityTest on the three of them, and the soundness bench with ext-intl.
+# Forward 039, RN-02 (2.3.0): Module29_WildcardRegexAccentInsensitiveTest, wildcard and regex ignoring accents,
+# next to Module 28 (host PHP without intl: the refusal; intl containers: the battery on the three databases).
+# Forward 040, RN-04 (2.3.0): Module30_FeatureFlagsIITest, the validity window and the percentage rollout of
+# PdoFeatureFlagStore (and the additive migration of a 2.1.0 table) on the three of them.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -72,7 +76,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();
@@ -98,7 +102,15 @@ $t = new Antevemus\ASpecification\Tests\Unit\Module28_AccentInsensitiveTextTest(
 $t->run();
 echo "Module28_AccentInsensitiveTextTest (PHP ", PHP_VERSION, extension_loaded("intl") ? ", intl " . INTL_ICU_VERSION : ", sem intl", ") OK ", $t->getAssertionCount(), " assertions\n";
 '
+MODULE29='
+require "tests/bootstrap.php";
+require_once "tests/Unit/Module29_WildcardRegexAccentInsensitiveTest.php";
+$t = new Antevemus\ASpecification\Tests\Unit\Module29_WildcardRegexAccentInsensitiveTest();
+$t->run();
+echo "Module29_WildcardRegexAccentInsensitiveTest (PHP ", PHP_VERSION, extension_loaded("intl") ? ", intl " . INTL_ICU_VERSION : ", sem intl", ") OK ", $t->getAssertionCount(), " assertions\n";
+'
 "${PHP[@]}" -r "$MODULE28"
+"${PHP[@]}" -r "$MODULE29"
 for version in 8.2 8.4; do
     image="aspec-portability-php${version}-intl"
     if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -117,6 +129,11 @@ DOCKERFILE
         -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
         -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
         "$image" php -d memory_limit=512M -r "$MODULE28"
+    docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \
+        -e ASPEC_PDO_PGSQL_DSN -e ASPEC_PDO_PGSQL_USER -e ASPEC_PDO_PGSQL_PASSWORD \
+        -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
+        -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
+        "$image" php -d memory_limit=512M -r "$MODULE29"
     # Forward 037, D2 and D5 (2.1.0): the soundness bench with ext-intl (the accent-insensitive leaves join
     # the pool) and the date parity, on PHP 8.2 and 8.4.
     docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \

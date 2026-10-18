@@ -16,7 +16,8 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * satisfied exactly when FeatureFlags::isEnabled($code, $candidate) is true.
  *
  * evaluate(): when the flag is off, one failure whose metadata is FeatureFlagEvaluation::toMetadata()
- * (flag, value, reason, OpenFeature reason and error code, subject key, error class), with
+ * (flag, value, reason, OpenFeature reason and error code, subject key, rollout bucket and percentage,
+ * error class; the reason `outside_rollout` since 2.3.0, forward 040, D8), with
  * because()/withCode() honoured. A flag that could not be read is a failure with the reason `error`,
  * not an evaluation error: the flag is off (fail closed, D9), so NOT of it is satisfied, exactly as
  * `!isEnabled()`; the failure was already handed to the error reporter of the service.
@@ -27,7 +28,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

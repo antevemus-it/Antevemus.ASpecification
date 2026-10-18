@@ -65,7 +65,21 @@ use Throwable;
  *
  * withQueryLogger() sends every statement to an IQueryLogger (the hook of PdoRepository, 1.13.0).
  *
- * @version    2.1.0
+ * 2.3.0 (forward 040): the validity window and the rollout percentage are written by compare-and-set of
+ * the optimistic version (`UPDATE ... SET ..., version = version + 1 WHERE code = :code AND version =
+ * :expected_version`, one row or nothing); the switch increments the version too. The window needs
+ * `valid_from`, `valid_until` and `version` (supportsValidity()); the rollout needs `rollout_percent`
+ * and `version` (supportsRollout()). The columns that the reference DDL gained in 2.3.0
+ * (COLUMNS_SINCE_2_3: `feature_flag.rollout_percent`, `feature_flag_change.change_kind` and
+ * `feature_flag_change.detail`) are absent by default, so that a table created by the DDL of 2.1.0
+ * keeps being read and written as before (a table without them answers like 2.2.0: no rollout, every
+ * history row written without kind nor detail). A table that has them says so with
+ * `columns: PdoFeatureFlagStore::COLUMNS_SINCE_2_3` (merged with any other mapping). Without
+ * `change_kind`, a history row reads as a Subject change when it has a subject key and as a Toggle
+ * otherwise; a stored `change_kind` of `toggle` with a subject key (a 2.1.0 row after the additive
+ * migration) reads as Subject.
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -89,6 +103,21 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
 
     /** Canonical columns of the flag table that the reference DDL does not declare (absent by default). */
     public const FLAG_OPTIONAL_COLUMNS = ['created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at'];
+
+    /** Canonical columns of the flag table added to the reference DDL in 2.3.0 (absent by default). */
+    public const FLAG_COLUMNS_SINCE_2_3 = ['rollout_percent'];
+
+    /** Canonical columns of the history table added to the reference DDL in 2.3.0 (absent by default). */
+    public const CHANGE_COLUMNS_SINCE_2_3 = ['change_kind', 'detail'];
+
+    /**
+     * Column map of a table created (or migrated) by the reference DDL of 2.3.0: the rollout percentage
+     * and the kind and detail of the history rows. Pass it as `$columns` (merged with any other mapping).
+     */
+    public const COLUMNS_SINCE_2_3 = [
+        'flag' => ['rollout_percent' => 'rollout_percent'],
+        'change' => ['change_kind' => 'change_kind', 'detail' => 'detail'],
+    ];
 
     /** Canonical columns of the history table. */
     public const CHANGE_COLUMNS = [
@@ -115,7 +144,7 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
     /** Flag columns read by loadAll() and find(), besides code and enabled. */
     private const FLAG_READ = [
         'name', 'description', 'category', 'audience', 'notes', 'valid_from', 'valid_until',
-        'enabled_at', 'enabled_by', 'disabled_at', 'disabled_by', 'version',
+        'enabled_at', 'enabled_by', 'disabled_at', 'disabled_by', 'version', 'rollout_percent',
     ];
 
     /** @var array{flag: string, change: string, subject: string|null} Schema-qualified table names */
@@ -258,8 +287,8 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
     public static function canonicalColumns(): array
     {
         return [
-            'flag' => [...self::FLAG_COLUMNS, ...self::FLAG_OPTIONAL_COLUMNS],
-            'change' => self::CHANGE_COLUMNS,
+            'flag' => [...self::FLAG_COLUMNS, ...self::FLAG_OPTIONAL_COLUMNS, ...self::FLAG_COLUMNS_SINCE_2_3],
+            'change' => [...self::CHANGE_COLUMNS, ...self::CHANGE_COLUMNS_SINCE_2_3],
             'subject' => self::SUBJECT_COLUMNS,
         ];
     }
@@ -404,6 +433,40 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
     }
 
     /** {@inheritdoc} */
+    public function supportsValidity(): bool
+    {
+        return $this->absentFlagColumns(['valid_from', 'valid_until', 'version']) === [];
+    }
+
+    /** {@inheritdoc} */
+    public function compareAndSetValidity(string $code, int $expectedVersion, ?DateTimeImmutable $from, ?DateTimeImmutable $until, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        $this->assertFlagColumns('validity window', ['valid_from', 'valid_until', 'version']);
+
+        return $this->compareAndSetVersion($code, $expectedVersion, [
+            'valid_from' => $from === null ? null : $this->toText($from),
+            'valid_until' => $until === null ? null : $this->toText($until),
+        ], $at, $actor);
+    }
+
+    /** {@inheritdoc} */
+    public function supportsRollout(): bool
+    {
+        return $this->absentFlagColumns(['rollout_percent', 'version']) === [];
+    }
+
+    /** {@inheritdoc} */
+    public function compareAndSetRollout(string $code, int $expectedVersion, ?int $percent, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        $this->assertFlagColumns('rollout percentage', ['rollout_percent', 'version']);
+        if ($percent !== null && ($percent < 0 || $percent > 100)) {
+            throw new InvalidArgumentException(sprintf('The rollout percentage must be between 0 and 100, %d given.', $percent));
+        }
+
+        return $this->compareAndSetVersion($code, $expectedVersion, ['rollout_percent' => $percent], $at, $actor);
+    }
+
+    /** {@inheritdoc} */
     public function supportsSubjects(): bool
     {
         return $this->tables['subject'] !== null;
@@ -454,6 +517,8 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
             'origin' => $change->origin,
             'changed_at' => $this->toText($change->changedAt),
             'changed_by' => $change->changedBy,
+            'change_kind' => $change->kind->value,
+            'detail' => $change->detail,
         ];
         if (!$this->databaseGeneratedChangeId) {
             $values = ['change_id' => UlidGenerator::shared()->generate()] + $values;
@@ -491,7 +556,7 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
         }
         $change = $this->columns['change'];
         $select = [];
-        foreach (self::CHANGE_COLUMNS as $canonical) {
+        foreach ([...self::CHANGE_COLUMNS, ...self::CHANGE_COLUMNS_SINCE_2_3] as $canonical) {
             if ($change[$canonical] !== null) {
                 $select[] = $change[$canonical] . ' AS ' . $canonical;
             }
@@ -524,6 +589,7 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
 
         $rows = [];
         foreach (array_slice($this->fetchAll($sql, $params), 0, $limit) as $row) {
+            $subjectKey = self::nullableText($row['subject_key'] ?? null);
             $rows[] = new FeatureFlagChange(
                 (string) $row['flag_code'],
                 ($row['old_enabled'] ?? null) === null ? null : $this->booleanFromDatabase('change', 'old_enabled', $row['old_enabled']),
@@ -532,7 +598,9 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
                 (string) $row['origin'],
                 $this->fromText($row['changed_at'], 'changed_at') ?? throw new FeatureFlagStoreException('A history row has no changed_at.'),
                 self::nullableText($row['changed_by'] ?? null),
-                self::nullableText($row['subject_key'] ?? null)
+                $subjectKey,
+                $this->changeKindFromDatabase($row['change_kind'] ?? null, $subjectKey),
+                self::nullableText($row['detail'] ?? null)
             );
         }
 
@@ -556,9 +624,12 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
         $resolved = [
             'flag' => array_merge(
                 array_combine(self::FLAG_COLUMNS, self::FLAG_COLUMNS),
-                array_fill_keys(self::FLAG_OPTIONAL_COLUMNS, null)
+                array_fill_keys([...self::FLAG_OPTIONAL_COLUMNS, ...self::FLAG_COLUMNS_SINCE_2_3], null)
             ),
-            'change' => array_combine(self::CHANGE_COLUMNS, self::CHANGE_COLUMNS),
+            'change' => array_merge(
+                array_combine(self::CHANGE_COLUMNS, self::CHANGE_COLUMNS),
+                array_fill_keys(self::CHANGE_COLUMNS_SINCE_2_3, null)
+            ),
             'subject' => array_combine(self::SUBJECT_COLUMNS, self::SUBJECT_COLUMNS),
         ];
         $known = self::canonicalColumns();
@@ -705,8 +776,128 @@ final class PdoFeatureFlagStore implements IFeatureFlagStore
             $this->fromText($row['disabled_at'] ?? null, 'disabled_at'),
             self::nullableText($row['disabled_by'] ?? null),
             ($row['version'] ?? null) === null ? null : (int) $row['version'],
-            $subjects
+            $subjects,
+            $this->rolloutFromDatabase($row['rollout_percent'] ?? null)
         );
+    }
+
+    /**
+     * The rollout percentage read from its column: null, or an integer from 0 to 100.
+     *
+     * @throws FeatureFlagStoreException When the column holds anything else
+     */
+    private function rolloutFromDatabase(mixed $raw): ?int
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $text = trim((string) $raw);
+        if (preg_match('/^\d{1,3}$/', $text) !== 1 || (int) $text > 100) {
+            throw new FeatureFlagStoreException(sprintf(
+                'Column %s (rollout_percent) holds %s; expected an integer from 0 to 100, or NULL.',
+                (string) $this->columns['flag']['rollout_percent'],
+                is_scalar($raw) ? var_export($raw, true) : get_debug_type($raw)
+            ));
+        }
+
+        return (int) $text;
+    }
+
+    /**
+     * The kind of a history row: the stored one (any case, surrounding spaces ignored), or the one
+     * implied by the subject key when the table has no kind column or the row has none. A row with a
+     * subject key stored as `toggle` (the default of the column, a 2.1.0 row after the migration) is a
+     * Subject change.
+     *
+     * @throws FeatureFlagStoreException When the stored kind is unknown, or a Subject row has no subject key
+     */
+    private function changeKindFromDatabase(mixed $raw, ?string $subjectKey): FeatureFlagChangeKind
+    {
+        $text = $raw === null ? '' : strtolower(trim((string) $raw));
+        $kind = $text === '' ? FeatureFlagChangeKind::Toggle : FeatureFlagChangeKind::tryFrom($text);
+        if ($kind === null) {
+            throw new FeatureFlagStoreException(sprintf(
+                "Column %s (change_kind) holds %s; expected one of: %s.",
+                (string) $this->columns['change']['change_kind'],
+                is_scalar($raw) ? var_export($raw, true) : get_debug_type($raw),
+                implode(', ', array_map(static fn(FeatureFlagChangeKind $case): string => $case->value, FeatureFlagChangeKind::cases()))
+            ));
+        }
+        if ($subjectKey !== null && $kind === FeatureFlagChangeKind::Toggle) {
+            return FeatureFlagChangeKind::Subject;
+        }
+        if (($kind === FeatureFlagChangeKind::Subject) !== ($subjectKey !== null)) {
+            throw new FeatureFlagStoreException(sprintf(
+                "A history row of kind '%s' %s a subject key.",
+                $kind->value,
+                $subjectKey === null ? 'needs' : 'cannot carry'
+            ));
+        }
+
+        return $kind;
+    }
+
+    /**
+     * The canonical flag columns, among $canonical, that the table does not have.
+     *
+     * @param list<string> $canonical
+     * @return list<string>
+     */
+    private function absentFlagColumns(array $canonical): array
+    {
+        return array_values(array_filter($canonical, fn(string $column): bool => $this->columns['flag'][$column] === null));
+    }
+
+    /**
+     * @param list<string> $canonical
+     * @throws FeatureFlagStoreException When the flag table lacks one of the columns
+     */
+    private function assertFlagColumns(string $feature, array $canonical): void
+    {
+        $absent = $this->absentFlagColumns($canonical);
+        if ($absent !== []) {
+            throw new FeatureFlagStoreException(sprintf(
+                'This feature flag store keeps no %s: the flag table %s has no %s column (mapped to null).',
+                $feature,
+                $this->tables['flag'],
+                implode(', ', $absent)
+            ));
+        }
+    }
+
+    /**
+     * Compare-and-set by the optimistic version: writes the values (canonical column => value), increments
+     * the version and stamps the update, only when the stored version is the expected one.
+     *
+     * @param array<string, string|int|null> $values
+     */
+    private function compareAndSetVersion(string $code, int $expectedVersion, array $values, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        $flag = $this->columns['flag'];
+        $now = $this->toText($at);
+        $set = [];
+        $params = [];
+        foreach ($values + ['updated_at' => $now, 'updated_by' => $actor] as $canonical => $value) {
+            if ($flag[$canonical] !== null) {
+                $set[] = $flag[$canonical] . ' = :s_' . $canonical;
+                $params[':s_' . $canonical] = $value;
+            }
+        }
+        $set[] = sprintf('%1$s = %1$s + 1', (string) $flag['version']);
+
+        $where = [$flag['code'] . ' = :code', $flag['version'] . ' = :expected_version'];
+        $params[':code'] = $code;
+        $params[':expected_version'] = $expectedVersion;
+        if ($flag['deleted_at'] !== null) {
+            $where[] = $flag['deleted_at'] . ' IS NULL';
+        }
+
+        return $this->execute(sprintf(
+            'UPDATE %s SET %s WHERE %s',
+            $this->tables['flag'],
+            implode(', ', $set),
+            implode(' AND ', $where)
+        ), $params)->rowCount() === 1;
     }
 
     /**

@@ -19,7 +19,13 @@ use Antevemus\ASpecification\Specifications\String\TextComparison;
  * `equalIgnoringCase()`. A factory that implements this interface directly must widen those
  * parameters and add the method; one that extends AbstractStringSpecificationFactory inherits it.
  *
- * @version    2.1.0
+ * 2.3.0: `matchesWildcard()` and `like()` take `bool|TextComparison $caseSensitive = true`, and
+ * `matchesRegex()`, `matchesRegularExpression()` and `matches()` take `?TextComparison $comparison = null`;
+ * existing calls keep their meaning. A factory that implements this interface, or extends
+ * AbstractStringSpecificationFactory and implements `matchesRegex()`/`matchesWildcard()`, must declare
+ * the new parameter (TextComparison::IgnoreCaseAndAccents ignores accents, as in contains()).
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -102,26 +108,37 @@ interface IStringSpecificationFactory extends ISpecificationFactory
      * </code>
      *
      * @param string $pattern PCRE regular expression pattern
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string> Regex match specification
      * @throws \InvalidArgumentException If regex pattern is invalid
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException With
+     *         IgnoreCaseAndAccents when ext-intl is not loaded
      */
-    public function matchesRegex(string $pattern): ISpecification;
+    public function matchesRegex(string $pattern, ?TextComparison $comparison = null): ISpecification;
 
     /**
      * Alias for matchesRegex().
      *
      * @param string $pattern PCRE regular expression pattern
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function matchesRegularExpression(string $pattern): ISpecification;
+    public function matchesRegularExpression(string $pattern, ?TextComparison $comparison = null): ISpecification;
 
     /**
      * Alias for matchesRegex().
      *
      * @param string $pattern PCRE regular expression pattern
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function matches(string $pattern): ISpecification;
+    public function matches(string $pattern, ?TextComparison $comparison = null): ISpecification;
 
     /**
      * Creates a specification verifying wildcard match (* and ?).
@@ -137,9 +154,13 @@ interface IStringSpecificationFactory extends ISpecificationFactory
      * </code>
      *
      * @param string $wildcardExpression Wildcard pattern (* and ?)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification<string> Wildcard match specification
+     * @throws \Antevemus\ASpecification\Specifications\Exceptions\MissingExtensionException With
+     *         IgnoreCaseAndAccents when ext-intl is not loaded
      */
-    public function matchesWildcard(string $wildcardExpression): ISpecification;
+    public function matchesWildcard(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * Alias for matchesWildcard().
@@ -147,9 +168,11 @@ interface IStringSpecificationFactory extends ISpecificationFactory
      * Idiomatic SQL-like usage: "like 'user_%'"
      *
      * @param string $wildcardExpression Wildcard pattern (* and ?)
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case,
+     *        TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification<string>
      */
-    public function like(string $wildcardExpression): ISpecification;
+    public function like(string $wildcardExpression, bool|TextComparison $caseSensitive = true): ISpecification;
 
     /**
      * Creates a specification verifying case-insensitive wildcard match.

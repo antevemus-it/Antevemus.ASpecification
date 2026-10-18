@@ -11,6 +11,11 @@
 #     loaded, the refusal of TextComparison::IgnoreCaseAndAccents when it is not; the test itself creates the
 #     PostgreSQL unaccent extension for the documented PostgreSqlDialect('unaccent') option (the official
 #     postgres image ships it);
+#   - Module29_WildcardRegexAccentInsensitiveTest (forward 039, 2.3.0): wildcard and regex ignoring accents, the
+#     battery with ext-intl (PostgreSQL translates both, MySQL/MariaDB the wildcard and refuse the regex), the
+#     refusal without it;
+#   - Module30_FeatureFlagsIITest (forward 040, 2.3.0): the validity window and the percentage rollout of
+#     PdoFeatureFlagStore, and the additive migration of a 2.1.0 table;
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -58,7 +63,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

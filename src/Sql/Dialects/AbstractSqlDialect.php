@@ -7,6 +7,7 @@ namespace Antevemus\ASpecification\Sql\Dialects;
 use Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike;
 use Antevemus\ASpecification\Contracts\Sql\ISqlDialect;
 use Antevemus\ASpecification\Contracts\Sql\ISqlPagination;
+use Antevemus\ASpecification\Contracts\Sql\ISqlWhereClause;
 use InvalidArgumentException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException;
 use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
@@ -25,8 +26,10 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  *   Oracle 12c+, Firebird 3+ and Db2 accept; dialects with another syntax override formatPagination()
  * - No LIKE ignoring case and accents by default (ISqlAccentInsensitiveLike answers null, 2.1.0): only
  *   the dialects measured to answer as the in-memory comparison override it (PostgreSQL, MySQL/MariaDB)
+ * - No regular expression ignoring case and accents by default (accentInsensitiveRegex() answers null,
+ *   2.3.0): only PostgreSQL overrides it
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql\Dialects
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -139,6 +142,21 @@ abstract class AbstractSqlDialect implements ISqlDialect, ISqlPagination, ISqlAc
      * which the in-memory comparison keeps distinct. Measured on 2026-10-12.
      */
     public function formatAccentInsensitiveLike(string $column, string $paramPlaceholder): ?string
+    {
+        return null;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Null: only a dialect whose database folds the column as the in-memory evaluation folds the
+     * candidate answers it (PostgreSQL, through the built-in folding expression). Measured on
+     * 2026-10-18: the regular expressions of MySQL 8.4 (ICU) and MariaDB 11.4 (PCRE2) ignore the
+     * collation, so an accent-insensitive collation does not fold the accents of the column for them.
+     *
+     * @version 2.3.0
+     */
+    public function accentInsensitiveRegex(string $column, string $paramPlaceholder, string $foldedBody): ?ISqlWhereClause
     {
         return null;
     }

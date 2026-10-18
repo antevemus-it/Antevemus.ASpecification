@@ -75,9 +75,10 @@ final class Module27Clock
 }
 
 /**
- * Module27ProbeStore - decorator that counts loads and can fail a load or a history write.
+ * Module27ProbeStore - decorator that counts loads and can fail a load or a history write (2.3.0: also
+ * delegates the four methods IFeatureFlagStore gained in forward 040).
  *
- * @version 2.1.0
+ * @version 2.3.0
  */
 final class Module27ProbeStore implements IFeatureFlagStore
 {
@@ -112,6 +113,26 @@ final class Module27ProbeStore implements IFeatureFlagStore
     public function compareAndSetEnabled(string $code, bool $expected, bool $enabled, DateTimeImmutable $at, string|int|null $actor): bool
     {
         return $this->inner->compareAndSetEnabled($code, $expected, $enabled, $at, $actor);
+    }
+
+    public function supportsValidity(): bool
+    {
+        return $this->inner->supportsValidity();
+    }
+
+    public function compareAndSetValidity(string $code, int $expectedVersion, ?DateTimeImmutable $from, ?DateTimeImmutable $until, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        return $this->inner->compareAndSetValidity($code, $expectedVersion, $from, $until, $at, $actor);
+    }
+
+    public function supportsRollout(): bool
+    {
+        return $this->inner->supportsRollout();
+    }
+
+    public function compareAndSetRollout(string $code, int $expectedVersion, ?int $percent, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        return $this->inner->compareAndSetRollout($code, $expectedVersion, $percent, $at, $actor);
     }
 
     public function supportsSubjects(): bool
@@ -281,10 +302,11 @@ class Module27_FeatureFlagsTest extends TestCase
             'DISABLED' => [false, 'DISABLED', null],
             'NOT_IN_TARGET' => [false, 'DEFAULT', null],
             'OUTSIDE_VALIDITY' => [false, 'DEFAULT', null],
+            'OUTSIDE_ROLLOUT' => [false, 'DEFAULT', null], // forward 040, D6 (2.3.0)
             'UNKNOWN_FLAG' => [false, 'ERROR', 'FLAG_NOT_FOUND'],
             'ERROR' => [false, 'ERROR', 'GENERAL'],
         ];
-        $this->assertCount(count($expected), FeatureFlagReason::cases(), 'sete motivos (D8)');
+        $this->assertCount(count($expected), FeatureFlagReason::cases(), 'oito motivos (D8; OUTSIDE_ROLLOUT desde a 2.3.0)');
         foreach (FeatureFlagReason::cases() as $reason) {
             [$on, $openFeature, $errorCode] = $expected[$reason->name];
             $this->assertEquals($on, $reason->isOn(), "{$reason->name}: valor");

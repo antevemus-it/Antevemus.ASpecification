@@ -11,10 +11,12 @@ use Throwable;
  *
  * What FeatureFlags::evaluate() returns (forward 034, D7): the value, the reason (FeatureFlagReason,
  * mapped to OpenFeature), the code, the subject key that was matched (when any) and, for the reason
- * ERROR, the exception that was reported. toMetadata() is what FeatureEnabledSpecification puts in
- * the metadata of its failure.
+ * ERROR, the exception that was reported. With a rollout (forward 040, D6), the bucket of the subject
+ * (0 to 9999, FeatureFlags::bucket()) and the percentage it was compared with, so that a panel can say
+ * "this subject falls in bucket 7342: in from 74 %". toMetadata() is what FeatureEnabledSpecification
+ * puts in the metadata of its failure.
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,20 +33,25 @@ final class FeatureFlagEvaluation
      * @param FeatureFlagReason $reason Why it is on or off
      * @param string|null $subjectKey Subject key read from the subject (null = none)
      * @param Throwable|null $error The failure behind the reason ERROR
+     * @param int|null $bucket Rollout bucket of the subject, 0 to 9999 (null = no rollout reached)
+     * @param int|null $rolloutPercent Rollout percentage the bucket was compared with (null = none)
      */
     public function __construct(
         public readonly string $code,
         public readonly FeatureFlagReason $reason,
         public readonly ?string $subjectKey = null,
-        public readonly ?Throwable $error = null
+        public readonly ?Throwable $error = null,
+        public readonly ?int $bucket = null,
+        public readonly ?int $rolloutPercent = null
     ) {
         $this->value = $reason->isOn();
     }
 
     /**
      * Metadata of the evaluation: flag, value, reason, OpenFeature reason, and, when present, the
-     * OpenFeature error code, the subject key and the class of the error (never its message, which
-     * may carry data of the database).
+     * OpenFeature error code, the subject key, the rollout bucket and percentage (`bucket`,
+     * `rollout_percent`) and the class of the error (never its message, which may carry data of the
+     * database).
      *
      * @return array<string, mixed>
      */
@@ -61,6 +68,12 @@ final class FeatureFlagEvaluation
         }
         if ($this->subjectKey !== null) {
             $metadata['subject_key'] = $this->subjectKey;
+        }
+        if ($this->bucket !== null) {
+            $metadata['bucket'] = $this->bucket;
+        }
+        if ($this->rolloutPercent !== null) {
+            $metadata['rollout_percent'] = $this->rolloutPercent;
         }
         if ($this->error !== null) {
             $metadata['error_class'] = $this->error::class;

@@ -20,7 +20,13 @@ use DateTimeImmutable;
  * with the same results (RN-02). Every method may throw FeatureFlagStoreException on a storage
  * failure; FeatureFlags turns a failure of loadAll() into "off" (D9).
  *
- * @version    2.1.0
+ * 2.3.0 (forward 040, D3 and D4): the validity window and the rollout percentage are written through
+ * the store, by compare-and-set of the optimistic version of the row (supportsValidity(),
+ * compareAndSetValidity(), supportsRollout(), compareAndSetRollout()). An implementation outside the
+ * library must add these four methods (a store that keeps neither answers false to the two
+ * `supports*()` and the service refuses the change before calling the others).
+ *
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -59,12 +65,56 @@ interface IFeatureFlagStore
 
     /**
      * Compare-and-set of the switch: changes it to $enabled only when the stored value is $expected,
-     * stamping `enabled_at/by` (turned on) or `disabled_at/by` (turned off). Returns true when exactly
-     * one row changed, false otherwise (no row, or another state).
+     * stamping `enabled_at/by` (turned on) or `disabled_at/by` (turned off) and incrementing the
+     * optimistic version (when the store keeps one), so that a change of the window or of the rollout
+     * read before the switch is stale. Returns true when exactly one row changed, false otherwise (no
+     * row, or another state).
      *
      * @throws FeatureFlagStoreException
      */
     public function compareAndSetEnabled(string $code, bool $expected, bool $enabled, DateTimeImmutable $at, string|int|null $actor): bool;
+
+    /**
+     * True when the store keeps the validity window and the optimistic version of the flag rows, so that
+     * compareAndSetValidity() can be called.
+     */
+    public function supportsValidity(): bool;
+
+    /**
+     * Compare-and-set of the validity window: writes $from and $until (null = open bound; both null =
+     * no window) only when the stored version is $expectedVersion, increments the version and stamps
+     * the update (when the table has update stamps). Returns true when exactly one row changed, false
+     * otherwise (no row, or another version: someone else changed the flag since it was read).
+     *
+     * @param string $code Flag code
+     * @param int $expectedVersion Version the caller read
+     * @param DateTimeImmutable|null $from First instant the flag may be on (null = open)
+     * @param DateTimeImmutable|null $until Last instant the flag may be on (null = open)
+     * @param DateTimeImmutable $at Instant of the change
+     * @param string|int|null $actor Who changed it
+     * @throws FeatureFlagStoreException When the store keeps no validity window or no version, or on a storage failure
+     */
+    public function compareAndSetValidity(string $code, int $expectedVersion, ?DateTimeImmutable $from, ?DateTimeImmutable $until, DateTimeImmutable $at, string|int|null $actor): bool;
+
+    /**
+     * True when the store keeps the rollout percentage and the optimistic version of the flag rows, so
+     * that compareAndSetRollout() can be called.
+     */
+    public function supportsRollout(): bool;
+
+    /**
+     * Compare-and-set of the rollout percentage: writes $percent (0 to 100; null = no rollout) only when
+     * the stored version is $expectedVersion, increments the version and stamps the update (when the
+     * table has update stamps). Returns true when exactly one row changed, false otherwise.
+     *
+     * @param string $code Flag code
+     * @param int $expectedVersion Version the caller read
+     * @param int|null $percent Rollout percentage, 0 to 100 (null = no rollout)
+     * @param DateTimeImmutable $at Instant of the change
+     * @param string|int|null $actor Who changed it
+     * @throws FeatureFlagStoreException When the store keeps no rollout percentage or no version, or on a storage failure
+     */
+    public function compareAndSetRollout(string $code, int $expectedVersion, ?int $percent, DateTimeImmutable $at, string|int|null $actor): bool;
 
     /** True when the store keeps subject lists (a subject table is configured). */
     public function supportsSubjects(): bool;

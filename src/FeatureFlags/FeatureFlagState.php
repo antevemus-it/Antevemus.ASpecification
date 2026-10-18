@@ -6,12 +6,15 @@ namespace Antevemus\ASpecification\FeatureFlags;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
 
 /**
  * FeatureFlagState - What the Store Holds for One Flag
  *
  * One row of the flag table as read by an IFeatureFlagStore (forward 034, D3 and D4): the switch,
- * the validity window, who turned it on and off last, and the subject list (D6). The texts of the
+ * the validity window, who turned it on and off last, the subject list (D6), the rollout percentage
+ * (forward 040, D4: null = no rollout) and the optimistic version that the changes of the window and of
+ * the rollout compare against (forward 040, D1). The texts of the
  * row (name, description, category, audience) are only shown when the flag is not declared in code;
  * a declared flag always shows the texts of its FeatureFlagDefinition (D11).
  *
@@ -19,7 +22,7 @@ use DateTimeInterface;
  * whole day: `validFrom` is the first instant of that day, `validUntil` the last one, so both bounds
  * are inclusive, as in the rule catalog.
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -47,6 +50,8 @@ final class FeatureFlagState
      * @param string|null $disabledBy Who turned it off last
      * @param int|null $version Optimistic version, when the table has one
      * @param list<string|int> $subjects Subject keys of the subject list (empty = no list restriction)
+     * @param int|null $rolloutPercent Rollout percentage, 0 to 100 (null = no rollout: every subject)
+     * @throws InvalidArgumentException When the rollout percentage is outside 0..100
      */
     public function __construct(
         public readonly string $code,
@@ -63,8 +68,16 @@ final class FeatureFlagState
         public readonly ?DateTimeImmutable $disabledAt = null,
         public readonly ?string $disabledBy = null,
         public readonly ?int $version = null,
-        array $subjects = []
+        array $subjects = [],
+        public readonly ?int $rolloutPercent = null
     ) {
+        if ($rolloutPercent !== null && ($rolloutPercent < 0 || $rolloutPercent > 100)) {
+            throw new InvalidArgumentException(sprintf(
+                'The rollout percentage of feature flag "%s" must be between 0 and 100, %d given.',
+                $code,
+                $rolloutPercent
+            ));
+        }
         $keys = array_values(array_unique(array_map(static fn(string|int $key): string => (string) $key, $subjects)));
         sort($keys, SORT_STRING);
         $this->subjects = $keys;

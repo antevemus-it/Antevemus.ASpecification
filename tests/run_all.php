@@ -64,6 +64,8 @@ $suites = [
     'Módulo 26: Relacionamentos do PdoRepository (ManyToOne, OneToMany, ManyToMany, carga ansiosa, composição)' => new Module26_PdoRelationshipsTest(),
     'Módulo 27: Feature Flags Declaradas, com Alvo e Histórico' => new \Antevemus\ASpecification\Tests\Unit\Module27_FeatureFlagsTest(),
     'Módulo 28: Comparação de Texto sem Acento (TextComparison::IgnoreCaseAndAccents)' => new \Antevemus\ASpecification\Tests\Unit\Module28_AccentInsensitiveTextTest(),
+    'Módulo 29: Wildcard e Regex sem Acento (wildcard()/regex() com TextComparison)' => new \Antevemus\ASpecification\Tests\Unit\Module29_WildcardRegexAccentInsensitiveTest(),
+    'Módulo 30: Feature Flags II (janela de validade pelo serviço e rollout percentual)' => new \Antevemus\ASpecification\Tests\Unit\Module30_FeatureFlagsIITest(),
 ];
 
 $startTime = microtime(true);

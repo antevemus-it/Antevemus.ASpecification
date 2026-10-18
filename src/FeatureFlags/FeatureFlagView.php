@@ -13,10 +13,11 @@ use DateTimeImmutable;
  * the store. A declared flag shows the texts of its declaration (the code wins over the row); a flag
  * found only in the store is listed as not declared, with the texts of its row (or its code as the
  * name). The state is the stored switch (a declared flag without a row is off), with the validity
- * window, the subject list and the last change (who and when, the most recent of the last "on" and
- * the last "off").
+ * window and the rollout percentage (forward 040, D7: null when there is none, when the flag has no
+ * row, or when the store does not keep them), the subject list and the last change (who and when, the
+ * most recent of the last "on" and the last "off").
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -37,6 +38,15 @@ final class FeatureFlagView
     public readonly bool $enabled;
     public readonly ?DateTimeImmutable $lastChangeAt;
     public readonly ?string $lastChangeBy;
+
+    /** First instant the flag may be on (null = open, or no window). */
+    public readonly ?DateTimeImmutable $validFrom;
+
+    /** Last instant the flag may be on (null = open, or no window). */
+    public readonly ?DateTimeImmutable $validUntil;
+
+    /** Rollout percentage, 0 to 100 (null = no rollout). */
+    public readonly ?int $rolloutPercent;
 
     /**
      * @param string $code Flag code
@@ -59,6 +69,9 @@ final class FeatureFlagView
         $this->impactOff = $definition?->impactOff ?? '';
         $this->origin = $definition?->origin ?? '';
         [$this->lastChangeAt, $this->lastChangeBy] = $state?->lastChange() ?? [null, null];
+        $this->validFrom = $state?->validFrom;
+        $this->validUntil = $state?->validUntil;
+        $this->rolloutPercent = $state?->rolloutPercent;
     }
 
     /**

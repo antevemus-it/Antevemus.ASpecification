@@ -23,10 +23,10 @@ declare(strict_types=1);
  * - External data leaf resolved concurrently by a DataResolver (external, 1.10.0)
  * - Subquery over another PdoRepository (inQuery, 1.13.0)
  * - Text comparison ignoring case and accents (TextComparison::IgnoreCaseAndAccents in contains,
- *   startsWith, endsWith; equalIgnoreCaseAndAccents; 2.1.0, requires ext-intl)
+ *   startsWith, endsWith; equalIgnoreCaseAndAccents; 2.1.0, requires ext-intl; wildcard and regex, 2.3.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -699,34 +699,48 @@ final class Spec
     /**
      * Specifies string must match regular expression pattern.
      *
+     * `Spec::matches('/^configura/', TextComparison::IgnoreCaseAndAccents)` accepts `'Configuração'`
+     * and `'CONFIGURACAO'` (2.3.0).
+     *
      * @param string $pattern Regular expression in PCRE format (e.g. '/^[0-9]+$/')
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function matches(string $pattern): ISpecification
+    public static function matches(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return self::getFactory()->matches($pattern);
+        return self::getFactory()->matches($pattern, $comparison);
     }
 
     /**
      * Syntactic alias for matches().
      *
      * @param string $pattern PCRE pattern
+     * @param TextComparison|null $comparison null (default) keeps the pattern as written, IgnoreCase adds `i`,
+     *        TextComparison::IgnoreCaseAndAccents folds the accents of body and candidate and adds `iu`
+     *        (2.3.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function regex(string $pattern): ISpecification
+    public static function regex(string $pattern, ?TextComparison $comparison = null): ISpecification
     {
-        return self::getFactory()->matches($pattern);
+        return self::getFactory()->matches($pattern, $comparison);
     }
 
     /**
      * Specifies string must match wildcard expression (* and ?).
      *
+     * `Spec::wildcard('*configuracao*', TextComparison::IgnoreCaseAndAccents)` accepts
+     * `'Configuração do servidor'` (2.3.0).
+     *
      * @param string $pattern Wildcard string
+     * @param bool|TextComparison $caseSensitive `true` (default) compares exactly, `false` ignores case
+     *        (as wildcardIgnoreCase()), TextComparison::IgnoreCaseAndAccents also ignores accents (2.3.0, requires ext-intl)
      * @return ISpecification
      */
-    public static function wildcard(string $pattern): ISpecification
+    public static function wildcard(string $pattern, bool|TextComparison $caseSensitive = true): ISpecification
     {
-        return self::getFactory()->matchesWildcard($pattern);
+        return self::getFactory()->matchesWildcard($pattern, $caseSensitive);
     }
 
     /**

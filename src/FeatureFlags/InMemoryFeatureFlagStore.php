@@ -20,11 +20,16 @@ use InvalidArgumentException;
  *
  * - Transactions: an InMemoryTransactionManager whose rollback restores the flags, the subject lists
  *   and the history together (pass your own manager to share it with other in-memory stores)
- * - put() seeds a row as a migration script would (validity window and subject list included); the
- *   service never writes through it, so it records no history
- * - Without subject lists (`$subjects: false`) it mirrors a PDO store whose subject table is absent
+ * - put() seeds a row as a migration script would (validity window, subject list and rollout
+ *   percentage included); the service never writes through it, so it records no history. A row seeded
+ *   without a version gets version 1, the default of the reference DDL
+ * - Every change of a row increments its version: the switch, the validity window and the rollout
+ *   percentage (forward 040, D1 and D4: the window and the rollout are compare-and-set by version)
+ * - Without subject lists (`$subjects: false`) it mirrors a PDO store whose subject table is absent;
+ *   without a validity window (`$validity: false`) or a rollout (`$rollout: false`), a PDO store whose
+ *   columns are absent
  *
- * @version    2.1.0
+ * @version    2.3.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -44,9 +49,15 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
     /**
      * @param InMemoryTransactionManager|null $transactions Manager to take part in (null = a manager of its own)
      * @param bool $subjects Whether the store keeps subject lists
+     * @param bool $validity Whether the store keeps the validity window
+     * @param bool $rollout Whether the store keeps the rollout percentage
      */
-    public function __construct(?InMemoryTransactionManager $transactions = null, private readonly bool $subjects = true)
-    {
+    public function __construct(
+        ?InMemoryTransactionManager $transactions = null,
+        private readonly bool $subjects = true,
+        private readonly bool $validity = true,
+        private readonly bool $rollout = true
+    ) {
         $this->transactions = ($transactions ?? new InMemoryTransactionManager())->addParticipant($this);
     }
 
@@ -54,7 +65,8 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
      * Seeds (or replaces) the row of a flag, as a script would: no history row is written.
      *
      * @return $this
-     * @throws InvalidArgumentException When the code is not valid, or a subject list is given to a store without lists
+     * @throws InvalidArgumentException When the code is not valid, or a subject list, a validity window or a
+     *                                  rollout percentage is given to a store that does not keep it
      */
     public function put(FeatureFlagState $state): self
     {
@@ -62,7 +74,13 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
         if (!$this->subjects && $state->subjects !== []) {
             throw new InvalidArgumentException('This in-memory store keeps no subject lists.');
         }
-        $this->flags[$state->code] = $state;
+        if (!$this->validity && ($state->validFrom !== null || $state->validUntil !== null)) {
+            throw new InvalidArgumentException('This in-memory store keeps no validity window.');
+        }
+        if (!$this->rollout && $state->rolloutPercent !== null) {
+            throw new InvalidArgumentException('This in-memory store keeps no rollout percentage.');
+        }
+        $this->flags[$state->code] = $state->version === null ? $this->copy($state, ['version' => 1]) : $state;
 
         return $this;
     }
@@ -119,6 +137,38 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
         ]);
 
         return true;
+    }
+
+    /** {@inheritdoc} */
+    public function supportsValidity(): bool
+    {
+        return $this->validity;
+    }
+
+    /** {@inheritdoc} */
+    public function compareAndSetValidity(string $code, int $expectedVersion, ?DateTimeImmutable $from, ?DateTimeImmutable $until, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        if (!$this->validity) {
+            throw new FeatureFlagStoreException('This in-memory store keeps no validity window.');
+        }
+
+        return $this->compareAndSetVersion($code, $expectedVersion, ['validFrom' => $from, 'validUntil' => $until]);
+    }
+
+    /** {@inheritdoc} */
+    public function supportsRollout(): bool
+    {
+        return $this->rollout;
+    }
+
+    /** {@inheritdoc} */
+    public function compareAndSetRollout(string $code, int $expectedVersion, ?int $percent, DateTimeImmutable $at, string|int|null $actor): bool
+    {
+        if (!$this->rollout) {
+            throw new FeatureFlagStoreException('This in-memory store keeps no rollout percentage.');
+        }
+
+        return $this->compareAndSetVersion($code, $expectedVersion, ['rolloutPercent' => $percent]);
     }
 
     /** {@inheritdoc} */
@@ -216,6 +266,23 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
     }
 
     /**
+     * Replaces some fields of a row and increments its version, only when the stored version is the
+     * expected one.
+     *
+     * @param array<string, mixed> $with Field => new value
+     */
+    private function compareAndSetVersion(string $code, int $expectedVersion, array $with): bool
+    {
+        $current = $this->flags[$code] ?? null;
+        if ($current === null || $current->version !== $expectedVersion) {
+            return false;
+        }
+        $this->flags[$code] = $this->copy($current, $with + ['version' => $expectedVersion + 1]);
+
+        return true;
+    }
+
+    /**
      * A copy of a state with some fields replaced.
      *
      * @param array<string, mixed> $with Field => new value
@@ -238,6 +305,7 @@ final class InMemoryFeatureFlagStore implements IFeatureFlagStore, IInMemoryTran
             'disabledBy' => $state->disabledBy,
             'version' => $state->version,
             'subjects' => $state->subjects,
+            'rolloutPercent' => $state->rolloutPercent,
         ];
 
         return new FeatureFlagState(...array_replace($fields, $with));

@@ -180,39 +180,49 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
-## 🗓️ Unscheduled
+## ✅ v2.3.0 — Text and Feature Flags II (Shipped in v2.3.0)
 
-### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
-- **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps a single runtime dependency, from the same author and with no dependencies of its own (`antevemus/adeep-property-access`).
+### 22b. Accent-Insensitive Wildcards and Regular Expressions 🔤 (Shipped in v2.3.0)
+- **Description:** `wildcard()` and `regex()` take the `TextComparison` that `contains()`, `startsWith()` and `endsWith()` took in v2.1.0 (forward 039). The wildcard folds pattern and candidate as the literal leaves do (`false` is now `wildcardIgnoreCase()`); the regular expression folds only the accents of its body (`TextComparison::foldAccents()`, case kept, so `\D` stays `\D`), adds `iu` and matches the candidate folded the same way; with a comparison the pattern must be delimited. In SQL, with the in-memory answer or not at all: **PostgreSQL** translates both (the built-in folding expression on the column; the regex as `fold(col) ~* :p`), **MySQL 8.4 and MariaDB 11.4** translate the wildcard through the `_ai_ci` collation and **refuse the regex**, because measured, their engines (ICU, PCRE2) ignore the collation (`^cora[cç][aã]o$` finds `coracao`, not `Coração`, in every form tried) and neither has a function to fold the column; every other dialect and TCriteria refuse both, ALinq evaluates through the leaf. Parity with memory measured on PostgreSQL 17 (483 queries), MySQL 8.4 (175) and MariaDB 11.4 (323). The measurement also found **#73**, fixed in the same release: on PostgreSQL `\b` is a backspace, so a `regex()` with `\b` never matched; every regular expression translated for it now has `\b`/`\B` written as `\y`/`\Y` (`ISqlRegexRewriter`). Documented limits that are not defects: on PostgreSQL the class shorthands follow the database (`\d` ASCII only, `\w`/`\s` on a few hundred code points, a `"C"` collation column), and `fnmatch()` does not always read `?` as one multibyte character.
+- **Goal:** Every text operator offers the accent-insensitive comparison, with one answer wherever it runs.
+
+### 24d. An API for the Validity Window of a Feature Flag 🚩 (Shipped in v2.3.0)
+- **Description:** `FeatureFlags::setValidity()` (forward 040) sets and clears the window that v2.1.0 evaluated but only SQL could write: a reason, one transaction with a history row typed `Validity` (`FeatureFlagChangeKind`, with a `detail` such as `2026-11-01T00:00:00+00:00 → open`), and a compare-and-set on the row `version`, which `toggle()` also increments; an optional `expectedVersion` lets a screen refuse to save over someone else's change, and setting what is already there is refused as stale. `IFeatureFlagStore` gains the window and rollout methods (a declared break for a store implemented outside the library; none was found).
+- **Goal:** The window is an audited change like the switch, never a hand-written `UPDATE`.
+
+### 24c. Percentage Rollout of a Feature Flag 🚩 (Shipped in v2.3.0)
+- **Description:** `FeatureFlags::setRollout()` through the same path, with `feature_flag.rollout_percent`. A subject is in when `FeatureFlags::bucket($code, $subjectKey)` (`xxh3` of the code and the key, modulo 10 000; part of the contract, changing it is a MAJOR) is below the percentage times 100; the rollout is the last step of the evaluation, a subject without a key is out, and the new reason `OUTSIDE_ROLLOUT` and the bucket in the metadata let a panel explain the answer. Over 10 000 subjects, 1 %, 10 %, 25 %, 50 % and 90 % land within ±1 %; two flags are independent and two processes give the same buckets. The new columns (`rollout_percent`, `change_kind`, `detail`) are read only with `columns: PdoFeatureFlagStore::COLUMNS_SINCE_2_3`, so a table of v2.1.0 keeps working untouched; the additive migration is commented in the DDL.
+- **Goal:** A gradual launch with a stable, explainable answer per subject, through the audited path.
+
+---
+
+## 🗓️ Scheduled (forward specification written, no code yet)
+
+Planned on 2026-10-18 from the unscheduled list. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/041` to `045`; 039 and 040 shipped in v2.3.0, above) and goes into the version named here; the order follows the recommendation accepted that day: close the gaps of the 2.1.0 features first, then the serialization that two other milestones need, then the repository and cache work, then the integer leaves when a real consumer asks for them, and the satellite package last.
+
+### v2.4.0 — Specification Serialization
 
 ### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
 - **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here: the core has no `fromArray`/`jsonSerialize` of specifications yet).
 - **Goal:** Multi-node high-throughput deployments with distributed cache invalidation.
+- **Plan:** split in two. **16a, serialization, forward 041** (`041-serializacao-de-especificacoes`): a canonical JSON tree with short stable type names (never a class name taken from the input), an opt-in `ISerializableSpecification` contract, a `SpecificationCodec` with a registry open to user leaves, depth and node limits, a round-trip property on the soundness bench, and the declarative `method` constructor of forward 018. **16b, the cache adapters, go to v2.5.0** (forward 043).
 
-### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
-- **Description:** Bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
+### 24b. Feature Flag Target by a Catalog Rule 🚩
+- **Description:** The target of a flag (milestone 24) is a subject list in the database or a specification in code. A target named by the code of a rule of the catalog (`IRuleCatalog`) would let an operator change who sees a feature without a deploy, with any rule; it needs a lookup of a rule by its code and the serialization of specifications (milestone 16).
+- **Plan:** forward 041, second stage. `IRuleCatalog::findRuleByCode()`, an optional `spec_json` body on a catalog rule decoded by the codec, and `targetRuleCode` on the flag definition resolved through an optional catalog on the service.
 
-### 18. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
-- **Description:** GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`, beside the 12 database drivers over 7 SQL dialects and Adianti TCriteria.
-
-### 20. AI-Assisted Specification Synthesizer 🤖
-- **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.
-
-### 22b. Accent-Insensitive Wildcards and Regular Expressions 🔤
-- **Description:** v2.1.0 (milestone 22) gives `TextComparison::IgnoreCaseAndAccents` to `contains()`, `startsWith()`, `endsWith()` and the equality; the wildcard specifications and `regex()` keep their case flag only. The same option for them, with the same folding in memory and in SQL, and refused where a database cannot answer it as memory does.
+### v2.5.0 — Repositories and Cache
 
 ### 23. Write-Behind Hybrid Repository (Domian `INMEMORY_AND_FILE`) 🗃️
 - **Description:** `InMemoryAndFileRepository` is write-through (`put()` writes the file at once). Domian's `INMEMORY_AND_FILE` mode is write-behind: `put()` touches memory only, `persist()` writes, `load()` reloads, and one metadata record counts the repository's reads and writes; `isMemoryBased()` answers by mode. The 1.5.0 notes and forward 020 (RN-08) scheduled it for 2.0.0 together with the persisted metadata; the 2.0.0 forward (033) delivered the metadata and left this mode out because it is additive (a new mode chosen by `PersistenceDefinition`, nothing removed), so it fits a MINOR.
 - **Goal:** Memory-speed writes with explicit, batched persistence, as in Domian.
+- **Plan:** forward 042 (`042-repositorio-write-behind`). The hybrid repository obeys `PersistenceDefinition::MemoryAsyncFile`: writes touch memory only, `persist()` writes the whole cache atomically (temporary file and rename), `load()` discards what was not persisted, `isDirty()`/`pendingWrites()`/`persistEvery()`/`persistOnShutdown()`; a repository metadata record travels in the file envelope; the Domian parity cases for this mode run instead of carrying a note.
 
-### 24b. Feature Flag Target by a Catalog Rule 🚩
-- **Description:** The target of a flag (milestone 24) is a subject list in the database or a specification in code. A target named by the code of a rule of the catalog (`IRuleCatalog`) would let an operator change who sees a feature without a deploy, with any rule; it needs a lookup of a rule by its code and the serialization of specifications (milestone 16).
+### 16b. Distributed Cache Adapters (PSR-16) ⚡
+- **Description:** The second half of milestone 16: decorators over `IRuleCatalog`, `IFeatureFlagStore` and the partition index of the DAG behind `Psr\SimpleCache\CacheInterface` (suggested, never required: the core keeps its single runtime dependency), invalidated on every write of the same process and bounded by a short TTL for the others; a failing cache is a miss, reported through the error hook, never an error of the evaluation. Redis or any other backend is the application's client.
+- **Plan:** forward 043 (`043-cache-distribuido`).
 
-### 24c. Percentage Rollout of a Feature Flag 🚩
-- **Description:** Turn a flag on for a stable percentage of the subjects (a deterministic hash of the flag code and the subject key, so a subject keeps its answer between requests and processes), combined with the subject list and the targeting specification, with the percentage changed through the same audited path as the switch.
-
-### 24d. An API for the Validity Window of a Feature Flag 🚩
-- **Description:** v2.1.0 evaluates `valid_from`/`valid_until`, but they are written by SQL or a migration. Setting and clearing the window through the service, with a reason, a compare-and-set and a history row, as `toggle()` does for the switch.
+### v2.6.0 — Integer Leaves (waits for a real consumer)
 
 ### 25. Optional Integer Mode for the Relational Leaves 🔢
 - **Description:** Since v2.1.0 the algebra no longer closes integer bounds (`x > 10` was taken as `x >= 11`): the relational leaves accept float candidates and the library has no int-typed leaf, so `greaterThan(10)` and `lessThan(11)` are not disjoint (10.5 satisfies both) and `simplify()` no longer collapses them (forward 037, BUG-20261013-ST36). An opt-in integer mode gives the closing back where it is sound, in two forms that coexist:
@@ -220,6 +230,31 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
   - **`Spec::int()` scope:** a factory scoped to integers whose methods build int-typed leaves (`Spec::int()->greaterThan(10)`, `Spec::int()->between(1, 12)`), more readable when a whole rule is about integers; internally it calls `asInteger()`.
   - **Narrowed return types:** `Spec::greaterThan()`, `lessThan()`, `greaterThanOrEqualTo()`, `lessThanOrEqualTo()`, `between()` and their DSL functions declare `ISpecification` today, which has no `asInteger()`: it works at runtime but IDEs and static analysis (PHPStan) flag it and autocompletion does not offer it. The relational factories narrow their return type to the leaf class (or a small interface of it), which is compatible for every caller (return types are covariant).
 - **Goal:** Sound interval simplification for integer domains (installments, months, quantities) plus validation for free (`10.5` refused where only integers make sense). First natural consumer: integer rules such as a minimum adjustment periodicity in months. Waits for a real use case.
+- **Plan:** forward 044 (`044-folhas-inteiras`), written and ready; it enters the queue when the first integer rule (a minimum adjustment periodicity in months) or a decision pulls it. Decided on 2026-10-18: the integer leaf refuses every float, `12.0` included, as `strict_types=1` does for an `int` parameter; the conversion belongs to the input boundary.
+
+### Satellite package (no version of the core)
+
+### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
+- **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps a single runtime dependency, from the same author and with no dependencies of its own (`antevemus/adeep-property-access`).
+- **Plan:** forward 045 (`045-aspecification-async`): a new repository `Antevemus.ASpecificationAsync` built like `Antevemus.ADeepPropertyAccess`, a `RevoltDataSource` implementing the core `IDataSource` over Revolt/Amp futures with bounded concurrency and the stage timeout, using the application's loop when one is running. The core only gains a `suggest` line and a README section. Last of the queue: it waits for a consumer with an asynchronous SDK, and it is the pair of ALinq milestone 12 (async collection), which will get its own forward in the ALinq repository.
+
+---
+
+## 🔭 Distant Future (no forward, no version)
+
+Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward.
+
+### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
+- **Description:** Bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
+- **Why it waits:** no consumer exposes GraphQL or an OpenAPI query syntax; the day one does, the compiler is a visitor like the SQL and TCriteria ones, with the same parity bench.
+
+### 18. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
+- **Description:** GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`, beside the 12 database drivers over 7 SQL dialects and Adianti TCriteria.
+- **Why it waits:** no consumer uses Doctrine or Eloquent; the `PdoRepository` (1.11.0 to 1.14.0) and the Adianti `TCriteria` visitor cover the real hosts.
+
+### 20. AI-Assisted Specification Synthesizer 🤖
+- **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.
+- **Why it waits:** the use case has not been stated convincingly. The honest candidate is an operator writing a catalog rule in plain text and getting a specification tree checked by milestone 10 and serialized by milestone 16a; it depends on 16a and on a product decision about where the text would be typed.
 
 ---
 
