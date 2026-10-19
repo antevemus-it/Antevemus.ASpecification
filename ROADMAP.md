@@ -198,8 +198,8 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ## ✅ v2.4.0 — Specification Serialization (Shipped in v2.4.0)
 
-### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡ — 16a shipped in v2.4.0; 16b scheduled for v2.5.0
-- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here, because the core had no `fromArray`/`jsonSerialize` of specifications). Split in two: 16a, the serialization, shipped in v2.4.0; 16b, the cache adapters, is scheduled for v2.5.0 (below).
+### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡ — 16a shipped in v2.4.0; 16b scheduled for v2.7.0
+- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here, because the core had no `fromArray`/`jsonSerialize` of specifications). Split in two: 16a, the serialization, shipped in v2.4.0; 16b, the cache adapters, is scheduled for v2.7.0 (below; it slid from v2.5.0 when forwards 048 and 046 took v2.5.0 and v2.6.0).
 - **16a, delivered (forward 041):** `SpecificationCodec` writes a specification as a canonical JSON tree, `{"v": 1, "spec": {"t": "<name>", ...}}`, and reads it back as the same classes. `t` is one of 44 short, stable names (`and`, `property`, `eq`, `in`, `contains`, `regex`, `method`, `isToday`...), never a class name taken from the input; the registry is open to leaves of the application (`ISerializableSpecification` with `toArray()`/`fromArray()`, `register()`) and is checked by exact class. Dates as `{"$date"}` (RFC 3339 with the offset), enum cases as `{"$enum"}` only for an allowlist; closures, objects and resources refused. Decoding never calls `unserialize()` nor instantiates a class named by the document, and is limited to 64 levels and 10 000 nodes by default. Callbacks, `Spec::external()`, `FeatureEnabledSpecification`, the guards of the machine and the bindings of the rule engine are refused with the reason; a method call is serialized by its name (the `method` constructor of forward 018). Proven on the soundness bench: every serializable tree of the pool (497 of 726) round-trips with `equals()` in both directions, a canonical text and the same answers, and translates to the same SQL (ANSI, PostgreSQL, MySQL) and `TCriteria`; the other 229 are refused for a reason of the contract.
 - **Goal:** A specification is data that can be stored, sent and audited, without opening a door to code execution.
 
@@ -209,11 +209,36 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
+## ✅ v2.5.0 — A Rule Engine, TCriteria and Data Resolution for a Real Consumer (Shipped in v2.5.0)
+
+Forward 048 (2026-10-19): the gaps L1 to L5, L10 and L11 the audit of the Virttus measured on 2026-10-18, closed in the core without a breaking change (new interfaces and classes, parameters only at the end, nothing new in an existing interface).
+
+### 27. A Rule Engine for a Real Consumer 🧭 (Shipped in v2.5.0)
+- **Description:** Three things the consumer wrote by hand. **Lookup-only rule types** (`ILookupOnlyRuleTypes`, `RuleSpecificationRegistry::registerLookupOnly()`): rows of the catalog that only hold a value the application reads are skipped by `DynamicSpecificationEngine` and listed by `getSkippedRules()`, instead of one rule without handler stopping the whole scope; a type nobody declared is still `MissingRuleHandlerException`, a type cannot be lookup only and handled at once, and a lookup-only rule with `spec_json` is a validation. **The most specific rule of a type** (`IRuleTypeCatalog::findRulesByType()`, one query in `PdoRuleCatalog`; `RulePrecedence`): the requested scenario over the scope-global rule, a plan restriction over a product restriction over none, then priority, then `code`, the same answer over any catalog and whatever the order of insertion; `IRuleCatalog` and the order of `findRules()` unchanged. **A human label for the target** (`LabelledSpecification`, `labelled()`, `Spec::labelled()`): every failure reported against the label, the technical property kept in `metadata['property_path']`, the innermost label winning, serialized as `labelled` (45 names), kept by `simplify()`, invisible to SQL, TCriteria and the algebra; a bound rule reported once lists its labels. **Adianti as the host** (documentation, example 22.3 and `docs/adianti/`): a `TransactionMiddleware` that joins the transaction of the screen (`TTransaction::open()` always opens a new connection) and a `UseCaseResult` shown with `TMessage`/`TToast`, run against the stubs.
+- **Proof:** compiling with the declaration answers what the Evaluator of the Virttus answers after filtering the catalog by hand (120 generated catalogs); the precedence over the in-memory catalog = the PDO one = brute force on SQLite, PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, independent of the order of insertion, and equal to the `first()`/`byScenario()` of the Virttus; the Evaluator of the Virttus rewritten with labels and lookup-only types answers its violations over 300 generated sets of facts in three scopes; every specification of the soundness bench keeps its answers, SQL and TCriteria when labelled.
+- **Goal:** The rules of a real catalog without the plumbing around the engine.
+
+### 28. TCriteria Without Accents and With Subqueries 🔤 (Shipped in v2.5.0)
+- **Description:** `toCriteria()` writes a comparison that ignores case and accents for a declared database (`TCriteriaBuilder::withAccentFolding()`, `Spec::toCriteria(..., accentFolding:)`), exactly as `toSql()` does for that dialect, through a `TFilter` that owns its rendering (`TAccentInsensitiveFilter`, value bound under `:aspf_N`, requires `prep = 1`). `Spec::inSubquery()` and `Spec::existsIn()` are subqueries over any table for `toSql()` and `toCriteria()` (`TSubqueryFilter`, its filter a TCriteria of its own, never the raw `(SELECT` of `TFilter`), with validated identifiers (a segment between double quotes allowed), `NOT IN` kept two-valued, an evaluation error in memory and a refusal in the codec.
+- **Proof:** the accent battery of 2.1.0 and 2.3.0 executed through the TCriteria of the real Adianti 8.1 and 8.7 = `toSql()` = memory on PostgreSQL 17, MySQL 8.4 and MariaDB 11.4 (negations with NULL rows; `prep = 0` fails closed); 100 subquery cases with hostile literals (`#`, `--`, `/*`, `]:`, `'`, `\`) through the real Adianti 8.1 and 8.7 = `toSql()` = brute force in SQLite and the three databases; five subqueries of the Virttus written with `NOESC:` and with `inSubquery()` select the same rows.
+- **Goal:** Adianti screens searching without accents and filtering by related tables without raw SQL.
+
+### 29. Asynchronous Data Sources ⏳ (Shipped in v2.5.0)
+- **Description:** `AsyncDataSource` submits a request once (a store of tickets keyed by the request, `IAsyncTicketStore`, in memory or over a table of the application through `CallableAsyncTicketStore`), polls it at each resolution and never waits; a result not ready yet is `DataPendingException`, the evaluation error of the leaf (never approved nor refused, NOT does not invert it), told apart by `SpecificationResult::isPending()`, `RuleEngineVerdict::isPending()` and `ResolvedData::getPendingRequests()`; a crash between sending and storing the ticket is reconciled or fails closed, never sent again.
+- **Proof:** scripted providers over 600 resolutions (pending, ready, failed, transport errors, crashes): at most one submission per key, a pending datum never satisfied, a value cached only when ready; the credit analysis of the Virttus simulated, exactly one POST.
+- **Goal:** Providers that answer later, without a `sleep()` in the request and without paying twice.
+
+---
+
 ## 🗓️ Scheduled (forward specification written, no code yet)
 
-Planned on 2026-10-18 from the unscheduled list. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `045`; 039 and 040 shipped in v2.3.0 and 041 in v2.4.0, above) and goes into the version named here; the order follows the recommendation accepted that day: close the gaps of the 2.1.0 features first, then the serialization that two other milestones need, then the repository and cache work, then the integer leaves when a real consumer asks for them, and the satellite package last.
+Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 takes v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0 and 048 in v2.5.0) and goes into the version named here; the satellite package stays last.
 
-### v2.5.0 — Repositories and Cache
+### v2.6.0 — The State Machine for the Virttus
+
+- **The state machine for its first real consumer** (no number yet): legacy codes, a versioned definition stored over PDO, the tenant, and deadlines counted in business time, the gaps the Virttus measured before adopting the A-Flow through the library. Plan: forward 046 (`046-lacunas-da-maquina-para-a-virttus`).
+
+### v2.7.0 — Repositories and Cache
 
 ### 23. Write-Behind Hybrid Repository (Domian `INMEMORY_AND_FILE`) 🗃️
 - **Description:** `InMemoryAndFileRepository` is write-through (`put()` writes the file at once). Domian's `INMEMORY_AND_FILE` mode is write-behind: `put()` touches memory only, `persist()` writes, `load()` reloads, and one metadata record counts the repository's reads and writes; `isMemoryBased()` answers by mode. The 1.5.0 notes and forward 020 (RN-08) scheduled it for 2.0.0 together with the persisted metadata; the 2.0.0 forward (033) delivered the metadata and left this mode out because it is additive (a new mode chosen by `PersistenceDefinition`, nothing removed), so it fits a MINOR.
@@ -224,7 +249,7 @@ Planned on 2026-10-18 from the unscheduled list. Each milestone has its forward 
 - **Description:** The second half of milestone 16: decorators over `IRuleCatalog`, `IFeatureFlagStore` and the partition index of the DAG behind `Psr\SimpleCache\CacheInterface` (suggested, never required: the core keeps its single runtime dependency), invalidated on every write of the same process and bounded by a short TTL for the others; a failing cache is a miss, reported through the error hook, never an error of the evaluation. Redis or any other backend is the application's client.
 - **Plan:** forward 043 (`043-cache-distribuido`).
 
-### v2.6.0 — Integer Leaves (waits for a real consumer)
+### v2.8.0 — Integer Leaves (waits for a real consumer)
 
 ### 25. Optional Integer Mode for the Relational Leaves 🔢
 - **Description:** Since v2.1.0 the algebra no longer closes integer bounds (`x > 10` was taken as `x >= 11`): the relational leaves accept float candidates and the library has no int-typed leaf, so `greaterThan(10)` and `lessThan(11)` are not disjoint (10.5 satisfies both) and `simplify()` no longer collapses them (forward 037, BUG-20261013-ST36). An opt-in integer mode gives the closing back where it is sound, in two forms that coexist:

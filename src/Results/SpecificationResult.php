@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Results;
 
+use Antevemus\ASpecification\Resolution\Exceptions\DataPendingException;
 use Countable;
 use Stringable;
 
@@ -21,8 +22,9 @@ use Stringable;
  * - Extraction of friendly error messages (getReasons) and regulatory error codes (getCodes)
  * - Fast query by error code (hasError) or by target candidate property (getFailuresForProperty)
  * - Idiomatic integration via Countable and Stringable interfaces
+ * - Pending data (isPending, 2.5.0): an evaluation error caused by data not ready yet
  *
- * @version    1.5.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Results
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -156,6 +158,20 @@ final readonly class SpecificationResult implements Countable, Stringable
     public function withLeadingFailures(array $failures): self
     {
         return new self($this->isSatisfied, array_merge($failures, $this->failures), $this->isError, $this->exception);
+    }
+
+    /**
+     * Whether this is an evaluation error caused by data that is not ready yet (2.5.0, forward 048, D25):
+     * the exception of the result, or one of its previous exceptions, is a DataPendingException (an
+     * asynchronous source accepted the request and has no result yet). A pending result is never approved
+     * nor refused: evaluate again later. When the evaluation met several errors, the result keeps the first
+     * one, so a real error met before the pending datum makes this false.
+     *
+     * @return bool
+     */
+    public function isPending(): bool
+    {
+        return $this->isError && DataPendingException::isPendingThrowable($this->exception);
     }
 
     /**

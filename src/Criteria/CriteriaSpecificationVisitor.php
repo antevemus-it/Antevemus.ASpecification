@@ -12,6 +12,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
 use Antevemus\ASpecification\Contracts\Sql\IFieldMapper;
+use Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike;
 use Antevemus\ASpecification\Criteria\Exceptions\CriteriaBuilderException;
 use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaException;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
@@ -27,6 +28,7 @@ use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecificat
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
@@ -41,6 +43,9 @@ use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Specifications\Subquery\AbstractSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use Antevemus\ASpecification\Sql\LikePattern;
 use Antevemus\ASpecification\Sql\FieldMapper;
 
@@ -90,9 +95,25 @@ use Antevemus\ASpecification\Sql\FieldMapper;
  *   = `a OR (b AND ...)`: deleted rows and rows of other units leaked. buildCriteria() now nests such
  *   a root in a criteria of its own, `((a OR b))`; a root whose top level is AND, or a single filter,
  *   goes out as before
+ * - A text comparison that ignores case and accents for a declared database (2.5.0, forward 048, L4): with
+ *   the dialect given to the constructor (TCriteriaBuilder::withAccentFolding(), Spec::toCriteria(...,
+ *   accentFolding:)), the leaves refused above become a TAccentInsensitiveFilter that writes the condition
+ *   of toSql() for that dialect (`fold(col) LIKE fold(:aspf_1)` on PostgreSQL, the accent-insensitive
+ *   collation on MySQL/MariaDB) with the value bound; the connection must run with `prep = 1`. A dialect
+ *   that toSql() refuses (regex() on MySQL, SQLite...) is refused here too. Without the dialect the refusal
+ *   is the one of 2.1.0
+ * - Subqueries (2.5.0, forward 048, L5): Spec::inSubquery() becomes `col IN (SELECT sq.c FROM t sq WHERE
+ *   sq.c IS NOT NULL AND (...))` and Spec::existsIn() `EXISTS (SELECT 1 FROM t sq WHERE sq.fk = o.id AND
+ *   (...))`, written by TSubqueryFilter with the filter of the other table built by this same visitor (its
+ *   values bound by Adianti's TFilter, `prep = 1` as above); negated, `NOT IN` (with `col IS NULL OR`) and
+ *   `NOT EXISTS`. A value starting with `(SELECT` is still refused everywhere (BUG-20261007-KJ36)
+ * - A labelled target (LabelledSpecification, 2.5.0) is translated as the specification it labels
+ * - The constant conditions (alwaysTrue(), alwaysFalse(), their negations, `in([])`, `notIn([])`) are
+ *   TConstantFilter, plain `1 = 1` / `1 = 0` in both modes (2.5.0): bound as a parameter, the text `'1'` made
+ *   `1 = '1'` false on SQLite with `prep = 1`
  *
  * @implements ISpecificationVisitor<TExpression>
- * @version    2.3.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Criteria
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -127,10 +148,14 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
 
     /**
      * @param IFieldMapper|array<string, string>|callable(string): string|null $fieldMapper
+     * @param ISqlAccentInsensitiveLike|null $accentFolding Database the criteria will run on, for the text
+     *        comparisons that ignore case and accents (2.5.0); null refuses them
      * @throws CriteriaBuilderException If the Adianti TCriteria class is not loaded
      */
-    public function __construct(IFieldMapper|array|callable|null $fieldMapper = null)
-    {
+    public function __construct(
+        IFieldMapper|array|callable|null $fieldMapper = null,
+        private readonly ?ISqlAccentInsensitiveLike $accentFolding = null
+    ) {
         if (!class_exists(TCriteria::class)) {
             throw new CriteriaBuilderException(
                 "The class \\Adianti\\Database\\TCriteria is not loaded in the runtime environment."
@@ -195,7 +220,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): TExpression
     {
-        if ($specification instanceof RuleBoundSpecification) {
+        if ($specification instanceof RuleBoundSpecification || $specification instanceof LabelledSpecification) {
             return $this->visit($specification->getInnerSpecification());
         }
 
@@ -326,11 +351,11 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         // Universal Tautology and Contradiction (column-independent)
         if ($specification instanceof AlwaysTrueSpecification) {
-            return $this->nullTolerant(new TFilter('1', '=', 1));
+            return $this->nullTolerant(TConstantFilter::alwaysTrue());
         }
 
         if ($specification instanceof AlwaysFalseSpecification) {
-            return new TFilter('1', '=', 0);
+            return TConstantFilter::alwaysFalse();
         }
 
         if ($specification instanceof PredicateSpecification) {
@@ -348,8 +373,13 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             throw self::externalDataNotTranslatable($specification);
         }
 
-        if (self::ignoresAccents($specification)) {
+        if (self::ignoresAccents($specification) && $this->accentFolding === null) {
             throw self::accentInsensitiveNotTranslatable($specification);
+        }
+
+        if ($specification instanceof ExistsSubquerySpecification) {
+            // A condition of the row, not of a column (2.5.0); EXISTS may hold for a NULL column
+            return $this->nullTolerant($this->existsFilter($specification, false));
         }
 
         $col = $this->currentProperty;
@@ -360,9 +390,17 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             );
         }
 
+        if (self::ignoresAccents($specification)) {
+            // The value is bound by the filter itself, never through TFilter::transform() (2.5.0)
+            return $this->accentInsensitiveFilter($col, $specification, false);
+        }
+
         $this->assertSafeValue($col, $specification);
 
         return match (true) {
+            $specification instanceof InSubquerySpecification =>
+                $this->inSubqueryFilter($col, $specification, false),
+
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($col, $specification->getValue()),
 
@@ -444,7 +482,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         $values = $specification->getValues();
         if ($values === []) {
-            return $negated ? $this->nullTolerant(new TFilter('1', '=', 1)) : new TFilter('1', '=', 0);
+            return $negated ? $this->nullTolerant(TConstantFilter::alwaysTrue()) : TConstantFilter::alwaysFalse();
         }
 
         $nonNull = array_values(array_filter($values, static fn(mixed $value): bool => $value !== null));
@@ -593,7 +631,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
         }
 
         return match (true) {
-            $inner instanceof RuleBoundSpecification =>
+            $inner instanceof RuleBoundSpecification, $inner instanceof LabelledSpecification =>
                 $this->visitNot($inner->getInnerSpecification()),
 
             $inner instanceof NotSpecification =>
@@ -613,10 +651,10 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
                 $this->visitNotPropertySpecification($inner),
 
             $inner instanceof AlwaysTrueSpecification =>
-                new TFilter('1', '=', 0),
+                TConstantFilter::alwaysFalse(),
 
             $inner instanceof AlwaysFalseSpecification =>
-                $this->nullTolerant(new TFilter('1', '=', 1)),
+                $this->nullTolerant(TConstantFilter::alwaysTrue()),
 
             default => $this->visitNotLeaf($inner),
         };
@@ -666,7 +704,7 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
      */
     private function visitNotLeaf(ISpecification $inner): TExpression
     {
-        if ($inner instanceof RuleBoundSpecification) {
+        if ($inner instanceof RuleBoundSpecification || $inner instanceof LabelledSpecification) {
             return $this->visitNotLeaf($inner->getInnerSpecification());
         }
 
@@ -685,8 +723,12 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             throw self::externalDataNotTranslatable($inner);
         }
 
-        if (self::ignoresAccents($inner)) {
+        if (self::ignoresAccents($inner) && $this->accentFolding === null) {
             throw self::accentInsensitiveNotTranslatable($inner);
+        }
+
+        if ($inner instanceof ExistsSubquerySpecification) {
+            return $this->nullTolerant($this->existsFilter($inner, true));
         }
 
         $col = $this->currentProperty;
@@ -697,9 +739,17 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
             );
         }
 
-        $this->assertSafeValue($col, $inner);
+        if (!self::ignoresAccents($inner)) {
+            $this->assertSafeValue($col, $inner);
+        }
 
         $negated = match (true) {
+            self::ignoresAccents($inner) =>
+                $this->accentInsensitiveFilter($col, $inner, true),
+
+            $inner instanceof InSubquerySpecification =>
+                $this->inSubqueryFilter($col, $inner, true),
+
             $inner instanceof EqualSpecification =>
                 $this->translateNotEqual($col, $inner->getValue()),
 
@@ -893,8 +943,128 @@ class CriteriaSpecificationVisitor implements ISpecificationVisitor
     {
         return new NonTranslatableCriteriaException(
             $specification,
-            "A text comparison that ignores case and accents cannot be converted to TCriteria: the folding is a different SQL expression per database and TFilter cannot wrap its value in it; use Spec::toSql() with the dialect (PostgreSQL; MySQL/MariaDB except regex()), a PdoRepository, or evaluate it in PHP."
+            "A text comparison that ignores case and accents cannot be converted to TCriteria: the folding is a different SQL expression per database and TFilter cannot wrap its value in it; use Spec::toSql() with the dialect (PostgreSQL; MySQL/MariaDB except regex()), a PdoRepository, or evaluate it in PHP, or declare the database with withAccentFolding()."
         );
+    }
+
+    /**
+     * A text comparison ignoring case and accents for the declared database (2.5.0, forward 048, D14): the
+     * pattern (or the folded body of a regular expression) chosen exactly as Spec::toSql() chooses it, the
+     * condition written by the dialect at dump() time.
+     *
+     * @throws NonTranslatableCriteriaException When the dialect cannot answer as the in-memory comparison, or
+     *                                          a regular expression carries a modifier other than i and u
+     */
+    private function accentInsensitiveFilter(string $col, ISpecification $specification, bool $negated): TFilter
+    {
+        // Reached only with a declared database (visitLeaf()/visitNotLeaf() refuse without one)
+        $dialect = $this->accentFolding;
+
+        /** @var RegexSpecification $specification (the last arm: ignoresAccents() admits nothing else) */
+        $operand = match (true) {
+            $specification instanceof WildcardSpecification => LikePattern::fromGlob($specification->getPattern()),
+            $specification instanceof EqualIgnoreCaseAndAccentsStringSpecification => LikePattern::exact($specification->getValue()),
+            $specification instanceof LiteralPatternSpecification => LikePattern::fromLiteral($specification),
+            default => $specification->getBody(),
+        };
+
+        // The dialect is asked once with a placeholder only to know whether it answers (null = refused)
+        if ($operand instanceof LikePattern) {
+            if ($dialect->formatAccentInsensitiveLike($col, TAccentInsensitiveFilter::PLACEHOLDER_PREFIX) === null) {
+                throw new NonTranslatableCriteriaException(
+                    $specification,
+                    sprintf('A comparison that ignores case and accents has no equivalent in the %s dialect that selects the rows the in-memory evaluation accepts (it is translated for PostgreSQL and MySQL/MariaDB); evaluate it in PHP or compare with TextComparison::IgnoreCase.', self::familyOf($dialect))
+                );
+            }
+        } else {
+            /** @var RegexSpecification $specification */
+            $unsupported = str_replace(['i', 'u'], '', $specification->getModifiers());
+            if ($unsupported !== '') {
+                throw new NonTranslatableCriteriaException(
+                    $specification,
+                    "REGEX modifier \"{$unsupported}\" has no equivalent in TCriteria (only \"i\" and \"u\" are supported)."
+                );
+            }
+            if ($dialect->accentInsensitiveRegex($col, TAccentInsensitiveFilter::PLACEHOLDER_PREFIX, $operand) === null) {
+                throw new NonTranslatableCriteriaException(
+                    $specification,
+                    sprintf('A regular expression that ignores case and accents has no equivalent in the %s dialect that selects the rows the in-memory evaluation accepts (it is translated for PostgreSQL); evaluate it in PHP or match with TextComparison::IgnoreCase.', self::familyOf($dialect))
+                );
+            }
+        }
+
+        return new TAccentInsensitiveFilter($col, $dialect, $operand, $negated);
+    }
+
+    /**
+     * The family of a dialect, for a message.
+     */
+    private static function familyOf(ISqlAccentInsensitiveLike $dialect): string
+    {
+        return $dialect instanceof \Antevemus\ASpecification\Contracts\Sql\ISqlDialect ? $dialect->getFamily() : $dialect::class;
+    }
+
+    /**
+     * `col IN (SELECT sq.c FROM t sq WHERE sq.c IS NOT NULL AND (...))`, or `NOT IN` (2.5.0, forward 048,
+     * D17/D19). The selected column is always filtered with IS NOT NULL, so NOT IN stays two-valued.
+     */
+    private function inSubqueryFilter(string $col, InSubquerySpecification $specification, bool $negated): TFilter
+    {
+        $selected = AbstractSubquerySpecification::ALIAS . '.' . $specification->getColumn();
+        $operator = $negated ? 'NOT IN' : 'IN';
+
+        return new TSubqueryFilter(
+            sprintf(
+                '%s %s (SELECT %s FROM %s %s WHERE %s IS NOT NULL AND ',
+                $col,
+                $operator,
+                $selected,
+                $specification->getTable(),
+                AbstractSubquerySpecification::ALIAS,
+                $selected
+            ),
+            $this->subqueryCriteria($specification),
+            $col,
+            $operator
+        );
+    }
+
+    /**
+     * `EXISTS (SELECT 1 FROM t sq WHERE sq.fk = outer.col AND (...))`, or `NOT EXISTS` (2.5.0, forward 048,
+     * D17/D19). An outer property goes through the field mapping and is qualified with the outer table,
+     * unless the mapping already qualified it.
+     */
+    private function existsFilter(ExistsSubquerySpecification $specification, bool $negated): TFilter
+    {
+        $links = [];
+        foreach ($specification->getOn() as $inner => $outer) {
+            $mapped = $this->fieldMapper->map($outer);
+            $outerColumn = (str_contains($mapped, '.') || str_contains($mapped, '(')) ? $mapped : $specification->getOuterTable() . '.' . $mapped;
+            $links[] = AbstractSubquerySpecification::ALIAS . '.' . $inner . ' = ' . $outerColumn;
+        }
+        $operator = $negated ? 'NOT EXISTS' : 'EXISTS';
+
+        return new TSubqueryFilter(
+            sprintf(
+                '%s (SELECT 1 FROM %s %s WHERE %s AND ',
+                $operator,
+                $specification->getTable(),
+                AbstractSubquerySpecification::ALIAS,
+                implode(' AND ', $links)
+            ),
+            $this->subqueryCriteria($specification),
+            '',
+            $operator
+        );
+    }
+
+    /**
+     * The filter of the other table, built by a visitor of this class over the columns of `sq`, with the
+     * same declared database.
+     */
+    private function subqueryCriteria(AbstractSubquerySpecification $specification): TCriteria
+    {
+        return (new self($specification->innerColumnMapper(), $this->accentFolding))->buildCriteria($specification->getWhere());
     }
 
     /**

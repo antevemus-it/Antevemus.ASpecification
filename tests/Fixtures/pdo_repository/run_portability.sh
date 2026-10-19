@@ -13,6 +13,11 @@
 # Forward 041 (2.4.0): Module31_SpecificationSerializationTest, the spec_json column of PdoRuleCatalog,
 # findRuleByCode(), a feature flag targeted by a catalog rule and the additive migration of a 2.3.0 table,
 # on the three of them; and the codec tests (SpecificationCodecTest) with ext-intl in the PHP containers.
+# Forward 048 (2.5.0): Module36_RuleEngineCriteriaAndAsyncDataTest, findRulesByType()/RulePrecedence (InMemory =
+# PDO = brute force) and the subquery battery on the host (no intl), and again in the PHP containers with
+# ext-intl, where the accent battery of toCriteria() with withAccentFolding() runs too; the TCriteria is dumped
+# by the REAL Adianti 8.1.0 and 8.7.0 of ../Antevemus.AdiantiTemplates (mounted read-only) and executed on the
+# three databases.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -79,7 +84,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();
@@ -105,6 +110,13 @@ $t = new Antevemus\ASpecification\Tests\Unit\Module28_AccentInsensitiveTextTest(
 $t->run();
 echo "Module28_AccentInsensitiveTextTest (PHP ", PHP_VERSION, extension_loaded("intl") ? ", intl " . INTL_ICU_VERSION : ", sem intl", ") OK ", $t->getAssertionCount(), " assertions\n";
 '
+MODULE36='
+require "tests/bootstrap.php";
+foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
+$t = new Antevemus\ASpecification\Tests\Unit\Module36_RuleEngineCriteriaAndAsyncDataTest();
+$t->run();
+echo "Module36_RuleEngineCriteriaAndAsyncDataTest (PHP ", PHP_VERSION, extension_loaded("intl") ? ", intl " . INTL_ICU_VERSION : ", sem intl", ") OK ", $t->getAssertionCount(), " assertions\n";
+'
 MODULE29='
 require "tests/bootstrap.php";
 require_once "tests/Unit/Module29_WildcardRegexAccentInsensitiveTest.php";
@@ -127,6 +139,9 @@ DOCKERFILE
     if [ -d "${ROOT}/../Antevemus.AlinqCollection" ]; then
         mounts+=(-v "$(cd "${ROOT}/../Antevemus.AlinqCollection" && pwd):/w/Antevemus.AlinqCollection:ro")
     fi
+    if [ -d "${ROOT}/../Antevemus.AdiantiTemplates" ]; then
+        mounts+=(-v "$(cd "${ROOT}/../Antevemus.AdiantiTemplates" && pwd):/w/Antevemus.AdiantiTemplates:ro")
+    fi
     docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \
         -e ASPEC_PDO_PGSQL_DSN -e ASPEC_PDO_PGSQL_USER -e ASPEC_PDO_PGSQL_PASSWORD \
         -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
@@ -137,6 +152,11 @@ DOCKERFILE
         -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
         -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
         "$image" php -d memory_limit=512M -r "$MODULE29"
+    docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \
+        -e ASPEC_PDO_PGSQL_DSN -e ASPEC_PDO_PGSQL_USER -e ASPEC_PDO_PGSQL_PASSWORD \
+        -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
+        -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
+        "$image" php -d memory_limit=512M -r "$MODULE36"
     # Forward 037, D2 and D5 (2.1.0): the soundness bench with ext-intl (the accent-insensitive leaves join
     # the pool) and the date parity, on PHP 8.2 and 8.4.
     docker run --rm --network host "${mounts[@]}" -w /w/Antevemus.ASpecification \

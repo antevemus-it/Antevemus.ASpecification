@@ -8,6 +8,7 @@ namespace Adianti\Database;
  * TFilter - Stub de compatibilidade do Adianti Framework para testes
  *
  * @version    8.6
+ * (pseudo-variables of a subselect since the suite of ASpecification 2.5.0)
  * @package    database
  * @author     Pablo Dall'Oglio
  * @license    https://adiantiframework.com.br/license
@@ -82,7 +83,10 @@ class TFilter extends TExpression
         // formatos são emitidos como SQL CRU, mesmo em modo prepared. Mantidos aqui para que a
         // suíte enxergue o risco que o CriteriaSpecificationVisitor bloqueia (BUG-20261007-KJ36).
         if (substr(strtoupper((string) $value), 0, 7) == '(SELECT') {
-            return str_replace(['#', '--', '/*'], ['', '', ''], (string) $value);
+            // Forward 048, RN-04 (2.5.0): as the real one (TFilter.php:105-109 and 176-192, identical in 8.1,
+            // 8.6 and 8.7), the pseudo-variables `:[v]:` of a subselect become `:par_N` bound EVEN in plain
+            // mode, after `#`, `--` and `/*` were removed from the whole text
+            return $this->replacePseudoPreparedVars(str_replace(['#', '--', '/*'], ['', '', ''], (string) $value));
         }
         if (strpos((string) $value, '{session.') !== false) {
             return (string) $value; // o real substitui {session.x} pelo valor da sessão, ainda cru
@@ -115,6 +119,25 @@ class TFilter extends TExpression
         }
 
         return $value;
+    }
+
+    /**
+     * Espelho de TFilter::replacePseudoPreparedVars() do Adianti real (8.1 = 8.6 = 8.7): cada `:[v]:` vira um
+     * `:par_N` ligado ao texto entre os marcadores, também fora do modo prepared.
+     */
+    private function replacePseudoPreparedVars(string $value): string
+    {
+        $result = $value;
+        preg_match_all('#:\[(.*?)\]:#', $value, $matches);
+        if (!empty($matches[1])) {
+            foreach ($matches[1] as $match) {
+                $p = ':par_' . (++self::$paramCounter);
+                $result = str_replace(":[{$match}]:", $p, $result);
+                $this->preparedVars[$p] = $match;
+            }
+        }
+
+        return $result;
     }
 
     public function dump($prepared = false): string

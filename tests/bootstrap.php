@@ -15,6 +15,8 @@ spl_autoload_register(function ($class) {
         'Antevemus\\ASpecification\\' => dirname(__DIR__) . '/src/',
         'Antevemus\\ALinq\\' => dirname(__DIR__, 2) . '/Antevemus.AlinqCollection/src/',
         'Adianti\\Database\\' => __DIR__ . '/Stubs/Adianti/',
+        // Forward 048, D33 (2.5.0): the dialogs of the Adianti host recipe (README example 22.3)
+        'Adianti\\Widget\\Dialog\\' => __DIR__ . '/Stubs/Adianti/Widget/Dialog/',
     ];
 
     foreach ($namespaces as $prefix => $base_dir) {

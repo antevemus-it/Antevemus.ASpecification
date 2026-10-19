@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
@@ -40,12 +41,13 @@ use Throwable;
  * - external data leaf: unknown (S, F or E) while its request is pending, skipped or failed (a
  *   failed fetch is unknown, so it never decides the verdict on its own, forward 026 D8), otherwise
  *   its real outcome;
+ * - labelled target (2.5.0): the outcome of the labelled specification, at the same position;
  * - any other node: its real outcome, unless an external data leaf below it is not resolved, in
  *   which case it is unknown until everything below it is fetched (D7, nothing is guessed).
  * Node types are matched by exact class, as SpecificationSimplifier does: a subclass is unknown.
  *
  * @internal
- * @version    2.0.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -111,6 +113,11 @@ final class TreeAnalyzer
     private static function outcomes(ISpecification $node, mixed $candidate, bool $boolMode, ResolvedData $data): int
     {
         switch ($node::class) {
+            case LabelledSpecification::class:
+                // A label does not change the answer (2.5.0)
+                /** @var LabelledSpecification $node */
+                return self::outcomes($node->getInnerSpecification(), $candidate, $boolMode, $data);
+
             case ExternalDataSpecification::class:
                 /** @var ExternalDataSpecification $node */
                 try {
@@ -220,6 +227,11 @@ final class TreeAnalyzer
         }
 
         switch ($node::class) {
+            case LabelledSpecification::class:
+                /** @var LabelledSpecification $node */
+                self::walk($node->getInnerSpecification(), $candidate, $polarity, $visitor);
+                return;
+
             case AndSpecification::class:
             case OrSpecification::class:
                 /** @var AndSpecification|OrSpecification $node */

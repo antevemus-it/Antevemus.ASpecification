@@ -7,6 +7,7 @@ namespace Antevemus\ASpecification\Engine;
 use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Contracts\Engine\IRuleTypeCatalog;
 use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -28,15 +29,17 @@ use InvalidArgumentException;
  *   the Portuguese keys of 1.6.x (read as legacy from 1.7.0 to 1.14.x) are refused since 2.0.0, in the
  *   filters and in the parameters, with LegacyVocabularyException
  * - Lookup of one active rule by its code (findRuleByCode(), 2.4.0, forward 041)
+ * - The rules of one type across every scenario (findRulesByType(), IRuleTypeCatalog, 2.5.0, forward 048,
+ *   D4), ordered by priority descending then code, for RulePrecedence
  *
- * @version    2.4.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class InMemoryRuleCatalog implements IRuleCatalog
+class InMemoryRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
 {
     /** Reserved `$filters` key: product code the validation is about (RN-17). */
     public const FILTER_PRODUCT = 'product_code';
@@ -138,6 +141,40 @@ class InMemoryRuleCatalog implements IRuleCatalog
 
         // Sort by descending priority
         usort($matched, fn(IRuleDefinition $a, IRuleDefinition $b) => $b->getPriority() <=> $a->getPriority());
+
+        return $matched;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Same scope and applicability pass as findRules(), without the scenario; ordered by priority
+     * descending, then code ascending (strcmp), so the order never depends on the order of insertion
+     * (2.5.0, forward 048, D4).
+     */
+    public function findRulesByType(string $scope, string $ruleType, array $filters = []): array
+    {
+        LegacyVocabularyException::assertNoLegacyKeys($filters, array_flip(self::LEGACY_FILTER_KEYS), 'filter (validation context) key');
+
+        $matched = [];
+        foreach ($this->rules as $rule) {
+            if (!$rule->isActive() || $rule->getRuleType() !== $ruleType) {
+                continue;
+            }
+            $ruleScope = $rule->getScope();
+            if ($ruleScope !== null && $ruleScope !== '' && $ruleScope !== $scope) {
+                continue;
+            }
+            if (!$this->ruleMatchesFilters($rule, $filters)) {
+                continue;
+            }
+            $matched[] = $rule;
+        }
+
+        usort(
+            $matched,
+            static fn(IRuleDefinition $a, IRuleDefinition $b): int => ($b->getPriority() <=> $a->getPriority()) ?: strcmp($a->getCode(), $b->getCode())
+        );
 
         return $matched;
     }

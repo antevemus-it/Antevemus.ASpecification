@@ -17,10 +17,12 @@ declare(strict_types=1);
  * - Declarative method-call restriction (whereMethod, 1.6.0)
  * - Simplification shortcut (simplify, 1.9.0): an equivalent, smaller tree through
  *   SpecificationSimplifier; not part of ISpecification
+ * - Human label of the target (labelled, 2.5.0, forward 048): a LabelledSpecification reporting every
+ *   failure against the label; not part of ISpecification
  *
  * @template T
  * @implements ISpecification<T>
- * @version    2.1.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Core
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +37,7 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Specifications\AndSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
@@ -75,6 +78,22 @@ abstract class AbstractSpecification implements ISpecification
         $clone = clone $this;
         $clone->customCode = $code;
         return $clone;
+    }
+
+    /**
+     * Reports every failure of this specification against a human label (2.5.0, forward 048, L3): the
+     * failure's `property` becomes the label and `metadata['label']` holds it; the technical property moves
+     * to `metadata['property_path']`. The answer and the SQL do not change. A label already given inside
+     * wins (the innermost label). Not declared by ISpecification, so implementations of the interface are
+     * unaffected; Spec::labelled() takes any specification.
+     *
+     * @param string $label Presentation text of the target (not blank)
+     * @return LabelledSpecification<T>
+     * @throws \InvalidArgumentException When the label is blank
+     */
+    public function labelled(string $label): LabelledSpecification
+    {
+        return new LabelledSpecification($this, $label);
     }
 
     /**

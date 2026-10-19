@@ -24,9 +24,12 @@ declare(strict_types=1);
  * - Subquery over another PdoRepository (inQuery, 1.13.0)
  * - Text comparison ignoring case and accents (TextComparison::IgnoreCaseAndAccents in contains,
  *   startsWith, endsWith; equalIgnoreCaseAndAccents; 2.1.0, requires ext-intl; wildcard and regex, 2.3.0)
+ * - Human label of a target (labelled, 2.5.0)
+ * - Subqueries over any table for toSql()/toCriteria() (inSubquery, existsIn, 2.5.0)
+ * - TCriteria ignoring accents for a declared database (toCriteria(..., accentFolding), 2.5.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    2.3.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -42,10 +45,13 @@ use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Repositories\Pdo\InQuerySpecification;
 use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
 use Antevemus\ASpecification\Specifications\String\TextComparison;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use DateTimeInterface;
 
 final class Spec
@@ -116,6 +122,25 @@ final class Spec
             $propertyName,
             $specification
         );
+    }
+
+    /**
+     * Reports every failure of a specification against a human label of its target (2.5.0, forward 048,
+     * L3): `property` becomes the label, `metadata['label']` holds it and the technical property moves to
+     * `metadata['property_path']`. The answer and the SQL do not change; a label given inside wins.
+     *
+     * <code>
+     * Spec::labelled('Ongoing claims: 3 (maximum 2)', Spec::property('ongoing', Spec::lessThan(3)))->withCode('max_claims');
+     * </code>
+     *
+     * @param string $label Presentation text of the target (not blank)
+     * @param ISpecification $specification Specification whose failures are labelled
+     * @return LabelledSpecification
+     * @throws \InvalidArgumentException When the label is blank
+     */
+    public static function labelled(string $label, ISpecification $specification): LabelledSpecification
+    {
+        return new LabelledSpecification($specification, $label);
     }
 
     /**
@@ -420,6 +445,72 @@ final class Spec
     public static function inQuery(string $property, PdoRepository $other, ISpecification $where, string $otherProperty): PropertySpecification
     {
         return self::property($property, new InQuerySpecification($other, $where, $otherProperty));
+    }
+
+    /**
+     * Membership in a column of another table, for the database (2.5.0, forward 048, D17): `$property` of
+     * the candidate is one of the values of `$column` in the rows of `$table` that satisfy `$where`.
+     *
+     * <code>
+     * Spec::inSubquery('stateId', 'module_states', 'id', Spec::property('moduleId', Spec::equalTo($moduleId))
+     *     ->and(Spec::property('deletedAt', Spec::isNull())));
+     * </code>
+     *
+     * toSql(): `"state_id" IN (SELECT "sq"."id" FROM "module_states" "sq" WHERE "sq"."id" IS NOT NULL AND (...))`;
+     * toCriteria(): the same unquoted, with the values of `$where` bound by the TFilter of Adianti (requires a
+     * connection with `prep = 1`). `not()` is `NOT IN`, true for a NULL column. In memory it is an evaluation
+     * error (DatabaseOnlySpecificationException); it is not serializable. The other table gets no soft delete
+     * nor prefilters (write them in `$where`); a PdoRepository uses inQuery() instead.
+     *
+     * @param string $property Property of the candidate
+     * @param string $table Other table (optionally schema-qualified; a segment may be "quoted")
+     * @param string $column Column of the other table whose values are selected
+     * @param ISpecification $where Filter over the columns of the other table
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $innerFieldMap Property to column mapping of the other table
+     * @return PropertySpecification
+     * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException When the table or the column is not a valid identifier
+     */
+    public static function inSubquery(
+        string $property,
+        string $table,
+        string $column,
+        ISpecification $where,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $innerFieldMap = null
+    ): PropertySpecification {
+        return self::property($property, new InSubquerySpecification($table, $column, $where, $innerFieldMap));
+    }
+
+    /**
+     * A related row exists in another table, for the database (2.5.0, forward 048, D17): some row of
+     * `$table` linked to the candidate by `$on` (column of the other table => property of the candidate)
+     * satisfies `$where`.
+     *
+     * <code>
+     * Spec::existsIn('claim_document', ['claim_id' => 'id'], Spec::property('kind', Spec::equalTo('report')), 'claim');
+     * </code>
+     *
+     * toSql(): `EXISTS (SELECT 1 FROM "claim_document" "sq" WHERE "sq"."claim_id" = "claim"."id" AND (...))`;
+     * toCriteria(): the same unquoted. `not()` is `NOT EXISTS`. `$outerTable` qualifies the properties of the
+     * candidate (in a TCriteria, the table of the model). In memory it is an evaluation error; not
+     * serializable.
+     *
+     * @param string $table Other table (optionally schema-qualified)
+     * @param array<string, string> $on Column of the other table => property of the candidate
+     * @param ISpecification $where Filter over the columns of the other table
+     * @param string $outerTable Table (or alias) of the outer query
+     * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $innerFieldMap Property to column mapping of the other table
+     * @return ExistsSubquerySpecification
+     * @throws \InvalidArgumentException When $on is empty
+     * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsafeIdentifierException When an identifier is not valid
+     */
+    public static function existsIn(
+        string $table,
+        array $on,
+        ISpecification $where,
+        string $outerTable,
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $innerFieldMap = null
+    ): ExistsSubquerySpecification {
+        return new ExistsSubquerySpecification($table, $on, $where, $outerTable, $innerFieldMap);
     }
 
     /**
@@ -981,6 +1072,10 @@ final class Spec
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMap Optional property-to-column mapping
      * @param array<string, mixed> $properties Criteria options ('order', 'limit', 'offset', 'direction', 'group')
      * @param \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array<string, string>|\Closure|null $fieldMapper Alias of $fieldMap (the name used by the README); both given must be identical
+     * @param \Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike|string|null $accentFolding The database the
+     *        criteria will run on (a dialect or its name, e.g. 'pgsql'), so that a comparison ignoring case and
+     *        accents is written as toSql() writes it for that dialect (2.5.0, forward 048, D13; requires a
+     *        connection with `prep = 1`); null keeps refusing such a comparison
      * @return mixed TCriteria instance
      * @throws \InvalidArgumentException When $fieldMap and $fieldMapper are both given and differ
      */
@@ -988,10 +1083,20 @@ final class Spec
         \Antevemus\ASpecification\Contracts\ISpecification $specification,
         \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMap = null,
         array $properties = [],
-        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null
+        \Antevemus\ASpecification\Contracts\Sql\IFieldMapper|array|\Closure|null $fieldMapper = null,
+        \Antevemus\ASpecification\Contracts\Sql\ISqlAccentInsensitiveLike|string|null $accentFolding = null
     ): mixed {
         $fieldMap = self::resolveFieldMap($fieldMap, $fieldMapper);
-        return \Antevemus\ASpecification\Criteria\TCriteriaBuilder::fromSpecification($specification, $fieldMap, $properties);
+        if ($accentFolding === null) {
+            return \Antevemus\ASpecification\Criteria\TCriteriaBuilder::fromSpecification($specification, $fieldMap, $properties);
+        }
+
+        $builder = (new \Antevemus\ASpecification\Criteria\TCriteriaBuilder($specification, $fieldMap))->withAccentFolding($accentFolding);
+        foreach ($properties as $property => $value) {
+            $builder->setProperty((string) $property, $value);
+        }
+
+        return $builder->build();
     }
 
     /**

@@ -44,7 +44,7 @@
     },
     "suggest": {
         "ext-pdo": "PdoRepository (repository over PDO: specifications compiled to SQL, attribute or builder mapping), the PDO persistence of the state machine and the PDO domain-event outbox",
-        "antevemus/alinq-collection": "^2.1.0 — ALinqBridge (typed IALinqCollection/IALinqLazyCollection returns), ALinqSpecificationVisitor and lazy streaming over IRepository::iterate() (Module 14); requires PHP 8.4; reads a non-public property only when marked #[Specifiable], as this package does (2.x resolves properties through the same shared accessor, antevemus/adeep-property-access)",
+        "antevemus/alinq-collection": "^2.2.0 — ALinqBridge (typed IALinqCollection/IALinqLazyCollection returns), ALinqSpecificationVisitor and lazy streaming over IRepository::iterate() (Module 14); requires PHP 8.4; reads a non-public property only when marked #[Specifiable], as this package does (2.x resolves properties through the same shared accessor, antevemus/adeep-property-access)",
         "ext-intl": "TextComparison::IgnoreCaseAndAccents and Spec::equalIgnoreCaseAndAccents(): text compared ignoring case and accents (Normalizer: NFD without the nonspacing marks); without it those specifications are refused when built (MissingExtensionException) and every other text operator keeps working",
         "ext-curl": "HttpDataSource: concurrent data resolution over HTTP through curl_multi (DataResolver, Module 21); without it an HttpDataSource is refused when registered and CallableDataSource keeps working",
         "ext-sysvsem": "SysVSemaphoreSynchronizer: read/write lock shared between processes through SysV IPC semaphores (SemaphoreSynchronizer is intra-process)"

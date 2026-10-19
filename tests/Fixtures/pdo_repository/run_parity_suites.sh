@@ -19,6 +19,11 @@
 #   - Module31_SpecificationSerializationTest (forward 041, 2.4.0): the spec_json column of PdoRuleCatalog,
 #     findRuleByCode(), a feature flag targeted by a catalog rule and the additive migration of a 2.3.0
 #     table;
+#   - Module36_RuleEngineCriteriaAndAsyncDataTest (forward 048, 2.5.0): findRulesByType() and RulePrecedence
+#     (InMemory = PDO = brute force), the subquery battery (inSubquery()/existsIn(), TCriteria = toSql() =
+#     PHP brute force, hostile literals) and, with ext-intl, the accent battery of toCriteria() with
+#     withAccentFolding() (TCriteria = toSql() = memory); without the Adianti templates next to the repository
+#     the TCriteria is the stub's (the real 8.1 and 8.7 run in run_portability.sh);
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -66,7 +71,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

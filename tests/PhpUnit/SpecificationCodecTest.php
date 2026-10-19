@@ -164,8 +164,9 @@ final class SctLooseText extends EqualSpecification
  *
  * The round trip over the whole soundness pool and the SQL/TCriteria parity live in AlgebraSoundnessTest;
  * the fuzz with the marker file and the catalog/flag integration in Module31_SpecificationSerializationTest.
+ * Since 2.5.0 the 45th name, `labelled` (forward 048, D11).
  *
- * @version    2.4.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -190,6 +191,8 @@ final class SpecificationCodecTest extends TestCase
         yield 'or' => [Spec::equal(1)->or(Spec::equal(2)), '{"t":"or","s":[{"t":"eq","v":1},{"t":"eq","v":2}]}'];
         yield 'not' => [Spec::not(Spec::isNull()), '{"t":"not","s":{"t":"isNull"}}'];
         yield 'nor' => [Spec::nor(Spec::isTrue(), Spec::isFalse()), '{"t":"nor","s":[{"t":"eq","v":true},{"t":"eq","v":false}]}'];
+        yield 'labelled' => [Spec::labelled('Ongoing claims: 3', Spec::lessThan(3)), '{"t":"labelled","label":"Ongoing claims: 3","s":{"t":"lt","v":3}}'];
+        yield 'labelled annotated' => [Spec::labelled('L', Spec::isNull())->withCode('C')->because('r'), '{"t":"labelled","label":"L","s":{"t":"isNull"},"because":"r","code":"C"}'];
         yield 'property' => [Spec::property('age', Spec::greaterThanOrEqualTo(18)), '{"t":"property","p":"age","s":{"t":"gte","v":18}}'];
         yield 'property with base' => [Spec::property('age', Spec::lessThan(5), Spec::alwaysFalse()), '{"t":"property","p":"age","base":{"t":"false"},"s":{"t":"lt","v":5}}'];
         yield 'property with a typed true base' => [Spec::property('age', Spec::lessThan(5), new AlwaysTrueSpecification('stdClass')), '{"t":"property","p":"age","base":{"t":"true","type":"stdClass"},"s":{"t":"lt","v":5}}'];
@@ -314,7 +317,7 @@ final class SpecificationCodecTest extends TestCase
         $missing = array_values(array_diff($names, array_keys($seen), extension_loaded('intl') ? [] : ['equalIgnoreCaseAndAccents']));
 
         self::assertSame([], $missing, 'every name of coreTypes() is covered by documents()');
-        self::assertCount(44, $names);
+        self::assertCount(45, $names, '44 names of 2.4.0 plus labelled (2.5.0)');
         self::assertSame($names, array_keys((new SpecificationCodec())->types()));
     }
 

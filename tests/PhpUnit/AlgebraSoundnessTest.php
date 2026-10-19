@@ -31,6 +31,9 @@ use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Resolution\CallableDataSource;
 use Antevemus\ASpecification\Resolution\DataSourceRegistry;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use Antevemus\ASpecification\Serialization\Exceptions\NonSerializableSpecificationException;
 use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Spec;
@@ -293,7 +296,13 @@ final class AsbEven extends AbstractSpecification
  * requirement, a user class, a value object); the decoded specification translates to the same SQL (ANSI,
  * PostgreSQL, MySQL, same parameters) and the same TCriteria as the original.
  *
- * @version    2.4.0
+ * Labels and subqueries (2.5.0, forward 048, RN-02 and RN-04): the pool holds labelled targets (nested and
+ * annotated) and the subqueries of Spec::inSubquery()/Spec::existsIn(), which answer ERROR on every
+ * candidate (they are evaluated by the database only) and are refused by the codec as out of the contract;
+ * labelling any specification of the pool keeps its answers, its failures (reported against the label),
+ * its SQL and its TCriteria, and comes back equal from the codec.
+ *
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -668,6 +677,8 @@ final class AlgebraSoundnessTest extends TestCase
             'payloadHas(f)' => [PayloadHasSpecification::class, 'payloadHas', 'guard of the state machine'],
             "inQuery(rows.id where label startsWith 'a')" => [InQuerySpecification::class, 'inQuery', 'PdoRepository'],
             'ruleBound(property(x, equal(1)))' => [RuleBoundSpecification::class, 'ruleBound', 'catalog rule'],
+            "inSubquery(x in asb_rows.id where label startsWith 'a')" => [InSubquerySpecification::class, 'property.inSubquery', 'names a table'],
+            "existsIn(asb_rows.id = asb_box.x where label startsWith 'a')" => [ExistsSubquerySpecification::class, 'existsIn', 'names a table'],
             'user even' => [AsbEven::class, '<AsbEven>', 'does not implement ISerializableSpecification'],
             "user caseInsensitiveEqual('a')" => [AsbCaseInsensitiveEqual::class, '<AsbCaseInsensitiveEqual>', 'not registered in the codec'],
         ];
@@ -757,6 +768,97 @@ final class AlgebraSoundnessTest extends TestCase
     }
 
     /**
+     * Forward 048, RN-02 (L3, 2.5.0): for every specification s of the pool, `labelled(L, s)` answers as s on
+     * every candidate (truth and isError), reports the same failures (message and code) against the label
+     * (`property` = L and `metadata['label']` = L, the technical property kept in `metadata['property_path']`;
+     * a failure labelled inside keeps its label), keeps its node through simplify(), translates to the same
+     * SQL (ANSI, PostgreSQL, MySQL) and TCriteria as s, and comes back equal from the codec when s serializes.
+     */
+    public function testLabellingKeepsTheAnswerAndReportsEveryFailureAgainstTheLabel(): void
+    {
+        $world = self::world();
+        $codec = new SpecificationCodec();
+        $label = 'Target: 3 (maximum 2)';
+        $violations = [];
+        $failures = 0;
+        $serialized = 0;
+        foreach ($world['specs'] as $i => $entry) {
+            $spec = $entry['spec'];
+            $labelled = Spec::labelled($label, $spec);
+            $k = self::firstDisagreement($world['truth'][$i], self::truthOf($labelled));
+            if ($k !== null) {
+                $violations[] = self::violation('label-answer', $entry, null, $k, 'the labelled specification answers differently');
+                continue;
+            }
+            foreach (array_values($world['candidates']) as $k => $candidate) {
+                set_error_handler(static function (int $severity, string $message): never {
+                    throw new \ErrorException($message, 0, $severity);
+                });
+                try {
+                    $plain = $spec->evaluate($candidate);
+                    $marked = $labelled->evaluate($candidate);
+                } catch (Throwable) {
+                    continue;
+                } finally {
+                    restore_error_handler();
+                }
+                if ($plain->isSatisfied !== $marked->isSatisfied || $plain->isError !== $marked->isError || count($plain->failures) !== count($marked->failures)) {
+                    $violations[] = self::violation('label-result', $entry, null, $k, 'satisfied, isError or the number of failures changed');
+                    continue 2;
+                }
+                foreach ($plain->failures as $f => $failure) {
+                    $reported = $marked->failures[$f];
+                    $inner = $failure->metadata[LabelledSpecification::METADATA_LABEL] ?? null;
+                    $expectedProperty = $inner === null ? $label : $failure->property;
+                    $expectedPath = ($inner === null && $failure->property !== null && $failure->property !== $label)
+                        ? $failure->property
+                        : ($failure->metadata[LabelledSpecification::METADATA_PROPERTY_PATH] ?? null);
+                    if ($reported->property !== $expectedProperty
+                        || ($reported->metadata[LabelledSpecification::METADATA_LABEL] ?? null) !== ($inner ?? $label)
+                        || ($reported->metadata[LabelledSpecification::METADATA_PROPERTY_PATH] ?? null) !== $expectedPath
+                        || $reported->message !== $failure->message
+                        || $reported->code !== $failure->code) {
+                        $violations[] = self::violation('label-failure', $entry, null, $k, json_encode([$failure->property, $reported->property, $reported->metadata[LabelledSpecification::METADATA_PROPERTY_PATH] ?? null]));
+                        continue 3;
+                    }
+                    $failures++;
+                }
+            }
+            $simplified = Spec::simplify($labelled);
+            if (!$simplified instanceof LabelledSpecification || $simplified->getLabel() !== $label) {
+                $violations[] = self::violation('label-simplify', $entry, null, 1, 'simplify() dropped the label');
+            }
+            foreach (['ansi', 'pgsql', 'mysql'] as $dialect) {
+                if (self::sqlOf($spec, $dialect) !== self::sqlOf($labelled, $dialect)) {
+                    $violations[] = self::violation('label-sql', $entry, null, 1, $dialect . ': the label changed the SQL');
+                }
+            }
+            if (self::criteriaOf($spec) !== self::criteriaOf($labelled)) {
+                $violations[] = self::violation('label-criteria', $entry, null, 1, 'the label changed the TCriteria');
+            }
+            try {
+                $codec->encode($spec);
+            } catch (NonSerializableSpecificationException) {
+                continue;
+            }
+            $decoded = $codec->decode($codec->encode($labelled));
+            if (!$decoded->equals($labelled) || !$labelled->equals($decoded)) {
+                $violations[] = self::violation('label-codec', $entry, null, 1, 'the labelled specification did not come back equal');
+            }
+            $serialized++;
+        }
+
+        self::assertNoViolations($violations);
+        fwrite(STDOUT, sprintf(
+            "\n    [048 RN-02 L3] %d especificações rotuladas: mesma resposta, %d falhas rotuladas, mesmo SQL/TCriteria, %d de ida e volta no codec\n",
+            count($world['specs']),
+            $failures,
+            $serialized
+        ));
+        self::assertGreaterThan(1000, $failures, 'The pool must produce failures to label');
+    }
+
+    /**
      * A refusal of the contract: a specification out of the format (D4), a class of the application that
      * is not registered, or a value without a serialized form (the value objects of the pool).
      */
@@ -769,7 +871,7 @@ final class AlgebraSoundnessTest extends TestCase
         if (str_contains($class, '\\Tests\\')) {
             return true;
         }
-        foreach ([PredicateSpecification::class, ExternalDataSpecification::class, FeatureEnabledSpecification::class, InStateSpecification::class, EventOriginSpecification::class, PayloadHasSpecification::class, InQuerySpecification::class, RuleBoundSpecification::class, DocumentLeafSpecification::class, DocumentSetSpecification::class] as $outOfContract) {
+        foreach ([PredicateSpecification::class, ExternalDataSpecification::class, FeatureEnabledSpecification::class, InStateSpecification::class, EventOriginSpecification::class, PayloadHasSpecification::class, InQuerySpecification::class, RuleBoundSpecification::class, DocumentLeafSpecification::class, DocumentSetSpecification::class, InSubquerySpecification::class, ExistsSubquerySpecification::class] as $outOfContract) {
             if (is_a($class, $outOfContract, true)) {
                 return true;
             }
@@ -958,6 +1060,7 @@ final class AlgebraSoundnessTest extends TestCase
         $add('number', 'lessThan(11)', Spec::lessThan(11));
         $add('number', 'greaterThan(9)', Spec::greaterThan(9));
         $add('number', 'greaterThan(10.0)', Spec::greaterThan(10.0));
+        $add('number', "labelled('N', lessThan(5))", Spec::labelled('N', Spec::lessThan(5)));
         $add('number', 'greaterThanOrEqualTo(5)', Spec::greaterThanOrEqualTo(5));
         $add('number', 'greaterThanOrEqualTo(6)', Spec::greaterThanOrEqualTo(6));
         $add('number', 'in(1, 2)', Spec::in(1, 2));
@@ -1121,6 +1224,17 @@ final class AlgebraSoundnessTest extends TestCase
         $add('box', 'ruleBound(property(x, equal(1)))', new RuleBoundSpecification(Spec::property('x', Spec::equal(1)), new RuleDefinition(code: 'R-1', name: 'One', ruleType: 'one', scope: 's')));
         $add('box', 'ruleBound(property(x, equal(5)))', new RuleBoundSpecification(Spec::property('x', Spec::equal(5)), new RuleDefinition(code: 'R-5', name: 'Five', ruleType: 'five', scope: 's')));
         $add('box', 'specify(AsbBox)', Spec::specify(AsbBox::class));
+        // 2.5.0 (forward 048, L3): labelled targets, nested labels (the innermost wins) and an annotated label
+        $add('box', "labelled('L', property(x, equal(1)))", Spec::property('x', Spec::equal(1))->labelled('L'));
+        $add('box', "labelled('M', property(x, equal(1)))", Spec::property('x', Spec::equal(1))->labelled('M'));
+        $add('box', "labelled('L', property(x, equal(5)))", Spec::property('x', Spec::equal(5))->labelled('L'));
+        $add('box', "labelled('L', labelled('M', property(x, equal(1))))", Spec::labelled('L', Spec::property('x', Spec::equal(1))->labelled('M')));
+        $add('box', "labelled('L', property(x, equal(1))).withCode(C1)", Spec::property('x', Spec::equal(1))->labelled('L')->withCode('C1'));
+        // 2.5.0 (forward 048, L5): subqueries are evaluated by the database only (an error on every candidate)
+        $add('box', "inSubquery(x in asb_rows.id where label startsWith 'a')", Spec::inSubquery('x', 'asb_rows', 'id', Spec::property('label', Spec::startsWith('a'))));
+        $add('box', "inSubquery(x in asb_rows.id where label startsWith 'b')", Spec::inSubquery('x', 'asb_rows', 'id', Spec::property('label', Spec::startsWith('b'))));
+        $add('box', "existsIn(asb_rows.id = asb_box.x where label startsWith 'a')", Spec::existsIn('asb_rows', ['id' => 'x'], Spec::property('label', Spec::startsWith('a')), 'asb_box'));
+        $add('box', "existsIn(asb_rows.id = asb_box.x where label startsWith 'b')", Spec::existsIn('asb_rows', ['id' => 'x'], Spec::property('label', Spec::startsWith('b')), 'asb_box'));
 
         // Iterables
         $add('iterable', 'all(equal(1))', new CollectionSpecification(Spec::equal(1)));
@@ -1507,6 +1621,10 @@ final class AlgebraSoundnessTest extends TestCase
             if ($failure->code !== null && isset($vocabulary['c:' . $failure->code])) {
                 $found['c:' . $failure->code] = true;
             }
+            $label = $failure->metadata[LabelledSpecification::METADATA_LABEL] ?? null;
+            if (is_string($label) && isset($vocabulary['l:' . $label])) {
+                $found['l:' . $label . '|' . (string) $failure->property] = true;
+            }
         }
         ksort($found);
 
@@ -1535,6 +1653,9 @@ final class AlgebraSoundnessTest extends TestCase
                 return;
             }
             $seen[$id] = true;
+            if ($node instanceof LabelledSpecification) {
+                $vocabulary['l:' . $node->getLabel()] = true;
+            }
             if ($node instanceof AbstractSpecification) {
                 if (($r = $reason->getValue($node)) !== null) {
                     $vocabulary['m:' . $r] = true;

@@ -32,8 +32,11 @@ use Countable;
  *   `violation_action`, default BLOCK). Since 2.0.0 a Portuguese key (`acao`, `acao_ao_violar`) or value
  *   (`bloquear`, `alertar`, `apenas_log`) is refused with LegacyVocabularyException instead of triaged;
  *   so is the legal basis under `fundamento_legal` (read as `legal_basis` only).
+ * - `isPending()` (2.5.0, forward 048, D25): the evaluation error comes from data an asynchronous source
+ *   has not produced yet (SpecificationResult::isPending()). It still blocks (it is an evaluation error):
+ *   the verdict is "not decided yet", to evaluate again later, never an approval nor a refusal.
  *
- * @version    2.0.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -170,6 +173,18 @@ final readonly class RuleEngineVerdict implements Countable
     public function hasEvaluationErrors(): bool
     {
         return $this->specificationResult->isError;
+    }
+
+    /**
+     * Whether the evaluation could not finish because external data is not ready yet (2.5.0): an
+     * asynchronous source accepted the request and its result is pending. The verdict blocks, like any
+     * evaluation error; ask again later (SpecificationResult::isPending()).
+     *
+     * @return bool
+     */
+    public function isPending(): bool
+    {
+        return $this->specificationResult->isPending();
     }
 
     /**

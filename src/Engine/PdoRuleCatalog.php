@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Contracts\Engine\IRuleTypeCatalog;
 use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use DateTimeInterface;
@@ -59,6 +60,10 @@ use PDOStatement;
  *   table created by the DDL of 2.3.0 keeps being read untouched; a table that has it says so with
  *   `columns: PdoRuleCatalog::COLUMNS_SINCE_2_4` (or `['spec_json' => '<real column>']`, merged with any
  *   other mapping); `'spec_json' => null` keeps it absent
+ * - findRulesByType() (IRuleTypeCatalog, 2.5.0, forward 048, D4): the rules of one type from every scenario
+ *   in ONE query (`rule_type = :rule_type`, no scenario predicate, the same scope, product/plan and
+ *   withAsOf() narrowing as findRules()), then the same final pass as InMemoryRuleCatalog, so both catalogs
+ *   answer the same rules in the same order (priority descending, then code by strcmp)
  *
  * Applicability lives in the columns `product_code`, `plan_code`, `valid_from`, `valid_until`: entries
  * under those four keys (or their Portuguese names of 1.6.x) inside the `parameters` JSON are dropped on
@@ -67,14 +72,14 @@ use PDOStatement;
  * Date columns must come back as ISO dates (`YYYY-MM-DD`), which is the default of every PDO driver
  * except Oracle (set `NLS_DATE_FORMAT` there).
  *
- * @version    2.4.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class PdoRuleCatalog implements IRuleCatalog
+class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
 {
     /** Default table names by role, mirroring the reference DDL. */
     public const DEFAULT_TABLES = [
@@ -325,27 +330,10 @@ class PdoRuleCatalog implements IRuleCatalog
     /** {@inheritdoc} */
     public function findRules(string $scope, ?string $scenario = null, array $filters = []): array
     {
-        $scopeColumn = $this->column('scope');
         $params = [':scope' => $scope];
-        $where = [
-            $this->column('active') . " = 'Y'",
-            "({$scopeColumn} = :scope OR {$scopeColumn} IS NULL OR {$scopeColumn} = '')",
-            $this->scenarioPredicate($this->column('scenario'), $scenario, $params),
-        ];
-
-        foreach (self::FILTER_COLUMNS as $key) {
-            $column = $this->column($key);
-            $value = InMemoryRuleCatalog::filterValue($filters, $key);
-            if (is_scalar($value) && (string) $value !== '') {
-                $placeholder = ':f_' . $key;
-                $where[] = "({$column} IS NULL OR {$column} = '' OR {$column} = {$placeholder})";
-                $params[$placeholder] = (string) $value;
-            } else {
-                $where[] = "({$column} IS NULL OR {$column} = '')";
-            }
-        }
-
-        $this->addValidityWindow($where, $params);
+        $where = $this->scopeAndApplicability($scope, $filters, $params);
+        // The scenario goes right after active and scope, as up to 2.4.0 (the same SQL text)
+        array_splice($where, 2, 0, [$this->scenarioPredicate($this->column('scenario'), $scenario, $params)]);
 
         $sql = sprintf(
             'SELECT %s FROM %s WHERE %s ORDER BY %s DESC, %s',
@@ -364,6 +352,71 @@ class PdoRuleCatalog implements IRuleCatalog
         // Final applicability pass (RN-17: reference_date, exact product/plan match) and priority
         // ordering through the in-memory contract: both catalogs answer the same way by construction.
         return (new InMemoryRuleCatalog($rules))->findRules($scope, $scenario, $filters);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * One query: the predicates of findRules() without the scenario, plus `rule_type = :rule_type`; the
+     * hydrated rows go through InMemoryRuleCatalog::findRulesByType() (reference_date, exact product/plan,
+     * order), so both catalogs answer alike by construction (2.5.0, forward 048, D4).
+     */
+    public function findRulesByType(string $scope, string $ruleType, array $filters = []): array
+    {
+        $params = [':scope' => $scope, ':rule_type' => $ruleType];
+        $where = $this->scopeAndApplicability($scope, $filters, $params);
+        $where[] = $this->column('rule_type') . ' = :rule_type';
+
+        $sql = sprintf(
+            'SELECT %s FROM %s WHERE %s ORDER BY %s DESC, %s',
+            $this->ruleSelectList(),
+            $this->tables['rule'],
+            implode(' AND ', $where),
+            $this->column('priority'),
+            $this->column('code')
+        );
+
+        $rules = [];
+        foreach ($this->fetchAll($sql, $params) as $row) {
+            $rules[] = RuleDefinition::fromArray($this->normalizeRuleRow($row));
+        }
+
+        return (new InMemoryRuleCatalog($rules))->findRulesByType($scope, $ruleType, $filters);
+    }
+
+    /**
+     * Predicates shared by the rule queries (2.5.0, extracted from findRules()): active, scope (or global),
+     * product and plan (a filter value narrows to the unrestricted rows and the ones restricted to it) and
+     * the validity window of withAsOf().
+     *
+     * @param string $scope Operational scope (bound as :scope by the caller)
+     * @param array<string, mixed> $filters Validation context (reserved keys only)
+     * @param array<string, string> $params Bound parameters, extended in place
+     * @return list<string>
+     */
+    private function scopeAndApplicability(string $scope, array $filters, array &$params): array
+    {
+        $scopeColumn = $this->column('scope');
+        $where = [
+            $this->column('active') . " = 'Y'",
+            "({$scopeColumn} = :scope OR {$scopeColumn} IS NULL OR {$scopeColumn} = '')",
+        ];
+
+        foreach (self::FILTER_COLUMNS as $key) {
+            $column = $this->column($key);
+            $value = InMemoryRuleCatalog::filterValue($filters, $key);
+            if (is_scalar($value) && (string) $value !== '') {
+                $placeholder = ':f_' . $key;
+                $where[] = "({$column} IS NULL OR {$column} = '' OR {$column} = {$placeholder})";
+                $params[$placeholder] = (string) $value;
+            } else {
+                $where[] = "({$column} IS NULL OR {$column} = '')";
+            }
+        }
+
+        $this->addValidityWindow($where, $params);
+
+        return $where;
     }
 
     /**

@@ -52,6 +52,8 @@ use DateTimeInterface;
  * - Tautology/contradiction (1.6.0, forward 019): structural and conservative detection over
  *   flattened conjunctions/disjunctions (A ∧ ¬A, A ∨ ¬A, pairwise disjoint operands, absorbing
  *   identities); "false" always means "not proven"
+ * - Labels (2.5.0, forward 048, D11): a LabelledSpecification answers as the specification it labels,
+ *   so resolve(), invert() and refusesNull() see through it
  *
  * Where the Domian code and the set algebra disagree the algebra wins; the deviations are
  * documented in docs/paridade-domian-2026-10-09 (lote 1.4.4).
@@ -68,7 +70,7 @@ use DateTimeInterface;
  *   (isBoundedByType()); provenTypesDisjoint() never reads the type of a negation or of a value-bound
  *   leaf such as notEqualTo(d) as a bound.
  *
- * @version    2.1.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -96,6 +98,10 @@ final class SpecificationAlgebra
      */
     public static function resolve(ISpecification $specification): ISpecification
     {
+        if ($specification instanceof LabelledSpecification) {
+            // A label is presentation (2.5.0): the algebra reasons about the labelled specification
+            return self::resolve($specification->getInnerSpecification());
+        }
         if ($specification instanceof InSpecification && $specification->isEmpty() && self::evaluatesAs($specification, InSpecification::class)) {
             // in([]) is the contradiction (RN-07)
             return new AlwaysFalseSpecification();
@@ -135,6 +141,9 @@ final class SpecificationAlgebra
      */
     public static function invert(ISpecification $specification): ?ISpecification
     {
+        if ($specification instanceof LabelledSpecification) {
+            return self::invert($specification->getInnerSpecification());
+        }
         if ($specification instanceof NotSpecification) {
             return self::doubleNegation($specification->getSpecification());
         }
@@ -657,6 +666,9 @@ final class SpecificationAlgebra
     public static function refusesNull(ISpecification $specification): bool
     {
         if ($specification instanceof Engine\RuleBoundSpecification && self::evaluatesAs($specification, Engine\RuleBoundSpecification::class)) {
+            return self::refusesNull($specification->getInnerSpecification());
+        }
+        if ($specification instanceof LabelledSpecification) {
             return self::refusesNull($specification->getInnerSpecification());
         }
         if (self::evaluatesAs(

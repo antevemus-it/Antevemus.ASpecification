@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IDynamicSpecificationEngine;
+use Antevemus\ASpecification\Contracts\Engine\ILookupOnlyRuleTypes;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleSpecificationRegistry;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
 
@@ -32,8 +34,14 @@ use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
  * - Opt-in simplification (1.9.0): withSimplification() makes compileSpecification() (and
  *   therefore validate()) return SpecificationSimplifier::simplify() of the compiled tree. Disabled
  *   by default: the compiled tree is never rewritten unless asked
+ * - Lookup-only rule types (2.5.0, forward 048, D2): when the registry implements ILookupOnlyRuleTypes,
+ *   the rules of a type it declared lookup only, without `spec_json`, hold a value for the application
+ *   and are skipped (no specification, no failure); getSkippedRules() lists them after every
+ *   compilation, in catalog order. A rule of an undeclared type without handler is still a
+ *   MissingRuleHandlerException, and a lookup-only type a handler supports is an "ambiguous rule type"
+ *   RuleEngineException
  *
- * @version    1.9.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,6 +68,13 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
      * @var list<RuleCompilationWarning>
      */
     private array $compilationWarnings = [];
+
+    /**
+     * Rules of a lookup-only type skipped by the last compilation (2.5.0).
+     *
+     * @var list<IRuleDefinition>
+     */
+    private array $skippedRules = [];
 
     /**
      * @param IRuleCatalog $catalog Provider/repository for rule catalog
@@ -95,6 +110,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         $clone = clone $this;
         $clone->catalogValidation = $enabled;
         $clone->compilationWarnings = [];
+        $clone->skippedRules = [];
 
         return $clone;
     }
@@ -152,6 +168,19 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         return $this->compilationWarnings;
     }
 
+    /**
+     * Rules skipped by the last compileSpecification()/validate() call because their type was declared
+     * lookup only (2.5.0, forward 048, D2), in catalog order. Filled by every compilation, whatever the
+     * catalog validation mode, and emptied at the start of each one. Empty when the registry does not
+     * implement ILookupOnlyRuleTypes.
+     *
+     * @return list<IRuleDefinition>
+     */
+    public function getSkippedRules(): array
+    {
+        return $this->skippedRules;
+    }
+
     /** {@inheritdoc} */
     public function validate(
         object|array $target,
@@ -173,10 +202,15 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
     ): ISpecification {
         $specs = [];
         $this->compilationWarnings = [];
+        $this->skippedRules = [];
 
         // 1. Load and compile business rules
         $rules = $this->catalog->findRules($scope, $scenario, $context);
         foreach ($rules as $rule) {
+            if ($this->isLookupOnlyRule($rule)) {
+                $this->skippedRules[] = $rule;
+                continue;
+            }
             $compiled = $this->registry->buildSpecification($rule);
             if ($this->catalogValidation) {
                 $warning = RuleCompilationWarning::inspect($compiled, $rule);
@@ -200,6 +234,33 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         $compiled = count($specs) === 1 ? $specs[0] : Spec::allOf(...$specs);
 
         return $this->simplification ? SpecificationSimplifier::simplify($compiled) : $compiled;
+    }
+
+    /**
+     * Whether a rule holds only a value to look up (2.5.0, forward 048, D2): its type was declared lookup
+     * only by a registry implementing ILookupOnlyRuleTypes and it has no `spec_json` (a document is a
+     * validation whatever its type, forward 041, D7).
+     *
+     * @throws RuleEngineException When the registry also has a handler for the lookup-only type
+     */
+    private function isLookupOnlyRule(IRuleDefinition $rule): bool
+    {
+        if (!$this->registry instanceof ILookupOnlyRuleTypes || $rule->getSpecJson() !== null) {
+            return false;
+        }
+        $ruleType = $rule->getRuleType();
+        if (!$this->registry->isLookupOnly($ruleType)) {
+            return false;
+        }
+        if ($this->registry->hasHandler($ruleType)) {
+            throw new RuleEngineException(sprintf(
+                'Ambiguous rule type "%s" (rule %s): it was declared lookup only and a handler supports it.',
+                trim($ruleType),
+                $rule->getCode()
+            ));
+        }
+
+        return true;
     }
 
     /**

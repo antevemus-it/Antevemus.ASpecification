@@ -11,6 +11,7 @@ use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 
 /**
  * RuleBoundSpecification - Binds a Compiled Specification to its Catalog Rule
@@ -41,8 +42,11 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *   `mensagens_originais`, `falhas_originais`) are gone, and a handler that still records its action
  *   under `acao`/`acao_ao_violar`, or a Portuguese action value, is refused with
  *   LegacyVocabularyException (RuleAction::fromMetadata()) instead of being triaged by the rule's action.
+ * - Labelled targets (2.5.0, forward 048, D12): when the rule is reported once and its failures carry two
+ *   or more distinct labels (LabelledSpecification), `metadata['labels']` lists them in order of
+ *   appearance (the `property` of the single failure is null then)
  *
- * @version    2.0.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -175,6 +179,19 @@ final class RuleBoundSpecification extends AbstractSpecification
             ['original_messages' => $messages, 'original_failures' => count($failures)],
             $metadata
         );
+
+        // 2.5.0 (forward 048, D12): with two or more labelled targets the property is null, so the
+        // distinct labels are kept, in the order they appear
+        $labels = [];
+        foreach ($failures as $f) {
+            $label = $f->metadata[LabelledSpecification::METADATA_LABEL] ?? null;
+            if (is_string($label) && !in_array($label, $labels, true)) {
+                $labels[] = $label;
+            }
+        }
+        if (count($labels) >= 2) {
+            $metadata['labels'] = $labels;
+        }
 
         return new SpecificationFailure(
             message: $message,

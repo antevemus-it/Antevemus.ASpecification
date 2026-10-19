@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Linq;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ADeepPropertyAccess\PropertyAccess;
@@ -48,6 +49,9 @@ use Closure;
  *   the leaf itself, which folds the candidate as it folded the literal (equalIgnoreCaseAndAccents()
  *   reaches the default delegation); 2.3.0: also `regex()` built with it, and `wildcard()` with any
  *   comparison, which reaches the default delegation
+ * - A labelled target (LabelledSpecification, 2.5.0) compiles to the specification it labels, as a rule
+ *   binding does; the subqueries of Spec::inSubquery()/Spec::existsIn() reach the default delegation and
+ *   raise DatabaseOnlySpecificationException (they are evaluated by the database only)
  *
  * Null values (1.11.0), as the core: a null property value is handed to the compiled inner predicate
  * (`isNull()` under a property matches it, a comparison does not), and the AND/OR/NOT/NOR predicates
@@ -61,7 +65,7 @@ use Closure;
  * missing property). Leaves are only short-circuited when their semantics are provably
  * identical to the core; every other leaf delegates to its own isSatisfiedBy().
  *
- * @version    2.3.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Linq
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,7 +82,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): Closure
     {
-        if ($specification instanceof RuleBoundSpecification) {
+        if ($specification instanceof RuleBoundSpecification || $specification instanceof LabelledSpecification) {
             return $this->visit($specification->getInnerSpecification());
         }
 
@@ -153,7 +157,7 @@ final class ALinqSpecificationVisitor implements ISpecificationVisitor
      */
     public function visitLeaf(ISpecification $specification): Closure
     {
-        if ($specification instanceof RuleBoundSpecification) {
+        if ($specification instanceof RuleBoundSpecification || $specification instanceof LabelledSpecification) {
             return $this->visit($specification->getInnerSpecification());
         }
 

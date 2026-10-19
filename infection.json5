@@ -1,14 +1,18 @@
 // Mutation testing of the specification algebra (forward 037, D8 item 4; docs/contratos/RELEASING.md).
 // Scope: src/Specifications/ plus src/AbstractSpecification.php and src/AbstractCompositeSpecification.php;
-// since 2.4.0 (forward 041) also src/Serialization/ (the specification codec); every other file of src/
-// is excluded by the negative look-ahead below (a new top-level folder of src/ stays out of scope until it
-// is named here). Runs in the scheduled workflow (.github/workflows/quality.yml)
+// since 2.4.0 (forward 041) also src/Serialization/ (the specification codec); since 2.5.0 (forward 048, RN-04)
+// the new and changed files of the rule engine (RuleSpecificationRegistry, DynamicSpecificationEngine,
+// RulePrecedence and the two catalogs), of the TCriteria bridge (the visitor, the builder and the three new
+// TFilters) and of the asynchronous data sources; every other file of src/ is excluded by the negative
+// look-ahead below (a new top-level folder of src/ stays out of scope until it is named here). The Criteria/
+// classes extend Adianti's TFilter, so Infection loads tests/bootstrap.php (the stubs of the suite) itself.
+// Runs in the scheduled workflow (.github/workflows/quality.yml)
 // with a coverage driver (pcov); locally:
 //
 //   XDEBUG_MODE=off vendor/bin/infection --threads=max --only-covering-test-cases \
 //       --initial-tests-php-options="-d pcov.enabled=1 -d pcov.directory=$PWD/src"
 //
-// minMsi / minCoveredMsi: the floor registered in RELEASING.md (measured 87.12 / 87.12 on 2026-10-18, 2.3.0, Quality workflow run 39171413849;
+// minMsi / minCoveredMsi: the floor registered in RELEASING.md (measured 89.38 / 89.38 on 2026-10-19, 2.4.0, Quality workflow run 39181076211;
 // Infection 0.35.6, PHP 8.4 with intl and pcov: 2558 mutants, 2167 killed, 23 errors, 5 time-outs, 363
 // escaped), a little below the measured score; a drop below it fails the run. Raise it when the score goes
 // up, never lower it to make a run pass.
@@ -17,9 +21,10 @@
     "source": {
         "directories": ["src"],
         "excludes": [
-            "~^(?!Specifications/|Serialization/|AbstractSpecification\\.php$|AbstractCompositeSpecification\\.php$)~"
+            "~^(?!Specifications/|Serialization/|AbstractSpecification\\.php$|AbstractCompositeSpecification\\.php$|Engine/(?:RuleSpecificationRegistry|DynamicSpecificationEngine|RulePrecedence|InMemoryRuleCatalog|PdoRuleCatalog)\\.php$|Criteria/(?:TAccentInsensitiveFilter|TSubqueryFilter|TConstantFilter|TCriteriaBuilder|CriteriaSpecificationVisitor)\\.php$|Resolution/(?:AsyncDataSource|AsyncPoll|AsyncTicket|CallableAsyncTicketStore|InMemoryAsyncTicketStore|IAsyncTicketStore)\\.php$|Resolution/Exceptions/DataPendingException\\.php$)~"
         ]
     },
+    "bootstrap": "tests/bootstrap.php",
     "timeout": 120,
     "logs": {
         "text": "coverage/infection/infection.log",
@@ -34,6 +39,6 @@
     "mutators": {
         "@default": true
     },
-    "minMsi": 86,
-    "minCoveredMsi": 86
+    "minMsi": 88,
+    "minCoveredMsi": 88
 }

@@ -58,7 +58,8 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * value.
  *
  * Unknown specification types are never guessed: AND, OR, NOT, NOR (JointDenialSpecification),
- * property restrictions (PropertySpecification) and rule bindings (RuleBoundSpecification) are
+ * property restrictions (PropertySpecification), rule bindings (RuleBoundSpecification) and, since
+ * 2.5.0, labelled targets (LabelledSpecification, kept with their label like an annotation) are
  * simplified inside; any other node, including subclasses of those, is kept as it is. A node whose
  * evaluate() is not the default one (and that is not one of the classes above) is never dropped.
  *
@@ -68,7 +69,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Automatic use (D6): no visitor and no engine simplifies by itself; the rule engine offers it
  * as an opt-in (DynamicSpecificationEngine::withSimplification()).
  *
- * @version    2.1.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -131,6 +132,7 @@ final class SpecificationSimplifier
             PropertySpecification::class => self::simplifyProperty($node),
             JointDenialSpecification::class => self::simplifyJointDenial($node),
             RuleBoundSpecification::class => self::simplifyRuleBinding($node),
+            LabelledSpecification::class => self::simplifyLabelled($node),
             default => $node,
         };
     }
@@ -218,6 +220,22 @@ final class SpecificationSimplifier
         }
 
         return self::copyAnnotations($node, new RuleBoundSpecification($simplifiedInner, $node->getRule()));
+    }
+
+    /**
+     * A labelled target (2.5.0) is simplified inside: the label is presentation, like an annotation, and
+     * is kept.
+     */
+    private static function simplifyLabelled(LabelledSpecification $node): ISpecification
+    {
+        $inner = $node->getInnerSpecification();
+        $simplifiedInner = self::simplifyNode($inner);
+
+        if ($simplifiedInner === $inner) {
+            return $node;
+        }
+
+        return self::copyAnnotations($node, new LabelledSpecification($simplifiedInner, $node->getLabel()));
     }
 
     // ==========================================
@@ -673,7 +691,7 @@ final class SpecificationSimplifier
             NotSpecification::class => self::isDisposable($node->getSpecification()),
             PropertySpecification::class =>
                 self::isDisposable($node->getBaseSpecification()) && self::isDisposable($node->getPropertySpecification()),
-            RuleBoundSpecification::class => false,
+            RuleBoundSpecification::class, LabelledSpecification::class => false,
             default => self::usesDefaultEvaluate($node),
         };
     }
@@ -689,13 +707,15 @@ final class SpecificationSimplifier
             return null;
         }
 
-        $own = json_encode([self::reasonOf($node), self::codeOf($node)]);
+        $own = $node instanceof LabelledSpecification
+            ? json_encode([self::reasonOf($node), self::codeOf($node), $node->getLabel()])
+            : json_encode([self::reasonOf($node), self::codeOf($node)]);
         $children = match ($node::class) {
             AndSpecification::class, OrSpecification::class, JointDenialSpecification::class =>
                 [$node->getLeftSide(), $node->getRightSide()],
             NotSpecification::class => [$node->getSpecification()],
             PropertySpecification::class => [$node->getBaseSpecification(), $node->getPropertySpecification()],
-            RuleBoundSpecification::class => [$node->getInnerSpecification()],
+            RuleBoundSpecification::class, LabelledSpecification::class => [$node->getInnerSpecification()],
             default => null,
         };
 
@@ -804,7 +824,7 @@ final class SpecificationSimplifier
             NotSpecification::class => 1 + self::countNodes($node->getSpecification()),
             PropertySpecification::class =>
                 1 + self::countNodes($node->getBaseSpecification()) + self::countNodes($node->getPropertySpecification()),
-            RuleBoundSpecification::class => 1 + self::countNodes($node->getInnerSpecification()),
+            RuleBoundSpecification::class, LabelledSpecification::class => 1 + self::countNodes($node->getInnerSpecification()),
             default => 1,
         };
     }

@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Resolution;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Resolution\Exceptions\DataFetchException;
+use Antevemus\ASpecification\Resolution\Exceptions\DataPendingException;
 use Antevemus\ASpecification\Resolution\Exceptions\DataResolutionException;
 use Antevemus\ASpecification\Resolution\Exceptions\DataSourceNotFoundException;
 use Antevemus\ASpecification\Results\SpecificationResult;
@@ -25,7 +26,11 @@ use Throwable;
  * reaches it, through the same registry, cache and time limit, and the value is kept here: a
  * request is fetched at most once per resolution.
  *
- * @version    1.10.0
+ * A request whose asynchronous source has no result yet (DataPendingException, 2.5.0) is a failed request
+ * of this resolution, listed by getPendingRequests() too; it is never cached, so the next resolution asks
+ * again.
+ *
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -135,6 +140,24 @@ final class ResolvedData
     public function getFailedRequests(): array
     {
         return $this->requestsIn(self::FAILED);
+    }
+
+    /**
+     * Requests whose source accepted them and has no result yet (2.5.0, forward 048, D25): failed with a
+     * DataPendingException (or an exception whose previous one is). Fetched again by the next resolution.
+     *
+     * @return list<DataRequest>
+     */
+    public function getPendingRequests(): array
+    {
+        $requests = [];
+        foreach ($this->entries as $entry) {
+            if ($entry['state'] === self::FAILED && DataPendingException::isPendingThrowable($entry['error'])) {
+                $requests[] = $entry['request'];
+            }
+        }
+
+        return $requests;
     }
 
     /** True when the request was fetched successfully (or taken from the cache). */

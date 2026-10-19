@@ -25,6 +25,7 @@ use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecificat
 use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotNullSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
@@ -39,6 +40,9 @@ use Antevemus\ASpecification\Specifications\String\LiteralPatternSpecification;
 use Antevemus\ASpecification\Specifications\String\RegexSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Specifications\Subquery\AbstractSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use Antevemus\ASpecification\Sql\Dialects\SqlDialectFactory;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
@@ -96,9 +100,17 @@ use Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException;
  * - The body of a regular expression goes through the dialect's ISqlRegexRewriter when it has one (2.3.0,
  *   bug #73): on PostgreSQL `\b`/`\B` are bound as `\y`/`\Y`; before, `regex('/\bfoo/')` bound `\bfoo`,
  *   a backspace there, and never matched. Dialects without the interface receive the body as written
+ * - Subqueries over another table (2.5.0, forward 048, D20): Spec::inSubquery() becomes
+ *   `"col" IN (SELECT "sq"."c" FROM "t" "sq" WHERE "sq"."c" IS NOT NULL AND (...))` (guarded against a NULL
+ *   column like any comparison) and Spec::existsIn() `EXISTS (SELECT 1 FROM "t" "sq" WHERE "sq"."fk" =
+ *   "outer"."id" AND (...))`; the filter of the other table is translated by a visitor of the same dialect
+ *   over the columns of `sq`, its parameters named apart (`:ps1_1`, then `:ps2_1`...). Plain identifiers are
+ *   quoted by the dialect; a segment written between double quotes is re-quoted with the dialect's quote
+ *   characters
+ * - A labelled target (LabelledSpecification, 2.5.0) is translated as the specification it labels
  *
  * @template-implements ISpecificationVisitor<ISqlWhereClause>
- * @version    2.3.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Sql
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -111,6 +123,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
     private IFieldMapper $fieldMapper;
     private int $parameterCounter = 0;
     private ?string $currentColumn = null;
+
+    /** Subqueries translated so far (2.5.0): the prefix of their parameters. */
+    private int $subqueryCounter = 0;
 
     /**
      * Whether the current column may still be NULL where the clause being built is evaluated: true
@@ -143,6 +158,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
     public function reset(): self
     {
         $this->parameterCounter = 0;
+        $this->subqueryCounter = 0;
         $this->currentColumn = null;
         $this->currentColumnNullable = false;
         return $this;
@@ -168,7 +184,7 @@ class SqlQueryVisitor implements ISpecificationVisitor
      */
     public function visit(ISpecification $specification): SqlWhereClause
     {
-        if ($specification instanceof RuleBoundSpecification) {
+        if ($specification instanceof RuleBoundSpecification || $specification instanceof LabelledSpecification) {
             return $this->visit($specification->getInnerSpecification());
         }
 
@@ -413,8 +429,13 @@ class SqlQueryVisitor implements ISpecificationVisitor
             return new SqlWhereClause($this->dialect->getFalseCondition());
         }
 
-        if ($specification instanceof RuleBoundSpecification) {
+        if ($specification instanceof RuleBoundSpecification || $specification instanceof LabelledSpecification) {
             return $this->visit($specification->getInnerSpecification());
+        }
+
+        if ($specification instanceof ExistsSubquerySpecification) {
+            // A condition of the row, not of a column: never guarded (2.5.0)
+            return $this->translateExists($specification);
         }
 
         if ($specification instanceof PredicateSpecification) {
@@ -453,6 +474,9 @@ class SqlQueryVisitor implements ISpecificationVisitor
         }
 
         $clause = $this->translateExtensionLeaf($specification, $col) ?? match (true) {
+            $specification instanceof InSubquerySpecification =>
+                $this->translateInSubquery($col, $specification),
+
             $specification instanceof EqualSpecification =>
                 $this->translateEqual($specification, $col),
 
@@ -801,6 +825,105 @@ class SqlQueryVisitor implements ISpecificationVisitor
         $param = $this->createParameter($body);
         $sql = $this->dialect->formatRegex($col, $param['name'], !str_contains($modifiers, 'i'));
         return new SqlWhereClause($sql, $param['binding']);
+    }
+
+    /**
+     * `col IN (SELECT sq.c FROM t sq WHERE sq.c IS NOT NULL AND (<where>))` (2.5.0, forward 048, D20): the
+     * selected column is always filtered with IS NOT NULL, so the negation stays two-valued.
+     */
+    private function translateInSubquery(string $col, InSubquerySpecification $specification): SqlWhereClause
+    {
+        $selected = $this->subqueryColumn($specification->getColumn());
+        $where = $this->subqueryWhere($specification);
+
+        return new SqlWhereClause(
+            sprintf(
+                '%s IN (SELECT %s FROM %s %s WHERE %s IS NOT NULL AND (%s))',
+                $col,
+                $selected,
+                $this->quoteSubqueryIdentifier($specification->getTable()),
+                $this->dialect->escapeIdentifier(AbstractSubquerySpecification::ALIAS),
+                $selected,
+                $where->getSql()
+            ),
+            $where->getParameters()
+        );
+    }
+
+    /**
+     * `EXISTS (SELECT 1 FROM t sq WHERE sq.fk = outer.col AND (<where>))` (2.5.0, forward 048, D20): an outer
+     * property goes through the field mapping and is qualified with the outer table, unless the mapping
+     * already qualified it.
+     */
+    private function translateExists(ExistsSubquerySpecification $specification): SqlWhereClause
+    {
+        $links = [];
+        foreach ($specification->getOn() as $inner => $outer) {
+            $mapped = $this->fieldMapper->mapField($outer);
+            $outerColumn = (str_contains($mapped, '.') || str_contains($mapped, '('))
+                ? $this->dialect->escapeIdentifier($mapped)
+                : $this->quoteSubqueryIdentifier($specification->getOuterTable()) . '.' . $this->dialect->escapeIdentifier($mapped);
+            $links[] = $this->subqueryColumn($inner) . ' = ' . $outerColumn;
+        }
+        $where = $this->subqueryWhere($specification);
+
+        return new SqlWhereClause(
+            sprintf(
+                'EXISTS (SELECT 1 FROM %s %s WHERE %s AND (%s))',
+                $this->quoteSubqueryIdentifier($specification->getTable()),
+                $this->dialect->escapeIdentifier(AbstractSubquerySpecification::ALIAS),
+                implode(' AND ', $links),
+                $where->getSql()
+            ),
+            $where->getParameters()
+        );
+    }
+
+    /**
+     * The filter of the other table: a visitor of this dialect over the columns of `sq`, its parameters
+     * prefixed apart (`:<prefix>s<N>_`).
+     */
+    private function subqueryWhere(AbstractSubquerySpecification $specification): SqlWhereClause
+    {
+        $visitor = new SqlQueryVisitor(
+            $this->dialect,
+            $specification->innerColumnMapper(),
+            $this->paramPrefix . 's' . (++$this->subqueryCounter) . '_'
+        );
+        $where = $visitor->translate($specification->getWhere());
+
+        return $where->isEmpty() ? new SqlWhereClause($this->dialect->getTrueCondition()) : $where;
+    }
+
+    /** A column of the other table, qualified with the alias. */
+    private function subqueryColumn(string $column): string
+    {
+        return $this->dialect->escapeIdentifier(AbstractSubquerySpecification::ALIAS) . '.' . $this->quoteSubqueryIdentifier($column);
+    }
+
+    /**
+     * An identifier of a subquery, segment by segment: a plain segment quoted by the dialect, a segment
+     * written between double quotes re-quoted with the dialect's quote characters (the closing one doubled
+     * inside).
+     */
+    private function quoteSubqueryIdentifier(string $identifier): string
+    {
+        $parts = [];
+        foreach (AbstractSubquerySpecification::segments($identifier) as [$segment, $quoted]) {
+            if (!$quoted) {
+                $parts[] = $this->dialect->escapeIdentifier($segment);
+                continue;
+            }
+            $probe = $this->dialect->escapeIdentifier('a');
+            if (strlen($probe) !== 3) {
+                // A dialect that does not delimit identifiers (Informix without DELIMIDENT)
+                throw new UnsupportedSqlOperationException('a quoted identifier segment', $this->dialect->getFamily());
+            }
+            [$open, $close] = [$probe[0], $probe[2]];
+            $parts[] = $open . str_replace($close, $close . $close, $segment) . $close;
+        }
+
+        return implode('.', $parts);
     }
 
     /**

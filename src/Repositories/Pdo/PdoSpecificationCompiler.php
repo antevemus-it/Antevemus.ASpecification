@@ -17,6 +17,7 @@ use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\AbstractSubquerySpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
 use Antevemus\ASpecification\Sql\SqlQueryVisitor;
 use Antevemus\ASpecification\Sql\SqlWhereClause;
@@ -57,9 +58,11 @@ use PDO;
  *   letters and digits, validated by the mapping
  * - whereRelation() through a #[ManyToMany] join table compiles to `id IN (SELECT owner FROM join
  *   WHERE target IN (SELECT ...))` (since 1.14.0, forward 032, D1)
+ * - the raw subqueries of Spec::inSubquery()/Spec::existsIn() (2.5.0) are refused as not translatable:
+ *   they read a table outside the mapping; inside a repository, Spec::inQuery() is the subquery
  *
  * @internal Used by PdoRepository; not part of the public API.
- * @version    1.14.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -267,6 +270,15 @@ final class PdoSpecificationCompiler extends SqlQueryVisitor
     /** {@inheritdoc} */
     public function visitLeaf(ISpecification $specification): SqlWhereClause
     {
+        if ($specification instanceof AbstractSubquerySpecification) {
+            // 2.5.0 (forward 048, D20): the raw subquery reads a table outside the mapping (its values would
+            // be converted as this repository's column); a repository uses Spec::inQuery()
+            throw new NonTranslatableSpecificationException(
+                $specification,
+                'the subquery of Spec::inSubquery()/Spec::existsIn() is for toSql() and toCriteria(); inside a PdoRepository use Spec::inQuery(), which applies the mapping and the read scope of the other repository'
+            );
+        }
+
         if ($specification instanceof AllEntitiesSpecification) {
             return new SqlWhereClause($this->typeCondition($specification->getType()));
         }

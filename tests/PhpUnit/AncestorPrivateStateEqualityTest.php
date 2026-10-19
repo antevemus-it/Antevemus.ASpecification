@@ -18,6 +18,8 @@ use Antevemus\ASpecification\Specifications\String\ContainsSpecification;
 use Antevemus\ASpecification\Specifications\String\EndsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\StartsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\TextComparison;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use Closure;
 use FilesystemIterator;
 use InvalidArgumentException;
@@ -93,8 +95,10 @@ final class EqDynamicLeaf extends AbstractSpecification
  * simplify() changed answers, the subsumption algebra declared contains('a') a special case of
  * contains('b'), and()/or() of composites dropped an operand, and a partition of `contains('b')`
  * replaced the partition of `contains('a')`. Every check below fails with the former equals().
+ * Since 2.5.0 also the subqueries of Spec::inSubquery()/Spec::existsIn() (table, filter and field mapping in
+ * AbstractSubquerySpecification).
  *
- * @version    2.1.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -130,6 +134,19 @@ final class AncestorPrivateStateEqualityTest extends TestCase
                 $pairs[$class][] = [$make('a', TextComparison::IgnoreCase), $make('a', TextComparison::IgnoreCaseAndAccents)];
             }
         }
+
+        // 2.5.0 (forward 048): the subqueries keep table, filter and field mapping in AbstractSubquerySpecification
+        $where = Spec::property('kind', Spec::equalTo('a'));
+        $pairs[InSubquerySpecification::class] = [
+            [new InSubquerySpecification('t1', 'id', $where), new InSubquerySpecification('t2', 'id', $where)],
+            [new InSubquerySpecification('t1', 'id', $where), new InSubquerySpecification('t1', 'id', Spec::property('kind', Spec::equalTo('b')))],
+            [new InSubquerySpecification('t1', 'id', $where, ['kind' => 'k1']), new InSubquerySpecification('t1', 'id', $where, ['kind' => 'k2'])],
+        ];
+        $pairs[ExistsSubquerySpecification::class] = [
+            [new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o'), new ExistsSubquerySpecification('t2', ['fk' => 'id'], $where, 'o')],
+            [new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o'), new ExistsSubquerySpecification('t1', ['fk' => 'id'], Spec::property('kind', Spec::equalTo('b')), 'o')],
+            [new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o', ['kind' => 'k1']), new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o', ['kind' => 'k2'])],
+        ];
 
         return $pairs;
     }
@@ -360,6 +377,11 @@ final class AncestorPrivateStateEqualityTest extends TestCase
                 continue;
             }
             $reflection = new ReflectionClass($class);
+            // An anonymous class takes the name of its parent: one declared by a test (the transcription of the
+            // Evaluator of the Virttus in Module 36, 2.5.0) is not a class of src/, whatever the order of the tests
+            if ($reflection->isAnonymous() && !str_starts_with((string) $reflection->getFileName(), $src)) {
+                continue;
+            }
             if ($reflection->isAbstract() || str_contains($class, '\\Tests\\')
                 || $reflection->getMethod('equals')->getDeclaringClass()->getName() !== AbstractSpecification::class) {
                 continue;

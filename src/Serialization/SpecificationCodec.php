@@ -35,6 +35,7 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\Logical\DefaultValueSpecification;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
+use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PredicateSpecification;
@@ -51,6 +52,8 @@ use Antevemus\ASpecification\Specifications\String\StartsWithSpecification;
 use Antevemus\ASpecification\Specifications\String\TextComparison;
 use Antevemus\ASpecification\Specifications\String\WildcardExpressionMatcherIgnoreCaseStringSpecification;
 use Antevemus\ASpecification\Specifications\String\WildcardSpecification;
+use Antevemus\ASpecification\Specifications\Subquery\ExistsSubquerySpecification;
+use Antevemus\ASpecification\Specifications\Subquery\InSubquerySpecification;
 use Antevemus\ASpecification\StateMachine\EventOriginSpecification;
 use Antevemus\ASpecification\StateMachine\InStateSpecification;
 use Antevemus\ASpecification\StateMachine\PayloadHasSpecification;
@@ -94,8 +97,13 @@ use UnitEnum;
  * purpose (D4), each refused with NonSerializableSpecificationException and the reason: callbacks
  * (must(), PredicateSpecification), Spec::external(), FeatureEnabledSpecification, the guards of the
  * state machine (referenced by name through GuardRegistry), InQuerySpecification (a repository),
- * RuleBoundSpecification (a binding to a catalog rule) and the document requirements of the rule engine.
- * A method call (`calling()`) is serialized by its method name and declarative arguments (`t: method`).
+ * RuleBoundSpecification (a binding to a catalog rule), the document requirements of the rule engine and,
+ * since 2.5.0, the subqueries of Spec::inSubquery()/Spec::existsIn() (forward 048, D22: a document of an
+ * editable catalog that names any table would let whoever edits rules read other tables through a boolean
+ * oracle). A method call (`calling()`) is serialized by its method name and declarative arguments
+ * (`t: method`). Since 2.5.0 the human label of a target is a node of its own,
+ * `{"t": "labelled", "label": "...", "s": {...}}` (LabelledSpecification); a document holding it is not read
+ * by 2.4.0.
  *
  * Safety (D6): decoding never uses the native PHP deserialization, never instantiates a class named by
  * the document (the class of a node is the one registered in code for its `t`), refuses an enum outside
@@ -110,7 +118,7 @@ use UnitEnum;
  * The codec does not change the algebra (D9): the decoded specification is made of the same classes, so
  * `decode(encode($s))->equals($s)`; simplify() before encoding is the caller's choice.
  *
- * @version    2.4.0
+ * @version    2.5.0
  * @package    Antevemus\ASpecification
  * @subpackage Serialization
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -153,6 +161,8 @@ final class SpecificationCodec
         EventOriginSpecification::class => ['eventOrigin', 'a guard of the state machine is referenced by name (GuardRegistry, GuardExpression)'],
         PayloadHasSpecification::class => ['payloadHas', 'a guard of the state machine is referenced by name (GuardRegistry, GuardExpression)'],
         InQuerySpecification::class => ['inQuery', 'it holds a PdoRepository (a connection), which is not data'],
+        InSubquerySpecification::class => ['inSubquery', 'a subquery names a table: a document of an editable catalog must not read other tables (2.5.0)'],
+        ExistsSubquerySpecification::class => ['existsIn', 'a subquery names a table: a document of an editable catalog must not read other tables (2.5.0)'],
         RuleBoundSpecification::class => ['ruleBound', 'it binds a specification to a catalog rule: store the rule (spec_json), not the binding'],
         DocumentLeafSpecification::class => ['document', 'a document requirement is compiled from the catalog (document_requirement)'],
         DocumentSetSpecification::class => ['document', 'a document requirement is compiled from the catalog (document_requirement)'],
@@ -219,6 +229,7 @@ final class SpecificationCodec
             'or' => OrSpecification::class,
             'not' => NotSpecification::class,
             'nor' => JointDenialSpecification::class,
+            'labelled' => LabelledSpecification::class,
             'property' => PropertySpecification::class,
             'method' => MethodParameterizedSpecification::class,
             'type' => $factory->type()->specify(ISpecification::class)::class,

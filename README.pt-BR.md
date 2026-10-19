@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.4.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.4.0)
+[![Latest Version](https://img.shields.io/badge/Release-v2.5.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.5.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-31%2F31%20Suites%20Pass%20(13558%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
+[![Tests](https://img.shields.io/badge/Tests-32%2F32%20Suites%20Pass%20(17983%20Assertions)%20%2B%20Domian%20Parity%20219-success)](tests/run_all.php)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -59,7 +59,8 @@ O **Antevemus ASpecification** foi concebido sobre sólidos pilares de engenhari
 - ⏰ **Eventos de Domínio pela Passagem do Tempo (Módulo 24)**: o `SpecificationTrigger::timed()` monta a especificação a partir do "agora"; o `TriggerSweeper`, chamado por um cron, acha as entidades que cruzaram desde o último estado gravado (`ITriggerStateStore`, em memória ou PDO, tabela `domain_event_trigger_state`) e publica pela mesma outbox, uma transação e um compare-and-set por travessia; o `baseline()` introduz um gatilho sobre dados antigos sem uma enxurrada de eventos; o `TriggeringRepository` mantém o mesmo estado, então escrita e varredura nunca publicam a mesma travessia duas vezes (exemplo 18.1).
 - 🚩 **Feature Flags Declaradas (Módulos 27 e 30)**: a flag é declarada uma vez no código (`FeatureFlagRegistry`: textos, origem, alvo) e ligada no banco (`PdoFeatureFlagStore` sobre o DDL de referência `resources/sql/feature_flags.ansi.sql` ou sobre tabelas existentes); nasce desligada; ligada = chave ligada, dentro da vigência e o sujeito no alvo (uma lista de sujeitos editável sem deploy e uma especificação em código); toda resposta tem um motivo mapeado para os do OpenFeature; store ilegível dá desligada e é reportado, nunca em silêncio; a troca exige motivo, é compare-and-set e grava o histórico na mesma transação; desde a v2.3.0 a vigência e um rollout por porcentagem (bucket estável por sujeito) são gravados pelo serviço no mesmo caminho auditado; desde a v2.4.0 o alvo pode ser uma regra do catálogo apontada pelo código (`targetRuleCode`), trocada no banco sem deploy; `spec('flag')` compõe com qualquer especificação (exemplos 19, 19.1 e 21).
 - 🔤 **Comparação de Texto Sem Acento (Módulos 28 e 29)**: `TextComparison::IgnoreCaseAndAccents` em `contains()`, `startsWith()`, `endsWith()` e `equalIgnoreCaseAndAccents()` e, desde a v2.3.0, em `wildcard()` e `regex()` (`configuracao` acha `Configuração`, `ß` continua `ß`), com a mesma resposta em memória, no ALinq e nos bancos que conseguem dá-la (PostgreSQL; MySQL e MariaDB, menos para expressões regulares), e recusada onde o banco não consegue (exemplos 20 e 20.1).
-- 🧬 **Serialização de Especificações (Módulo 31)**: o `SpecificationCodec` grava uma especificação como árvore JSON canônica (`{"v": 1, "spec": {"t": "and", "s": [...]}}`) e a lê de volta nas mesmas classes (`decode(encode($s))->equals($s)`, conferido sobre todo o pool da bancada de solidez, com o mesmo SQL e o mesmo `TCriteria`); o `t` é um de 44 nomes curtos e estáveis, nunca um nome de classe, e o registro é aberto a folhas suas (`ISerializableSpecification`, `register()`); datas como `{"$date"}`, casos de enum como `{"$enum"}` só de uma lista permitida; limites de profundidade e de nós; callbacks, dados externos, flags e guards da máquina são recusados com o motivo. Uma regra do catálogo pode levar o corpo como documento (`business_rule.spec_json`, `IRuleCatalog::findRuleByCode()`), e uma feature flag pode apontá-la como alvo (exemplo 21).
+- 🧬 **Serialização de Especificações (Módulo 31)**: o `SpecificationCodec` grava uma especificação como árvore JSON canônica (`{"v": 1, "spec": {"t": "and", "s": [...]}}`) e a lê de volta nas mesmas classes (`decode(encode($s))->equals($s)`, conferido sobre todo o pool da bancada de solidez, com o mesmo SQL e o mesmo `TCriteria`); o `t` é um de 45 nomes curtos e estáveis, nunca um nome de classe, e o registro é aberto a folhas suas (`ISerializableSpecification`, `register()`); datas como `{"$date"}`, casos de enum como `{"$enum"}` só de uma lista permitida; limites de profundidade e de nós; callbacks, dados externos, flags e guards da máquina são recusados com o motivo. Uma regra do catálogo pode levar o corpo como documento (`business_rule.spec_json`, `IRuleCatalog::findRuleByCode()`), e uma feature flag pode apontá-la como alvo (exemplo 21).
+- 🧭 **Motor de Regras, TCriteria e Resolução de Dados para um Consumidor Real (Módulo 36)**: tipos de regra que só guardam um valor lido pela aplicação (`registerLookupOnly()`), a regra mais específica de um tipo (`RulePrecedence`, `findRulesByType()` numa consulta), um rótulo humano para o alvo de uma falha (`labelled()`), `toCriteria()` sem acento para um banco declarado (`withAccentFolding()`) e com subqueries sobre qualquer tabela (`inSubquery()`, `existsIn()`, também no `toSql()`), fontes de dados que respondem depois sem esperar nem enviar duas vezes (`AsyncDataSource`, `isPending()`), e telas Adianti como host (transação compartilhada, `UseCaseResult` em `TMessage`/`TToast`) (exemplos 22 a 22.3).
 
 ---
 
@@ -97,7 +98,7 @@ Enquanto a maioria das bibliotecas de *Specification* no ecossistema PHP se limi
   - `ext-curl` *(opcional: `HttpDataSource`, a busca HTTP concorrente do `DataResolver`, Módulo 21; sem ela uma fonte HTTP é recusada ao ser registrada e o `CallableDataSource` continua funcionando)*
   - `ext-pdo` *(opcional, com o driver do seu banco: `PdoRepository` (Módulos 22, 25 e 26), os stores PDO da máquina de estados, o `PdoRuleCatalog` e a outbox PDO e o store PDO de estado dos gatilhos de eventos de domínio (Módulos 23 e 24))*
 - **Dependência**: uma, do mesmo autor, sem dependências próprias: [`antevemus/adeep-property-access`](https://github.com/antevemus-it/Antevemus.ADeepPropertyAccess) `^1.0` (desde a v2.0.0), o acessor de propriedades compartilhado com o ALinq, para que as duas bibliotecas leiam o mesmo valor do mesmo candidato (exemplo 10.1). O Composer a instala.
-- **Pacote opcional**: `antevemus/alinq-collection` `^2.1.0` para `ALinqBridge` (retornos tipados `IALinqCollection`/`IALinqLazyCollection`), `ALinqSpecificationVisitor` e streaming lazy O(1) sobre `IRepository::iterate()` (exige PHP 8.4; o ALinq só lê propriedade não pública marcada com `#[Specifiable]`, a mesma regra deste pacote, e a 2.0 dele resolve propriedades pelo mesmo acessor compartilhado).
+- **Pacote opcional**: `antevemus/alinq-collection` `^2.2.0` para `ALinqBridge` (retornos tipados `IALinqCollection`/`IALinqLazyCollection`), `ALinqSpecificationVisitor` e streaming lazy O(1) sobre `IRepository::iterate()` (exige PHP 8.4; o ALinq só lê propriedade não pública marcada com `#[Specifiable]`, a mesma regra deste pacote, e a 2.0 dele resolve propriedades pelo mesmo acessor compartilhado).
 
 > **Vindo da 1.x?** Leia antes o [UPGRADE-2.0.pt-BR.md](UPGRADE-2.0.pt-BR.md): arquivos `.bin` do serializer nativo e catálogos de regras com valores em português são convertidos na 1.14.x, antes da atualização.
 
@@ -173,6 +174,8 @@ if (!$result->isSatisfied) {
 **Erros de avaliação e o que mostrar.** Quando uma regra não pode ser avaliada (uma especificação, um handler ou um guard lança), `isError` é `true`, a falha traz a mensagem genérica `SpecificationResult::EVALUATION_ERROR_MESSAGE` com o código da regra, e a exceção fica em `$result->exception`, nunca nas falhas. A biblioteca não faz log por você. Boa prática: mande `$result->exception` para o seu logger, com cuidado para não registrar mais do que o necessário (mensagens de exceção podem conter credenciais, dados pessoais ou SQL); mostre ao usuário só `$failure->message`, que é a sua mensagem de negócio ou a genérica; e nunca mostre a `metadata`, que é diagnóstica e pode conter o valor avaliado (`metadata['actual']`).
 
 ---
+
+Desde a v2.5.0 o `labelled($label)` reporta as falhas de uma especificação contra um texto feito para o usuário: `property` vira o rótulo, e a propriedade técnica fica em `metadata['property_path']` (exemplo 22).
 
 ### 3. Satisfação Parcial (`remainderUnsatisfiedBy`)
 
@@ -320,6 +323,8 @@ $verdict = Spec::engine($catalogo, $registry)->validate(
 
 ---
 
+Desde a v2.5.0: tipos de regra que só guardam um valor lido pela aplicação (`registerLookupOnly()`, pulados e listados pelo `getSkippedRules()` em vez de `MissingRuleHandlerException`), e a regra mais específica de um tipo (`RulePrecedence`, `findRulesByType()`: o cenário antes da genérica do escopo, depois plano antes de produto antes de nenhum, depois prioridade, depois `code`); veja o exemplo 22.
+
 ### 8. SQL Query Visitor & Multi-SGBD (WHERE Parametrizado)
 
 Traduz diretamente árvores complexas de especificações de domínio para cláusulas `WHERE` parametrizadas, imunes a injeção SQL, com quoting automático de identificadores e funções nativas por SGBD:
@@ -363,6 +368,8 @@ $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
 ```
 
 ---
+
+Desde a v2.5.0 o visitor de SQL traduz subqueries sobre qualquer tabela, `Spec::inSubquery()` e `Spec::existsIn()`, com os identificadores validados na construção e os parâmetros do filtro interno com nomes próprios (`:ps1_1`); veja o exemplo 22.1.
 
 ### 9. TCriteria Builder (Adianti Framework Database Bridge - Módulo 13)
 
@@ -413,6 +420,8 @@ $criteriaFromInstance = $spec->toCriteria();
 ```
 
 ---
+
+Desde a v2.5.0: comparações que ignoram maiúsculas e acentos para um banco declarado (`withAccentFolding()`, `Spec::toCriteria(..., accentFolding:)`), escritas como o `toSql()` as escreve, e subqueries (`inSubquery()`, `existsIn()`) no lugar de `NOESC:(SELECT ...)`; as duas exigem conexão com `prep = 1` (exemplo 22.1). Valores que começam com `(SELECT`, contêm `{session.` ou começam com `NOESC:` continuam recusados.
 
 ### 10. ALinq Synergy & Coleções Fluentes LINQ (Módulo 14)
 
@@ -1053,6 +1062,10 @@ $useCases->run(Spec::machineEventUseCase($runner, 'CANCEL'), new MachineEventReq
     ->getStatus();                                            // UseCaseStatus::NOT_FOUND
 ```
 
+#### 15.3 Adianti Como Host
+
+A transação de uma tela Adianti (o `TTransaction` abre uma conexão nova a cada `open()`: entre na que está aberta) e um `UseCaseResult` mostrado com `TMessage`/`TToast` sem a mensagem de uma exceção: exemplo 22.3.
+
 ### 16. Resolução Concorrente de Dados para Especificações Dependentes de I/O (Módulo 21)
 
 Uma regra que depende de dado guardado em outro lugar (o score de um bureau de crédito, uma checagem de fraude, o saldo no core bancário) não chama o serviço. `Spec::external()` **declara** o dado de que precisa: o nome de uma fonte, parâmetros lidos do candidato (caminhos com ponto) e uma especificação comum que decide sobre o valor, com seus próprios `because()`/`withCode()`. Um `DataResolver` junta as declarações da árvore inteira, busca os dados em concorrência (`curl_multi`, sem dependência de pacote, funciona no PHP-FPM) e só então avalia a árvore, de forma síncrona, como toda especificação é avaliada. As fontes são registradas por nome: `HttpDataSource` (URL base fixa, um modelo de caminho com `{marcadores}`, cabeçalhos, tempo-limite próprio, custo e TTL de cache) e `CallableDataSource` (qualquer callable síncrono: um repositório, um SDK, um cliente gRPC).
@@ -1144,6 +1157,8 @@ try {
 ```
 
 Os erros seguem a regra da 1.8.0: uma busca que falha (status HTTP fora de 2xx, erro de transporte, o tempo-limite da fonte ou da resolução inteira com `ResolutionPolicy::tiered(timeout: 3.0)`, um parser que lança, uma fonte desconhecida) é erro de avaliação da folha: falha com a mensagem genérica, `evaluation_error = true` e uma `DataFetchException` em `$result->exception` com o status, nunca o corpo da resposta. Não há retry. O valor de um parâmetro entra codificado no modelo de URL, então `/`, `?`, `#`, `..` ou uma URL inteira num número de documento não mudam o host nem o caminho da chamada; redirecionamentos não são seguidos. O cache entre resoluções é opcional (`new DataResolver($registry, new InMemoryDataCache())`, com o TTL de cada fonte; falhas nunca vão para o cache). O `ext-curl` é um `suggest`: sem ele, um `HttpDataSource` é recusado ao ser registrado e um `CallableDataSource` continua funcionando. Os visitors de SQL, TCriteria e ALinq recusam a folha com a exceção de "não traduzível". Os guards da máquina de estados continuam puros: o caso de uso resolve o dado antes de mandar o evento. Concorrência para fontes que não são HTTP (Fibers/Revolt) é um pacote satélite planejado.
+
+Desde a v2.5.0 uma fonte que envia um pedido e lê o resultado depois (`AsyncDataSource`, com um store de tickets) responde um dado ainda não pronto como erro de avaliação tipado (`DataPendingException`, `isPending()`): nunca aprovado nem reprovado, enviado no máximo uma vez por pedido, nada espera; veja o exemplo 22.2.
 
 ### 17. Repositório Sobre PDO (Módulo 22)
 
@@ -2096,7 +2111,7 @@ try {
 | PostgreSQL | `fold(col) LIKE fold(:p)` (a expressão embutida do exemplo 20, ou a sua função) | `fold(col) ~* :p`, o corpo dobrado no PHP, `\b`/`\B` escritos como `\y`/`\Y` |
 | MySQL 8.4, MariaDB 11.4 | `CONVERT(col USING utf8mb4) COLLATE utf8mb4_0900_ai_ci LIKE :p` | recusado |
 | SQL Server, Oracle, SQLite, DuckDB, Db2, Informix, Firebird, ANSI | recusado | recusado |
-| `Spec::toCriteria()` (TCriteria) | recusado | recusado |
+| `Spec::toCriteria()` (TCriteria) | recusado; desde a v2.5.0, com o banco declarado (`withAccentFolding()`, exemplo 22.1), a condição do PostgreSQL ou do MySQL/MariaDB acima | recusado; desde a v2.5.0, com `withAccentFolding('pgsql')`, a condição do PostgreSQL acima |
 
 - **Recusa, nunca resposta diferente.** A recusa é `NonTranslatableSpecificationException` (`NonTranslatableCriteriaException` no TCriteria), e um `PdoRepository` nesses bancos recusa a consulta a menos que `withInMemoryFallback()` tenha sido chamado. A expressão regular é recusada no MySQL e no MariaDB porque os motores deles (ICU, PCRE2) ignoram a collation da coluna: medido, `^cora[cç][aã]o$` sobre uma coluna `_ai_ci` acha `coracao` e não `Coração`, com o corpo dobrado ou como escrito, e nenhum dos dois tem função que dobre a coluna. `wildcard($p, false)` e `regex($p, TextComparison::IgnoreCase)` são traduzidos como o `wildcardIgnoreCase()` e o modificador `i` sempre foram.
 - **Limites medidos.** No PostgreSQL as classes abreviadas mantêm a classificação do banco, em todo `regex()`: `\d` são só os dígitos ASCII (`١٢٣` casa `\d` em memória, lá não), `\w` e `\s` diferem do PCRE em 605 e 5 code points do BMP, `.` casa quebra de linha, e uma coluna com a collation `"C"` só trata letras ASCII como `\w`. O curinga no MySQL/MariaDB mantém os limites do exemplo 20 (`ø`, `ł`, `ð`, `й`, kana). O `fnmatch()` nem sempre lê o `?` como um caractere de texto multibyte (`fnmatch('??', 'é')` é `true`); as letras acentuadas viram ASCII na dobra, então isso só sobra nas letras que não dobram (`ß`, `æ`, CJK).
@@ -2158,11 +2173,12 @@ $flags->isEnabled('renewal_notice', new RentalContract(id: 2, state: 'MG', rent:
 - **Valores.** Escalares como são; data e hora como `{"$date": "2026-01-31T09:30:00.000000-03:00"}` (RFC 3339 com microssegundos e o offset; lida de volta como `DateTimeImmutable` no mesmo instante e offset); caso de enum como `{"$enum": "App\\Status", "case": "Active"}` **só** para enum da lista permitida do codec (`new SpecificationCodec(allowedEnums: [Status::class])` ou `allowEnum()`; o `TextComparison` é permitido por padrão, e a comparação de uma folha de texto é gravada pelo valor, `"cmp": "ignore_case"`); listas desses. Closure, qualquer outro objeto, recurso, array associativo ou float não finito não têm forma serializada e são recusados, com o lugar na árvore (`property.eq.v`).
 - **Uma chamada de método** (`Spec::calling()`, exemplo 13) é serializada pelo nome do método e pelos argumentos declarativos: `{"t":"method","m":"installmentsLeft","args":[3],"s":{"t":"gt","v":0}}`.
 
-Os 44 nomes da biblioteca (`SpecificationCodec::coreTypes()`; `types()` lista os de um codec, os seus inclusive):
+Os 45 nomes da biblioteca (`SpecificationCodec::coreTypes()`; `types()` lista os de um codec, os seus inclusive):
 
 | Família | Nomes |
 |---|---|
 | Composições | `and`, `or`, `not`, `nor` (`JointDenialSpecification`) |
+| Apresentação (2.5.0) | `labelled` (`LabelledSpecification`, o rótulo humano de um alvo, exemplo 22) |
 | Navegação e tipo | `property`, `method` (`MethodParameterizedSpecification`), `type` (`Spec::specify(T)`), `a` (o invólucro de `a()`) |
 | Constantes e valores padrão | `true`, `false`, `defaultValue` |
 | Comparação | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `looseEq`, `at` (`SameInstantSpecification`), `in`, `isNull`, `notNull` |
@@ -2170,12 +2186,215 @@ Os 44 nomes da biblioteca (`SpecificationCodec::coreTypes()`; `types()` lista os
 | Coleções e entidades | `all`, `any`, `none`, `hasSize`, `hasLength`, `include`, `includePercentageOf`, `allEntities`, `entity` (`UniqueEntitySpecification`) |
 | Datas relativas | `isPast`, `isFuture`, `isToday` |
 
-- **O que não serializa, e por quê.** Cada um é recusado com `NonSerializableSpecificationException`, o motivo e o lugar na árvore (`and[1].callback`): callback (`must()`, `PredicateSpecification`) é código, não dado; `MethodParameterizedSpecification` cujo resultado vai para uma closure, pelo mesmo motivo (`method.callback`; os argumentos já recusam closure); `Spec::external()` depende de uma fonte de dados e do resolvedor; `FeatureEnabledSpecification` (`$flags->spec()`) depende do serviço de flags; os guards da máquina de estados (`inState`, `eventOrigin`, `payloadHas`) são referenciados por nome no `GuardRegistry` dela; `Spec::inQuery()` segura um repositório; as regras vinculadas e os requisitos documentais do motor de regras pertencem ao motor. Uma especificação sua sem o contrato também é recusada.
+- **O que não serializa, e por quê.** Cada um é recusado com `NonSerializableSpecificationException`, o motivo e o lugar na árvore (`and[1].callback`): callback (`must()`, `PredicateSpecification`) é código, não dado; `MethodParameterizedSpecification` cujo resultado vai para uma closure, pelo mesmo motivo (`method.callback`; os argumentos já recusam closure); `Spec::external()` depende de uma fonte de dados e do resolvedor; `FeatureEnabledSpecification` (`$flags->spec()`) depende do serviço de flags; os guards da máquina de estados (`inState`, `eventOrigin`, `payloadHas`) são referenciados por nome no `GuardRegistry` dela; `Spec::inQuery()` segura um repositório; as subqueries de `Spec::inSubquery()`/`Spec::existsIn()` (2.5.0) nomeiam tabelas, e um documento de regra de um catálogo editável não pode ler outras tabelas; as regras vinculadas e os requisitos documentais do motor de regras pertencem ao motor. Uma especificação sua sem o contrato também é recusada.
 - **Uma folha sua.** Implemente `ISerializableSpecification` (`toArray(): array`, os parâmetros sem o `t`; `static fromArray(array $data, SpecificationCodec $codec): static`, com os auxiliares `expectKeys()`, `string()`, `value()`, `specification()`...) e registre-a no codec: `$codec->register('minScore', MinScoreSpecification::class)`. O registro é por classe exata: uma subclasse de folha serializável pode redefinir o predicado, então é recusada até ser registrada com nome próprio.
 - **Segurança.** A leitura nunca chama `unserialize()` e nunca instancia uma classe nomeada pelo documento: a classe de um nó é a registrada no código para o seu `t`, então `{"t": "App\\Evil"}` é um nome desconhecido. Enum fora da lista permitida é recusado antes de a classe ser tocada; os nomes de tipo de `type`, `allEntities`, `entity` e `enumName` são checados como os construtores deles checam (`class_exists()`, `enum_exists()`) e nunca instanciados nem chamados. A árvore é limitada a 64 níveis e 10 000 nós por padrão (`new SpecificationCodec(maxDepth: 32, maxNodes: 500)` para uma entrada mais restrita), e o texto JSON é limitado antes de ser percorrido. Toda falha é `SpecificationCodecException` (ou a subclasse `NonSerializableSpecificationException`) com `$reason` e `$path`. Um teste monta um documento para cada caso hostil (JSON malformado, nome desconhecido, nome de classe no `t`, enum fora da lista, 65 níveis, 10 001 nós) contra uma folha cujo construtor grava um arquivo marcador, e o arquivo nunca aparece a menos que o codec tenha registrado essa folha.
 - **Uma regra do catálogo com corpo.** `business_rule.spec_json` guarda o documento; o `RuleSpecificationRegistry` (e portanto o `DynamicSpecificationEngine`) monta a regra que tem um a partir dele, antes e no lugar do handler do `rule_type`, e um documento que ele não lê é `RuleEngineException` citando a regra. `IRuleCatalog::findRuleByCode($code)` acha uma regra ativa pelo código, qualquer que seja o escopo, o cenário ou o produto (o `PdoRuleCatalog` respeita o `withAsOf()`). A coluna é opt-in: o `PdoRuleCatalog` só a lê com `columns: PdoRuleCatalog::COLUMNS_SINCE_2_4`, para uma tabela criada por um DDL anterior continuar funcionando sem mudança; essa tabela roda uma vez a migração aditiva comentada no cabeçalho do DDL (`ALTER TABLE business_rule ADD COLUMN spec_json VARCHAR(4000);`). `VARCHAR(4000)` é o tamanho portável que os DDLs de referência usam para JSON; para árvores maiores, use uma coluna mais larga (`TEXT`, `CLOB`) e mapeie-a: `columns: ['spec_json' => 'spec_body']`.
 - **Uma flag com alvo numa regra.** `FeatureFlagDefinition` recebe `targetRuleCode:` (exclusivo com `target:`); `FeatureFlags` recebe o catálogo (`ruleCatalog:`) e, opcionalmente, o codec que o lê (`specificationCodec:`). A regra é buscada e decodificada uma vez por instância do serviço, na primeira avaliação que precisa dela, e avaliada como um alvo em código; o `refresh()` a lê de novo. Sem catálogo, sem regra ativa com esse código, regra sem `spec_json` ou documento que não decodifica: a flag fica desligada com o motivo `ERROR` (falha fechada), relatado uma vez até o `refresh()`.
 - **Quebra para uma classe sua:** `IRuleCatalog` ganha `findRuleByCode()` e `IRuleDefinition` ganha `getSpecJson()` (as classes da biblioteca os implementam; nenhum implementador fora dela foi encontrado nos consumidores medidos), e uma subclasse de especificação da biblioteca que já declare `toArray()` ou `fromArray()` com outra assinatura deixa de carregar.
+
+### 22. Motor de Regras para um Consumidor Real: Tipos Só Consulta, a Regra Mais Específica e Rótulos do Alvo (Módulo 36)
+
+Desde a v2.5.0 o motor de regras cobre três coisas que um consumidor do catálogo escrevia à mão (forward 048, medido na Virttus). **Tipos de regra "só consulta"**: um catálogo mistura regras que validam com linhas que só guardam um valor lido pela aplicação (janela do aviso, dia de pagamento, chave liga/desliga); o `registerLookupOnly()` declara esses tipos no código, o motor pula as regras deles em vez de derrubar o escopo inteiro com `MissingRuleHandlerException`, e o `getSkippedRules()` as lista. **A regra mais específica de um tipo**: o `RulePrecedence` escolhe, entre as regras ativas de um tipo, a do cenário pedido antes da genérica do escopo, depois restrição de plano antes de produto antes de nenhuma, depois a prioridade maior, depois o `code` menor; o `findRulesByType()` lê todos os cenários de um tipo numa consulta. **Um rótulo humano para o alvo**: o `labelled()` reporta cada falha contra um texto feito para o usuário, sem subclasse.
+
+```php
+use Antevemus\ASpecification\Engine\DynamicSpecificationEngine;
+use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
+use Antevemus\ASpecification\Engine\RuleDefinition;
+use Antevemus\ASpecification\Engine\RulePrecedence;
+use Antevemus\ASpecification\Engine\RuleSpecificationRegistry;
+use Antevemus\ASpecification\Spec;
+
+$catalog = new InMemoryRuleCatalog([
+    new RuleDefinition(code: 'max_claims', name: 'Ongoing claims', ruleType: 'claim_max', intValue: 2, violationMessage: 'Too many ongoing claims.', scope: 'claim'),
+    // Valores que a aplicação lê: não validam nada
+    new RuleDefinition(code: 'notice_days', name: 'Notice window', ruleType: 'claim_notice', intValue: 30, scope: 'claim'),
+    new RuleDefinition(code: 'notice_days_vacant', name: 'Notice window, vacant', ruleType: 'claim_notice', intValue: 45, scope: 'claim', scenario: 'vacant'),
+]);
+$facts = ['ongoing' => 3];
+
+$registry = (new RuleSpecificationRegistry())
+    ->registerClosure('claim_max', fn(RuleDefinition $rule) => Spec::property('ongoing', Spec::lessThanOrEqualTo($rule->getIntValue()))
+        ->withCode($rule->getCode())
+        ->because($rule->getViolationMessage())
+        ->labelled("Ongoing claims: {$facts['ongoing']} (maximum {$rule->getIntValue()})"))
+    ->registerLookupOnly('claim_notice');                       // sem isto: MissingRuleHandlerException
+
+$engine = new DynamicSpecificationEngine($catalog, $registry);
+$verdict = $engine->validate($facts, 'claim');
+$failure = $verdict->getBlockingFailures()[0];
+$failure->property;                                             // 'Ongoing claims: 3 (maximum 2)'
+$failure->metadata['property_path'];                            // 'ongoing'
+$engine->getSkippedRules()[0]->getCode();                       // 'notice_days'
+
+// A regra mais específica de um tipo: a do cenário, senão a genérica do escopo
+RulePrecedence::findRule($catalog, 'claim', 'claim_notice', 'vacant')->getIntValue();     // 45
+RulePrecedence::findRule($catalog, 'claim', 'claim_notice', 'occupied')->getIntValue();   // 30
+$byScenario = RulePrecedence::byScenario($catalog->findRulesByType('claim', 'claim_notice'), 'claim_notice');
+array_map(fn(RuleDefinition $rule): int => $rule->getIntValue(), $byScenario);           // ['vacant' => 45]: uma leitura
+```
+
+- **Tipos só consulta** (`ILookupOnlyRuleTypes`, implementada pelo `RuleSpecificationRegistry`). A declaração fica no código, nunca no catálogo: uma coluna "este tipo não valida nada" deixaria quem edita uma linha desligar uma validação. Um tipo que ninguém declarou e ninguém trata continua `MissingRuleHandlerException` (um `rule_type` digitado errado, ou o handler esquecido de uma regra de bloqueio, nunca vira aprovação). Um tipo não pode ser só consulta e ter handler ao mesmo tempo: closure para tipo só consulta, ou o contrário, é recusada no registro (`RuleEngineException`), e um handler de classe cujo `supports()` aceite um tipo só consulta é "tipo de regra ambíguo" quando uma regra dele é compilada. Uma regra de tipo só consulta que tenha `spec_json` (exemplo 21) é validação: o documento vence o tipo. O `getSkippedRules()` é preenchido em toda compilação, em qualquer modo de validação do catálogo, na ordem do catálogo.
+- **Precedência** (`RulePrecedence`, estática e pura). `mostSpecific($rules, $type, $scenario)` sobre regras já lidas; `findRule($catalog, $scope, $type, $scenario, $filters)` as lê numa consulta de um catálogo que implemente `IRuleTypeCatalog` (`InMemoryRuleCatalog`, `PdoRuleCatalog`), ou pelo `findRules()` filtrado pelo tipo em qualquer outro catálogo (mesma resposta, mais linhas lidas); `byScenario()` dá a regra mais específica de cada cenário (sem as genéricas) e `scenariosOf()` os cenários, em ordem de bytes. O desempate pelo `code` (a chave primária) torna a resposta independente da ordem em que as regras foram adicionadas ou lidas: antes, o catálogo em memória desempatava pela inserção e o PDO pelo `code`. O `findRulesByType($scope, $type, $filters)` aplica os mesmos filtros de escopo, produto, plano e vigência do `findRules()`, sem o cenário, em ordem de prioridade e depois `code`. A `IRuleCatalog` não ganha método, e o `findRules()` mantém a ordem dele (a ordem das falhas num veredito).
+- **Rótulos** (`LabelledSpecification`; `$spec->labelled($label)` ou `Spec::labelled($label, $spec)`). Cada falha do resultado, de regra ou de erro de avaliação, recebe `property` = o rótulo e `metadata['label']`; a propriedade técnica vai para `metadata['property_path']`. A resposta, o `isError` e a exceção nunca mudam, e o rótulo nunca é SQL: o `toSql()`, o `toCriteria()`, o compilador ALinq e a álgebra veem a especificação rotulada. Rótulos aninhados: vence o de dentro (`allOf($a->labelled('A'), $b->labelled('B'))->labelled('Group')` reporta A e B, e Group só nomeia as falhas sem rótulo). `because()`/`withCode()` sobre o rótulo trocam a mensagem e o código de cada falha de regra, nunca de um erro de avaliação. O `simplify()` mantém o nó, o codec o grava como `{"t": "labelled", "label": "...", "s": {...}}` (documento que a 2.4.0 não lê), e uma regra vinculada reportada uma vez só (nenhuma falha com código) lista dois ou mais rótulos distintos em `metadata['labels']`.
+
+### 22.1. TCriteria Sem Acento e Com Subquery (Módulo 36)
+
+O `toCriteria()` recusava a comparação que ignora maiúsculas e acentos (a dobra é uma expressão diferente em cada banco, e um TCriteria não sabe em que banco vai rodar) e não tinha subquery a não ser o `NOESC:(SELECT ...)` cru do Adianti, que o visitor recusa (`#`, `--` e `/*` saem do texto inteiro, e nada é ligado). Desde a v2.5.0 o banco é declarado, e as subqueries são folhas próprias, para o `toSql()` e o `toCriteria()`.
+
+```php
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\Specifications\String\TextComparison;
+use Antevemus\ASpecification\Sql\Dialects\PostgreSqlDialect;
+
+// Uma busca no PostgreSQL sem maiúsculas e acentos, escrita como o toSql() escreve; a conexão roda com prep = 1
+$byName = Spec::property('name', Spec::contains('jose', TextComparison::IgnoreCaseAndAccents));
+$criteria = Spec::toCriteria($byName, accentFolding: new PostgreSqlDialect('f_fold'));   // a função do exemplo 20
+$criteria->dump(true);         // (f_fold(lower(name)) LIKE f_fold(lower(:aspf_1)))
+$criteria->getPreparedVars();  // [':aspf_1' => '%jose%']
+
+// Os estados de um módulo, no lugar de NOESC:(SELECT ...): os valores ligados, os literais intactos
+$moduleId = 7;
+$states = Spec::inSubquery('stateId', 'module_states', 'id',
+    Spec::property('moduleId', Spec::equalTo($moduleId))->and(Spec::property('deletedAt', Spec::isNull())));
+$criteria = Spec::toCriteria($states);
+$criteria->dump(true);
+// (state_id IN (SELECT sq.id FROM module_states sq WHERE sq.id IS NOT NULL AND (sq.module_id = :par_1 AND sq.deleted_at IS NULL)))
+$criteria->getPreparedVars();  // [':par_1' => 7]
+
+// Existe uma linha relacionada: um comando só para uma consulta escrita à mão
+$withReport = Spec::existsIn('claim_document', ['claim_id' => 'id'], Spec::property('kind', Spec::equalTo('report')), 'claim');
+$where = Spec::toSql($withReport, 'pgsql');
+$where->toSql();
+// EXISTS (SELECT 1 FROM "claim_document" "sq" WHERE "sq"."claim_id" = "claim"."id" AND (("sq"."kind" IS NOT NULL AND "sq"."kind" = :ps1_1)))
+$where->getParameters();       // [':ps1_1' => 'report']
+$withReport->evaluate((object) ['id' => 1])->isError;   // true: uma subquery é avaliada só pelo banco
+```
+
+- **Acento num TCriteria** (`Spec::toCriteria(..., accentFolding:)`, `TCriteriaBuilder::withAccentFolding()`, um dialeto ou o nome dele). As folhas do exemplo 20 viram um filtro que escreve exatamente a condição que o `toSql()` escreve para aquele dialeto, com o valor ligado cru num marcador próprio (`:aspf_N`) e dobrado pelo banco dos dois lados, mais `ESCAPE '!'` quando o padrão pede; a negação aceita a coluna NULL, como toda comparação negada. Três condições: o banco (PostgreSQL 13+ em UTF8, pela dobra embutida de cerca de 10 KB por condição ou, melhor, pela função `f_fold` do exemplo 20 com um índice de expressão; MySQL/MariaDB pela collation sem acento, com `regex()` recusada como no `toSql()`; qualquer outro dialeto continua recusando), **uma conexão com `prep = 1`** (o valor nunca é concatenado: com `prep = 0` o marcador sem valor é erro de SQL) e os limites do `toSql()` do mesmo dialeto. Sem o dialeto, a recusa é a da 2.1.0, agora apontando o `withAccentFolding()`.
+- **Subqueries** (`Spec::inSubquery($property, $table, $column, $where, $innerFieldMap)` e `Spec::existsIn($table, $on, $where, $outerTable, $innerFieldMap)`). A outra tabela é lida como `sq`, o filtro dela é uma especificação comum sobre as colunas dela, traduzida pelo mesmo visitor (valores ligados, `(SELECT`/`NOESC:` continuam recusados lá dentro), a coluna selecionada é sempre filtrada com `IS NOT NULL` (o `NOT IN` continua de dois valores), e o `not()` dá `NOT IN` (verdadeiro para coluna NULL) e `NOT EXISTS`. O `$on` liga uma coluna da outra tabela a uma propriedade do candidato, que passa pelo mapeamento externo e é qualificada com o `$outerTable` (num TCriteria, a tabela do modelo). Os identificadores são validados na construção: segmentos simples (`[A-Za-z_][A-Za-z0-9_$]*`) ou entre aspas duplas (`"aflow-engine".module_states`, recitados pelo dialeto no `toSql()`); qualquer outra coisa é `UnsafeIdentifierException`, e nenhum literal entra no texto SQL. Em memória a subquery é erro de avaliação (`DatabaseOnlySpecificationException`, nunca verdadeiro nem falso); o codec a recusa (um documento de regra de um catálogo editável não pode nomear tabelas); o `PdoRepository` continua com o `Spec::inQuery()`, que aplica o mapeamento e o escopo de leitura dele. A outra tabela não recebe o soft delete nem os prefiltros de um ORM: escreva `deletedAt IS NULL` no `$where`. Fora do alcance: `JOIN`, `UNION` e agregados dentro da subquery.
+
+### 22.2. Fontes de Dados Assíncronas (Módulo 36)
+
+Alguns fornecedores respondem em dois passos: um bureau de crédito cria uma análise e devolve um ticket, e o resultado é lido depois. A `AsyncDataSource` envia um pedido **uma vez**, guarda o ticket e o consulta a cada resolução; até o resultado ficar pronto, a folha responde um erro de avaliação tipado (`DataPendingException`) que nunca aprova nem reprova. Nada na biblioteca espera ou faz laço: a próxima requisição do usuário, ou a próxima rodada de um job, pergunta de novo.
+
+```php
+use Antevemus\ASpecification\Resolution\AsyncDataSource;
+use Antevemus\ASpecification\Resolution\AsyncPoll;
+use Antevemus\ASpecification\Resolution\DataRequest;
+use Antevemus\ASpecification\Resolution\DataResolver;
+use Antevemus\ASpecification\Resolution\DataSourceRegistry;
+use Antevemus\ASpecification\Resolution\InMemoryAsyncTicketStore;
+use Antevemus\ASpecification\Spec;
+
+// $bureau: o cliente de um fornecedor que cria uma análise agora e a responde depois
+$sources = (new DataSourceRegistry())->register('bureau.score', new AsyncDataSource(
+    submit: fn(DataRequest $request, string $key): string => $bureau->createAnalysis($request->get('cpf'), $key),
+    poll: fn(string $ticket): AsyncPoll => $bureau->isDone($ticket) ? AsyncPoll::ready($bureau->score($ticket)) : AsyncPoll::pending(retryAfter: 30),
+    tickets: new InMemoryAsyncTicketStore(),         // em produção, uma tabela da aplicação (CallableAsyncTicketStore)
+    reconcile: fn(DataRequest $request): ?string => $bureau->findAnalysis($request->get('cpf')),
+));
+$scoreOk = Spec::external('bureau.score', ['cpf' => 'cpf'], Spec::greaterThanOrEqualTo(700))->withCode('SCORE_LOW');
+$resolver = new DataResolver($sources);
+$tenant = (object) ['cpf' => '111.444.777-35'];
+
+$first = $resolver->evaluate($scoreOk, $tenant);
+$first->isPending();                                             // true: enviado, não pronto: nem aprovado nem reprovado
+$resolver->evaluate(Spec::not($scoreOk), $tenant)->isSatisfied;  // false: o NOT não inverte um dado pendente
+// ... a próxima requisição, ou a próxima rodada do job, quando o bureau terminar
+$resolver->evaluate($scoreOk, $tenant)->isSatisfied;            // true (score 720)
+$bureau->created;                                                // 1: a análise foi criada uma vez
+```
+
+- **Pendente é erro, não um quarto valor de verdade.** A `DataPendingException` (`getSource()`, `getTicket()`, `getRetryAfter()`, informativo) vira o erro de avaliação da folha: o AND propaga, o NOT não inverte, o OR mantém a regra dele (erro à esquerda encerra a disjunção). `SpecificationResult::isPending()`, `RuleEngineVerdict::isPending()` (um veredito pendente continua bloqueando) e `ResolvedData::getPendingRequests()` o distinguem de uma falha real. Quando uma avaliação encontrou um erro real antes do dado pendente, o resultado guarda o primeiro, então não é pendente.
+- **No máximo um envio por pedido.** A chave é o `DataRequest::getKey()` (a fonte e os parâmetros), entregue também ao `submit` como chave de idempotência para o fornecedor que aceitar uma. O store (`IAsyncTicketStore`: `get`, `markSubmitting`, uma reivindicação que vale uma vez, `storeTicket`, `clear`) marca a chave antes de enviar; uma chave achada "submitting" sem ticket (o processo parou entre enviar e gravar) nunca é reenviada: o `reconcile` a procura no fornecedor e, sem ele, a busca falha fechada (`DataFetchException`, "submission outcome unknown") até a chave ser limpa. O ticket fica guardado depois de lido o resultado, então perguntar de novo lê o mesmo resultado; `AsyncPoll::failed()` é falha terminal, reenviada só com `resubmitAfterFailure: true`. Um valor pronto vai para o cache pelo TTL da fonte; um pendente nunca vai. O `CallableAsyncTicketStore` mapeia o store numa tabela da aplicação com quatro closures; não há tabela da biblioteca.
+
+### 22.3. Adianti Como Host de Primeira Classe (Módulo 36)
+
+A biblioteca roda dentro de telas do Adianti Framework sem que nenhuma classe de `src/` dependa dos widgets do Adianti. Três receitas, executadas pela suíte contra os stubs de `tests/Stubs/Adianti`:
+
+- **A transação da tela.** O `TTransaction::open()` sempre abre uma conexão **nova** e a empilha, então `new TransactionMiddleware(fn() => TTransaction::open('db'), ...)` numa tela que já abriu transação grava numa segunda conexão, confirmada à parte: o rollback da tela a deixa gravada. O `AdiantiTransaction` abaixo entra na transação aberta (abre e encerra uma só quando não há nenhuma, e a tela mantém a decisão quando ele entrou); `new PdoTransactionManager(TTransaction::get())` também entra nela.
+- **O resultado na tela.** O `UseCaseFeedback` mostra um `UseCaseResult` com `TToast`/`TMessage`: as mensagens das regras numa recusa, uma referência no `FAILED` (nunca a mensagem da exceção, que pode trazer SQL e valores), "em processamento" no `ACCEPTED` (o par de um dado pendente, 22.2).
+- **O critério.** Conexão com `prep = 1` (o padrão das aplicações Adianti novas; exigido pelo `withAccentFolding()` e pelas subqueries do 22.1), `inSubquery()`/`existsIn()` no lugar de `NOESC:(SELECT ...)`, e no mínimo `^2.1.1` para o `toCriteria()` (um OR na raiz é aninhado antes de o `TRepository` acrescentar o soft delete e os prefiltros).
+
+```php
+use Adianti\Database\TTransaction;
+use Adianti\Widget\Dialog\TMessage;
+use Adianti\Widget\Dialog\TToast;
+use Antevemus\ASpecification\Spec;
+use Antevemus\ASpecification\UseCase\IUseCase;
+use Antevemus\ASpecification\UseCase\TransactionMiddleware;
+use Antevemus\ASpecification\UseCase\UseCaseResult;
+use Antevemus\ASpecification\UseCase\UseCaseStatus;
+
+/** Entra na transação que a tela abriu; abre (e encerra) uma só quando não há nenhuma. */
+final class AdiantiTransaction
+{
+    private bool $opened = false;
+
+    public function __construct(private readonly string $database) {}
+
+    public function middleware(): TransactionMiddleware
+    {
+        return new TransactionMiddleware($this->begin(...), $this->commit(...), $this->rollback(...));
+    }
+
+    public function begin(): void
+    {
+        if (TTransaction::get() === null) {
+            TTransaction::open($this->database);
+            $this->opened = true;
+        }
+    }
+
+    public function commit(): void
+    {
+        if ($this->opened) {
+            $this->opened = false;
+            TTransaction::close();
+        }
+    }
+
+    public function rollback(): void
+    {
+        if ($this->opened) {
+            $this->opened = false;
+            TTransaction::rollback();
+        }
+    }
+}
+
+/** Um UseCaseResult numa tela Adianti: as mensagens das regras, nunca a mensagem de uma exceção. */
+final class UseCaseFeedback
+{
+    public static function show(UseCaseResult $result, string $done): void
+    {
+        match (true) {
+            $result->getStatus() === UseCaseStatus::ACCEPTED => TToast::show('info', 'Received: being processed.'),
+            $result->isSuccess() => TToast::show('success', $done),
+            $result->getStatus() === UseCaseStatus::FAILED => new TMessage('error', 'Unexpected error. Reference: ' . ($result->getCorrelationId() ?? '-')),
+            default => new TMessage('error', implode('<br>', array_map(fn($failure) => $failure->message, $result->getErrors()))),
+        };
+    }
+}
+
+final class OpenClaim implements IUseCase
+{
+    public function execute(object $request): UseCaseResult
+    {
+        TTransaction::get()->prepare('INSERT INTO claim_history (claim_id, event) VALUES (?, ?)')->execute([$request->claimId, 'opened']);
+
+        return UseCaseResult::created($request->claimId);
+    }
+}
+
+$useCases = Spec::useCaseRunner(middlewares: [(new AdiantiTransaction('rental'))->middleware()]);
+
+TTransaction::open('rental');                                            // a transação da própria tela
+$result = $useCases->run(new OpenClaim(), (object) ['claimId' => 7]);    // entra nela: uma conexão, um commit
+$result->isSuccess() ? TTransaction::close() : TTransaction::rollback();
+UseCaseFeedback::show($result, 'Claim opened.');                         // TToast: 'Claim opened.'
+```
 
 ---
 
@@ -2195,11 +2414,13 @@ src/
 │   ├── Repositories/         # IRepository, IPartitionRepository, IPersistent...
 │   ├── Concurrent/           # ISynchronizer
 │   ├── Helpers/              # IStopWatch, IInstrumentationUtils
-│   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog... (findRuleByCode(), getSpecJson(): v2.4.0)
+│   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog... (findRuleByCode(), getSpecJson(): v2.4.0); ILookupOnlyRuleTypes, IRuleTypeCatalog (v2.5.0)
 │   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause, ISqlPagination, ISqlAccentInsensitiveLike (v2.1.0), ISqlRegexRewriter (v2.3.0)
 ├── Entities/                  # Classes base abstratas de entidades, UUIDs e geradores de ID aleatórios
 ├── Specifications/            # Implementações concretas de regras
 │   ├── SpecificationSimplifier.php # simplify(): árvore equivalente e menor (v1.9.0)
+│   ├── LabelledSpecification.php # labelled(): um rótulo humano para o alvo de uma falha (v2.5.0)
+│   ├── Subquery/             # InSubquerySpecification, ExistsSubquerySpecification: Spec::inSubquery()/existsIn(), avaliadas pelo banco (v2.5.0)
 │   ├── Comparison/           # Equal, GreaterThan, LessThan, RelationalOperator
 │   ├── Logical/              # AlwaysTrue, AlwaysFalse, JointDenial (NOR), DefaultValue
 │   ├── String/               # Regex, Wildcard, DateString, EnumName; TextComparison, EqualIgnoreCaseAndAccents (v2.1.0); Regex e Wildcard recebem um TextComparison (v2.3.0)
@@ -2214,7 +2435,7 @@ src/
 │   │                         # v1.14.0: JoinTableHop; Mapping/ ManyToMany; Exceptions/ DataIntegrityException (Módulos 25 e 26)
 │   └── Serialization/        # JsonEntitySerializer (o serializer nativo do PHP saiu na v2.0.0)
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
-├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders
+├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders; RulePrecedence (v2.5.0)
 │   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException, LegacyVocabularyException (v2.0.0)
 │   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
 │   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET
@@ -2228,7 +2449,8 @@ src/
 ├── Criteria/                  # TCriteria Builder & Adianti Database Bridge (Módulo 13)
 │   ├── Exceptions/           # CriteriaBuilderException, NonTranslatableCriteriaException
 │   ├── CriteriaSpecificationVisitor.php # Visitor GoF que compila a AST para TCriteria/TFilter
-│   └── TCriteriaBuilder.php  # Builder fluente com paginação, ordenação e mapeamento de campos
+│   ├── TAccentInsensitiveFilter.php, TSubqueryFilter.php, TConstantFilter.php # TFilters donos da própria renderização: sem acento para um banco declarado, subqueries, `1 = 1`/`1 = 0` nunca ligados (v2.5.0)
+│   └── TCriteriaBuilder.php  # Builder fluente com paginação, ordenação e mapeamento de campos; withAccentFolding() (v2.5.0)
 ├── Linq/                      # ALinq Synergy & Coleções Fluentes (Módulo 14)
 │   ├── Exceptions/           # NonTranslatableLinqException (v1.10.0)
 │   ├── ALinqBridge.php       # Ponte fluente entre repositórios e coleções ALinq
@@ -2254,7 +2476,8 @@ src/
 │   ├── ExternalDataSpecification.php # Spec::external(): a folha que declara o dado externo
 │   ├── DataResolver.php      # resolve()/evaluate(); ResolutionPolicy concurrent()/tiered()/sequential()
 │   ├── HttpDataSource.php    # Modelo de URL com parâmetros codificados, buscado por curl_multi
-│   └── CallableDataSource.php # Qualquer callable síncrono; DataSourceRegistry, IDataCache, InMemoryDataCache
+│   ├── CallableDataSource.php # Qualquer callable síncrono; DataSourceRegistry, IDataCache, InMemoryDataCache
+│   └── AsyncDataSource.php   # Envia uma vez, consulta depois (v2.5.0): AsyncPoll, IAsyncTicketStore, stores InMemory e Callable; Exceptions/DataPendingException
 ├── FeatureFlags/              # Feature flags declaradas (Módulo 27, v2.1.0): FeatureFlags, FeatureFlagRegistry, FeatureFlagDefinition, FeatureEnabledSpecification, FeatureFlagReason; FeatureFlagChangeKind (v2.3.0)
 │   ├── Exceptions/           # FeatureFlagException, FeatureFlagStoreException, StaleFeatureFlagException, UndeclaredFeatureFlagException...
 │   └── PdoFeatureFlagStore.php # IFeatureFlagStore sobre as tabelas de resources/sql/feature_flags.ansi.sql (ou existentes); InMemoryFeatureFlagStore
@@ -2273,7 +2496,7 @@ A biblioteca possui ampla cobertura de testes unitários e de integração, gara
 php tests/run_all.php
 ```
 
-Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 22 também imprime o seu benchmark (10 000 linhas no SQLite) e, sem as variáveis `ASPEC_PDO_*`, que as rodadas em PostgreSQL e MySQL foram puladas, o Módulo 24 as suas varreduras sobre 1 000 e 10 000 linhas, o Módulo 25 as suas medições de lote, de `updateWhere()` e as paridades de nulos com subconsultas e com `Char`, o Módulo 26 os benchmarks de carga ansiosa (1 000 pais × 10 filhos, 1 000 donos × 5 alvos) e o pico de memória de `iterate()` com relações em 2 000 e 10 000 linhas, o Módulo 13 a sua rodada de 400 árvores sobre 320 linhas contra os filtros que o `TRepository` acrescenta, o Módulo 27 que as rodadas em PostgreSQL, MySQL e MariaDB foram puladas sem as variáveis `ASPEC_PDO_*`, os Módulos 28 e 29 que a `ext-intl` está ausente, então só a recusa foi verificada (com a `ext-intl` eles rodam as baterias sem acento: o Módulo 28 cerca de 650 asserções no PHP 8.4, o Módulo 29 cerca de 1 500 com os três bancos), o Módulo 30 a distribuição do seu rollout sobre 10 000 sujeitos e que as rodadas nos bancos foram puladas, e o Módulo 31 que as rodadas em PostgreSQL, MySQL e MariaDB foram puladas; essas linhas foram omitidas aqui:
+Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 22 também imprime o seu benchmark (10 000 linhas no SQLite) e, sem as variáveis `ASPEC_PDO_*`, que as rodadas em PostgreSQL e MySQL foram puladas, o Módulo 24 as suas varreduras sobre 1 000 e 10 000 linhas, o Módulo 25 as suas medições de lote, de `updateWhere()` e as paridades de nulos com subconsultas e com `Char`, o Módulo 26 os benchmarks de carga ansiosa (1 000 pais × 10 filhos, 1 000 donos × 5 alvos) e o pico de memória de `iterate()` com relações em 2 000 e 10 000 linhas, o Módulo 13 a sua rodada de 400 árvores sobre 320 linhas contra os filtros que o `TRepository` acrescenta, o Módulo 27 que as rodadas em PostgreSQL, MySQL e MariaDB foram puladas sem as variáveis `ASPEC_PDO_*`, os Módulos 28 e 29 que a `ext-intl` está ausente, então só a recusa foi verificada (com a `ext-intl` eles rodam as baterias sem acento: o Módulo 28 cerca de 650 asserções no PHP 8.4, o Módulo 29 cerca de 1 500 com os três bancos), o Módulo 30 a distribuição do seu rollout sobre 10 000 sujeitos e que as rodadas nos bancos foram puladas, o Módulo 31 que as rodadas em PostgreSQL, MySQL e MariaDB foram puladas, e o Módulo 36 que a `ext-intl` falta (a bateria sem acento do `toCriteria()` roda nos contêineres com ela), a sua bateria de subqueries no SQLite e que as rodadas nos bancos foram puladas; essas linhas foram omitidas aqui:
 
 ```text
 ====================================================================
@@ -2293,7 +2516,7 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 
 • [SUITE] Módulo 11: Dynamic Rule Engine & Requisitos Documentais... ✅ PASS (859 asserções)
 • [SUITE] Módulo 12: SQL Query Visitor & Multi-SGBD Dialects... ✅ PASS (536 asserções)
 • [SUITE] Módulo 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (576 asserções)
-• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (2107 asserções)
+• [SUITE] Módulo 14: ALinq Synergy & Coleções Fluentes LINQ... ✅ PASS (2179 asserções)
 • [SUITE] Módulo 15: Attributes Declarativos PHP 8.4 (#[AssertSpec])... ✅ PASS (221 asserções)
 • [SUITE] Módulo 16: Catálogo Relacional de Regras (PdoRuleCatalog)... ✅ PASS (1252 asserções)
 • [SUITE] Módulo 17: Máquina de Estados Dirigida por Especificações... ✅ PASS (618 asserções)
@@ -2311,20 +2534,21 @@ Relatório abaixo como o runner imprime; o tempo depende da máquina. O Módulo 
 • [SUITE] Módulo 29: Wildcard e Regex sem Acento (wildcard()/regex() com TextComparison)... ✅ PASS (585 asserções)
 • [SUITE] Módulo 30: Feature Flags II (janela de validade pelo serviço e rollout percentual)... ✅ PASS (441 asserções)
 • [SUITE] Módulo 31: Serialização de Especificações e Alvo de Flag por Regra do Catálogo... ✅ PASS (178 asserções)
+• [SUITE] Módulo 36: Motor de Regras, TCriteria e Dados Assíncronos para um Consumidor Real (tipos só consulta, precedência, rótulos, sem acento, subquery, pendente)... ✅ PASS (4353 asserções)
 
 ====================================================================
- RESULTADO FINAL: 31/31 SUÍTES APROVADAS (100% PASS)
- TOTAL DE ASSERÇÕES: 13558 | TEMPO: ~26s | REGRESSÕES: 0
+ RESULTADO FINAL: 32/32 SUÍTES APROVADAS (100% PASS)
+ TOTAL DE ASSERÇÕES: 17983 | TEMPO: ~26s | REGRESSÕES: 0
 ====================================================================
 ```
 
-- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 539 testes e 72.938 asserções no total, dois deles pulados sem a `ext-intl`). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`. Desde a v2.1.0, sete das suas asserções afirmam que limites inteiros não são fechados (as folhas do Domian são tipadas `Integer`, estas aceitam qualquer número), cada uma com nota.
-- **Bancada de solidez da álgebra (v2.1.0):** `tests/PhpUnit/AlgebraSoundnessTest.php` confere toda promessa da álgebra contra a avaliação: `equals()` (mesmas respostas e mesmas falhas anotadas), `isGeneralizationOf()`/`isSpecialCaseOf()`, `isDisjointWith()`, `isTautology()`/`isContradiction()`, `simplify()`, a deduplicação de `and()`/`or()` e a busca de partição. O pool de mais de 700 especificações cobre toda classe concreta de especificação de `src/` (comparação, `in`, nulos, texto com os três casos de `TextComparison`, datas, objetos-valor, coleções e entidades, chamadas de método, os invólucros de `a()`, subclasses de usuário com predicado próprio, variantes anotadas) e compostos gerados com semente fixa, testados par a par contra cerca de 80 candidatos de fronteira (o mesmo valor em instâncias distintas, o mesmo instante em outros fusos e classes, `'1'`/`1`/`true`, `null`, frações, acentos, entidades de tipos irmãos). Uma guarda reprova a suíte quando uma classe concreta de especificação fica fora do pool. A parte fixa roda na suíte padrão em cerca de 10 segundos; `ASPEC_SOUNDNESS_EXTENDED=1` a amplia para cerca de 3 milhões de pares e `ASPEC_SOUNDNESS_DUMP=<arquivo>` grava as violações como linhas JSON. O `AlgebraSoundnessCasesTest` guarda uma reprodução de cada defeito que ela achou, e o `DateSqlParityTest` compara memória e SQL para as folhas de data. Desde a v2.4.0 a bancada também confere a serialização (Módulo 31): toda árvore serializável do pool (497 de 726 sem a `ext-intl`, 510 de 736 com ela) volta `equals()` nos dois sentidos, com texto canônico e as mesmas respostas, e traduz para o mesmo SQL (ANSI, PostgreSQL, MySQL) e o mesmo `TCriteria`; toda outra árvore é recusada por motivo do contrato (callbacks, dados externos, flags, guards da máquina, folhas de usuário sem o contrato). O `SpecificationCodecTest` cobre o formato de todo nó, os valores, os limites e cerca de 46 documentos malformados.
+- **Suíte de paridade Domian:** `tests/Parity/` transcreve os testes do Domian (Java) para a álgebra de especificações, o DAG de partições, os synchronizers, entidades e utilitários (219 testes PHPUnit, 2.106 asserções; `vendor/bin/phpunit` roda 545 testes e 77.423 asserções no total, dois deles pulados sem a `ext-intl`). A auditoria por trás dela está em `docs/PARIDADE-DOMIAN-2026-10-09.md`. Desde a v2.1.0, sete das suas asserções afirmam que limites inteiros não são fechados (as folhas do Domian são tipadas `Integer`, estas aceitam qualquer número), cada uma com nota.
+- **Bancada de solidez da álgebra (v2.1.0):** `tests/PhpUnit/AlgebraSoundnessTest.php` confere toda promessa da álgebra contra a avaliação: `equals()` (mesmas respostas e mesmas falhas anotadas), `isGeneralizationOf()`/`isSpecialCaseOf()`, `isDisjointWith()`, `isTautology()`/`isContradiction()`, `simplify()`, a deduplicação de `and()`/`or()` e a busca de partição. O pool de mais de 700 especificações cobre toda classe concreta de especificação de `src/` (comparação, `in`, nulos, texto com os três casos de `TextComparison`, datas, objetos-valor, coleções e entidades, chamadas de método, os invólucros de `a()`, subclasses de usuário com predicado próprio, variantes anotadas) e compostos gerados com semente fixa, testados par a par contra cerca de 80 candidatos de fronteira (o mesmo valor em instâncias distintas, o mesmo instante em outros fusos e classes, `'1'`/`1`/`true`, `null`, frações, acentos, entidades de tipos irmãos). Uma guarda reprova a suíte quando uma classe concreta de especificação fica fora do pool. A parte fixa roda na suíte padrão em cerca de 10 segundos; `ASPEC_SOUNDNESS_EXTENDED=1` a amplia para cerca de 3 milhões de pares e `ASPEC_SOUNDNESS_DUMP=<arquivo>` grava as violações como linhas JSON. O `AlgebraSoundnessCasesTest` guarda uma reprodução de cada defeito que ela achou, e o `DateSqlParityTest` compara memória e SQL para as folhas de data. Desde a v2.4.0 a bancada também confere a serialização (Módulo 31): toda árvore serializável do pool (505 de 746 sem a `ext-intl`, 518 de 756 com ela, na 2.5.0) volta `equals()` nos dois sentidos, com texto canônico e as mesmas respostas, e traduz para o mesmo SQL (ANSI, PostgreSQL, MySQL) e o mesmo `TCriteria`; toda outra árvore é recusada por motivo do contrato (callbacks, dados externos, flags, guards da máquina, subqueries, folhas de usuário sem o contrato). Desde a v2.5.0 o pool tem alvos rotulados e as subqueries de `inSubquery()`/`existsIn()` (erro de avaliação em todo candidato), e rotular qualquer especificação do pool mantém as respostas, as falhas (reportadas contra o rótulo), o SQL e o `TCriteria` dela. O `SpecificationCodecTest` cobre o formato de todo nó, os valores, os limites e cerca de 46 documentos malformados.
 - **Mapeamento de APIs Públicas:** 1.200+ métodos documentados via PHPDoc corporativo padronizado.
 - **Rastreabilidade Java (Domian):** paridade conceitual e arquitetural com o framework original (API pública e nomes de classe seguem o Domian; ver a tabela de procedência em [NOTICE.md](NOTICE.md)).
 - **Decomposição Modular com Traits:** `SpecificationFactory` modularizada em 8 Traits especializados por domínio de regras.
 - **ALinq Synergy & Coleções Fluentes:** Sinergia nativa com `Antevemus.AlinqCollection`, com compilador `ALinqSpecificationVisitor`, o acessor de propriedades compartilhado com dot notation (`antevemus/adeep-property-access`) e integração em `InMemoryRepository`.
-- **Multi-SGBD SQL Translator:** 15 drivers (10 dialetos SQL) homologados com quoting de identificadores e prepared statements. O `PdoRepository` roda a sua bateria de contrato em SQLite na suíte e, por `tests/Fixtures/pdo_repository/run_portability.sh`, em PostgreSQL 17 e MySQL 8.4 em contêineres descartáveis; o mesmo script roda o store de feature flags (Módulo 27), a paridade de datas, as baterias sem acento (Módulos 28 e 29, em contêineres PHP 8.2 e 8.4 com `ext-intl`) as feature flags II com a migração da 2.1.0 (Módulo 30) e os corpos de regra serializados com a migração da 2.3.0 (Módulo 31) contra PostgreSQL 17, MySQL 8.4 e MariaDB 11.4.
+- **Multi-SGBD SQL Translator:** 15 drivers (10 dialetos SQL) homologados com quoting de identificadores e prepared statements. O `PdoRepository` roda a sua bateria de contrato em SQLite na suíte e, por `tests/Fixtures/pdo_repository/run_portability.sh`, em PostgreSQL 17 e MySQL 8.4 em contêineres descartáveis; o mesmo script roda o store de feature flags (Módulo 27), a paridade de datas, as baterias sem acento (Módulos 28 e 29, em contêineres PHP 8.2 e 8.4 com `ext-intl`) as feature flags II com a migração da 2.1.0 (Módulo 30) os corpos de regra serializados com a migração da 2.3.0 (Módulo 31) e, desde a v2.5.0, a precedência de regras, a bateria de subqueries e a bateria sem acento do `toCriteria()` executadas pelo Adianti real 8.1 e 8.7 (Módulo 36) contra PostgreSQL 17, MySQL 8.4 e MariaDB 11.4.
 - **Adianti Database Bridge:** Conversão completa para `TCriteria`/`TFilter` com De Morgan e precedência.
 
 ---
@@ -2355,7 +2579,7 @@ Principais destaques:
 14. **Acessor de propriedades compartilhado com o ALinq** (`antevemus/adeep-property-access`) (entregue na v2.0.0)
 15. **Resolução Concorrente de Dados para Especificações Dependentes de I/O** (núcleo entregue na v1.10.0)
 15b. **Adaptador Fibers/Revolt para Fontes Que Não São HTTP** (pacote satélite `antevemus/aspecification-async`)
-16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (16a entregue na v2.4.0; 16b agendado para a v2.5.0)
+16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (16a entregue na v2.4.0; 16b agendado para a v2.7.0)
 16a. **Serialização de Especificações** (JSON canônico com nomes curtos e estáveis, `SpecificationCodec`, nunca uma classe vinda da entrada) (entregue na v2.4.0)
 16b. **Adaptadores de Cache Distribuído** (PSR-16)
 17. **Compiladores AST para GraphQL & OpenAPI 3.1**
@@ -2377,6 +2601,10 @@ Principais destaques:
 26. **Auditoria de Solidez da Álgebra de Especificações** (bancada por força bruta sobre toda classe de especificação; a álgebra nunca promete mais do que a avaliação entrega) (entregue na v2.1.0)
 
 26b. **Decisões pendentes da bancada de solidez** (um valor-padrão tipado, `isBlankString()`/`defaultNumber()`/`defaultValueOfType()`, é "um valor daquele tipo, e o seu padrão" e recusa `null`, que só o `defaultValue()` sem tipo aceita; `NAN` é recusado pelas folhas ordenadas como candidato e como limite, de modo que `not(lessThan(v))` e `greaterThanOrEqualTo(v)` concordam em todo candidato que respondem) (Entregue na v2.2.0)
+
+27. **Motor de Regras para um Consumidor Real** (tipos de regra só consulta, a regra mais específica de um tipo, rótulo humano do alvo, Adianti como host) (Entregue na v2.5.0)
+28. **TCriteria Sem Acento e Com Subquery** (`withAccentFolding()`, `inSubquery()`, `existsIn()`, também no `toSql()`) (Entregue na v2.5.0)
+29. **Fontes de Dados Assíncronas** (`AsyncDataSource`: envia uma vez, consulta depois, dado pendente nunca aprovado nem reprovado) (Entregue na v2.5.0)
 
 ---
 
