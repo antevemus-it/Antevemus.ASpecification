@@ -16,7 +16,9 @@ use Antevemus\ASpecification\Contracts\Factory\ISpecificationWrapperFactory;
 use Antevemus\ASpecification\Contracts\Factory\IStringSpecificationFactory;
 use Antevemus\ASpecification\Contracts\Factory\ITypeSpecificationFactory;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\CollectionSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
@@ -68,7 +70,7 @@ use DateTimeInterface;
  * - Immutable constructor with static factory create()
  * - Domian SpecificationFactory names kept as aliases (allEntities, isGreaterThan, blankString, isEnum, ...)
  *
- * @version    2.3.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -115,11 +117,33 @@ final class SpecificationFactory implements
                 $this->validateType($type);
                 // The type specification Spec<T>: all instances of T (Domian all(T)); clauses are
                 // attached through AndSpecification/PropertySpecification, never stored here.
-                return new class($type) extends AbstractCompositeSpecification {
+                return new class($type) extends AbstractCompositeSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     protected function isSpecifyingAllInstancesOfItsType(): bool
                     {
                         return true;
+                    }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "type", "type": "<class or interface>"}`; reading it checks the type as Spec::specify() does (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['type' => $this->type];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['type']);
+                        $type = $codec->string($data, 'type');
+                        if (!class_exists($type) && !interface_exists($type)) {
+                            throw $codec->invalid(sprintf('Type "%s" does not exist.', $type));
+                        }
+
+                        return new static($type);
                     }
                 };
             }
@@ -301,7 +325,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function hasLength(ISpecification $lengthSpecification): ISpecification
             {
-                return new class($lengthSpecification) extends AbstractSpecification {
+                return new class($lengthSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(private readonly ISpecification $lengthSpec) {}
                     /** {@inheritdoc} */
@@ -312,6 +336,24 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'string'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "hasLength", "s": <node applied to the length>}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['s' => $this->lengthSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['s']);
+
+                        return new static($codec->specification($data, 's'));
+                    }
                 };
             }
 
@@ -375,7 +417,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function isToday(): ISpecification
             {
-                return new class extends AbstractSpecification {
+                return new class extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
@@ -385,13 +427,31 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "isToday"}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return [];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, []);
+
+                        return new static();
+                    }
                 };
             }
 
             /** {@inheritdoc} */
             public function isPast(): ISpecification
             {
-                return new class extends AbstractSpecification {
+                return new class extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
@@ -399,13 +459,31 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "isPast"}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return [];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, []);
+
+                        return new static();
+                    }
                 };
             }
 
             /** {@inheritdoc} */
             public function isFuture(): ISpecification
             {
-                return new class extends AbstractSpecification {
+                return new class extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
@@ -413,6 +491,24 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return DateTimeInterface::class; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "isFuture"}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return [];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, []);
+
+                        return new static();
+                    }
                 };
             }
         };
@@ -421,7 +517,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function hasSize(ISpecification $sizeSpecification): ISpecification
             {
-                return new class($sizeSpecification) extends AbstractSpecification {
+                return new class($sizeSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(private readonly ISpecification $sizeSpec) {}
                     /** {@inheritdoc} */
@@ -437,6 +533,24 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'iterable'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "hasSize", "s": <node applied to the count>}` (isEmpty() is hasSize(eq 0)) (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['s' => $this->sizeSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['s']);
+
+                        return new static($codec->specification($data, 's'));
+                    }
                 };
             }
 
@@ -449,7 +563,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function include(ISpecification $countSpecification, ISpecification $elementSpecification): ISpecification
             {
-                return new class($countSpecification, $elementSpecification) extends AbstractSpecification {
+                return new class($countSpecification, $elementSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(
                         private readonly ISpecification $countSpec,
@@ -467,13 +581,31 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'iterable'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "include", "n": <node applied to the count of matching items>, "s": <node applied to each item>}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['n' => $this->countSpec, 's' => $this->elementSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['n', 's']);
+
+                        return new static($codec->specification($data, 'n'), $codec->specification($data, 's'));
+                    }
                 };
             }
 
             /** {@inheritdoc} */
             public function includePercentageOf(ISpecification $percentageSpecification, ISpecification $elementSpecification): ISpecification
             {
-                return new class($percentageSpecification, $elementSpecification) extends AbstractSpecification {
+                return new class($percentageSpecification, $elementSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(
                         private readonly ISpecification $percentageSpec,
@@ -495,6 +627,24 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'iterable'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "includePercentageOf", "n": <node applied to the percentage of matching items>, "s": <node applied to each item>}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['n' => $this->percentageSpec, 's' => $this->elementSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['n', 's']);
+
+                        return new static($codec->specification($data, 'n'), $codec->specification($data, 's'));
+                    }
                 };
             }
 
@@ -507,7 +657,7 @@ final class SpecificationFactory implements
             /** {@inheritdoc} */
             public function any(ISpecification $elementSpecification): ISpecification
             {
-                return new class($elementSpecification) extends AbstractSpecification {
+                return new class($elementSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(private readonly ISpecification $elementSpec) {}
                     /** {@inheritdoc} */
@@ -521,13 +671,31 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'iterable'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "any", "s": <node applied to each item>}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['s' => $this->elementSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['s']);
+
+                        return new static($codec->specification($data, 's'));
+                    }
                 };
             }
 
             /** {@inheritdoc} */
             public function none(ISpecification $elementSpecification): ISpecification
             {
-                return new class($elementSpecification) extends AbstractSpecification {
+                return new class($elementSpecification) extends AbstractSpecification implements ISerializableSpecification {
                     /** {@inheritdoc} */
                     public function __construct(private readonly ISpecification $elementSpec) {}
                     /** {@inheritdoc} */
@@ -541,6 +709,24 @@ final class SpecificationFactory implements
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'iterable'; }
+
+                    /**
+                     * {@inheritdoc}
+                     *
+                     * Serialized as `{"t": "none", "s": <node applied to each item>}` (2.4.0, forward 041).
+                     */
+                    public function toArray(): array
+                    {
+                        return ['s' => $this->elementSpec];
+                    }
+
+                    /** {@inheritdoc} */
+                    public static function fromArray(array $data, SpecificationCodec $codec): static
+                    {
+                        $codec->expectKeys($data, ['s']);
+
+                        return new static($codec->specification($data, 's'));
+                    }
                 };
             }
         };
@@ -652,7 +838,7 @@ final class SpecificationFactory implements
             return $specification;
         }
 
-        return new class($specification) extends AbstractCompositeSpecification {
+        return new class($specification) extends AbstractCompositeSpecification implements ISerializableSpecification {
             /** {@inheritdoc} */
             public function __construct(private readonly ISpecification $inner)
             {
@@ -701,6 +887,24 @@ final class SpecificationFactory implements
             public function isDisjointWith(ISpecification $specification): bool
             {
                 return $this->inner->isDisjointWith($specification);
+            }
+
+            /**
+             * {@inheritdoc}
+             *
+             * Serialized as `{"t": "a", "s": <wrapped node>}` (2.4.0, forward 041).
+             */
+            public function toArray(): array
+            {
+                return ['s' => $this->inner];
+            }
+
+            /** {@inheritdoc} */
+            public static function fromArray(array $data, SpecificationCodec $codec): static
+            {
+                $codec->expectKeys($data, ['s']);
+
+                return new static($codec->specification($data, 's'));
             }
         };
     }

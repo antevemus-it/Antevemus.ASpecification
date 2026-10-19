@@ -11,6 +11,8 @@ use Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 use DateTimeInterface;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * InSpecification - Leaf specification for set membership (`x ∈ V`).
@@ -51,14 +53,14 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class InSpecification extends AbstractSpecification implements ILeafSpecification
+class InSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -295,5 +297,25 @@ class InSpecification extends AbstractSpecification implements ILeafSpecificatio
     public function __toString(): string
     {
         return 'InSpecification';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "in", "v": [1, 2]}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['v' => $this->values];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['v']);
+
+        return new static($codec->values($data, 'v'));
     }
 }

@@ -15,6 +15,8 @@ use DateTime;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * MethodParameterizedSpecification - Declarative method call on the candidate.
@@ -69,14 +71,14 @@ use DateTimeZone;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Reflection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class MethodParameterizedSpecification extends AbstractSpecification implements ILeafSpecification
+class MethodParameterizedSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -459,5 +461,39 @@ class MethodParameterizedSpecification extends AbstractSpecification implements 
         }
 
         return $a === $b;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "method", "m": "<method>", "args": [...], "s": <node>}` (2.4.0, forward 041,
+     * the declarative `method` of forward 018 RN-08), with `"type"` when the declared candidate type is not
+     * `mixed`. The arguments are the declarative values of the constructor: a BackedEnum argument needs its
+     * enum in the allowlist of the codec.
+     */
+    public function toArray(): array
+    {
+        $data = ['m' => $this->methodName, 'args' => $this->arguments];
+        if ($this->type !== 'mixed') {
+            $data['type'] = $this->type;
+        }
+        $data['s'] = $this->resultSpecification;
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['m', 'args', 's'], ['type']);
+
+        return new static(
+            $codec->string($data, 'm'),
+            $codec->values($data, 'args'),
+            $codec->specification($data, 's'),
+            (string) $codec->optionalString($data, 'type', 'mixed')
+        );
     }
 }

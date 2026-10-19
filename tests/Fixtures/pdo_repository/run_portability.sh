@@ -10,6 +10,9 @@
 # next to Module 28 (host PHP without intl: the refusal; intl containers: the battery on the three databases).
 # Forward 040, RN-04 (2.3.0): Module30_FeatureFlagsIITest, the validity window and the percentage rollout of
 # PdoFeatureFlagStore (and the additive migration of a 2.1.0 table) on the three of them.
+# Forward 041 (2.4.0): Module31_SpecificationSerializationTest, the spec_json column of PdoRuleCatalog,
+# findRuleByCode(), a feature flag targeted by a catalog rule and the additive migration of a 2.3.0 table,
+# on the three of them; and the codec tests (SpecificationCodecTest) with ext-intl in the PHP containers.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -76,7 +79,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();
@@ -141,5 +144,6 @@ DOCKERFILE
         -e ASPEC_PDO_MYSQL_DSN -e ASPEC_PDO_MYSQL_USER -e ASPEC_PDO_MYSQL_PASSWORD \
         -e ASPEC_PDO_MARIADB_DSN -e ASPEC_PDO_MARIADB_USER -e ASPEC_PDO_MARIADB_PASSWORD \
         "$image" php -d memory_limit=512M vendor/bin/phpunit --do-not-cache-result \
-        tests/PhpUnit/AlgebraSoundnessTest.php tests/PhpUnit/AlgebraSoundnessCasesTest.php tests/PhpUnit/DateSqlParityTest.php
+        tests/PhpUnit/AlgebraSoundnessTest.php tests/PhpUnit/AlgebraSoundnessCasesTest.php tests/PhpUnit/DateSqlParityTest.php \
+        tests/PhpUnit/SpecificationCodecTest.php
 done

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * WildcardExpressionMatcherIgnoreCaseStringSpecification - Leaf specification for case-insensitive wildcard matching.
@@ -27,14 +29,14 @@ use Antevemus\ASpecification\AbstractSpecification;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    2.3.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpecification
+class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     /** The IgnoreCase wildcard that answers for this specification (2.3.0). */
     private readonly WildcardSpecification $matcher;
@@ -88,5 +90,25 @@ class WildcardExpressionMatcherIgnoreCaseStringSpecification extends AbstractSpe
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "wildcardIgnoreCase", "p": "<pattern>"}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['p' => $this->pattern];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['p']);
+
+        return new static($codec->string($data, 'p'));
     }
 }

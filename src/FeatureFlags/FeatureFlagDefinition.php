@@ -22,11 +22,16 @@ use InvalidArgumentException;
  * - $subjectKey: the property path of the subject key (shared accessor notation of
  *   `antevemus/adeep-property-access`, e.g. `unit_id` or `unit.id`), read from the subject to match
  *   the subject list stored with the flag (the pilot "only these two agencies", without a deploy)
+ * - $targetRuleCode (2.4.0, forward 041, D8): the code of a rule of the catalog whose `spec_json` is the
+ *   target, instead of a specification in code (the two are exclusive): changing the rule in the catalog
+ *   changes the target without a deploy. FeatureFlags resolves it through the IRuleCatalog it is given and
+ *   evaluates it exactly as a target in code; a rule that is missing, has no `spec_json` or does not
+ *   decode makes the flag off with the reason ERROR (fail closed)
  *
  * The code follows `^[a-z][a-z0-9_]{2,79}$`: a lowercase letter, then 2 to 79 lowercase letters,
  * digits or underscores (the CHECK used by the first adopter's table).
  *
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -41,6 +46,7 @@ final class FeatureFlagDefinition
     /** Keys accepted by fromArray(), in snake_case. */
     public const ARRAY_KEYS = [
         'name', 'description', 'category', 'audience', 'impact_on', 'impact_off', 'origin', 'target', 'subject_key',
+        'target_rule_code',
     ];
 
     /**
@@ -54,7 +60,9 @@ final class FeatureFlagDefinition
      * @param string $origin Where it came from (task, ticket, release)
      * @param ISpecification|null $target Specification the subject must satisfy (null = no restriction)
      * @param string|null $subjectKey Property path of the subject key matched against the subject list
-     * @throws InvalidArgumentException When the code is not valid, the name is empty or the subject key is blank
+     * @param string|null $targetRuleCode Code of the catalog rule whose spec_json is the target (2.4.0; exclusive with $target)
+     * @throws InvalidArgumentException When the code is not valid, the name is empty, the subject key or the
+     *                                  target rule code is blank, or both $target and $targetRuleCode are given
      */
     public function __construct(
         public readonly string $code,
@@ -66,7 +74,8 @@ final class FeatureFlagDefinition
         public readonly string $impactOff = '',
         public readonly string $origin = '',
         public readonly ?ISpecification $target = null,
-        public readonly ?string $subjectKey = null
+        public readonly ?string $subjectKey = null,
+        public readonly ?string $targetRuleCode = null
     ) {
         self::assertCode($code);
         if (trim($name) === '') {
@@ -75,12 +84,30 @@ final class FeatureFlagDefinition
         if ($subjectKey !== null && trim($subjectKey) === '') {
             throw new InvalidArgumentException(sprintf('Feature flag "%s": the subject key path cannot be blank.', $code));
         }
+        if ($targetRuleCode !== null && trim($targetRuleCode) === '') {
+            throw new InvalidArgumentException(sprintf('Feature flag "%s": the target rule code cannot be blank.', $code));
+        }
+        if ($target !== null && $targetRuleCode !== null) {
+            throw new InvalidArgumentException(sprintf(
+                'Feature flag "%s" has a target in code and a target rule code: give one of them.',
+                $code
+            ));
+        }
+    }
+
+    /**
+     * Whether the flag restricts its subjects by a specification, in code or through a catalog rule (2.4.0).
+     */
+    public function hasTarget(): bool
+    {
+        return $this->target !== null || $this->targetRuleCode !== null;
     }
 
     /**
      * Builds a definition from an array entry such as `REGISTRY[$code]` of an application
      * (keys in snake_case: name, description, category, audience, impact_on, impact_off, origin,
-     * target, subject_key). An unknown key is refused, so that a typo never silently drops a text.
+     * target, subject_key, target_rule_code). An unknown key is refused, so that a typo never silently
+     * drops a text.
      *
      * @param string $code Flag code
      * @param array<string, mixed> $entry Entry of the application registry
@@ -115,6 +142,10 @@ final class FeatureFlagDefinition
         if ($subjectKey !== null && !is_string($subjectKey)) {
             throw new InvalidArgumentException(sprintf('Feature flag "%s": "subject_key" must be a string.', $code));
         }
+        $targetRuleCode = $entry['target_rule_code'] ?? null;
+        if ($targetRuleCode !== null && !is_string($targetRuleCode)) {
+            throw new InvalidArgumentException(sprintf('Feature flag "%s": "target_rule_code" must be a string.', $code));
+        }
 
         return new self(
             $code,
@@ -126,7 +157,8 @@ final class FeatureFlagDefinition
             $text('impact_off'),
             $text('origin'),
             $target,
-            $subjectKey
+            $subjectKey,
+            $targetRuleCode
         );
     }
 

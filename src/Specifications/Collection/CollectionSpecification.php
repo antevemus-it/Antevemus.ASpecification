@@ -5,6 +5,8 @@ namespace Antevemus\ASpecification\Specifications\Collection;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * CollectionSpecification - Leaf specification validating items within an iterable collection.
@@ -18,14 +20,14 @@ use Antevemus\ASpecification\Contracts\ISpecification;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class CollectionSpecification extends AbstractSpecification
+class CollectionSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     /**
      * Initializes the collection specification with an item rule.
@@ -65,5 +67,25 @@ class CollectionSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'iterable';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "all", "s": <node applied to every item>}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['s' => $this->itemSpecification];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['s']);
+
+        return new static($codec->specification($data, 's'));
     }
 }

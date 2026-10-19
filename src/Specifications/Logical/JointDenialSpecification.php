@@ -11,6 +11,8 @@ use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * JointDenialSpecification - Composite specification representing logical NOR (Joint Denial).
@@ -29,14 +31,14 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class JointDenialSpecification extends AbstractSpecification implements ICompositeSpecification
+class JointDenialSpecification extends AbstractSpecification implements ICompositeSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -217,5 +219,26 @@ class JointDenialSpecification extends AbstractSpecification implements IComposi
             SpecificationAlgebra::flattenDisjunction($this->left),
             SpecificationAlgebra::flattenDisjunction($this->right)
         );
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "nor", "s": [<left>, <right>]}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['s' => [$this->left, $this->right]];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['s']);
+        [$left, $right] = $codec->specifications($data, 's', 2, 2);
+
+        return new static($left, $right);
     }
 }

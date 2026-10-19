@@ -9,11 +9,14 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Engine\DocumentGroupSpecificationBuilder;
+use Antevemus\ASpecification\Engine\DocumentLeafSpecification;
 use Antevemus\ASpecification\Engine\DocumentRequirementMode;
 use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
+use Antevemus\ASpecification\Engine\DocumentSetSpecification;
 use Antevemus\ASpecification\Engine\RuleBoundSpecification;
 use Antevemus\ASpecification\Engine\RuleDefinition;
 use Antevemus\ASpecification\Entities\AbstractEntity;
+use Antevemus\ASpecification\FeatureFlags\FeatureEnabledSpecification;
 use Antevemus\ASpecification\FeatureFlags\FeatureFlagDefinition;
 use Antevemus\ASpecification\FeatureFlags\FeatureFlagRegistry;
 use Antevemus\ASpecification\FeatureFlags\FeatureFlags;
@@ -27,6 +30,9 @@ use Antevemus\ASpecification\Repositories\Pdo\Mapping\EntityMapping;
 use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Resolution\CallableDataSource;
 use Antevemus\ASpecification\Resolution\DataSourceRegistry;
+use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
+use Antevemus\ASpecification\Serialization\Exceptions\NonSerializableSpecificationException;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
@@ -279,7 +285,15 @@ final class AsbEven extends AbstractSpecification
  * and deeper random trees, every composite pair instead of the pairs of the same family);
  * ASPEC_SOUNDNESS_DUMP=<file> writes every violation found as JSON lines (diagnosis).
  *
- * @version    2.3.0
+ * Serialization (2.4.0, forward 041, RN-02 and RN-04): every specification of the pool that the
+ * SpecificationCodec writes comes back equal (`decode(encode(s))->equals(s)`, both ways), with the same
+ * answers on every candidate and the same document (`encode(decode(encode(s))) === encode(s)`, and the
+ * same JSON text); the ones it refuses are refused for a reason of the contract (D3/D4: a callback, an
+ * external data leaf, a feature flag, a guard of the state machine, a subquery, a rule binding, a document
+ * requirement, a user class, a value object); the decoded specification translates to the same SQL (ANSI,
+ * PostgreSQL, MySQL, same parameters) and the same TCriteria as the original.
+ *
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -558,6 +572,250 @@ final class AlgebraSoundnessTest extends TestCase
         }
 
         self::assertNoViolations($violations);
+    }
+
+    // ==========================================
+    // Serialization (forward 041)
+    // ==========================================
+
+    /**
+     * RN-02 / D5: the round trip over the whole pool (leaves, negations, generated composites, annotated
+     * variants). Every specification the codec writes comes back equal, answering the same on every
+     * candidate, and its document (array and JSON text) is canonical; every refusal is one of the
+     * contract.
+     */
+    public function testSerializationRoundTripKeepsEverySerializableSpecificationOfThePool(): void
+    {
+        $world = self::world();
+        $codec = new SpecificationCodec();
+        $violations = [];
+        $serialized = 0;
+        $refused = [];
+        foreach ($world['specs'] as $i => $entry) {
+            try {
+                $document = $codec->encode($entry['spec']);
+            } catch (NonSerializableSpecificationException $e) {
+                if (!self::isRefusalOfTheContract($e)) {
+                    $violations[] = self::violation('serialization-refused', $entry, null, 1, $e->getMessage());
+                }
+                $group = self::refusalGroup($e);
+                $refused[$group] = ($refused[$group] ?? 0) + 1;
+                continue;
+            } catch (Throwable $e) {
+                $violations[] = self::violation('serialization-raised', $entry, null, 1, $e::class . ': ' . $e->getMessage());
+                continue;
+            }
+            $serialized++;
+            try {
+                $decoded = $codec->decode($document);
+                $again = $codec->encode($decoded);
+                $json = $codec->toJson($entry['spec']);
+                $fromJson = $codec->fromJson($json);
+                $jsonAgain = $codec->toJson($fromJson);
+            } catch (Throwable $e) {
+                $violations[] = self::violation('round-trip-raised', $entry, null, 1, $e::class . ': ' . $e->getMessage());
+                continue;
+            }
+            if (!$decoded->equals($entry['spec']) || !$entry['spec']->equals($decoded) || !$fromJson->equals($entry['spec'])) {
+                $violations[] = self::violation('round-trip-equals', $entry, null, 1, 'decoded: ' . json_encode($document, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                continue;
+            }
+            if ($again !== $document || $jsonAgain !== $json) {
+                $violations[] = self::violation('round-trip-canonical', $entry, null, 1, 'document changed: ' . $json . ' -> ' . $jsonAgain);
+                continue;
+            }
+            $k = self::firstDisagreement($world['truth'][$i], self::truthOf($decoded));
+            if ($k !== null || self::truthOf($fromJson) !== $world['truth'][$i]) {
+                $violations[] = self::violation('round-trip-answers', $entry, null, $k ?? 1, 'the decoded specification answers differently');
+            }
+        }
+
+        self::assertNoViolations($violations);
+        ksort($refused);
+        $summary = [];
+        foreach ($refused as $group => $count) {
+            $summary[] = "{$group} {$count}";
+        }
+        fwrite(STDOUT, sprintf(
+            "\n    [041 RN-02] pool de %d especificações: %d serializadas (ida e volta OK), %d recusadas pelo contrato (%s)\n",
+            count($world['specs']),
+            $serialized,
+            array_sum($refused),
+            implode(', ', $summary)
+        ));
+        // Not vacuous: the fixed pool writes 497 specifications (510 with ext-intl), the extended one more
+        self::assertGreaterThanOrEqual(400, $serialized, 'The pool must keep hundreds of serializable specifications');
+    }
+
+    /**
+     * RN-02: the specifications left out of the format (D4) are refused with the exception and the reason:
+     * a callback, a method call whose result is a callback, an external data leaf, a feature flag, a guard
+     * of the state machine; and a value without a serialized form (D3).
+     */
+    public function testSerializationRefusesTheSpecificationsOutOfTheContract(): void
+    {
+        $codec = new SpecificationCodec();
+        $byLabel = [];
+        foreach (self::world()['specs'] as $entry) {
+            $byLabel[$entry['label']] ??= $entry['spec'];
+        }
+        $expected = [
+            'predicate(is_int)' => [PredicateSpecification::class, 'callback', 'code, not data'],
+            'external(asb.x, equal(1))' => [ExternalDataSpecification::class, 'external', 'data source'],
+            'featureEnabled(on)' => [FeatureEnabledSpecification::class, 'featureEnabled', 'FeatureFlags service'],
+            'inState(r.a)' => [InStateSpecification::class, 'inState', 'guard of the state machine'],
+            'eventOrigin(external)' => [EventOriginSpecification::class, 'eventOrigin', 'guard of the state machine'],
+            'payloadHas(f)' => [PayloadHasSpecification::class, 'payloadHas', 'guard of the state machine'],
+            "inQuery(rows.id where label startsWith 'a')" => [InQuerySpecification::class, 'inQuery', 'PdoRepository'],
+            'ruleBound(property(x, equal(1)))' => [RuleBoundSpecification::class, 'ruleBound', 'catalog rule'],
+            'user even' => [AsbEven::class, '<AsbEven>', 'does not implement ISerializableSpecification'],
+            "user caseInsensitiveEqual('a')" => [AsbCaseInsensitiveEqual::class, '<AsbCaseInsensitiveEqual>', 'not registered in the codec'],
+        ];
+        foreach ($expected as $label => [$class, $path, $reason]) {
+            self::assertArrayHasKey($label, $byLabel, "pool leaf {$label}");
+            try {
+                $codec->encode($byLabel[$label]);
+                self::fail("{$label} must be refused");
+            } catch (NonSerializableSpecificationException $e) {
+                self::assertSame($class, $e->specificationClass, $label);
+                self::assertSame($path, $e->path, $label);
+                self::assertStringContainsString($reason, $e->getMessage(), $label);
+            }
+        }
+
+        // A method call whose result is a callback (D4: "MethodParameterized with a closure")
+        try {
+            $codec->encode(Spec::calling('total', [3], new PredicateSpecification(static fn(mixed $n): bool => $n > 5)));
+            self::fail('a method call with a callback must be refused');
+        } catch (NonSerializableSpecificationException $e) {
+            self::assertSame('method.callback', $e->path);
+            self::assertSame(PredicateSpecification::class, $e->specificationClass);
+        }
+
+        // Values without a serialized form (D3): a value object, inside a property
+        try {
+            $codec->encode($byLabel['property(x, equal(Money(1)))']);
+            self::fail('a value object must be refused');
+        } catch (NonSerializableSpecificationException $e) {
+            self::assertNull($e->specificationClass);
+            self::assertSame('property.eq.v', $e->path);
+            self::assertStringContainsString(AsbMoney::class, $e->getMessage());
+        }
+        try {
+            $codec->encode($byLabel['in(Money(1), Money(1)#2)']);
+            self::fail('a value object in a set must be refused');
+        } catch (NonSerializableSpecificationException $e) {
+            self::assertSame('in.v[0]', $e->path);
+        }
+    }
+
+    /**
+     * RN-04: the decoded specification translates to the same SQL (ANSI, PostgreSQL, MySQL; same text, same
+     * parameters) and to the same TCriteria (dump) as the original, for every serializable specification of
+     * the pool; a translation that refuses the original refuses the decoded one with the same exception.
+     */
+    public function testDecodedSpecificationsTranslateToTheSameSqlAndCriteria(): void
+    {
+        $codec = new SpecificationCodec();
+        $violations = [];
+        $compared = 0;
+        $translated = ['ansi' => 0, 'pgsql' => 0, 'mysql' => 0, 'criteria' => 0];
+        foreach (self::world()['specs'] as $entry) {
+            try {
+                $decoded = $codec->decode($codec->encode($entry['spec']));
+            } catch (NonSerializableSpecificationException) {
+                continue;
+            }
+            $compared++;
+            foreach (['ansi', 'pgsql', 'mysql'] as $dialect) {
+                $expected = self::sqlOf($entry['spec'], $dialect);
+                if ($expected !== self::sqlOf($decoded, $dialect)) {
+                    $violations[] = self::violation('sql-parity', $entry, null, 1, $dialect . ': ' . json_encode([$expected, self::sqlOf($decoded, $dialect)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                } elseif (!isset($expected['error'])) {
+                    $translated[$dialect]++;
+                }
+            }
+            $expected = self::criteriaOf($entry['spec']);
+            if ($expected !== self::criteriaOf($decoded)) {
+                $violations[] = self::violation('criteria-parity', $entry, null, 1, json_encode([$expected, self::criteriaOf($decoded)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            } elseif (!isset($expected['error'])) {
+                $translated['criteria']++;
+            }
+        }
+
+        self::assertNoViolations($violations);
+        fwrite(STDOUT, sprintf(
+            "\n    [041 RN-04] %d árvores decodificadas: mesmo SQL (ANSI %d, PostgreSQL %d, MySQL %d traduzidas; as demais recusadas igual) e mesmo TCriteria (%d traduzidas)\n",
+            $compared,
+            $translated['ansi'],
+            $translated['pgsql'],
+            $translated['mysql'],
+            $translated['criteria']
+        ));
+        self::assertGreaterThan(0, $translated['ansi'], 'some decoded trees translate to SQL');
+        self::assertGreaterThan(0, $translated['criteria'], 'some decoded trees translate to TCriteria');
+    }
+
+    /**
+     * A refusal of the contract: a specification out of the format (D4), a class of the application that
+     * is not registered, or a value without a serialized form (the value objects of the pool).
+     */
+    private static function isRefusalOfTheContract(NonSerializableSpecificationException $e): bool
+    {
+        $class = $e->specificationClass;
+        if ($class === null) {
+            return str_contains($e->getMessage(), AsbMoney::class);
+        }
+        if (str_contains($class, '\\Tests\\')) {
+            return true;
+        }
+        foreach ([PredicateSpecification::class, ExternalDataSpecification::class, FeatureEnabledSpecification::class, InStateSpecification::class, EventOriginSpecification::class, PayloadHasSpecification::class, InQuerySpecification::class, RuleBoundSpecification::class, DocumentLeafSpecification::class, DocumentSetSpecification::class] as $outOfContract) {
+            if (is_a($class, $outOfContract, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function refusalGroup(NonSerializableSpecificationException $e): string
+    {
+        if ($e->specificationClass === null) {
+            return 'valor AsbMoney';
+        }
+        $parts = explode('\\', $e->specificationClass);
+
+        return (string) end($parts);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function sqlOf(ISpecification $spec, string $dialect): array
+    {
+        try {
+            $where = Spec::toSql($spec, $dialect);
+        } catch (Throwable $e) {
+            return ['error' => $e::class];
+        }
+        $parameters = [];
+        foreach ($where->getParameters() as $name => $value) {
+            $parameters[$name] = $value instanceof DateTimeInterface ? $value->format('Y-m-d H:i:s.u P') : $value;
+        }
+
+        return ['sql' => $where->toSql(), 'parameters' => $parameters];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function criteriaOf(ISpecification $spec): array
+    {
+        try {
+            return ['dump' => Spec::toCriteria($spec)->dump()];
+        } catch (Throwable $e) {
+            return ['error' => $e::class];
+        }
     }
 
     // ==========================================

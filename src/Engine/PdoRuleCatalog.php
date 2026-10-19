@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
+use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 use Antevemus\ASpecification\Engine\Exceptions\RuleEngineException;
 use DateTimeInterface;
@@ -51,6 +52,13 @@ use PDOStatement;
  *   table and column NAMES, so those tables are read without renaming them; their action VALUES must
  *   be English since 2.0.0 (`bloquear`, `alertar`, `apenas_log` are refused; UPDATE in UPGRADE-2.0.md)
  * - No cache: a caching decorator wraps the catalog when needed
+ * - findRuleByCode() (2.4.0, forward 041, D7): the active rule with a code, whatever its scope, scenario
+ *   and product/plan (the validity window of withAsOf() still applies)
+ * - `spec_json` (2.4.0, forward 041, D7): the column the reference DDL gained in 2.4.0 (a rule whose body
+ *   is a serialized specification, see RuleDefinition::getSpecJson()). It is absent by default, so that a
+ *   table created by the DDL of 2.3.0 keeps being read untouched; a table that has it says so with
+ *   `columns: PdoRuleCatalog::COLUMNS_SINCE_2_4` (or `['spec_json' => '<real column>']`, merged with any
+ *   other mapping); `'spec_json' => null` keeps it absent
  *
  * Applicability lives in the columns `product_code`, `plan_code`, `valid_from`, `valid_until`: entries
  * under those four keys (or their Portuguese names of 1.6.x) inside the `parameters` JSON are dropped on
@@ -59,7 +67,7 @@ use PDOStatement;
  * Date columns must come back as ISO dates (`YYYY-MM-DD`), which is the default of every PDO driver
  * except Oracle (set `NLS_DATE_FORMAT` there).
  *
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -93,6 +101,15 @@ class PdoRuleCatalog implements IRuleCatalog
         'product_code', 'plan_code', 'valid_from', 'valid_until',
     ];
 
+    /** Canonical columns of the rule table added to the reference DDL in 2.4.0 (absent by default). */
+    public const RULE_COLUMNS_SINCE_2_4 = ['spec_json'];
+
+    /**
+     * Column map of a rule table created (or migrated) by the reference DDL of 2.4.0: the serialized
+     * specification of a rule. Pass it as `$columns` (merged with any other mapping).
+     */
+    public const COLUMNS_SINCE_2_4 = ['spec_json' => 'spec_json'];
+
     /** Canonical columns read from the document requirement group table. */
     public const GROUP_COLUMNS = ['id', 'code', 'scope', 'scenario', 'sort_order', 'active'];
 
@@ -120,8 +137,9 @@ class PdoRuleCatalog implements IRuleCatalog
      * @param string $schema Optional schema (or database) qualifying every table; '' = unqualified
      * @param array<string, string> $tables Table names by role (`rule`, `group`, `requirement`); missing
      *                                      roles keep the default
-     * @param array<string, string> $columns Real column names by canonical column; missing columns keep
-     *                                       the canonical name (see legacyPortugueseColumns())
+     * @param array<string, string|null> $columns Real column names by canonical column; missing columns keep
+     *                                       the canonical name (see legacyPortugueseColumns()); the columns
+     *                                       of RULE_COLUMNS_SINCE_2_4 are absent unless mapped (null = absent)
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
      * @throws LegacyVocabularyException When a role is one of the Portuguese roles of 1.x
@@ -169,12 +187,17 @@ class PdoRuleCatalog implements IRuleCatalog
         $known = self::canonicalColumns();
         $map = array_combine($known, $known);
         foreach ($columns as $canonical => $real) {
-            if (!is_string($canonical) || !in_array($canonical, $known, true)) {
+            $optional = in_array($canonical, self::RULE_COLUMNS_SINCE_2_4, true);
+            if (!is_string($canonical) || (!$optional && !in_array($canonical, $known, true))) {
                 throw new InvalidArgumentException(sprintf(
                     'Unknown rule catalog column "%s". Expected one of: %s.',
                     (string) $canonical,
-                    implode(', ', $known)
+                    implode(', ', [...$known, ...self::RULE_COLUMNS_SINCE_2_4])
                 ));
+            }
+            if ($optional && $real === null) {
+                unset($map[$canonical]);
+                continue;
             }
             if (!is_string($real) || preg_match(self::IDENTIFIER, $real) !== 1) {
                 throw new InvalidArgumentException(sprintf(
@@ -289,7 +312,8 @@ class PdoRuleCatalog implements IRuleCatalog
     }
 
     /**
-     * Returns the real column name of every canonical column.
+     * Returns the real column name of every canonical column (a column of RULE_COLUMNS_SINCE_2_4 only when
+     * it is mapped).
      *
      * @return array<string, string>
      */
@@ -321,19 +345,11 @@ class PdoRuleCatalog implements IRuleCatalog
             }
         }
 
-        if ($this->asOf !== null) {
-            $day = $this->asOf->format('Y-m-d');
-            $from = $this->column('valid_from');
-            $until = $this->column('valid_until');
-            $where[] = "({$from} IS NULL OR {$from} <= :as_of_from)";
-            $where[] = "({$until} IS NULL OR {$until} >= :as_of_until)";
-            $params[':as_of_from'] = $day;
-            $params[':as_of_until'] = $day;
-        }
+        $this->addValidityWindow($where, $params);
 
         $sql = sprintf(
             'SELECT %s FROM %s WHERE %s ORDER BY %s DESC, %s',
-            implode(', ', array_map(fn(string $c): string => $this->selectColumn('', $c), self::RULE_COLUMNS)),
+            $this->ruleSelectList(),
             $this->tables['rule'],
             implode(' AND ', $where),
             $this->column('priority'),
@@ -348,6 +364,25 @@ class PdoRuleCatalog implements IRuleCatalog
         // Final applicability pass (RN-17: reference_date, exact product/plan match) and priority
         // ordering through the in-memory contract: both catalogs answer the same way by construction.
         return (new InMemoryRuleCatalog($rules))->findRules($scope, $scenario, $filters);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * `active = 'Y' AND code = :code`, plus the validity window of withAsOf() when set (2.4.0, forward 041).
+     */
+    public function findRuleByCode(string $code): ?IRuleDefinition
+    {
+        $params = [':code' => $code];
+        $where = [$this->column('active') . " = 'Y'", $this->column('code') . ' = :code'];
+        $this->addValidityWindow($where, $params);
+
+        $rows = $this->fetchAll(
+            sprintf('SELECT %s FROM %s WHERE %s', $this->ruleSelectList(), $this->tables['rule'], implode(' AND ', $where)),
+            $params
+        );
+
+        return $rows === [] ? null : RuleDefinition::fromArray($this->normalizeRuleRow($rows[0]));
     }
 
     /** {@inheritdoc} */
@@ -393,6 +428,41 @@ class PdoRuleCatalog implements IRuleCatalog
         }
 
         return (new InMemoryRuleCatalog([], $documentRules))->findDocumentRules($scope, $scenario);
+    }
+
+    /**
+     * Adds the validity window of withAsOf() to a rule query, when set.
+     *
+     * @param list<string> $where Predicates, extended in place
+     * @param array<string, string> $params Bound parameters, extended in place
+     */
+    private function addValidityWindow(array &$where, array &$params): void
+    {
+        if ($this->asOf === null) {
+            return;
+        }
+        $day = $this->asOf->format('Y-m-d');
+        $from = $this->column('valid_from');
+        $until = $this->column('valid_until');
+        $where[] = "({$from} IS NULL OR {$from} <= :as_of_from)";
+        $where[] = "({$until} IS NULL OR {$until} >= :as_of_until)";
+        $params[':as_of_from'] = $day;
+        $params[':as_of_until'] = $day;
+    }
+
+    /**
+     * Select list of the rule table: RULE_COLUMNS, then the columns of RULE_COLUMNS_SINCE_2_4 that are mapped.
+     */
+    private function ruleSelectList(): string
+    {
+        $columns = self::RULE_COLUMNS;
+        foreach (self::RULE_COLUMNS_SINCE_2_4 as $optional) {
+            if (isset($this->columns[$optional])) {
+                $columns[] = $optional;
+            }
+        }
+
+        return implode(', ', array_map(fn(string $c): string => $this->selectColumn('', $c), $columns));
     }
 
     /**

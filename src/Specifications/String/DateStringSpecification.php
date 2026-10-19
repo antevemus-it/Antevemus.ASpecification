@@ -6,6 +6,8 @@ namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use DateTimeImmutable;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * DateStringSpecification - Leaf specification validating that a string is a valid formatted date.
@@ -18,14 +20,14 @@ use DateTimeImmutable;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.4.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class DateStringSpecification extends AbstractSpecification
+class DateStringSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     /**
      * Initializes the specification with an expected date format.
@@ -59,5 +61,25 @@ class DateStringSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "dateString", "format": "Y-m-d"}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['format' => $this->format];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['format']);
+
+        return new static($codec->string($data, 'format'));
     }
 }

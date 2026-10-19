@@ -9,6 +9,8 @@ use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * AlwaysFalseSpecification - Contradictory leaf specification (never satisfied).
@@ -25,14 +27,14 @@ use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    1.6.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class AlwaysFalseSpecification extends AbstractSpecification implements ILeafSpecification
+class AlwaysFalseSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -92,5 +94,25 @@ class AlwaysFalseSpecification extends AbstractSpecification implements ILeafSpe
     public function isContradiction(): bool
     {
         return true;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "false"}`, with `"type"` when the candidate type is not `mixed` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return $this->type === 'mixed' ? [] : ['type' => $this->type];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, [], ['type']);
+
+        return new static((string) $codec->optionalString($data, 'type', 'mixed'));
     }
 }

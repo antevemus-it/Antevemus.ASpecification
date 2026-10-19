@@ -9,6 +9,8 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * AndSpecification - Composite specification representing logical conjunction (AND).
@@ -28,14 +30,14 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class AndSpecification extends AbstractSpecification implements ICompositeSpecification
+class AndSpecification extends AbstractSpecification implements ICompositeSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -270,5 +272,42 @@ class AndSpecification extends AbstractSpecification implements ICompositeSpecif
     public function isTautology(): bool
     {
         return SpecificationAlgebra::isTautologicalConjunction(SpecificationAlgebra::flattenConjunction($this));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "and", "s": [<a>, <b>, ...]}` (2.4.0, forward 041): a left-nested chain of
+     * conjunctions without because()/withCode() is one list, read back as the same left-nested tree.
+     */
+    public function toArray(): array
+    {
+        $operands = [$this->right];
+        $node = $this->left;
+        while ($node::class === self::class && $node->customReason === null && $node->customCode === null) {
+            /** @var self $node */
+            array_unshift($operands, $node->right);
+            $node = $node->left;
+        }
+        array_unshift($operands, $node);
+
+        return ['s' => $operands];
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Two or more operands, folded to the left: `[a, b, c]` is `(a AND b) AND c`.
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['s']);
+        $operands = $codec->specifications($data, 's', 2);
+        $conjunction = new static($operands[0], $operands[1]);
+        foreach (array_slice($operands, 2) as $operand) {
+            $conjunction = new static($conjunction, $operand);
+        }
+
+        return $conjunction;
     }
 }

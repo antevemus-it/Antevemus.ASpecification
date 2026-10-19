@@ -22,8 +22,11 @@ use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
  * - English vocabulary since 1.7.0, only English since 2.0.0: fromArray() refuses a Portuguese key of
  *   1.6.x (LEGACY_KEYS, LEGACY_APPLICABILITY_COLUMNS, also inside `parameters`) and a Portuguese action
  *   value with LegacyVocabularyException; the deprecated Portuguese getters were removed
+ * - A body that is a serialized specification (2.4.0, forward 041, D7): `spec_json`, the JSON document of
+ *   SpecificationCodec; when present, RuleSpecificationRegistry decodes it instead of using the handler of
+ *   `rule_type` (a blank value is no body)
  *
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -93,6 +96,7 @@ final readonly class RuleDefinition implements IRuleDefinition
      * @param string|null $scenario Specific business scenario
      * @param array<string, mixed> $parameters Additional parameters and metadata
      * @param bool $active Active rule indicator
+     * @param string|null $specJson Serialized specification of the rule (SpecificationCodec JSON; 2.4.0)
      */
     public function __construct(
         public string $code,
@@ -110,7 +114,8 @@ final readonly class RuleDefinition implements IRuleDefinition
         public ?string $scope = null,
         public ?string $scenario = null,
         public array $parameters = [],
-        public bool $active = true
+        public bool $active = true,
+        public ?string $specJson = null
     ) {
     }
 
@@ -119,8 +124,9 @@ final readonly class RuleDefinition implements IRuleDefinition
      *
      * Keys: `code`, `name`, `description`, `rule_type`, `violation_action`, `int_value`,
      * `decimal_value`, `text_value`, `legal_basis`, `violation_message`, `condition_expression`,
-     * `priority`, `scope`, `scenario`, `parameters`, `active` and the applicability columns
-     * `product_code`, `plan_code`, `valid_from`, `valid_until`. The Portuguese keys of 1.6.x (read as
+     * `priority`, `scope`, `scenario`, `parameters`, `active`, the applicability columns
+     * `product_code`, `plan_code`, `valid_from`, `valid_until` and `spec_json` (2.4.0; null, empty or
+     * blank = the rule has no serialized body). The Portuguese keys of 1.6.x (read as
      * legacy up to 1.14.x: `codigo`, `nome`, `descricao`, `tipo_regra`/`tipo`, `acao_ao_violar`/`acao`,
      * `valor_inteiro`, `valor_decimal`, `valor_texto`, `fundamento_legal`, `mensagem_violacao`,
      * `condicional_expressao`, `prioridade`, `escopo`, `cenario`, `parametros`, `ativo`,
@@ -183,7 +189,8 @@ final readonly class RuleDefinition implements IRuleDefinition
             scope: self::stringOrNull($row['scope'] ?? null),
             scenario: self::stringOrNull($row['scenario'] ?? null),
             parameters: $parameters,
-            active: $active
+            active: $active,
+            specJson: self::specJsonOrNull($row['spec_json'] ?? null)
         );
     }
 
@@ -209,6 +216,16 @@ final readonly class RuleDefinition implements IRuleDefinition
     private static function stringOrNull(mixed $value): ?string
     {
         return $value !== null ? (string) $value : null;
+    }
+
+    /**
+     * The `spec_json` column: a blank text is no body (2.4.0).
+     */
+    private static function specJsonOrNull(mixed $value): ?string
+    {
+        $text = self::stringOrNull($value);
+
+        return $text === null || trim($text) === '' ? null : $text;
     }
 
     /** {@inheritdoc} */
@@ -305,5 +322,11 @@ final readonly class RuleDefinition implements IRuleDefinition
     public function isActive(): bool
     {
         return $this->active;
+    }
+
+    /** {@inheritdoc} */
+    public function getSpecJson(): ?string
+    {
+        return $this->specJson;
     }
 }

@@ -10,6 +10,8 @@ use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * AllEntitiesSpecification - Universal leaf specification for entities.
@@ -31,14 +33,14 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpecification
+class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     /**
      * @param string $targetType Target class or interface FQCN (defaults to IEntity::class)
@@ -112,5 +114,25 @@ class AllEntitiesSpecification extends AbstractSpecification implements ILeafSpe
     public function __toString(): string
     {
         return sprintf('AllEntitiesSpecification(%s)', $this->targetType);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "allEntities"}`, with `"type"` when the target type is not IEntity (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return $this->targetType === IEntity::class ? [] : ['type' => $this->targetType];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, [], ['type']);
+
+        return new static((string) $codec->optionalString($data, 'type', IEntity::class));
     }
 }

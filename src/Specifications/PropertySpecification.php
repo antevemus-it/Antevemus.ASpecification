@@ -11,6 +11,9 @@ use Antevemus\ADeepPropertyAccess\PropertyAccess;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Throwable;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
+use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 
 /**
  * PropertySpecification - Composite specification targeting a specific object property or getter.
@@ -40,14 +43,14 @@ use Throwable;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class PropertySpecification extends AbstractSpecification implements ICompositeSpecification
+class PropertySpecification extends AbstractSpecification implements ICompositeSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -441,5 +444,33 @@ class PropertySpecification extends AbstractSpecification implements ICompositeS
         $theirs = self::nullValueAnswer($other);
 
         return $theirs === false || ($mine === true && $theirs === true);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "property", "p": "<name>", "s": <node>}` (2.4.0, forward 041), with `"base"` when
+     * the base is not the plain alwaysTrue() of Spec::property() (the type of Spec::specify(T)->where()).
+     */
+    public function toArray(): array
+    {
+        $data = ['p' => $this->propertyName];
+        if ($this->baseSpecification::class !== AlwaysTrueSpecification::class || !$this->baseSpecification->equals(new AlwaysTrueSpecification())) {
+            $data['base'] = $this->baseSpecification;
+        }
+        $data['s'] = $this->propertySpecification;
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['p', 's'], ['base']);
+        $base = array_key_exists('base', $data) ? $codec->specification($data, 'base') : new AlwaysTrueSpecification();
+
+        return new static($base, $codec->string($data, 'p'), $codec->specification($data, 's'));
     }
 }

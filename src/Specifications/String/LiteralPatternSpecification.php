@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Specifications\String;
 
 use InvalidArgumentException;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * LiteralPatternSpecification - Base for prefix, suffix and substring matching of a literal.
@@ -24,7 +25,7 @@ use InvalidArgumentException;
  *
  * @template T
  * @extends RegexSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -141,4 +142,30 @@ abstract class LiteralPatternSpecification extends RegexSpecification
      * @return string
      */
     abstract protected function buildPattern(string $quotedLiteral): string;
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "contains", "v": "<literal>"}` (2.4.0, forward 041; `startsWith` and `endsWith`
+     * alike), with `"cmp"` (the value of the TextComparison) when it is not case-sensitive.
+     */
+    public function toArray(): array
+    {
+        $data = ['v' => $this->literal];
+        if ($this->comparison !== TextComparison::CaseSensitive) {
+            $data['cmp'] = $this->comparison->value;
+        }
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['v'], ['cmp']);
+
+        return new static($codec->string($data, 'v'), $codec->comparison($data, 'cmp', TextComparison::CaseSensitive));
+    }
 }

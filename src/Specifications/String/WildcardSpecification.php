@@ -5,6 +5,8 @@ namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use InvalidArgumentException;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * WildcardSpecification - Leaf specification for wildcard pattern matching.
@@ -27,14 +29,14 @@ use InvalidArgumentException;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    2.3.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class WildcardSpecification extends AbstractSpecification
+class WildcardSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     private readonly TextComparison $comparison;
 
@@ -139,5 +141,31 @@ class WildcardSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "wildcard", "p": "<pattern>"}` (2.4.0, forward 041), with `"cmp"` (the value of
+     * the TextComparison) when it is not case-sensitive.
+     */
+    public function toArray(): array
+    {
+        $data = ['p' => $this->pattern];
+        if ($this->comparison !== TextComparison::CaseSensitive) {
+            $data['cmp'] = $this->comparison->value;
+        }
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['p'], ['cmp']);
+
+        return new static($codec->string($data, 'p'), $codec->comparison($data, 'cmp', TextComparison::CaseSensitive));
     }
 }

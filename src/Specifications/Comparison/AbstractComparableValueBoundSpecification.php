@@ -11,6 +11,8 @@ use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
 use DateTimeInterface;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * AbstractComparableValueBoundSpecification - Base of the relational leaf specifications.
@@ -49,14 +51,14 @@ use DateTimeInterface;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements IValueBoundSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-abstract class AbstractComparableValueBoundSpecification extends AbstractSpecification implements IValueBoundSpecification
+abstract class AbstractComparableValueBoundSpecification extends AbstractSpecification implements IValueBoundSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -336,5 +338,28 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
     protected static function copyOf(mixed $value): mixed
     {
         return $value instanceof \DateTime ? clone $value : $value;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The reference value under `v`: `{"t": "eq", "v": 18}` (2.4.0, forward 041; `eq`, `neq`, `gt`, `gte`,
+     * `lt`, `lte`, `looseEq` and `at` share this form; a date-time is written as `{"$date": ...}`).
+     */
+    public function toArray(): array
+    {
+        return ['v' => $this->value];
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The constructor of the concrete leaf checks the value (an ordered leaf refuses null and booleans).
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['v']);
+
+        return new static($codec->value($data, 'v'));
     }
 }

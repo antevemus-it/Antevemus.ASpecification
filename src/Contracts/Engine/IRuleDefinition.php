@@ -19,8 +19,12 @@ use Antevemus\ASpecification\Engine\RuleAction;
  * - Statutory/legal basis for compliance auditing and contract emission
  * - English vocabulary since 1.7.0; the Portuguese getters of 1.6.x left the contract in 1.7.0 and
  *   their deprecated aliases on RuleDefinition were removed in 2.0.0
+ * - A rule whose body is a serialized specification (2.4.0, forward 041, D7): getSpecJson(), the
+ *   document of SpecificationCodec, read instead of a handler for `rule_type`. A class implementing
+ *   this interface directly (not through RuleDefinition) must add it when upgrading to 2.4.0; returning
+ *   null keeps the rule as it was
  *
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -146,4 +150,14 @@ interface IRuleDefinition
      * @return bool
      */
     public function isActive(): bool;
+
+    /**
+     * Returns the serialized specification of the rule (`spec_json`: the JSON document of
+     * SpecificationCodec), or null when the rule is built by the handler of its `rule_type` (2.4.0,
+     * forward 041, D7). When present, it is the body of the rule: RuleSpecificationRegistry decodes it
+     * instead of looking up a handler, and a feature flag targeting the rule evaluates it.
+     *
+     * @return string|null
+     */
+    public function getSpecJson(): ?string;
 }

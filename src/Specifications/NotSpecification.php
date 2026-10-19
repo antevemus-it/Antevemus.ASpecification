@@ -10,6 +10,8 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysFalseSpecification;
 use ReflectionClass;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * NotSpecification - Composite specification representing logical negation (NOT).
@@ -29,14 +31,14 @@ use ReflectionClass;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ICompositeSpecification<T>
- * @version    1.6.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class NotSpecification extends AbstractSpecification implements ICompositeSpecification
+class NotSpecification extends AbstractSpecification implements ICompositeSpecification, ISerializableSpecification
 {
     use SubsumptionAndEqualityTrait;
 
@@ -302,5 +304,25 @@ class NotSpecification extends AbstractSpecification implements ICompositeSpecif
     public function isContradiction(): bool
     {
         return $this->specification->isTautology();
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "not", "s": <node>}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return ['s' => $this->specification];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['s']);
+
+        return new static($codec->specification($data, 's'));
     }
 }

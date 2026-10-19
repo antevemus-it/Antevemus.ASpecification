@@ -5,6 +5,8 @@ namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use InvalidArgumentException;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * EqualIgnoreCaseAndAccentsStringSpecification - String equality ignoring case and accents (2.1.0).
@@ -25,14 +27,14 @@ use InvalidArgumentException;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class EqualIgnoreCaseAndAccentsStringSpecification extends AbstractSpecification
+class EqualIgnoreCaseAndAccentsStringSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     private readonly string $folded;
 
@@ -83,5 +85,25 @@ class EqualIgnoreCaseAndAccentsStringSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "equalIgnoreCaseAndAccents", "v": "<text>"}` (2.4.0, forward 041; reading it needs ext-intl, as building it does).
+     */
+    public function toArray(): array
+    {
+        return ['v' => $this->value];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['v']);
+
+        return new static($codec->string($data, 'v'));
     }
 }

@@ -27,8 +27,9 @@ use InvalidArgumentException;
  * - Applicability filters (product_code, plan_code, reference_date) read from the rule's parameters (RN-17);
  *   the Portuguese keys of 1.6.x (read as legacy from 1.7.0 to 1.14.x) are refused since 2.0.0, in the
  *   filters and in the parameters, with LegacyVocabularyException
+ * - Lookup of one active rule by its code (findRuleByCode(), 2.4.0, forward 041)
  *
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -139,6 +140,22 @@ class InMemoryRuleCatalog implements IRuleCatalog
         usort($matched, fn(IRuleDefinition $a, IRuleDefinition $b) => $b->getPriority() <=> $a->getPriority());
 
         return $matched;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * The first active rule added with the code (2.4.0, forward 041).
+     */
+    public function findRuleByCode(string $code): ?IRuleDefinition
+    {
+        foreach ($this->rules as $rule) {
+            if ($rule->isActive() && $rule->getCode() === $code) {
+                return $rule;
+            }
+        }
+
+        return null;
     }
 
     /** {@inheritdoc} */

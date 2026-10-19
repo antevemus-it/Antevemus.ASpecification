@@ -9,6 +9,8 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * UniqueEntitySpecification - Entity identity uniqueness leaf specification.
@@ -40,14 +42,14 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * @template T of IEntity
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Collection
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class UniqueEntitySpecification extends AbstractSpecification implements ILeafSpecification
+class UniqueEntitySpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     private readonly ?IEntity $entity;
     private readonly mixed $expectedId;
@@ -228,5 +230,32 @@ class UniqueEntitySpecification extends AbstractSpecification implements ILeafSp
     public function __toString(): string
     {
         return sprintf('UniqueEntitySpecification(%s#%s)', $this->entityClass, (string)$this->expectedId);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "entity", "id": <identifier>}`, with `"type"` when the entity class is not IEntity
+     * (2.4.0, forward 041). A leaf built from an entity instance is written by its identifier and class,
+     * which equals() already treats as the same specification.
+     */
+    public function toArray(): array
+    {
+        $data = ['id' => $this->expectedId];
+        if ($this->entityClass !== IEntity::class) {
+            $data['type'] = $this->entityClass;
+        }
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['id'], ['type']);
+
+        return new static($codec->value($data, 'id'), $codec->optionalString($data, 'type'));
     }
 }

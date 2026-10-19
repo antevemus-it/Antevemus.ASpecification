@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\FeatureFlags;
 
 use Antevemus\ADeepPropertyAccess\PropertyAccess;
+use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
+use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\FeatureFlags\Exceptions\FeatureFlagException;
 use Antevemus\ASpecification\FeatureFlags\Exceptions\FeatureFlagStoreException;
 use Antevemus\ASpecification\FeatureFlags\Exceptions\InvalidFeatureFlagReasonException;
 use Antevemus\ASpecification\FeatureFlags\Exceptions\StaleFeatureFlagException;
 use Antevemus\ASpecification\FeatureFlags\Exceptions\UndeclaredFeatureFlagException;
+use Antevemus\ASpecification\Serialization\Exceptions\SpecificationCodecException;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Closure;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -43,6 +47,13 @@ use Throwable;
  *   evaluation and kept; refresh() reads again. A change made through this instance refreshes it.
  *   When a change runs inside a transaction of the caller that is later rolled back, call refresh()
  * - spec($code): a FeatureEnabledSpecification over the subject, composable with any specification
+ * - a target in the catalog (2.4.0, forward 041, D8): a flag declared with `targetRuleCode` is targeted by
+ *   the `spec_json` of that rule of the IRuleCatalog given to the constructor (decoded by the
+ *   SpecificationCodec given with it, or a default one) and evaluated exactly as a target in code. The
+ *   rule is looked up once per instance, on the first evaluation that needs it, and kept; refresh() reads
+ *   it again, so a rule changed in the catalog changes the target without a deploy. No catalog, no active
+ *   rule with the code, a rule without `spec_json` or a document that does not decode: the flag is off
+ *   with the reason ERROR (fail closed), the failure reported once until refresh()
  *
  * Writing (D5, D6; forward 040, D1 and D4): toggle(), addSubject(), removeSubject(), setValidity() and
  * setRollout(), each in one transaction of the store with its history row:
@@ -70,7 +81,7 @@ use Throwable;
  * bucket in every request, process and machine, and in every release of the 2.x line; changing the
  * hash would move subjects in and out of every running rollout, so it is a MAJOR change.
  *
- * @version    2.3.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage FeatureFlags
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -109,6 +120,11 @@ final class FeatureFlags
 
     private ?DateTimeImmutable $asOf = null;
 
+    private readonly SpecificationCodec $specificationCodec;
+
+    /** @var array<string, ISpecification|Throwable> Resolved catalog targets (or their failure), by flag code */
+    private array $ruleTargets = [];
+
     /**
      * @param FeatureFlagRegistry $registry The declared flags
      * @param IFeatureFlagStore $store Where their state lives
@@ -116,6 +132,8 @@ final class FeatureFlags
      * @param (Closure(): DateTimeInterface)|null $clock Instant of changes and of the validity check (null = system clock)
      * @param int $reasonMinLength Minimum length of a reason, in characters (>= 1)
      * @param int $reasonMaxLength Maximum length of a reason, in characters (>= minimum)
+     * @param IRuleCatalog|null $ruleCatalog Catalog of the rules targeted by `targetRuleCode` (2.4.0; null = none)
+     * @param SpecificationCodec|null $specificationCodec Reads the `spec_json` of those rules (2.4.0; null = a default codec)
      * @throws InvalidArgumentException When the reason bounds are not valid
      */
     public function __construct(
@@ -124,7 +142,9 @@ final class FeatureFlags
         private readonly ?IFeatureFlagErrorReporter $errors = null,
         ?Closure $clock = null,
         private readonly int $reasonMinLength = self::DEFAULT_REASON_MIN,
-        private readonly int $reasonMaxLength = self::DEFAULT_REASON_MAX
+        private readonly int $reasonMaxLength = self::DEFAULT_REASON_MAX,
+        private readonly ?IRuleCatalog $ruleCatalog = null,
+        ?SpecificationCodec $specificationCodec = null
     ) {
         if ($reasonMinLength < 1 || $reasonMaxLength < $reasonMinLength) {
             throw new InvalidArgumentException(sprintf(
@@ -134,6 +154,7 @@ final class FeatureFlags
             ));
         }
         $this->clock = $clock ?? static fn(): DateTimeImmutable => new DateTimeImmutable();
+        $this->specificationCodec = $specificationCodec ?? new SpecificationCodec();
     }
 
     /** The declared flags. */
@@ -146,6 +167,12 @@ final class FeatureFlags
     public function getStore(): IFeatureFlagStore
     {
         return $this->store;
+    }
+
+    /** The catalog of the rules targeted by `targetRuleCode`, or null (2.4.0). */
+    public function getRuleCatalog(): ?IRuleCatalog
+    {
+        return $this->ruleCatalog;
     }
 
     /**
@@ -199,7 +226,7 @@ final class FeatureFlags
 
         $listed = $state->subjects !== [];
         $rollout = $state->rolloutPercent;
-        if (!$listed && $definition->target === null && $rollout === null) {
+        if (!$listed && !$definition->hasTarget() && $rollout === null) {
             return new FeatureFlagEvaluation($code, FeatureFlagReason::ENABLED);
         }
 
@@ -216,9 +243,14 @@ final class FeatureFlags
             return new FeatureFlagEvaluation($code, FeatureFlagReason::NOT_IN_TARGET, $subjectKey);
         }
 
-        if ($definition->target !== null) {
+        if ($definition->hasTarget()) {
             try {
-                $result = $definition->target->evaluate($subject);
+                $target = $definition->target ?? $this->ruleTarget($definition);
+            } catch (Throwable $e) {
+                return new FeatureFlagEvaluation($code, FeatureFlagReason::ERROR, $subjectKey, $e);
+            }
+            try {
+                $result = $target->evaluate($subject);
                 $error = $result->isError
                     ? ($result->exception ?? new FeatureFlagException(sprintf('The target of feature flag "%s" could not be evaluated.', $code)))
                     : null;
@@ -278,6 +310,7 @@ final class FeatureFlags
     {
         $this->states = null;
         $this->loadError = null;
+        $this->ruleTargets = [];
     }
 
     /** The failure of the last load, or null (a settings screen can warn that every flag is off). */
@@ -627,6 +660,69 @@ final class FeatureFlags
         }
 
         return $this->states;
+    }
+
+    /**
+     * The target of a flag declared with `targetRuleCode` (2.4.0): the specification of the catalog rule,
+     * resolved once and kept until refresh(); a failure is kept too (reported once) and thrown again.
+     *
+     * @throws Throwable When the target cannot be resolved
+     */
+    private function ruleTarget(FeatureFlagDefinition $definition): ISpecification
+    {
+        $code = $definition->code;
+        $known = $this->ruleTargets[$code] ?? null;
+        if ($known instanceof ISpecification) {
+            return $known;
+        }
+        if ($known instanceof Throwable) {
+            throw $known;
+        }
+        try {
+            return $this->ruleTargets[$code] = $this->resolveRuleTarget($definition);
+        } catch (Throwable $e) {
+            $this->ruleTargets[$code] = $e;
+            $this->report($code, $e);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Looks the rule up in the catalog and decodes its `spec_json`.
+     *
+     * @throws FeatureFlagException When there is no catalog, no active rule with the code, no spec_json, or it does not decode
+     */
+    private function resolveRuleTarget(FeatureFlagDefinition $definition): ISpecification
+    {
+        $ruleCode = $definition->targetRuleCode;
+        if ($this->ruleCatalog === null) {
+            throw new FeatureFlagException(sprintf(
+                'Feature flag "%s" targets the catalog rule "%s", but FeatureFlags was given no rule catalog.',
+                $definition->code,
+                $ruleCode
+            ));
+        }
+        $rule = $this->ruleCatalog->findRuleByCode($ruleCode) ?? throw new FeatureFlagException(sprintf(
+            'Feature flag "%s" targets the catalog rule "%s", which is not an active rule of the catalog.',
+            $definition->code,
+            $ruleCode
+        ));
+        $json = $rule->getSpecJson() ?? throw new FeatureFlagException(sprintf(
+            'Feature flag "%s" targets the catalog rule "%s", which has no spec_json (serialized specification).',
+            $definition->code,
+            $ruleCode
+        ));
+        try {
+            return $this->specificationCodec->fromJson($json);
+        } catch (SpecificationCodecException $e) {
+            throw new FeatureFlagException(sprintf(
+                'Feature flag "%s": the spec_json of the catalog rule "%s" is not a specification document the codec reads: %s',
+                $definition->code,
+                $ruleCode,
+                $e->getMessage()
+            ), 0, $e);
+        }
     }
 
     /**

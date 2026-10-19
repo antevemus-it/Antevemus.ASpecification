@@ -5,6 +5,8 @@ namespace Antevemus\ASpecification\Specifications\String;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use InvalidArgumentException;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * RegexSpecification - Leaf specification for regular expression pattern validation.
@@ -29,14 +31,14 @@ use InvalidArgumentException;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    2.3.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class RegexSpecification extends AbstractSpecification
+class RegexSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     /** The pattern that is evaluated: the one written, or its form for the comparison (2.3.0). */
     private readonly string $pattern;
@@ -225,5 +227,38 @@ class RegexSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "regex", "p": "<pattern>"}` (2.4.0, forward 041), with `"cmp"` (the value of the
+     * TextComparison) when the leaf was built with one; `p` is the pattern that is evaluated (getPattern()),
+     * which builds the same leaf again with the same comparison.
+     */
+    public function toArray(): array
+    {
+        $data = ['p' => $this->pattern];
+        if ($this->comparison !== null) {
+            $data['cmp'] = $this->comparison->value;
+        }
+
+        return $data;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * A pattern that PCRE does not compile is refused.
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['p'], ['cmp']);
+        $pattern = $codec->string($data, 'p');
+        if (@preg_match($pattern, '') === false) {
+            throw $codec->invalid(sprintf('"%s" is not a valid PCRE pattern.', $pattern));
+        }
+
+        return new static($pattern, $codec->comparison($data, 'cmp'));
     }
 }

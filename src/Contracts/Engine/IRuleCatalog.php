@@ -16,8 +16,12 @@ namespace Antevemus\ASpecification\Contracts\Engine;
  * - Applicability filters with a written contract: product_code, plan_code, reference_date (RN-17)
  * - English vocabulary since 1.7.0, only English since 2.0.0: the Portuguese filter and restriction keys
  *   of 1.6.x (read as legacy up to 1.14.x) are refused by the library's catalogs
+ * - Lookup of one rule by its code (2.4.0, forward 041, D7): findRuleByCode(), used by a feature flag
+ *   that targets a catalog rule (FeatureFlagDefinition::$targetRuleCode). A class implementing this
+ *   interface directly (not through InMemoryRuleCatalog or PdoRuleCatalog) must add it when upgrading
+ *   to 2.4.0
  *
- * @version    2.0.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -69,4 +73,15 @@ interface IRuleCatalog
      * @return list<IDocumentRuleDefinition>
      */
     public function findDocumentRules(string $scope, ?string $scenario = null): array;
+
+    /**
+     * Retrieves the active rule with the given code, whatever its scope, scenario and applicability
+     * restrictions (2.4.0, forward 041, D7): the code identifies the rule, so nothing else filters it.
+     * An inactive rule is not returned. Used to resolve the target of a feature flag that names a catalog
+     * rule (FeatureFlagDefinition::$targetRuleCode), whose specification is the rule's `spec_json`.
+     *
+     * @param string $code Rule code (`code` column)
+     * @return IRuleDefinition|null The rule, or null when no active rule has this code
+     */
+    public function findRuleByCode(string $code): ?IRuleDefinition;
 }

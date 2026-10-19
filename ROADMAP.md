@@ -196,20 +196,22 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ---
 
+## ✅ v2.4.0 — Specification Serialization (Shipped in v2.4.0)
+
+### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡ — 16a shipped in v2.4.0; 16b scheduled for v2.5.0
+- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here, because the core had no `fromArray`/`jsonSerialize` of specifications). Split in two: 16a, the serialization, shipped in v2.4.0; 16b, the cache adapters, is scheduled for v2.5.0 (below).
+- **16a, delivered (forward 041):** `SpecificationCodec` writes a specification as a canonical JSON tree, `{"v": 1, "spec": {"t": "<name>", ...}}`, and reads it back as the same classes. `t` is one of 44 short, stable names (`and`, `property`, `eq`, `in`, `contains`, `regex`, `method`, `isToday`...), never a class name taken from the input; the registry is open to leaves of the application (`ISerializableSpecification` with `toArray()`/`fromArray()`, `register()`) and is checked by exact class. Dates as `{"$date"}` (RFC 3339 with the offset), enum cases as `{"$enum"}` only for an allowlist; closures, objects and resources refused. Decoding never calls `unserialize()` nor instantiates a class named by the document, and is limited to 64 levels and 10 000 nodes by default. Callbacks, `Spec::external()`, `FeatureEnabledSpecification`, the guards of the machine and the bindings of the rule engine are refused with the reason; a method call is serialized by its name (the `method` constructor of forward 018). Proven on the soundness bench: every serializable tree of the pool (497 of 726) round-trips with `equals()` in both directions, a canonical text and the same answers, and translates to the same SQL (ANSI, PostgreSQL, MySQL) and `TCriteria`; the other 229 are refused for a reason of the contract.
+- **Goal:** A specification is data that can be stored, sent and audited, without opening a door to code execution.
+
+### 24b. Feature Flag Target by a Catalog Rule 🚩 (Shipped in v2.4.0)
+- **Description:** The target of a flag (milestone 24) was a subject list in the database or a specification in code. Since v2.4.0 it can be the rule of the catalog named by `targetRuleCode` (exclusive with `target`): `IRuleCatalog::findRuleByCode()` finds the active rule, its body is the serialized specification of `business_rule.spec_json` (`IRuleDefinition::getSpecJson()`, read by `PdoRuleCatalog` with `COLUMNS_SINCE_2_4`, so a table of v2.3.0 keeps working; the additive migration is commented in the DDL), and `FeatureFlags`, given the catalog, resolves it once per instance and evaluates it as a target in code; `refresh()` reads it again, and a missing rule or an unreadable document turns the flag off with `ERROR` (fail closed). The same body serves the rule engine, which builds a rule with `spec_json` from it instead of a handler. Tested against SQLite, PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, the migration included.
+- **Goal:** An operator changes who sees a feature by changing a rule in the database, without a deploy.
+
+---
+
 ## 🗓️ Scheduled (forward specification written, no code yet)
 
-Planned on 2026-10-18 from the unscheduled list. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/041` to `045`; 039 and 040 shipped in v2.3.0, above) and goes into the version named here; the order follows the recommendation accepted that day: close the gaps of the 2.1.0 features first, then the serialization that two other milestones need, then the repository and cache work, then the integer leaves when a real consumer asks for them, and the satellite package last.
-
-### v2.4.0 — Specification Serialization
-
-### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡
-- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here: the core has no `fromArray`/`jsonSerialize` of specifications yet).
-- **Goal:** Multi-node high-throughput deployments with distributed cache invalidation.
-- **Plan:** split in two. **16a, serialization, forward 041** (`041-serializacao-de-especificacoes`): a canonical JSON tree with short stable type names (never a class name taken from the input), an opt-in `ISerializableSpecification` contract, a `SpecificationCodec` with a registry open to user leaves, depth and node limits, a round-trip property on the soundness bench, and the declarative `method` constructor of forward 018. **16b, the cache adapters, go to v2.5.0** (forward 043).
-
-### 24b. Feature Flag Target by a Catalog Rule 🚩
-- **Description:** The target of a flag (milestone 24) is a subject list in the database or a specification in code. A target named by the code of a rule of the catalog (`IRuleCatalog`) would let an operator change who sees a feature without a deploy, with any rule; it needs a lookup of a rule by its code and the serialization of specifications (milestone 16).
-- **Plan:** forward 041, second stage. `IRuleCatalog::findRuleByCode()`, an optional `spec_json` body on a catalog rule decoded by the codec, and `targetRuleCode` on the flag definition resolved through an optional catalog on the service.
+Planned on 2026-10-18 from the unscheduled list. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `045`; 039 and 040 shipped in v2.3.0 and 041 in v2.4.0, above) and goes into the version named here; the order follows the recommendation accepted that day: close the gaps of the 2.1.0 features first, then the serialization that two other milestones need, then the repository and cache work, then the integer leaves when a real consumer asks for them, and the satellite package last.
 
 ### v2.5.0 — Repositories and Cache
 

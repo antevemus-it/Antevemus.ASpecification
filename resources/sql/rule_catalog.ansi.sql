@@ -2,7 +2,11 @@
 -- Antevemus.ASpecification - relational rule catalog (reference DDL)
 -- =====================================================================
 -- Read by Antevemus\ASpecification\Engine\PdoRuleCatalog (since 1.5.0;
--- English vocabulary since 1.7.0, only English since 2.0.0).
+-- English vocabulary since 1.7.0, only English since 2.0.0). 2.4.0
+-- (forward 041) added business_rule.spec_json; PdoRuleCatalog reads it
+-- when told so (columns: PdoRuleCatalog::COLUMNS_SINCE_2_4), so that a
+-- table created by an earlier DDL keeps working untouched. The additive
+-- migration for such a table is at the end of this header.
 --
 -- Portable ANSI SQL: no schema, no dialect types, unquoted identifiers.
 -- Only the columns the engine reads are declared; a consumer table may
@@ -23,6 +27,13 @@
 --                           applicability keys inside it are ignored
 --   violation_action        block | warn | log
 --   requirement_mode        all | any | one_of_set (any/one_of_set need a set)
+--   spec_json               the body of a rule written as a specification by
+--                           SpecificationCodec ({"v": 1, "spec": {...}}), read
+--                           instead of the handler of rule_type; NULL = the
+--                           handler of rule_type builds the rule. VARCHAR(4000)
+--                           for portability, as the JSON columns of the other
+--                           reference DDLs: widen it to TEXT/CLOB for larger
+--                           specifications
 --
 -- Tables created with the Portuguese schema of 1.5.0/1.6.x (regra_negocio,
 -- grupo_documento_obrigatorio, grupo_documento_obrigatorio_tipo) are read
@@ -31,6 +42,14 @@
 -- values must be English (bloquear, alertar and apenas_log are refused).
 -- UPGRADE-2.0.md has the SQL that copies such tables into this DDL, or
 -- updates them in place.
+--
+-- Additive migration to 2.4.0 (forward 041), for a business_rule table
+-- created by an earlier DDL. Nothing changes for an application that does
+-- not run it: without the column no rule has a serialized body. Run it once
+-- (PostgreSQL, MySQL, MariaDB and SQLite accept it), then pass
+-- columns: PdoRuleCatalog::COLUMNS_SINCE_2_4:
+--
+--   ALTER TABLE business_rule ADD COLUMN spec_json VARCHAR(4000);
 -- =====================================================================
 
 CREATE TABLE business_rule (
@@ -54,6 +73,7 @@ CREATE TABLE business_rule (
     valid_from               DATE,
     valid_until              DATE,
     active                   CHAR(1)        DEFAULT 'Y' NOT NULL,
+    spec_json                VARCHAR(4000),
     CONSTRAINT pk_business_rule PRIMARY KEY (code),
     CONSTRAINT chk_business_rule_active CHECK (active IN ('Y', 'N')),
     CONSTRAINT chk_business_rule_action CHECK (violation_action IN ('block', 'warn', 'log')),

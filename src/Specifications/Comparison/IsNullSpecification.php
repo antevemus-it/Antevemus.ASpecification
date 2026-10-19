@@ -8,6 +8,8 @@ use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ILeafSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * IsNullSpecification - Leaf specification validating that the candidate is null.
@@ -21,14 +23,14 @@ use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class IsNullSpecification extends AbstractSpecification implements ILeafSpecification
+class IsNullSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     /**
      * {@inheritdoc}
@@ -71,5 +73,25 @@ class IsNullSpecification extends AbstractSpecification implements ILeafSpecific
     public function __toString(): string
     {
         return 'IsNullSpecification';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "isNull"}` (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return [];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, []);
+
+        return new static();
     }
 }

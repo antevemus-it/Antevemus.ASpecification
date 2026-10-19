@@ -10,6 +10,8 @@ use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use DateTimeInterface;
 use InvalidArgumentException;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * DefaultValueSpecification - Leaf specification validating that the candidate matches the default value of its type.
@@ -34,14 +36,14 @@ use InvalidArgumentException;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements ILeafSpecification<T>
- * @version    2.2.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Logical
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class DefaultValueSpecification extends AbstractSpecification implements ILeafSpecification
+class DefaultValueSpecification extends AbstractSpecification implements ILeafSpecification, ISerializableSpecification
 {
     /**
      * @param string|null $type Restricting type ('string', 'number', 'int', 'float', 'bool', 'array') or null for any
@@ -134,5 +136,25 @@ class DefaultValueSpecification extends AbstractSpecification implements ILeafSp
             'array' => 'array',
             default => $type,
         };
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "defaultValue"}`, with `"type"` when the leaf is typed (2.4.0, forward 041).
+     */
+    public function toArray(): array
+    {
+        return $this->type === null ? [] : ['type' => $this->type];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, [], ['type']);
+
+        return new static($codec->optionalString($data, 'type'));
     }
 }

@@ -7,6 +7,8 @@ namespace Antevemus\ASpecification\Specifications\String;
 use Antevemus\ASpecification\AbstractSpecification;
 use InvalidArgumentException;
 use ReflectionEnum;
+use Antevemus\ASpecification\Contracts\ISerializableSpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 
 /**
  * EnumNameStringSpecification - Leaf specification validating that a string matches a PHP Enum case name.
@@ -19,14 +21,14 @@ use ReflectionEnum;
  *
  * @template T
  * @extends AbstractSpecification<T>
- * @version    1.1.0
+ * @version    2.4.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\String
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class EnumNameStringSpecification extends AbstractSpecification
+class EnumNameStringSpecification extends AbstractSpecification implements ISerializableSpecification
 {
     /**
      * Initializes the specification with an Enum class name.
@@ -62,5 +64,26 @@ class EnumNameStringSpecification extends AbstractSpecification
     public function getType(): string
     {
         return 'string';
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Serialized as `{"t": "enumName", "enum": "<enum class>"}` (2.4.0, forward 041). Reading it checks the
+     * class with enum_exists(), as the constructor does (a class name, never a call into it).
+     */
+    public function toArray(): array
+    {
+        return ['enum' => $this->enumClass];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public static function fromArray(array $data, SpecificationCodec $codec): static
+    {
+        $codec->expectKeys($data, ['enum']);
+
+        return new static($codec->string($data, 'enum'));
     }
 }
