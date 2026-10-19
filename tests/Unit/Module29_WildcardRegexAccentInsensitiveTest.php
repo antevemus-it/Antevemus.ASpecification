@@ -783,8 +783,8 @@ class Module29_WildcardRegexAccentInsensitiveTest extends TestCase
     private function testReadme20_1BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', '20.1');
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '20.1');
+        $english = ReadmeBlocks::of($root . '/docs/en/specifications/text-comparison.md', '20.1');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/specifications/text-comparison.md', '20.1');
         $this->assertCount(1, $english, 'um bloco PHP no exemplo 20.1 (EN)');
         $this->assertCount(1, $portuguese, 'um bloco PHP no exemplo 20.1 (pt-BR)');
         $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), 'README 20.1: bloco igual fora os comentários');

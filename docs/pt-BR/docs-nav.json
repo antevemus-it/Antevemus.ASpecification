@@ -1,0 +1,238 @@
+{
+  "items": [
+    {
+      "text": "Início",
+      "path": "index"
+    },
+    {
+      "text": "Primeiros passos",
+      "items": [
+        {
+          "text": "Instalação e primeiro uso",
+          "path": "getting-started/index"
+        }
+      ]
+    },
+    {
+      "text": "Conceitos",
+      "items": [
+        {
+          "text": "Origem e fundamentação",
+          "path": "concepts/origins"
+        },
+        {
+          "text": "Principais recursos",
+          "path": "concepts/core-features"
+        },
+        {
+          "text": "Nossos diferenciais",
+          "path": "concepts/what-sets-us-apart"
+        }
+      ]
+    },
+    {
+      "text": "Especificações",
+      "items": [
+        {
+          "text": "Fluent chaining",
+          "path": "specifications/fluent-chaining"
+        },
+        {
+          "text": "Notification pattern",
+          "path": "specifications/notification-pattern"
+        },
+        {
+          "text": "Satisfação parcial",
+          "path": "specifications/partial-satisfaction"
+        },
+        {
+          "text": "Tautologia e simplificação",
+          "path": "specifications/tautology-and-simplification"
+        },
+        {
+          "text": "Chamadas de método",
+          "path": "specifications/method-calls"
+        },
+        {
+          "text": "Comparação de texto",
+          "path": "specifications/text-comparison"
+        },
+        {
+          "text": "Serialização",
+          "path": "specifications/serialization"
+        }
+      ]
+    },
+    {
+      "text": "Repositórios",
+      "items": [
+        {
+          "text": "DAG de partições",
+          "path": "repositories/partitioned-dag"
+        },
+        {
+          "text": "Persistência e cache",
+          "path": "repositories/persistence-and-cache"
+        },
+        {
+          "text": "Repositório PDO",
+          "path": "repositories/pdo"
+        },
+        {
+          "text": "Ciclo de vida",
+          "path": "repositories/pdo-lifecycle"
+        },
+        {
+          "text": "Escrita em lote",
+          "path": "repositories/pdo-batch"
+        },
+        {
+          "text": "Relacionamentos",
+          "path": "repositories/pdo-relationships"
+        }
+      ]
+    },
+    {
+      "text": "Motor de regras",
+      "items": [
+        {
+          "text": "Regras dinâmicas",
+          "path": "rule-engine/dynamic-rules"
+        },
+        {
+          "text": "Um consumidor real",
+          "path": "rule-engine/real-consumer"
+        }
+      ]
+    },
+    {
+      "text": "SQL",
+      "items": [
+        {
+          "text": "SQL Query Visitor",
+          "path": "sql/query-visitor"
+        },
+        {
+          "text": "TCriteria Builder",
+          "path": "sql/tcriteria"
+        },
+        {
+          "text": "TCriteria: acentos e subqueries",
+          "path": "sql/tcriteria-accents-and-subqueries"
+        }
+      ]
+    },
+    {
+      "text": "Integrações",
+      "items": [
+        {
+          "text": "ALinq",
+          "path": "integrations/alinq"
+        },
+        {
+          "text": "Attributes",
+          "path": "integrations/attributes"
+        },
+        {
+          "text": "Adianti como host",
+          "path": "integrations/adianti-host"
+        }
+      ]
+    },
+    {
+      "text": "Máquina de estados",
+      "items": [
+        {
+          "text": "Máquina de estados",
+          "path": "state-machine/index"
+        },
+        {
+          "text": "Casos de uso",
+          "path": "state-machine/use-cases"
+        }
+      ]
+    },
+    {
+      "text": "Resolução de dados",
+      "items": [
+        {
+          "text": "Resolução concorrente",
+          "path": "resolution/concurrent"
+        },
+        {
+          "text": "Fontes assíncronas",
+          "path": "resolution/async"
+        }
+      ]
+    },
+    {
+      "text": "Eventos de domínio",
+      "items": [
+        {
+          "text": "A partir de especificações",
+          "path": "events/from-specifications"
+        },
+        {
+          "text": "Pela passagem do tempo",
+          "path": "events/time-based"
+        }
+      ]
+    },
+    {
+      "text": "Feature flags",
+      "items": [
+        {
+          "text": "Feature flags",
+          "path": "feature-flags/index"
+        },
+        {
+          "text": "Vigência e rollout",
+          "path": "feature-flags/window-and-rollout"
+        }
+      ]
+    },
+    {
+      "text": "Benchmarking",
+      "items": [
+        {
+          "text": "Benchmarking",
+          "path": "benchmarking/index"
+        }
+      ]
+    },
+    {
+      "text": "Qualidade",
+      "items": [
+        {
+          "text": "Testes",
+          "path": "quality/tests"
+        },
+        {
+          "text": "Garantias",
+          "path": "quality/guarantees"
+        }
+      ]
+    },
+    {
+      "text": "Projeto",
+      "items": [
+        {
+          "text": "Estrutura de diretórios",
+          "path": "project/directory-structure"
+        },
+        {
+          "text": "Roadmap",
+          "path": "project/roadmap"
+        },
+        {
+          "text": "Atribuição e licença",
+          "path": "project/attribution-and-license"
+        },
+        {
+          "text": "Autores",
+          "path": "project/authors"
+        }
+      ]
+    }
+  ]
+}

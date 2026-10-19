@@ -538,8 +538,8 @@ class Module28_AccentInsensitiveTextTest extends TestCase
     private function testReadme20BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', 20);
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', 20);
+        $english = ReadmeBlocks::of($root . '/docs/en/specifications/text-comparison.md', 20);
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/specifications/text-comparison.md', 20);
         $this->assertCount(1, $english, 'um bloco PHP no exemplo 20 (EN)');
         $this->assertCount(1, $portuguese, 'um bloco PHP no exemplo 20 (pt-BR)');
         $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), 'README 20: bloco igual fora os comentários');

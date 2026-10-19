@@ -1924,8 +1924,10 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         foreach (['17.1' => 3, '17.2' => 1] as $example => $blocks) {
-            $english = ReadmeBlocks::of($root . '/README.md', $example);
-            $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', $example);
+            // 2.5.1 (forward 049): each example lives on its page of docs/en and docs/pt-BR
+            $page = ['17.1' => 'repositories/pdo-lifecycle', '17.2' => 'repositories/pdo-batch'][$example];
+            $english = ReadmeBlocks::of($root . "/docs/en/{$page}.md", $example);
+            $portuguese = ReadmeBlocks::of($root . "/docs/pt-BR/{$page}.md", $example);
             $this->assertCount($blocks, $english, "{$blocks} bloco(s) PHP no exemplo {$example} (EN)");
             $this->assertCount($blocks, $portuguese, "{$blocks} bloco(s) PHP no exemplo {$example} (pt-BR)");
             foreach ($english as $i => $block) {
@@ -1933,7 +1935,7 @@ class Module25_PdoRepositoryComplementsTest extends TestCase
             }
         }
         // O exemplo 17 segue com os seus três blocos (os subexemplos não vazam para ele)
-        $this->assertCount(3, ReadmeBlocks::of($root . '/README.md', 17));
+        $this->assertCount(3, ReadmeBlocks::of($root . '/docs/en/repositories/pdo.md', 17));
     }
 
     /** O $pdo e o $products do exemplo 17, no estado em que o exemplo os deixa (Keyboard e Mouse ativos, Cable não). */

@@ -267,6 +267,14 @@ class Module36_RuleEngineCriteriaAndAsyncDataTest extends TestCase
     /** Reference DDL of the rule catalog. */
     private const DDL = __DIR__ . '/../../resources/sql/rule_catalog.ansi.sql';
 
+    /** The page of docs/en and docs/pt-BR that hosts each README example of this module (2.5.1, forward 049). */
+    private const README_PAGES = [
+        '22' => 'rule-engine/real-consumer',
+        '22.1' => 'sql/tcriteria-accents-and-subqueries',
+        '22.2' => 'resolution/async',
+        '22.3' => 'integrations/adianti-host',
+    ];
+
     public function run(): void
     {
         // L1
@@ -2479,21 +2487,21 @@ class Module36_RuleEngineCriteriaAndAsyncDataTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         foreach (['22', '22.1', '22.2', '22.3'] as $example) {
-            $english = ReadmeBlocks::of($root . '/README.md', $example);
-            $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', $example);
+            $english = ReadmeBlocks::of($root . '/docs/en/' . self::README_PAGES[$example] . '.md', $example);
+            $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/' . self::README_PAGES[$example] . '.md', $example);
             $this->assertCount(1, $english, "um bloco PHP no exemplo {$example} (EN)");
             $this->assertCount(1, $portuguese, "um bloco PHP no exemplo {$example} (pt-BR)");
             $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), "README {$example}: bloco igual fora os comentários");
         }
         // D29/D33: the recipe of docs/adianti/README.md is the block of README 22.3. The recipe is internal:
         // docs/ lives only on the main line (docs/contratos/RELEASING.md, Fase 2 lists what the public release
-        // line carries, and docs/ is not in it), so the public CI has no docs/ at all and this check runs
-        // where the recipe exists. A docs/ without the recipe is still a failure.
-        if (is_dir($root . '/docs')) {
+        // line carries). Since 2.5.1 (forward 049) the public line carries docs/en and docs/pt-BR, so docs/
+        // exists there too: this check runs where the recipe file exists.
+        if (is_file($root . '/docs/adianti/README.md')) {
             $docs = (string) file_get_contents($root . '/docs/adianti/README.md');
             preg_match_all('/```php\n(.*?)```/s', $docs, $blocks);
             $this->assertCount(1, $blocks[1], 'docs/adianti: um bloco PHP');
-            $this->assertEquals(ReadmeBlocks::codeTokens(ReadmeBlocks::of($root . '/README.md', '22.3')[0]), ReadmeBlocks::codeTokens($blocks[1][0]), 'docs/adianti: o bloco do README 22.3');
+            $this->assertEquals(ReadmeBlocks::codeTokens(ReadmeBlocks::of($root . '/docs/en/' . self::README_PAGES['22.3'] . '.md', '22.3')[0]), ReadmeBlocks::codeTokens($blocks[1][0]), 'docs/adianti: o bloco do README 22.3');
         }
     }
 
@@ -2517,7 +2525,7 @@ class Module36_RuleEngineCriteriaAndAsyncDataTest extends TestCase
             }
             $transcribed[] = $tokens[$i];
         }
-        $blocks = ReadmeBlocks::of(dirname(__DIR__, 2) . '/README.md', $example);
+        $blocks = ReadmeBlocks::of(dirname(__DIR__, 2) . '/docs/en/' . self::README_PAGES[$example] . '.md', $example);
         $this->assertTrue(isset($blocks[$index]), "README {$example}: bloco {$index}");
         $block = ReadmeBlocks::codeTokens($blocks[$index] ?? '');
         $found = false;

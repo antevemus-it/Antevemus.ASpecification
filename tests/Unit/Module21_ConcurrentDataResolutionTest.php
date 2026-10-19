@@ -1091,8 +1091,8 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
     private function testReadme16BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = self::readmeBlocks($root . '/README.md');
-        $portuguese = self::readmeBlocks($root . '/README.pt-BR.md');
+        $english = self::readmeBlocks($root . '/docs/en/resolution/concurrent.md');
+        $portuguese = self::readmeBlocks($root . '/docs/pt-BR/resolution/concurrent.md');
         $this->assertCount(2, $english, 'two PHP blocks in example 16 (EN)');
         $this->assertCount(2, $portuguese, 'two PHP blocks in example 16 (pt-BR)');
         foreach ($english as $i => $block) {

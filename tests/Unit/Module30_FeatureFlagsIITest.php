@@ -1187,8 +1187,8 @@ class Module30_FeatureFlagsIITest extends TestCase
     private function testReadme19_1BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', '19.1');
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '19.1');
+        $english = ReadmeBlocks::of($root . '/docs/en/feature-flags/window-and-rollout.md', '19.1');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/feature-flags/window-and-rollout.md', '19.1');
         $this->assertCount(1, $english, 'um bloco PHP no exemplo 19.1 (EN)');
         $this->assertCount(1, $portuguese, 'um bloco PHP no exemplo 19.1 (pt-BR)');
         $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), 'README 19.1: bloco igual fora os comentários');

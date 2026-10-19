@@ -1624,8 +1624,8 @@ class Module26_PdoRelationshipsTest extends TestCase
     private function testReadme173BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', '17.3');
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '17.3');
+        $english = ReadmeBlocks::of($root . '/docs/en/repositories/pdo-relationships.md', '17.3');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/repositories/pdo-relationships.md', '17.3');
         $this->assertCount(5, $english, 'cinco blocos PHP no exemplo 17.3 (EN)');
         $this->assertCount(5, $portuguese, 'cinco blocos PHP no exemplo 17.3 (pt-BR)');
         foreach ($english as $i => $block) {

@@ -545,8 +545,8 @@ class Module31_SpecificationSerializationTest extends TestCase
     private function testReadme21BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', '21');
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '21');
+        $english = ReadmeBlocks::of($root . '/docs/en/specifications/serialization.md', '21');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/specifications/serialization.md', '21');
         $this->assertCount(1, $english, 'um bloco PHP no exemplo 21 (EN)');
         $this->assertCount(1, $portuguese, 'um bloco PHP no exemplo 21 (pt-BR)');
         $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), 'README 21: bloco igual fora os comentários');

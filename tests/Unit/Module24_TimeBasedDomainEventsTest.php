@@ -1275,15 +1275,15 @@ class Module24_TimeBasedDomainEventsTest extends TestCase
     private function testReadme181BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', '18.1');
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', '18.1');
+        $english = ReadmeBlocks::of($root . '/docs/en/events/time-based.md', '18.1');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/events/time-based.md', '18.1');
         $this->assertCount(3, $english, 'três blocos PHP no exemplo 18.1 (EN)');
         $this->assertCount(3, $portuguese, 'três blocos PHP no exemplo 18.1 (pt-BR)');
         foreach ($english as $i => $block) {
             $this->assertEquals(ReadmeBlocks::codeTokens($block), ReadmeBlocks::codeTokens($portuguese[$i]), "README 18.1: bloco {$i} igual fora os comentários");
         }
         // Example 18 still has its own three blocks (18.1 does not leak into it)
-        $this->assertCount(3, ReadmeBlocks::of($root . '/README.md', 18));
+        $this->assertCount(3, ReadmeBlocks::of($root . '/docs/en/events/from-specifications.md', 18));
     }
 
     /** README 18.1: gatilho temporal, varredura, baseline, cron e a combinação PDO. */

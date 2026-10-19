@@ -1100,8 +1100,8 @@ class Module22_PdoRepositoryTest extends TestCase
     private function testReadme17BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', 17);
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', 17);
+        $english = ReadmeBlocks::of($root . '/docs/en/repositories/pdo.md', 17);
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/repositories/pdo.md', 17);
         $this->assertCount(3, $english, 'três blocos PHP no exemplo 17 (EN)');
         $this->assertCount(3, $portuguese, 'três blocos PHP no exemplo 17 (pt-BR)');
         foreach ($english as $i => $block) {

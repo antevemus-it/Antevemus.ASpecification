@@ -1132,8 +1132,8 @@ class Module23_DomainEventTriggersTest extends TestCase
     private function testReadme18BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', 18);
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', 18);
+        $english = ReadmeBlocks::of($root . '/docs/en/events/from-specifications.md', 18);
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/events/from-specifications.md', 18);
         $this->assertCount(3, $english, 'três blocos PHP no exemplo 18 (EN)');
         $this->assertCount(3, $portuguese, 'três blocos PHP no exemplo 18 (pt-BR)');
         foreach ($english as $i => $block) {

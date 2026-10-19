@@ -1144,8 +1144,8 @@ class Module27_FeatureFlagsTest extends TestCase
     private function testReadme19BlocksAreTheSameInBothLanguages(): void
     {
         $root = dirname(__DIR__, 2);
-        $english = ReadmeBlocks::of($root . '/README.md', 19);
-        $portuguese = ReadmeBlocks::of($root . '/README.pt-BR.md', 19);
+        $english = ReadmeBlocks::of($root . '/docs/en/feature-flags/index.md', 19);
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/feature-flags/index.md', 19);
         $this->assertCount(2, $english, 'dois blocos PHP no exemplo 19 (EN)');
         $this->assertCount(2, $portuguese, 'dois blocos PHP no exemplo 19 (pt-BR)');
         foreach ($english as $i => $block) {
