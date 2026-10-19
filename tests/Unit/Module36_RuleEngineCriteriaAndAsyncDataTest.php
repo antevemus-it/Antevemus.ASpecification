@@ -2485,11 +2485,16 @@ class Module36_RuleEngineCriteriaAndAsyncDataTest extends TestCase
             $this->assertCount(1, $portuguese, "um bloco PHP no exemplo {$example} (pt-BR)");
             $this->assertEquals(ReadmeBlocks::codeTokens($english[0]), ReadmeBlocks::codeTokens($portuguese[0]), "README {$example}: bloco igual fora os comentários");
         }
-        // D29/D33: the recipe of docs/adianti/README.md is the block of README 22.3
-        $docs = (string) file_get_contents($root . '/docs/adianti/README.md');
-        preg_match_all('/```php\n(.*?)```/s', $docs, $blocks);
-        $this->assertCount(1, $blocks[1], 'docs/adianti: um bloco PHP');
-        $this->assertEquals(ReadmeBlocks::codeTokens(ReadmeBlocks::of($root . '/README.md', '22.3')[0]), ReadmeBlocks::codeTokens($blocks[1][0]), 'docs/adianti: o bloco do README 22.3');
+        // D29/D33: the recipe of docs/adianti/README.md is the block of README 22.3. The recipe is internal:
+        // docs/ lives only on the main line (docs/contratos/RELEASING.md, Fase 2 lists what the public release
+        // line carries, and docs/ is not in it), so the public CI has no docs/ at all and this check runs
+        // where the recipe exists. A docs/ without the recipe is still a failure.
+        if (is_dir($root . '/docs')) {
+            $docs = (string) file_get_contents($root . '/docs/adianti/README.md');
+            preg_match_all('/```php\n(.*?)```/s', $docs, $blocks);
+            $this->assertCount(1, $blocks[1], 'docs/adianti: um bloco PHP');
+            $this->assertEquals(ReadmeBlocks::codeTokens(ReadmeBlocks::of($root . '/README.md', '22.3')[0]), ReadmeBlocks::codeTokens($blocks[1][0]), 'docs/adianti: o bloco do README 22.3');
+        }
     }
 
     /**
