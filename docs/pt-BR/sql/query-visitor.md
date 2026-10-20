@@ -9,10 +9,10 @@ use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Sql\SqlDialect;
 
 // 1. Constrói a regra de domínio puro
-$spec = Spec::property('ativo', Spec::equalTo(true))
+$spec = Spec::property('active', Spec::equalTo(true))
     ->and(
-        Spec::property('salario', Spec::greaterThan(5000))
-            ->or(Spec::property('cidade', Spec::wildcard('São*')))
+        Spec::property('salary', Spec::greaterThan(5000))
+            ->or(Spec::property('city', Spec::wildcard('New*')))
     );
 
 // 2. Compila para PostgreSQL com mapeamento de colunas
@@ -20,26 +20,26 @@ $whereClause = Spec::toSql(
     specification: $spec,
     dialect: SqlDialect::POSTGRESQL,
     fieldMapper: [
-        'ativo'   => 'st_ativo',
-        'salario' => 'vl_salario',
-        'cidade'  => 'ds_cidade'
+        'active' => 'is_active',
+        'salary' => 'val_salary',
+        'city'   => 'txt_city'
     ]
 );
 
 echo $whereClause->getSql();
-// '(("st_ativo" IS NOT NULL AND "st_ativo" = TRUE) AND (("vl_salario" IS NOT NULL AND "vl_salario" > :p1) OR ("ds_cidade" IS NOT NULL AND "ds_cidade" LIKE :p2)))'
+// '(("is_active" IS NOT NULL AND "is_active" = TRUE) AND (("val_salary" IS NOT NULL AND "val_salary" > :p1) OR ("txt_city" IS NOT NULL AND "txt_city" LIKE :p2)))'
 // (booleanos são renderizados pelo dialeto; os demais valores vão por binding; cada comparação leva a
 // guarda IS NOT NULL, então um NOT sobre coluna NULL dá a resposta da memória)
 
 print_r($whereClause->getBindings());
-// [':p1' => 5000, ':p2' => 'São%']
+// [':p1' => 5000, ':p2' => 'New%']
 
 // 3. Suporte a 15 drivers em 10 dialetos SQL (SQL Server, Oracle, Firebird, MySQL, SQLite, Db2, Informix, DuckDB, etc.)
 $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
-// '(([ativo] IS NOT NULL AND [ativo] = 1) AND (([salario] IS NOT NULL AND [salario] > :p1) OR ([cidade] IS NOT NULL AND [cidade] LIKE :p2)))'
+// '(([active] IS NOT NULL AND [active] = 1) AND (([salary] IS NOT NULL AND [salary] > :p1) OR ([city] IS NOT NULL AND [city] LIKE :p2)))'
 
 $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
-// '((`ativo` IS NOT NULL AND `ativo` = 1) AND ((`salario` IS NOT NULL AND `salario` > :p1) OR (`cidade` IS NOT NULL AND BINARY `cidade` LIKE :p2)))'
+// '((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND CONVERT(`city` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p2)))'
 ```
 
 ---

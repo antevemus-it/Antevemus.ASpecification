@@ -14,6 +14,6 @@ $remainder = $onboardingSpec->remainderUnsatisfiedBy($user);
 
 if ($remainder !== null) {
     // $remainder contém APENAS as cláusulas não atendidas pelo usuário!
-    echo "Pendências do onboarding: " . (string) $remainder;
+    echo "Pending onboarding requirements: " . (string) $remainder;
 }
 ```

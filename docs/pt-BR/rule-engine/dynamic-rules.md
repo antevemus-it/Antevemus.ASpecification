@@ -12,27 +12,27 @@ use Antevemus\ASpecification\Spec;
 
 // 1. Configura o Registry com Handlers plugáveis para os tipos de regra
 $registry = Spec::ruleRegistry();
-$registry->registerClosure('max_ocorrencias_por_contrato', function ($rule) {
-    return Spec::specify(Contrato::class)
-        ->must(fn($c) => $c->getOcorrenciasCount() <= $rule->getIntValue(), $rule->getCode(), $rule->getViolationMessage());
+$registry->registerClosure('max_occurrences_per_contract', function ($rule) {
+    return Spec::specify(Contract::class)
+        ->must(fn($c) => $c->getOccurrencesCount() <= $rule->getIntValue(), $rule->getCode(), $rule->getViolationMessage());
 });
 
 // 2. Cria a Engine dinâmica conectada ao Catálogo
-$engine = Spec::engine($meuCatalogoRepository, $registry);
+$engine = Spec::engine($myCatalogRepository, $registry);
 
 // 3. Valida a entidade para o escopo e cenário desejados
 $verdict = $engine->validate(
-    target: $contrato,
-    scope: 'contrato_locacao',
-    scenario: 'contrato_locacao_ativacao'
+    target: $contract,
+    scope: 'rental_contract',
+    scenario: 'activation'
 );
 
 if ($verdict->hasBlockingErrors()) {
     // Violações graves com ação 'block' (ex: HTTP 403 Forbidden)
     return response()->json([
         'status' => 403,
-        'erros' => $verdict->getBlockingFailures(),
-        'fundamentos_legais' => $verdict->getLegalBases(),
+        'errors' => $verdict->getBlockingFailures(),
+        'legal_bases' => $verdict->getLegalBases(),
     ], 403);
 }
 
@@ -48,19 +48,19 @@ O catálogo pode morar em tabelas relacionais: o `PdoRuleCatalog` lê as tabelas
 use Antevemus\ASpecification\Engine\PdoRuleCatalog;
 
 // Opcional: lê só as regras vigentes numa data (janela de vigência filtrada no SQL)
-$catalogo = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
+$catalog = (new PdoRuleCatalog($pdo))->withAsOf(new DateTimeImmutable('2026-10-09'));
 
 // Tabelas criadas com o esquema em português da v1.5/v1.6 (regra_negocio...) são lidas pelos nomes; as ações precisam estar em inglês desde a v2.0 (UPGRADE-2.0.pt-BR.md)
-$catalogoLegado = new PdoRuleCatalog(
+$legacyCatalog = new PdoRuleCatalog(
     $pdo,
     'rental_guarantee',
     PdoRuleCatalog::legacyPortugueseTables(),
     PdoRuleCatalog::legacyPortugueseColumns()
 );
 
-$verdict = Spec::engine($catalogo, $registry)->validate(
-    target: $contrato,
-    scope: 'contrato_locacao',
+$verdict = Spec::engine($catalog, $registry)->validate(
+    target: $contract,
+    scope: 'rental_contract',
     context: ['product_code' => 'PROD_A']
 );
 ```

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-10-19
+
+A PATCH release with documentation only: the 12 PHP blocks of the Portuguese documentation that still had identifiers, strings or values of their own now carry the code of the English pages, token by token, so the EN × pt-BR guard holds for every block, without exceptions. No code change in `src/`.
+
+### Documentation
+
+- **A wrong answer in example 8 fixed in both languages:** the MySQL `WHERE` of `sql/query-visitor.md` showed ``BINARY `city` LIKE :p2`` in its result comment; the dialect renders ``CONVERT(`city` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p2`` since 1.14.0, and the block, executed, prints that. The code of the block is unchanged (comments are not tokens). The PHPUnit assertion count of the READMEs and of `quality/tests.md` is 79 723 (it said 79 735, the 2.5.1 figure).
+- **The 12 localized PHP blocks of `docs/pt-BR` now carry the English code.** Since before the "README is a test" rule of 1.12.0 these blocks had Portuguese identifiers, strings or values, and 2.5.1 moved them unchanged and declared them as exceptions. Each now has the same tokens as its English counterpart (everything but comments and whitespace); the comments stay in Portuguese, and a comment that shows a result shows the one of the English page. The English pages are byte-identical to 2.5.1. By page:
+  - `specifications/notification-pattern.md` (example 2): the two `because()` messages and the echoed text in English, and `$approvalRule` becomes `$creditRule`.
+  - `specifications/partial-satisfaction.md` (example 3) and `benchmarking/index.md` (example 6): the echoed text.
+  - `rule-engine/dynamic-rules.md` (example 7, both blocks): the rule type `max_occurrences_per_contract`, `Contract` and `getOccurrencesCount()`, the scope `rental_contract` and the scenario `activation`, the response keys `errors` and `legal_bases`, and the variables `$myCatalogRepository`, `$contract`, `$catalog` and `$legacyCatalog`.
+  - `sql/query-visitor.md` (example 8): the properties `active`, `salary` and `city`, the columns `is_active`, `val_salary` and `txt_city`, the pattern `New*`, and the SQL and the bindings shown in the comments.
+  - `sql/tcriteria.md` (example 9): the same properties, the columns `st_active`, `vl_salary` and `ds_city`, `New*` and `CANCELLED`, and the dump shown in the comment. The Portuguese block also had a section the English one never had, a chained `Spec::criteriaBuilder()` (`withFieldMapping()`, `orderBy()`, `limit()`, `offset()`, `groupBy()`); it is removed, the block goes from 185 to 141 tokens, and the comment of the last section is renumbered from 4 to 3. The builder itself is unchanged.
+  - `integrations/alinq.md` (examples 10.1 to 10.4, four blocks): `New York` instead of `São Paulo` and `$vipInNY` instead of `$vipInSP`, the English variable names (`$approved`, `$myAlinqCollection`, `$products`, `$avgPoints`, `$largeLogStream`, `$line`, `$criticalEvents`, `$specHighSeverity`, `$activeCustomers`, `$specActive`) and the log file `system_events.log`.
+  - `integrations/attributes.md` (example 11): the four attribute messages and the echoed text.
+- **No prose line changed**: no paragraph of the Portuguese pages names an identifier, string or value that changed.
+- **The guard has no exception.** `tests/PhpUnit/DocumentationTreeTest.php` declares no localized block any more: the 58 PHP blocks of the examples and the first use are equal token by token in both languages, comments aside, and a token changed in a single language fails with "identical except comments".
+
+### Notes
+
+- **Suite.** PHPUnit 553 tests, 79 723 assertions, 2 skipped (2.5.1: 79 735): −12 assertions, all in the EN × pt-BR comparison of `DocumentationTreeTest`, where each of the 12 blocks had two assertions (still different, tokens of each language pinned) and now has one (equal). The runner 32/32 suites, 17 983 assertions, unchanged: no runner module reads these 12 blocks. In a copy with only the public list: PHPUnit 553 tests, 79 721 assertions, and the runner 17 981 (the same −2 as in 2.5.1, the check of the internal Adianti recipe in Module 36).
+- **No code change in `src/`**; the workflows are unchanged.
+
 ## [2.5.1] - 2026-10-19
 
 A PATCH release with documentation only (forward 049): the README becomes an index, and the official documentation moves to `docs/en` and `docs/pt-BR`, one page per topic, in the Docs Kit format. No code change in `src/`.

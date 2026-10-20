@@ -11,15 +11,15 @@ Avalie propriedades em objetos com getters ou métodos booleanos, arrays associa
 use Antevemus\ASpecification\Spec;
 
 // Regra navegando por objetos/arrays aninhados
-$vipInSP = Spec::property('address.city', Spec::equalTo('São Paulo'))
+$vipInNY = Spec::property('address.city', Spec::equalTo('New York'))
     ->and(Spec::property('profile.score', Spec::greaterThan(90)));
 
 $user = (object)[
-    'address' => (object)['city' => 'São Paulo'],
+    'address' => (object)['city' => 'New York'],
     'profile' => ['score' => 95]
 ];
 
-$result = $vipInSP->evaluate($user);
+$result = $vipInNY->evaluate($user);
 // $result->isSatisfied === true
 ```
 
@@ -53,10 +53,10 @@ Converta árvores de especificações em um `Closure(mixed $candidate): bool` co
 use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 
 // Compila a especificação em um predicado executável
-$predicate = ALinqSpecificationVisitor::createPredicate($vipInSP);
+$predicate = ALinqSpecificationVisitor::createPredicate($vipInNY);
 
 // Diretamente utilizável em coleções ALinq ou array_filter nativo
-$aprovados = $minhaColecaoAlinq->where($predicate);
+$approved = $myAlinqCollection->where($predicate);
 ```
 
 #### 10.3 Repositórios em Memória Fluentes com `ALinqBridge`
@@ -66,7 +66,7 @@ Conecte repositórios em memória e iteráveis diretamente a pipelines LINQ (ord
 use Antevemus\ASpecification\Linq\ALinqBridge;
 
 // 1. Filtragem fluente a partir de qualquer iterável
-$techItems = ALinqBridge::filter($produtos, $specTech)
+$techItems = ALinqBridge::filter($products, $specTech)
     ->orderByDescending(fn($p) => $p->price)
     ->take(10)
     ->toArray();
@@ -78,7 +78,7 @@ $topCustomers = $inMemoryRepo->findAsLinqCollection($specApproved)
     ->toArray();
 
 // 3. Conversão completa do repositório em memória para ALinqCollection
-$mediaPontos = $inMemoryRepo->asLinqCollection()->average(fn($c) => $c->getPoints());
+$avgPoints = $inMemoryRepo->asLinqCollection()->average(fn($c) => $c->getPoints());
 ```
 
 #### 10.4 Streaming Baseado em Generators & Avaliação Lazy (`ALinqLazyCollection`) com O(1) de RAM
@@ -89,21 +89,21 @@ use Antevemus\ASpecification\Linq\ALinqBridge;
 use Antevemus\ASpecification\Spec;
 
 // 1. Processamento sob demanda de grandes volumes com consumo O(1) de RAM
-$streamLogsGrandes = static function(): \Generator {
-    $handle = fopen('eventos_sistema.log', 'rb');
-    while (($linha = fgets($handle)) !== false) {
-        yield json_decode($linha, true);
+$largeLogStream = static function(): \Generator {
+    $handle = fopen('system_events.log', 'rb');
+    while (($line = fgets($handle)) !== false) {
+        yield json_decode($line, true);
     }
     fclose($handle);
 };
 
 // Elementos são lidos e testados sob demanda sem carregar o arquivo na memória
-$eventosCriticos = Spec::filterLazy($streamLogsGrandes, $specAltaGravidade)
+$criticalEvents = Spec::filterLazy($largeLogStream, $specHighSeverity)
     ->take(100)
     ->toArray();
 
 // 2. Stream preguiçoso diretamente a partir do InMemoryRepository com findAsLazyCollection()
-$clientesAtivos = $inMemoryRepo->findAsLazyCollection($specAtivo)
+$activeCustomers = $inMemoryRepo->findAsLazyCollection($specActive)
     ->select(fn($c) => $c->getEmail())
     ->take(50)
     ->toArray();

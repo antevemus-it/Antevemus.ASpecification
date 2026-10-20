@@ -12,6 +12,6 @@ $watch = StopWatch::createStarted();
 $entities = $repo->findAll($complexSpec);
 
 $watch->stop();
-echo "Consulta executada em: " . $watch->formatElapsed() . "\n";
+echo "Query executed in: " . $watch->formatElapsed() . "\n";
 echo InstrumentationUtils::formatMemoryUsage() . "\n";
 ```

@@ -39,7 +39,7 @@ $whereSqlServer = Spec::toSql($spec, SqlDialect::SQLSRV);
 // '(([active] IS NOT NULL AND [active] = 1) AND (([salary] IS NOT NULL AND [salary] > :p1) OR ([city] IS NOT NULL AND [city] LIKE :p2)))'
 
 $whereMySql = Spec::toSql($spec, SqlDialect::MYSQL);
-// '((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND BINARY `city` LIKE :p2)))'
+// '((`active` IS NOT NULL AND `active` = 1) AND ((`salary` IS NOT NULL AND `salary` > :p1) OR (`city` IS NOT NULL AND CONVERT(`city` USING utf8mb4) COLLATE utf8mb4_bin LIKE :p2)))'
 ```
 
 ---

@@ -6,19 +6,19 @@ Em cenários corporativos e validação de formulários/APIs, use `evaluate()` p
 
 ```php
 $adultSpec = Spec::property('age', Spec::greaterThanOrEqualTo(18))
-    ->because('O cliente deve ter atingido a maioridade legal.')
+    ->because('Customer must be of legal age.')
     ->withCode('CLI_001');
 
 $activeSpec = Spec::property('status', Spec::equalTo('ACTIVE'))
-    ->because('Apenas cadastros ativos podem receber crédito.')
+    ->because('Only active accounts can receive a credit line.')
     ->withCode('CLI_002');
 
-$approvalRule = $adultSpec->and($activeSpec);
+$creditRule = $adultSpec->and($activeSpec);
 
-$result = $approvalRule->evaluate($customer);
+$result = $creditRule->evaluate($customer);
 
 if (!$result->isSatisfied) {
-    echo "Falha na validação (" . count($result->failures) . " erros encontrados):\n";
+    echo "Validation failed (" . count($result->failures) . " errors found):\n";
     foreach ($result->failures as $failure) {
         echo sprintf(" - [%s] %s: %s\n", $failure->code, $failure->property, $failure->message);
     }

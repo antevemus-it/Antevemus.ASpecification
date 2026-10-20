@@ -8,24 +8,24 @@ Traduza qualquer árvore de especificações de domínio puro para instâncias n
 use Antevemus\ASpecification\Spec;
 
 // 1. Especificação de domínio com conjunção, disjunção e negação
-$spec = Spec::property('ativo', Spec::equalTo(true))
+$spec = Spec::property('active', Spec::equalTo(true))
     ->and(
-        Spec::property('salario', Spec::greaterThan(5000))
-            ->or(Spec::property('cidade', Spec::wildcard('São*')))
+        Spec::property('salary', Spec::greaterThan(5000))
+            ->or(Spec::property('city', Spec::wildcard('New*')))
     )
-    ->and(Spec::property('status', Spec::not(Spec::equalTo('CANCELADO'))));
+    ->and(Spec::property('status', Spec::not(Spec::equalTo('CANCELLED'))));
 
 // 2. Compilação direta via Facade estática com mapeamento de colunas
 $criteria = Spec::toCriteria(
     specification: $spec,
     fieldMap: [
-        'ativo'   => 'st_ativo',
-        'salario' => 'vl_salario',
-        'cidade'  => 'ds_cidade',
-        'status'  => 'tp_status'
+        'active' => 'st_active',
+        'salary' => 'vl_salary',
+        'city'   => 'ds_city',
+        'status' => 'tp_status'
     ],
     properties: [
-        'order'     => 'vl_salario',
+        'order'     => 'vl_salary',
         'direction' => 'desc',
         'limit'     => 50,
         'offset'    => 0
@@ -33,18 +33,9 @@ $criteria = Spec::toCriteria(
 );
 
 echo $criteria->dump();
-// '((st_ativo = TRUE AND (vl_salario > 5000 OR ds_cidade LIKE 'São%')) AND tp_status <> 'CANCELADO')'
+// '((st_active = TRUE AND (vl_salary > 5000 OR ds_city LIKE 'New%')) AND tp_status <> 'CANCELLED')'
 
-// 3. Compilação fluente com paginação e ordenação encadeadas
-$criteriaFluent = Spec::criteriaBuilder($spec)
-    ->withFieldMapping(['salario' => 'vl_salario'])
-    ->orderBy('vl_salario', 'desc')
-    ->limit(20)
-    ->offset(40)
-    ->groupBy('departamento_id')
-    ->toCriteria();
-
-// 4. Invocação direta a partir de qualquer instância de ISpecification
+// 3. Invocação direta a partir de qualquer instância de ISpecification
 $criteriaFromInstance = $spec->toCriteria();
 ```
 

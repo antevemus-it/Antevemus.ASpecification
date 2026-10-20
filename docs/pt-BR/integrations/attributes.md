@@ -9,16 +9,16 @@ use Antevemus\ASpecification\Attributes\AssertSpec;
 use Antevemus\ASpecification\Attributes\ValidateRule;
 use Antevemus\ASpecification\Spec;
 
-#[AssertSpec(CustomerMustBeActiveSpec::class, message: 'Conta do cliente está suspensa', code: 'CUST_SUSPENDED')]
+#[AssertSpec(CustomerMustBeActiveSpec::class, message: 'Customer account is suspended', code: 'CUST_SUSPENDED')]
 class RegisterCustomerDto
 {
-    #[ValidateRule('not_blank', message: 'Nome não pode ser vazio')]
+    #[ValidateRule('not_blank', message: 'Name cannot be empty')]
     public string $name;
 
-    #[ValidateRule('>=', value: 18, message: 'Cliente deve ter pelo menos 18 anos', code: 'UNDERAGE')]
+    #[ValidateRule('>=', value: 18, message: 'Customer must be at least 18 years old', code: 'UNDERAGE')]
     public int $age;
 
-    #[ValidateRule('email', message: 'Formato de e-mail corporativo inválido')]
+    #[ValidateRule('email', message: 'Invalid corporate email format')]
     public string $email;
 
     public function __construct(string $name, int $age, string $email)
@@ -35,7 +35,7 @@ $dto = new RegisterCustomerDto('Alice Smith', 16, 'alice@example.com');
 $result = Spec::validateAttributes($dto);
 if (!$result->isSatisfied) {
     foreach ($result->failures as $failure) {
-        echo "Violação [{$failure->code}]: {$failure->message} (em {$failure->ruleName})\n";
+        echo "Violation [{$failure->code}]: {$failure->message} (at {$failure->ruleName})\n";
     }
 }
 

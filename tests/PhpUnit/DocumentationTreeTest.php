@@ -15,7 +15,8 @@ use PHPUnit\Framework\TestCase;
  * topic, in the Docs Kit format (a docs-nav.json per language). This class keeps the two trees aligned:
  * (a) the same files in both languages; (b) both navigations parse, have the same shape, point to existing
  * pages and list every page; (c) every relative link of a page or of a README resolves; (d) every page
- * carries the same PHP blocks in both languages, token by token (comments aside), which gives examples 1 and 3 to 15 the EN x pt-BR guard they never had; (e) the
+ * carries the same PHP blocks in both languages, token by token (comments aside), which gives examples 1 and 3 to 15 the EN x pt-BR guard they never had,
+ * with no exception since 2.5.2 (the 12 blocks that kept Portuguese identifiers, strings or values were aligned to English); (e) the
  * number of PHP blocks of each page is the one declared below, with its cause; (f) each README has exactly
  * one PHP block, the first use of getting-started/index, and stays below 40 000 bytes; (g) the first use runs;
  * (h) nothing of the internal line leaks to a public page or README: no Reversa or internal docs/ path, no
@@ -23,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php: the runner keeps its 32 suites.
  *
- * @version    2.5.1
+ * @version    2.5.2
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -85,28 +86,16 @@ final class DocumentationTreeTest extends TestCase
     private const PUBLIC_ROOT_FILES = ['README.md', 'README.pt-BR.md', 'CHANGELOG.md', 'ROADMAP.md', 'UPGRADE-2.0.md', 'UPGRADE-2.0.pt-BR.md', 'LICENSE', 'NOTICE.md', 'THIRD_PARTY_NOTICES.md'];
 
     /**
-     * The blocks whose Portuguese version has, since before the "README is a test" rule of 1.12.0, its own
-     * identifiers, strings or, in example 9, a longer variant (São Paulo instead of New York, `$contrato` instead
-     * of `$contract`, Portuguese messages). They were never compared between the languages, and forward 049
-     * moves code without changing it, so these 12 of the 58 blocks are declared here instead of equal: each must
-     * still differ between the languages (aligning one removes it from this list), and the tokens of each
-     * language are pinned (sha1 of ReadmeBlocks::codeTokens joined by "\n", as in 2.5.0), so a change to one of
-     * them without the other fails here until it is declared again. Key: "<page>#<block index>"; value: [EN, pt-BR].
+     * The blocks whose Portuguese code may differ from the English one: none. Until 2.5.1, 12 of the 58 blocks of
+     * the examples (2, 3, 6, 7 x2, 8, 9, 10 x4 and 11) kept Portuguese identifiers, strings or, in example 9, a
+     * longer variant, and were declared here with the tokens of each language pinned. Since 2.5.2 their Portuguese
+     * code is the English code token by token, with the comments in Portuguese, so every block must be equal. An
+     * entry here would make a block an exception again: "<page>#<block index>" => [sha1 EN, sha1 pt-BR] of
+     * ReadmeBlocks::codeTokens joined by "\n"; the loop below still requires it to differ and to match the pins.
+     *
+     * @var array<string, array{string, string}>
      */
-    private const LOCALIZED_BLOCKS = [
-        'specifications/notification-pattern#0' => ['e8984ce3d9e446f8de3f3e58cab6bcce6ddcec5c', 'bb4efc1b92f27a82448589528719f16653a0d3ed'], // example 2: messages, $approvalRule
-        'specifications/partial-satisfaction#0' => ['3d69cc22d27fec1ca69485d1233512d5b9652e01', '6cbe938ffc914113288f6cb42f85af21dd160915'], // example 3: the echoed text
-        'benchmarking/index#0' => ['6d271a4468bb10e2a35dd2a67b485789ff4149ab', '36b5bddabe5a7c5f85d22ef55ebc95a8f140cc02'],                  // example 6: the echoed text
-        'rule-engine/dynamic-rules#0' => ['b10c900e0be77c701df7f4790f8df4099d88b300', 'd6703fa0a5e4556be9292e885f2eec317de5154c'],           // example 7: rule codes, Contrato, scopes
-        'rule-engine/dynamic-rules#1' => ['f8ab647c52f0745b5040aa94742667201cc2bac2', '1e0e9cd5200a480c930ee0edbf73e382b53640c7'],           // example 7: $catalogo, $contrato
-        'sql/query-visitor#0' => ['39a8e58d3acd0b0c944217eb2e61273de20ec015', '83308a78eef65436bce0f4ecc65f336cd381ddee'],                   // example 8: property and column names
-        'sql/tcriteria#0' => ['cd700b61dc42d6dad4966e56f8d60888acb2838f', 'afa11408143fe73f4d398911da96cc66ed93c529'],                       // example 9: names, and a longer pt-BR variant (141 vs 185 tokens)
-        'integrations/alinq#0' => ['077bee7a0be95a072f49f472f4e140a6684d58fe', '85b36c9b06c5607c6ef09434665af354b41f1f2b'],                  // example 10: New York / São Paulo
-        'integrations/alinq#2' => ['a9fab06cca0d58ce605a6f8f5e1259b4e8c4ea09', '7f88edd5e8883bac87739fe0f673cbd6baaec412'],                  // example 10.3: variable names
-        'integrations/alinq#3' => ['83d91e4ffbcb64915b14b0f3fd8fea7d3c9bcbaa', 'efb1f4e3c600712d97cfa96ae57ec5fcd67cbca8'],                  // example 10.4 (first block): variable names
-        'integrations/alinq#4' => ['951ed7c572d7a3f596d8cd1922c39e60097d5674', '5f0180112ec681b179484f97aee481ecfaae2c33'],                  // example 10.4 (second block): names, the log file
-        'integrations/attributes#0' => ['5c512b06f7e9454c029d8d4cd1aa1327692ae0f8', '8f770be54b4be87e403af5c98dcb60c3bab7cfb0'],             // example 11: messages
-    ];
+    private const LOCALIZED_BLOCKS = [];
 
     /** The 58 blocks of the examples of the former README, plus the first use. */
     private const PHP_BLOCKS_TOTAL = 58 + 1;
@@ -199,7 +188,7 @@ final class DocumentationTreeTest extends TestCase
         $declared = array_keys(self::LOCALIZED_BLOCKS);
         sort($declared);
         sort($localized);
-        self::assertSame($declared, $localized, 'every declared localized block exists (12 of the 58 blocks of the examples)');
+        self::assertSame($declared, $localized, 'every declared localized block exists (none since 2.5.2: all 58 blocks of the examples are equal)');
     }
 
     // (e) -----------------------------------------------------------------------------------------------
