@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.5.2] - 2026-10-19
+## [2.5.2] - 2026-10-20
 
 A PATCH release with documentation only: the 12 PHP blocks of the Portuguese documentation that still had identifiers, strings or values of their own now carry the code of the English pages, token by token, so the EN × pt-BR guard holds for every block, without exceptions. No code change in `src/`.
 
@@ -25,10 +25,14 @@ A PATCH release with documentation only: the 12 PHP blocks of the Portuguese doc
 - **No prose line changed**: no paragraph of the Portuguese pages names an identifier, string or value that changed.
 - **The guard has no exception.** `tests/PhpUnit/DocumentationTreeTest.php` declares no localized block any more: the 58 PHP blocks of the examples and the first use are equal token by token in both languages, comments aside, and a token changed in a single language fails with "identical except comments".
 
+### Tests
+
+- **Module 21 counts the calls of the sequential time-limit scenario eventually.** The scenario starts one call under `ResolutionPolicy::sequential(timeout: 0.3)` against a 1 s endpoint of the local `php -S` and checks that the second call is never started. It read the server's call log right after `evaluate()` returned; a worker that logs the aborted call late fails it (once, in the PHP 8.3 leg of the `Tests` workflow of this release: 0 calls logged where 1 was started; the re-run of the leg and 12 local runs under CPU contention passed). The test now waits, up to 2 s, for the first call of the phase to be logged and for the server to be idle, then counts: exactly one, as before. The failure message names the count, the time `evaluate()` took and the resolver's error. Assertion count unchanged.
+
 ### Notes
 
 - **Suite.** PHPUnit 553 tests, 79 723 assertions, 2 skipped (2.5.1: 79 735): −12 assertions, all in the EN × pt-BR comparison of `DocumentationTreeTest`, where each of the 12 blocks had two assertions (still different, tokens of each language pinned) and now has one (equal). The runner 32/32 suites, 17 983 assertions, unchanged: no runner module reads these 12 blocks. In a copy with only the public list: PHPUnit 553 tests, 79 721 assertions, and the runner 17 981 (the same −2 as in 2.5.1, the check of the internal Adianti recipe in Module 36).
-- **No code change in `src/`**; the workflows are unchanged.
+- **No code change in `src/`**; one file of `tests/` (Module 21, above); the workflows are unchanged.
 
 ## [2.5.1] - 2026-10-19
 

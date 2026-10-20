@@ -91,7 +91,7 @@ enum R021Document: string
  *   nodes; D8: errors and time limits; D9: cache; D10: visitors refuse the leaf; D12: no curl;
  * - the example 16 blocks of the README (EN/pt-BR), transcribed against the local server.
  *
- * @version    1.11.0
+ * @version    2.5.2
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -885,13 +885,30 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
         $this->server->waitIdle();
         $start = hrtime(true);
         $result = (new DataResolver($registry))->evaluate($tree, (object) ['cpf' => '2'], ResolutionPolicy::sequential(timeout: 0.3));
-        $this->assertTrue(self::ms($start) < 800.0);
+        $elapsed = self::ms($start);
+        $this->assertTrue($elapsed < 800.0);
         $this->assertTrue($result->isError);
         // Count only this phase's calls (document 2): an aborted request of the concurrent phase above
         // (document 1) can still sit in the accept queue of a busy worker of php -S, invisible to
         // waitIdle(), and be logged after the reset.
-        $phase = array_filter($this->server->calls('veryslow'), static fn(array $call): bool => str_ends_with((string) parse_url($call['uri'], PHP_URL_PATH), '/2'));
-        $this->assertEquals(1, count($phase), 'after the limit no call is started');
+        // The count is the eventual one: the call aborted at the limit is logged by its worker at the
+        // start of the script, and a stalled worker (a shared CI runner) can log it after evaluate()
+        // returned (2.5.2: once, PHP 8.3 leg, "0 calls" where 1 was started). Wait for the first call of
+        // this phase to be logged (bounded) and for the server to be idle, then count; the second call
+        // must never appear.
+        $phaseCalls = fn(): array => array_filter($this->server->calls('veryslow'), static fn(array $call): bool => str_ends_with((string) parse_url($call['uri'], PHP_URL_PATH), '/2'));
+        $logDeadline = microtime(true) + 2.0;
+        while ($phaseCalls() === [] && microtime(true) < $logDeadline) {
+            usleep(10_000);
+        }
+        $this->server->waitIdle();
+        $phase = $phaseCalls();
+        $this->assertEquals(1, count($phase), sprintf(
+            'after the limit no call is started (%d call(s) of this phase logged, evaluate() took %.1f ms, error: %s)',
+            count($phase),
+            $elapsed,
+            $result->exception?->getMessage() ?? 'none'
+        ));
 
         // Parser failure, callable failure, unknown source, missing parameter: evaluation errors
         $registry = (new DataSourceRegistry())
