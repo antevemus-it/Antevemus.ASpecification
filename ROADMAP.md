@@ -198,8 +198,8 @@ The same release extends the 1.8.0 state machine (milestone 11a) with deadlines 
 
 ## ✅ v2.4.0 — Specification Serialization (Shipped in v2.4.0)
 
-### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡ — 16a shipped in v2.4.0; 16b scheduled for v2.7.0
-- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here, because the core had no `fromArray`/`jsonSerialize` of specifications). Split in two: 16a, the serialization, shipped in v2.4.0; 16b, the cache adapters, is scheduled for v2.7.0 (below; it slid from v2.5.0 when forwards 048 and 046 took v2.5.0 and v2.6.0).
+### 16. Distributed Specification Cache (PSR-6 / PSR-16 / Redis) ⚡ — 16a shipped in v2.4.0; 16b scheduled for v2.8.0
+- **Description:** Native distributed caching adapters for partitioned DAG repositories and dynamic catalog rule sets (wrapping `PdoRuleCatalog` from milestone 6), and **specification serialization** (the declarative `method` constructor of forward 018 RN-08 was deferred here, because the core had no `fromArray`/`jsonSerialize` of specifications). Split in two: 16a, the serialization, shipped in v2.4.0; 16b, the cache adapters, is scheduled for v2.8.0 (below; it slid from v2.5.0 when forwards 048 and 046 took v2.5.0 and v2.6.0, and again on 2026-10-20, when the core hook of forward 045 took v2.6.0 and 046 slid to v2.7.0).
 - **16a, delivered (forward 041):** `SpecificationCodec` writes a specification as a canonical JSON tree, `{"v": 1, "spec": {"t": "<name>", ...}}`, and reads it back as the same classes. `t` is one of 44 short, stable names (`and`, `property`, `eq`, `in`, `contains`, `regex`, `method`, `isToday`...), never a class name taken from the input; the registry is open to leaves of the application (`ISerializableSpecification` with `toArray()`/`fromArray()`, `register()`) and is checked by exact class. Dates as `{"$date"}` (RFC 3339 with the offset), enum cases as `{"$enum"}` only for an allowlist; closures, objects and resources refused. Decoding never calls `unserialize()` nor instantiates a class named by the document, and is limited to 64 levels and 10 000 nodes by default. Callbacks, `Spec::external()`, `FeatureEnabledSpecification`, the guards of the machine and the bindings of the rule engine are refused with the reason; a method call is serialized by its name (the `method` constructor of forward 018). Proven on the soundness bench: every serializable tree of the pool (497 of 726) round-trips with `equals()` in both directions, a canonical text and the same answers, and translates to the same SQL (ANSI, PostgreSQL, MySQL) and `TCriteria`; the other 229 are refused for a reason of the contract.
 - **Goal:** A specification is data that can be stored, sent and audited, without opening a door to code execution.
 
@@ -230,15 +230,26 @@ Forward 048 (2026-10-19): the gaps L1 to L5, L10 and L11 the audit of the Virttu
 
 ---
 
+## ✅ v2.6.0 — Deferred Sources: the Stage Transport Hook (Shipped in v2.6.0)
+
+Forward 045, phase 2 (2026-10-20): the half of milestone 15b that belongs to the core, so that the satellite package (below) needs nothing else from it.
+
+### 15b, core hook. Deferred Sources: the Stage Transport Hook ⚡ (Shipped in v2.6.0)
+- **Description:** Two interfaces, no dependency: `IDeferredDataSource` (an `IDataSource` that names its `IStageTransport`) and `IStageTransport::fetchAll($pending, $deadline)` (every pending request of its sources in a stage, in one call, answered by request key with the value or the `Throwable` that failed it). A stage of `ResolvedData` now runs three groups, serialized, in this order: the HTTP batch (`curl_multi`, as before), one `fetchAll()` per transport instance (in the order its first request was met), and the other sources one after the other (as before). A transport is not called once the time limit of the resolution has passed (its requests fail with `DataFetchException::resolutionTimeout()`); a `Throwable` answered fails that request only, a key not answered fails with `DataFetchException::noTransportResult()`, and a crash of `fetchAll()` fails the requests of that transport and nothing else; values are cached with the TTL of their source, failures never. Like an HTTP source, a deferred source is never fetched through its unitary `fetch()` inside a resolution scope; `fetch()` stays the synchronous path outside it. A stage without deferred sources runs exactly as before.
+- **Proof:** Module 21 with a fake transport: the order of the three groups through a shared event log (HTTP, transport, callable), grouping by transport instance in first-seen order, tiered stages by cost with the expensive source skipped, a `Throwable` result never cached, a cache hit that never reaches the transport, a missing key, a crashed transport beside a healthy one, the deadline received by the transport and a transport not called past it, the sequential policy one key at a time, deduplication, the unitary path outside a scope, and 300 random trees (fixed seed) over callable, plain and deferred sources on up to three transports giving the same verdict under `concurrent()`, `tiered()` and `sequential()` with one `fetchAll()` per transport (and per cost under `tiered()`) with pending requests; example 16.1 runs as written.
+- **Goal:** Non-HTTP sources of a stage fetched concurrently by a package outside the core, with the core still dependency-free.
+
+---
+
 ## 🗓️ Scheduled (forward specification written, no code yet)
 
-Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 takes v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0 and 048 in v2.5.0) and goes into the version named here; the satellite package stays last.
+Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 was placed at v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Reordered again on 2026-10-20: the Fibers/Revolt work (milestone 15b) is the last feature before the work on the engine resumes, and its satellite package needs a hook in the core, so the hook took v2.6.0 (above) and every scheduled version slid one minor: 046 to v2.7.0, the repositories and the cache to v2.8.0, the integer leaves to v2.9.0. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0, 048 in v2.5.0 and the core hook of 045 in v2.6.0) and goes into the version named here; the satellite package comes next, right after the hook.
 
-### v2.6.0 — The State Machine for the Virttus
+### v2.7.0 — The State Machine for the Virttus
 
 - **The state machine for its first real consumer** (no number yet): legacy codes, a versioned definition stored over PDO, the tenant, and deadlines counted in business time, the gaps the Virttus measured before adopting the A-Flow through the library. Plan: forward 046 (`046-lacunas-da-maquina-para-a-virttus`).
 
-### v2.7.0 — Repositories and Cache
+### v2.8.0 — Repositories and Cache
 
 ### 23. Write-Behind Hybrid Repository (Domian `INMEMORY_AND_FILE`) 🗃️
 - **Description:** `InMemoryAndFileRepository` is write-through (`put()` writes the file at once). Domian's `INMEMORY_AND_FILE` mode is write-behind: `put()` touches memory only, `persist()` writes, `load()` reloads, and one metadata record counts the repository's reads and writes; `isMemoryBased()` answers by mode. The 1.5.0 notes and forward 020 (RN-08) scheduled it for 2.0.0 together with the persisted metadata; the 2.0.0 forward (033) delivered the metadata and left this mode out because it is additive (a new mode chosen by `PersistenceDefinition`, nothing removed), so it fits a MINOR.
@@ -249,7 +260,7 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 - **Description:** The second half of milestone 16: decorators over `IRuleCatalog`, `IFeatureFlagStore` and the partition index of the DAG behind `Psr\SimpleCache\CacheInterface` (suggested, never required: the core keeps its single runtime dependency), invalidated on every write of the same process and bounded by a short TTL for the others; a failing cache is a miss, reported through the error hook, never an error of the evaluation. Redis or any other backend is the application's client.
 - **Plan:** forward 043 (`043-cache-distribuido`).
 
-### v2.8.0 — Integer Leaves (waits for a real consumer)
+### v2.9.0 — Integer Leaves (waits for a real consumer)
 
 ### 25. Optional Integer Mode for the Relational Leaves 🔢
 - **Description:** Since v2.1.0 the algebra no longer closes integer bounds (`x > 10` was taken as `x >= 11`): the relational leaves accept float candidates and the library has no int-typed leaf, so `greaterThan(10)` and `lessThan(11)` are not disjoint (10.5 satisfies both) and `simplify()` no longer collapses them (forward 037, BUG-20261013-ST36). An opt-in integer mode gives the closing back where it is sound, in two forms that coexist:
@@ -261,9 +272,9 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 
 ### Satellite package (no version of the core)
 
-### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-async`) ⚡
+### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-revolt`) ⚡
 - **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps a single runtime dependency, from the same author and with no dependencies of its own (`antevemus/adeep-property-access`).
-- **Plan:** forward 045 (`045-aspecification-async`): a new repository `Antevemus.ASpecificationAsync` built like `Antevemus.ADeepPropertyAccess`, a `RevoltDataSource` implementing the core `IDataSource` over Revolt/Amp futures with bounded concurrency and the stage timeout, using the application's loop when one is running. The core only gains a `suggest` line and a README section. Last of the queue: it waits for a consumer with an asynchronous SDK, and it is the pair of ALinq milestone 12 (async collection), which will get its own forward in the ALinq repository.
+- **Plan:** forward 045: the core hook (`IDeferredDataSource`/`IStageTransport`) shipped in v2.6.0 (above), and the satellite is next: a new repository `Antevemus.ASpecificationRevolt` built like `Antevemus.ADeepPropertyAccess`, with a `RevoltDataSource` (an `IDeferredDataSource` over Revolt/Amp futures) and a `RevoltStageTransport` (bounded concurrency, the stage deadline enforced through cancellation, the application's Revolt loop when one is running). The core only gained the hook, a `suggest` line and the page of example 16.1. It is the pair of ALinq milestone 12 (async collection), which gets its own forward in the ALinq repository.
 
 ---
 

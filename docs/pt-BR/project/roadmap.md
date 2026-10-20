@@ -23,8 +23,8 @@ Principais destaques:
 13. **Aposentadoria do serializer PHP nativo, etapa 2: remoção e envelope só JSON** (metadados por entidade gravados) (entregue na v2.0.0)
 14. **Acessor de propriedades compartilhado com o ALinq** (`antevemus/adeep-property-access`) (entregue na v2.0.0)
 15. **Resolução Concorrente de Dados para Especificações Dependentes de I/O** (núcleo entregue na v1.10.0)
-15b. **Adaptador Fibers/Revolt para Fontes Que Não São HTTP** (pacote satélite `antevemus/aspecification-async`)
-16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (16a entregue na v2.4.0; 16b agendado para a v2.7.0)
+15b. **Adaptador Fibers/Revolt para Fontes Que Não São HTTP** (gancho do core `IDeferredDataSource`/`IStageTransport` entregue na v2.6.0; pacote satélite `antevemus/aspecification-revolt` em seguida)
+16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (16a entregue na v2.4.0; 16b agendado para a v2.8.0)
 16a. **Serialização de Especificações** (JSON canônico com nomes curtos e estáveis, `SpecificationCodec`, nunca uma classe vinda da entrada) (entregue na v2.4.0)
 16b. **Adaptadores de Cache Distribuído** (PSR-16)
 17. **Compiladores AST para GraphQL & OpenAPI 3.1**

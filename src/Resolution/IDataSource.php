@@ -14,8 +14,10 @@ namespace Antevemus\ASpecification\Resolution;
  *
  * Two forms ship with the core: HttpDataSource (IHttpDataSource, fetched concurrently through
  * `curl_multi` by the DataResolver) and CallableDataSource (a synchronous callable, run one after
- * the other inside a resolution stage). Any other implementation is fetched synchronously through
- * fetch(), like CallableDataSource.
+ * the other inside a resolution stage). Since 2.6.0 a third kind is a hook for packages outside the
+ * core: an IDeferredDataSource is fetched inside a stage by its IStageTransport, together with the
+ * other requests of that transport (a satellite package fetches them concurrently under an event
+ * loop). Any other implementation is fetched synchronously through fetch(), like CallableDataSource.
  *
  * Contract:
  * - fetch() is synchronous and returns the value, or throws (any Throwable) when it cannot;
@@ -23,7 +25,7 @@ namespace Antevemus\ASpecification\Resolution;
  * - getTtl() is the time, in seconds, a fetched value may be kept by an IDataCache between
  *   resolutions; null or 0 disables caching for the source. Failures are never cached.
  *
- * @version    1.10.0
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

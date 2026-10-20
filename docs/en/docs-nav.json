@@ -162,6 +162,10 @@
         {
           "text": "Asynchronous sources",
           "path": "resolution/async"
+        },
+        {
+          "text": "Deferred sources and stage transports",
+          "path": "resolution/deferred"
         }
       ]
     },

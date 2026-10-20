@@ -10,6 +10,7 @@ use Antevemus\ASpecification\Criteria\Exceptions\NonTranslatableCriteriaExceptio
 use Antevemus\ASpecification\Linq\ALinqSpecificationVisitor;
 use Antevemus\ASpecification\Linq\Exceptions\NonTranslatableLinqException;
 use Antevemus\ASpecification\Resolution\CallableDataSource;
+use Antevemus\ASpecification\Resolution\CurlMultiTransport;
 use Antevemus\ASpecification\Resolution\DataRequest;
 use Antevemus\ASpecification\Resolution\DataResolver;
 use Antevemus\ASpecification\Resolution\DataSourceRegistry;
@@ -18,6 +19,9 @@ use Antevemus\ASpecification\Resolution\Exceptions\DataResolutionException;
 use Antevemus\ASpecification\Resolution\Exceptions\DataSourceNotFoundException;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
 use Antevemus\ASpecification\Resolution\HttpDataSource;
+use Antevemus\ASpecification\Resolution\IDataSource;
+use Antevemus\ASpecification\Resolution\IDeferredDataSource;
+use Antevemus\ASpecification\Resolution\IStageTransport;
 use Antevemus\ASpecification\Resolution\InMemoryDataCache;
 use Antevemus\ASpecification\Resolution\ResolutionMode;
 use Antevemus\ASpecification\Resolution\ResolutionPolicy;
@@ -27,8 +31,14 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
 use Antevemus\ASpecification\Sql\Exceptions\NonTranslatableSpecificationException;
+use Antevemus\ASpecification\Tests\Support\DeferredProbeSource;
 use Antevemus\ASpecification\Tests\Support\LocalHttpServer;
+use Antevemus\ASpecification\Tests\Support\ReadmeBlocks;
+use Antevemus\ASpecification\Tests\Support\RecordingStageTransport;
 use Antevemus\ASpecification\Tests\TestCase;
+use ArrayObject;
+use Closure;
+use LogicException;
 use RuntimeException;
 use Throwable;
 
@@ -89,9 +99,14 @@ enum R021Document: string
  * - RN-04: deduplication; RN-05: equivalence of the policies and of the evaluation outside a scope;
  * - D5: scope stack and the synchronous fallback outside it; D7: three-valued logic and unknown
  *   nodes; D8: errors and time limits; D9: cache; D10: visitors refuse the leaf; D12: no curl;
- * - the example 16 blocks of the README (EN/pt-BR), transcribed against the local server.
+ * - the example 16 blocks of the README (EN/pt-BR), transcribed against the local server;
+ * - 2.6.0 (forward 045): deferred sources and stage transports (IDeferredDataSource, IStageTransport),
+ *   with a fake transport (tests/Support/RecordingStageTransport.php + DeferredProbeSource.php): the
+ *   three groups of a stage and their order, grouping by transport instance, tiered stages, failures
+ *   (Throwable result, missing key, crashed transport), cache, deadline, sequential policy,
+ *   deduplication, the unitary path, a randomized equivalence check and example 16.1 run as written.
  *
- * @version    2.5.2
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Unit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -135,6 +150,19 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
             $this->testReadme16BlocksAreTheSameInBothLanguages();
             $this->testReadme16RunsAsWritten('en');
             $this->testReadme16RunsAsWritten('pt-BR');
+            $this->testDeferredStageRunsHttpThenTransportsThenOthers();
+            $this->testDeferredGroupsByTransportInstance();
+            $this->testDeferredTieredFetchesByCost();
+            $this->testDeferredResultsFailuresAndCache();
+            $this->testDeferredMissingKeyFails();
+            $this->testDeferredTransportCrashFailsOnlyItsKeys();
+            $this->testDeferredDeadline();
+            $this->testDeferredSequentialAndDeduplication();
+            $this->testDeferredUnitaryFetchOutsideAScope();
+            $this->testDeferredRandomizedEquivalence();
+            $this->testStageRunnerEdgeCases();
+            $this->testReadme16_1BlocksAreTheSameInBothLanguages();
+            $this->testReadme16_1RunsAsWritten();
             $this->testServerIsStoppedEvenOnFailure();
         } finally {
             $this->server->stop();
@@ -1081,9 +1109,10 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
         if (!function_exists('proc_open')) {
             return;
         }
+        // Redirected by /bin/sh, not by 'file' descriptors: see LocalHttpServer (2.6.0, Infection's file:// interceptor)
         $process = proc_open(
-            [PHP_BINARY, '-n', __DIR__ . '/../Support/resolution_no_curl_probe.php'],
-            [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
+            ['/bin/sh', '-c', 'exec "$0" "$@" </dev/null 2>/dev/null', PHP_BINARY, '-n', __DIR__ . '/../Support/resolution_no_curl_probe.php'],
+            [1 => ['pipe', 'w']],
             $pipes
         );
         $this->assertTrue(is_resource($process));
@@ -1093,6 +1122,7 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
         $report = json_decode($output, true);
         $this->assertTrue(is_array($report), 'probe ran: ' . $output);
         $this->assertTrue($report['callable'], 'a callable source works without curl');
+        $this->assertTrue($report['deferred'] ?? false, 'a deferred source registers and resolves through its transport without curl (2.6.0)');
         if ($report['curl'] === false) {
             $this->assertEquals(DataResolutionException::class, $report['http'], 'HTTP source refused at registration without curl');
             $this->assertTrue(str_contains($report['message'], 'ext-curl'));
@@ -1239,6 +1269,684 @@ class Module21_ConcurrentDataResolutionTest extends TestCase
         $this->assertTrue($caught, "README 16 ({$language}): the SQL visitor refuses the leaf");
 
         DataSourceRegistry::setDefault(null);
+    }
+
+    // ==========================================
+    // 2.6.0 (forward 045): deferred sources and stage transports
+    // ==========================================
+
+    /** A leaf whose request carries the CPF of the candidate as `document`. */
+    private static function onCpf(string $source, ISpecification $inner): ExternalDataSpecification
+    {
+        return Spec::external($source, ['document' => 'cpf'], $inner);
+    }
+
+    /** The canonical key of the request of onCpf() for a CPF. */
+    private static function cpfKey(string $source, string $cpf): string
+    {
+        return (new DataRequest($source, ['document' => $cpf]))->getKey();
+    }
+
+    /**
+     * Inside one stage: the HTTP batch, then one fetchAll() per transport, then the other sources, whatever
+     * the order of the leaves in the tree; the deferred keys reach the transport in the order of the tree.
+     */
+    private function testDeferredStageRunsHttpThenTransportsThenOthers(): void
+    {
+        $log = new ArrayObject();
+        $transport = new RecordingStageTransport('t1', $log);
+        $a = new DeferredProbeSource($transport, static fn(array $p): int => 10);
+        $b = new DeferredProbeSource($transport, static fn(array $p): int => 20);
+        $c = new DeferredProbeSource($transport, static fn(array $p): int => 30);
+        $registry = (new DataSourceRegistry())
+            ->register('d.a', $a)
+            ->register('d.b', $b)
+            ->register('d.c', $c)
+            ->register('cb', new CallableDataSource(static function (array $p) use ($log): bool {
+                $log->append('callable');
+                return true;
+            }))
+            ->register('http', new HttpDataSource(
+                baseUrl: $this->server->baseUrl(),
+                path: '/serasa/score/{document}',
+                parse: static function (int $status, array $headers, string $body) use ($log): int {
+                    $log->append('http');
+                    return json_decode($body, true)['score'];
+                }
+            ));
+        $tree = self::onCpf('cb', Spec::isTrue())
+            ->and(self::onCpf('d.a', Spec::equalTo(10)))
+            ->and(self::onCpf('http', Spec::greaterThanOrEqualTo(700)))
+            ->and(self::onCpf('d.b', Spec::equalTo(20)))
+            ->and(self::onCpf('d.c', Spec::equalTo(30)));
+        $resolver = new DataResolver($registry);
+
+        $data = $resolver->resolve($tree, self::customers()['c1'], ResolutionPolicy::concurrent());
+        $this->assertEquals(['http', 'transport:t1', 'callable'], $log->getArrayCopy(), 'HTTP batch, then the transport, then the callable source');
+        $this->assertEquals(1, $transport->callCount(), 'the three deferred requests in one fetchAll()');
+        $this->assertEquals(['d.a', 'd.b', 'd.c'], $transport->calls[0]['sources'], 'in the order of the tree');
+        $this->assertEquals([self::cpfKey('d.a', '111'), self::cpfKey('d.b', '111'), self::cpfKey('d.c', '111')], $transport->calls[0]['keys']);
+        $this->assertEquals(1, $data->getStageCount());
+        $this->assertEquals(5, $data->getFetchCount(), '3 deferred + 1 callable + 1 HTTP');
+        $this->assertTrue($data->evaluate($tree, self::customers()['c1'])->isSatisfied);
+        $this->assertEquals(0, count($a->unitaryFetches) + count($b->unitaryFetches) + count($c->unitaryFetches), 'the resolver never takes the unitary fetch() of a deferred source');
+
+        $result = $resolver->evaluate($tree, self::customers()['c2'], ResolutionPolicy::concurrent());
+        $this->assertFalse($result->isSatisfied, 'score 500 of c2');
+        $this->assertFalse($result->isError);
+    }
+
+    /**
+     * One fetchAll() per transport instance, transports in the order their first request was met; sources of
+     * one transport registered under different names (or the same source under two names) share one call.
+     */
+    private function testDeferredGroupsByTransportInstance(): void
+    {
+        $log = new ArrayObject();
+        $t1 = new RecordingStageTransport('t1', $log);
+        $t2 = new RecordingStageTransport('t2', $log);
+        $shared = new DeferredProbeSource($t1, static fn(array $p): bool => true);
+        $registry = (new DataSourceRegistry())
+            ->register('x.1', new DeferredProbeSource($t1, static fn(array $p): bool => true))
+            ->register('y.1', new DeferredProbeSource($t2, static fn(array $p): bool => true))
+            ->register('x.2', $shared)
+            ->register('x.3', $shared);
+        $resolver = new DataResolver($registry);
+        $tree = self::onCpf('y.1', Spec::isTrue())
+            ->and(self::onCpf('x.1', Spec::isTrue()))
+            ->and(self::onCpf('x.2', Spec::isTrue()))
+            ->and(self::onCpf('x.3', Spec::isTrue()));
+
+        $data = $resolver->resolve($tree, self::customers()['c1']);
+        $this->assertEquals(['transport:t2', 'transport:t1'], $log->getArrayCopy(), 'first-seen order: y.1 comes first in the tree');
+        $this->assertEquals([['y.1']], array_map(static fn(array $call): array => $call['sources'], $t2->calls));
+        $this->assertEquals([['x.1', 'x.2', 'x.3']], array_map(static fn(array $call): array => $call['sources'], $t1->calls), 'grouped by instance, the same source under two names included');
+        $this->assertEquals(1, $data->getStageCount());
+        $this->assertEquals(4, $data->getFetchCount());
+        $this->assertTrue($data->evaluate($tree, self::customers()['c1'])->isSatisfied);
+
+        $log->exchangeArray([]);
+        $resolver->resolve(self::onCpf('x.1', Spec::isTrue())->and(self::onCpf('y.1', Spec::isTrue())), self::customers()['c1']);
+        $this->assertEquals(['transport:t1', 'transport:t2'], $log->getArrayCopy(), 'first-seen order: x.1 comes first now');
+    }
+
+    /** Tiered: one stage per cost, cheapest first; a decided verdict skips the expensive deferred source. */
+    private function testDeferredTieredFetchesByCost(): void
+    {
+        $transport = new RecordingStageTransport();
+        $registry = (new DataSourceRegistry())
+            ->register('pricey', new DeferredProbeSource($transport, static fn(array $p): bool => true, cost: 10))
+            ->register('cheap', new DeferredProbeSource($transport, static fn(array $p): bool => $p['document'] === '111', cost: 1));
+        $resolver = new DataResolver($registry);
+        $tree = self::onCpf('pricey', Spec::isTrue())->and(self::onCpf('cheap', Spec::isTrue()));
+
+        $data = $resolver->resolve($tree, self::customers()['c2'], ResolutionPolicy::tiered());
+        $this->assertEquals([['cheap']], array_map(static fn(array $call): array => $call['sources'], $transport->calls), 'only the cheap stage reached the transport');
+        $this->assertEquals(['pricey'], array_map(static fn(DataRequest $r): string => $r->source, $data->getSkippedRequests()));
+        $this->assertEquals('The request to data source "pricey" is not resolved.', $this->assertThrows(DataResolutionException::class, static fn() => $data->get(new DataRequest('pricey', ['document' => '222'])))->getMessage(), 'get() of a skipped request');
+        $this->assertThrows(DataResolutionException::class, static fn() => $data->get(new DataRequest('never.asked')), 'get() of a request this resolution does not know');
+        $this->assertEquals(1, $data->getStageCount());
+        $result = $data->evaluate($tree, self::customers()['c2']);
+        $this->assertFalse($result->isSatisfied);
+        $this->assertFalse($result->isError, 'a skipped branch reports no failure');
+
+        $data = $resolver->resolve($tree, self::customers()['c1'], ResolutionPolicy::tiered());
+        $this->assertEquals([['cheap'], ['cheap'], ['pricey']], array_map(static fn(array $call): array => $call['sources'], $transport->calls), 'two stages, cheapest first');
+        $this->assertEquals(2, $data->getStageCount());
+        $this->assertEquals([], $data->getSkippedRequests());
+        $this->assertTrue($data->evaluate($tree, self::customers()['c1'])->isSatisfied);
+    }
+
+    /**
+     * A Throwable answered by the transport fails that request only: the evaluation error of its leaf, never
+     * cached; a value with a TTL is cached and answered without the transport the next time.
+     */
+    private function testDeferredResultsFailuresAndCache(): void
+    {
+        $now = 1000.0;
+        $cache = new InMemoryDataCache(function () use (&$now): float {
+            return $now;
+        });
+        $boom = new RuntimeException('bureau offline');
+        $transport = (new RecordingStageTransport())->script('d.err', $boom);
+        $registry = (new DataSourceRegistry())
+            ->register('d.err', new DeferredProbeSource($transport, static fn(array $p): bool => true, ttl: 60))
+            ->register('d.ttl', new DeferredProbeSource($transport, static fn(array $p): int => 42, ttl: 60))
+            ->register('d.nottl', new DeferredProbeSource($transport, static fn(array $p): int => 7));
+        $resolver = new DataResolver($registry, $cache);
+        $candidate = self::customers()['c1'];
+
+        // A Throwable result
+        $leaf = self::onCpf('d.err', Spec::isTrue())->withCode('BUREAU');
+        $data = $resolver->resolve($leaf, $candidate);
+        $result = $data->evaluate($leaf, $candidate);
+        $this->assertTrue($result->isError);
+        $this->assertTrue($result->exception === $boom, 'the Throwable answered is the exception of the result');
+        $this->assertEquals(true, $result->failures[0]->metadata['evaluation_error'] ?? null);
+        $this->assertEquals([SpecificationResult::EVALUATION_ERROR_MESSAGE], $result->getReasons());
+        $this->assertEquals(['BUREAU'], $result->getCodes());
+        $this->assertEquals(['d.err'], array_map(static fn(DataRequest $r): string => $r->source, $data->getFailedRequests()));
+        $this->assertTrue($data->getError(new DataRequest('d.err', ['document' => '111'])) === $boom);
+        $this->assertCount(0, $cache, 'a failure is never cached');
+        $resolver->resolve($leaf, $candidate);
+        $this->assertEquals(2, $transport->callCount(), 'the next resolution asks the transport again');
+
+        // A value with a TTL: cached; the next resolution is a cache hit and never reaches the transport
+        $tree = self::onCpf('d.ttl', Spec::equalTo(42))->and(self::onCpf('d.nottl', Spec::equalTo(7)));
+        $data = $resolver->resolve($tree, $candidate);
+        $this->assertEquals([['d.ttl', 'd.nottl']], array_map(static fn(array $call): array => $call['sources'], array_slice($transport->calls, 2)));
+        $this->assertCount(1, $cache, 'only the source with a TTL');
+        $data = $resolver->resolve($tree, $candidate);
+        $this->assertEquals(['d.nottl'], $transport->calls[3]['sources'], 'd.ttl answered by the cache');
+        $this->assertEquals(1, $data->getCacheHitCount());
+        $this->assertEquals(1, $data->getFetchCount());
+        $this->assertTrue($data->evaluate($tree, $candidate)->isSatisfied);
+        $data = $resolver->resolve(self::onCpf('d.ttl', Spec::equalTo(42)), $candidate);
+        $this->assertEquals(4, $transport->callCount(), 'every request answered by the cache: no fetchAll()');
+        $this->assertEquals(0, $data->getStageCount(), 'a stage answered by the cache is not counted');
+        $this->assertEquals(0, $data->getFetchCount());
+        $now += 61;
+        $resolver->resolve(self::onCpf('d.ttl', Spec::equalTo(42)), $candidate);
+        $this->assertEquals(5, $transport->callCount(), 'expired after the TTL of the source');
+    }
+
+    /**
+     * A key the transport does not answer fails with DataFetchException::noTransportResult() (the source
+     * named, never a parameter); a key answered that nobody asked is ignored.
+     */
+    private function testDeferredMissingKeyFails(): void
+    {
+        $transport = (new RecordingStageTransport('t', extraKey: true))->script('d.miss', RecordingStageTransport::OMIT);
+        $registry = (new DataSourceRegistry())
+            ->register('d.miss', new DeferredProbeSource($transport, static fn(array $p): bool => true))
+            ->register('d.here', new DeferredProbeSource($transport, static fn(array $p): bool => true));
+        $tree = self::onCpf('d.miss', Spec::isTrue())->and(self::onCpf('d.here', Spec::isTrue()));
+        $data = (new DataResolver($registry))->resolve($tree, self::customers()['c1']);
+
+        $error = $data->getError(new DataRequest('d.miss', ['document' => '111']));
+        $this->assertInstanceOf(DataFetchException::class, $error);
+        $this->assertEquals('The stage transport returned no result for data source "d.miss".', $error->getMessage());
+        $this->assertEquals('d.miss', $error->getSourceName());
+        $this->assertEquals(null, $error->getStatusCode());
+        $this->assertEquals(0, $error->getCode());
+        $this->assertTrue($this->assertThrows(DataFetchException::class, static fn() => $data->get(new DataRequest('d.miss', ['document' => '111']))) === $error, 'get() throws the failure of a failed request');
+        $this->assertFalse(str_contains($error->getMessage(), '111'), 'never a parameter value');
+        $this->assertTrue($data->isResolved(new DataRequest('d.here', ['document' => '111'])), 'the other key of the call resolves');
+        $this->assertEquals(2, count($data->getRequests()), 'the key nobody asked is ignored');
+        $this->assertEquals(2, $data->getFetchCount());
+        $this->assertTrue($data->evaluate($tree, self::customers()['c1'])->isError);
+    }
+
+    /**
+     * fetchAll() that throws fails every request of its transport, and only those: the other transport and
+     * the callable source of the stage still succeed. A source whose getTransport() throws fails alone.
+     */
+    private function testDeferredTransportCrashFailsOnlyItsKeys(): void
+    {
+        $down = new RuntimeException('transport down');
+        $crashing = new RecordingStageTransport('t1', crash: $down);
+        $healthy = new RecordingStageTransport('t2');
+        $registry = (new DataSourceRegistry())
+            ->register('a.1', new DeferredProbeSource($crashing, static fn(array $p): bool => true))
+            ->register('a.2', new DeferredProbeSource($crashing, static fn(array $p): bool => true))
+            ->register('b.1', new DeferredProbeSource($healthy, static fn(array $p): bool => true))
+            ->register('cb', new CallableDataSource(static fn(array $p): bool => true))
+            ->register('orphan', new DeferredProbeSource(null, static fn(array $p): bool => true));
+        $tree = self::onCpf('a.1', Spec::isTrue())
+            ->and(self::onCpf('orphan', Spec::isTrue()))
+            ->and(self::onCpf('a.2', Spec::isTrue()))
+            ->and(self::onCpf('b.1', Spec::isTrue()))
+            ->and(self::onCpf('cb', Spec::isTrue()));
+        $data = (new DataResolver($registry))->resolve($tree, self::customers()['c1']);
+
+        $request = static fn(string $source): DataRequest => new DataRequest($source, ['document' => '111']);
+        $this->assertEquals(1, $crashing->callCount());
+        $this->assertTrue($data->getError($request('a.1')) === $down && $data->getError($request('a.2')) === $down, 'both keys of the crashed call fail with its exception');
+        $this->assertEquals(1, $healthy->callCount());
+        $this->assertTrue($data->isResolved($request('b.1')), 'the other transport of the stage');
+        $this->assertTrue($data->isResolved($request('cb')), 'the callable source of the stage');
+        $this->assertInstanceOf(LogicException::class, $data->getError($request('orphan')));
+        $this->assertEquals('probe without a transport', $data->getError($request('orphan'))->getMessage());
+        $this->assertEquals(['a.1', 'orphan', 'a.2'], array_map(static fn(DataRequest $r): string => $r->source, $data->getFailedRequests()));
+        $this->assertEquals(4, $data->getFetchCount(), '2 handed to the crashed transport + 1 + the callable; the orphan never left');
+        $this->assertEquals(1, $data->getStageCount());
+        $this->assertTrue($data->evaluate($tree, self::customers()['c1'])->isError);
+    }
+
+    /**
+     * The transport receives the deadline of the resolution (null without a limit); a transport whose turn
+     * comes after the deadline is not called and its requests fail with the resolution time limit.
+     */
+    private function testDeferredDeadline(): void
+    {
+        $transport = new RecordingStageTransport();
+        $registry = (new DataSourceRegistry())->register('d.a', new DeferredProbeSource($transport, static fn(array $p): bool => true));
+        $resolver = new DataResolver($registry);
+        $leaf = self::onCpf('d.a', Spec::isTrue());
+
+        $before = CurlMultiTransport::now();
+        $resolver->resolve($leaf, self::customers()['c1'], ResolutionPolicy::concurrent(timeout: 2.0));
+        $after = CurlMultiTransport::now();
+        $deadline = $transport->calls[0]['deadline'];
+        $this->assertTrue($deadline !== null && $deadline >= $before + 2.0 && $deadline <= $after + 2.0, sprintf(
+            'the deadline is the start of the resolution + 2.0 s (deadline %.6f, resolution from %.6f to %.6f)',
+            $deadline ?? -1.0,
+            $before,
+            $after
+        ));
+        $left = ($deadline ?? 0.0) - $transport->calls[0]['at'];
+        $this->assertTrue($left > 1.0 && $left <= 2.0, sprintf('at the call, %.6f s of the 2.0 s were left', $left));
+        $resolver->resolve($leaf, self::customers()['c2'], ResolutionPolicy::concurrent());
+        $this->assertEquals(null, $transport->calls[1]['deadline'], 'no limit: null');
+
+        // A first transport sleeps past the limit: the second one is not called, the callables not run (each fails)
+        $log = new ArrayObject();
+        $slow = new RecordingStageTransport('slow', $log, sleepMs: 500);
+        $late = new RecordingStageTransport('late', $log);
+        $callableRuns = 0;
+        $registry = (new DataSourceRegistry())
+            ->register('s.1', new DeferredProbeSource($slow, static fn(array $p): bool => true))
+            ->register('l.1', new DeferredProbeSource($late, static fn(array $p): bool => true))
+            ->register('cb', new CallableDataSource(function (array $p) use (&$callableRuns): bool {
+                $callableRuns++;
+                return true;
+            }))
+            ->register('cb2', new CallableDataSource(function (array $p) use (&$callableRuns): bool {
+                $callableRuns++;
+                return true;
+            }));
+        $tree = self::onCpf('s.1', Spec::isTrue())->and(self::onCpf('l.1', Spec::isTrue()))->and(self::onCpf('cb', Spec::isTrue()))->and(self::onCpf('cb2', Spec::isTrue()));
+        $start = hrtime(true);
+        $data = (new DataResolver($registry))->resolve($tree, self::customers()['c1'], ResolutionPolicy::concurrent(timeout: 0.4));
+        $elapsed = self::ms($start);
+        self::$timings['deferred_deadline_0.4s'] = $elapsed;
+        $startedAfter = ($slow->calls[0]['at'] ?? 0.0) - (($slow->calls[0]['deadline'] ?? 0.0) - 0.4);
+        $this->assertEquals(['transport:slow'], $log->getArrayCopy(), sprintf(
+            'the first transport starts before the limit (%.1f ms after the start of the resolution), the second is never called (resolve() took %.1f ms)',
+            $startedAfter * 1000,
+            $elapsed
+        ));
+        $this->assertTrue($data->isResolved(new DataRequest('s.1', ['document' => '111'])), 'a value the transport returned is kept (honouring the limit is the transport\'s job)');
+        foreach (['l.1', 'cb', 'cb2'] as $source) {
+            $error = $data->getError(new DataRequest($source, ['document' => '111']));
+            $this->assertInstanceOf(DataFetchException::class, $error);
+            $this->assertEquals(sprintf('The time limit of the resolution was reached before data source "%s" answered.', $source), $error->getMessage());
+        }
+        $this->assertEquals(0, $callableRuns);
+        $this->assertEquals(1, $data->getFetchCount(), 'only the request handed to the first transport');
+    }
+
+    /**
+     * Sequential: each leaf reaches the transport with a one-key $pending, in evaluation order; a leaf
+     * short-circuited by the evaluation never reaches it. The same request twice: one key, one fetch.
+     */
+    private function testDeferredSequentialAndDeduplication(): void
+    {
+        $transport = new RecordingStageTransport();
+        $probes = [
+            'q.a' => new DeferredProbeSource($transport, static fn(array $p): bool => true),
+            'q.b' => new DeferredProbeSource($transport, static fn(array $p): bool => false),
+            'q.c' => new DeferredProbeSource($transport, static fn(array $p): bool => true),
+        ];
+        $registry = new DataSourceRegistry();
+        foreach ($probes as $name => $probe) {
+            $registry->register($name, $probe);
+        }
+        $resolver = new DataResolver($registry);
+        $candidate = self::customers()['c1'];
+        $tree = self::onCpf('q.a', Spec::isTrue())->and(self::onCpf('q.b', Spec::isTrue()))->and(self::onCpf('q.c', Spec::isTrue()));
+
+        $data = $resolver->resolve($tree, $candidate, ResolutionPolicy::sequential());
+        $this->assertEquals(0, $transport->callCount(), 'sequential: nothing fetched beforehand');
+        $this->assertFalse($data->isSatisfiedBy($tree, $candidate));
+        $this->assertEquals([['q.a'], ['q.b']], array_map(static fn(array $call): array => $call['sources'], $transport->calls), 'one key per call, in evaluation order; q.c short-circuited');
+        $this->assertEquals([[self::cpfKey('q.a', '111')], [self::cpfKey('q.b', '111')]], array_map(static fn(array $call): array => $call['keys'], $transport->calls));
+        $this->assertEquals(2, $data->getStageCount());
+        $this->assertEquals(2, $data->getFetchCount());
+        $this->assertEquals(0, array_sum(array_map(static fn(DeferredProbeSource $p): int => count($p->unitaryFetches), $probes)), 'the unitary fetch() is not taken inside the scope');
+
+        // The same request twice in the tree: one key, one fetch, under both policies
+        $twice = self::onCpf('q.a', Spec::isTrue())->and(Spec::not(self::onCpf('q.a', Spec::isFalse())));
+        $calls = $transport->callCount();
+        $data = $resolver->resolve($twice, $candidate);
+        $this->assertEquals([[self::cpfKey('q.a', '111')]], array_map(static fn(array $call): array => $call['keys'], array_slice($transport->calls, $calls)));
+        $this->assertEquals(1, $data->getFetchCount());
+        $this->assertTrue($data->evaluate($twice, $candidate)->isSatisfied);
+        $calls = $transport->callCount();
+        $this->assertTrue($resolver->evaluate($twice, $candidate, ResolutionPolicy::sequential())->isSatisfied);
+        $this->assertEquals(1, $transport->callCount() - $calls, 'sequential: the second leaf reads the value fetched by the first');
+    }
+
+    /** Outside a resolution scope a leaf takes the unitary fetch() of the source; the registry accepts it. */
+    private function testDeferredUnitaryFetchOutsideAScope(): void
+    {
+        $transport = new RecordingStageTransport();
+        $probe = new DeferredProbeSource($transport, static fn(array $p): string => $p['document'] === '111' ? 'verified' : 'pending');
+        $registry = new DataSourceRegistry();
+        $this->assertTrue($registry->register('kyc', $probe) === $registry, 'registered, no extension asked');
+        $this->assertTrue($registry->get('kyc') === $probe);
+        DataSourceRegistry::setDefault($registry);
+        try {
+            $leaf = self::onCpf('kyc', Spec::equalTo('verified'));
+            $this->assertTrue($leaf->evaluate(self::customers()['c1'])->isSatisfied);
+            $this->assertFalse($leaf->evaluate(self::customers()['c2'])->isSatisfied);
+        } finally {
+            DataSourceRegistry::setDefault(null);
+        }
+        $this->assertEquals(['111', '222'], array_map(static fn(DataRequest $r): string => (string) $r->get('document'), $probe->unitaryFetches));
+        $this->assertEquals(0, $transport->callCount(), 'no transport outside a scope');
+    }
+
+    /**
+     * Random trees (fixed seed) over callable, deferred (on k transports) and plain sources: the same verdict
+     * under concurrent(), tiered() and sequential(); one fetchAll() per transport with pending keys in each
+     * stage (concurrent: per transport; tiered: per pair cost x transport among the requests not skipped).
+     */
+    private function testDeferredRandomizedEquivalence(): void
+    {
+        $random = new \Random\Randomizer(new \Random\Engine\Mt19937(45045));
+        $plain = static fn(Closure $value, int $cost): IDataSource => new class($value, $cost) implements IDataSource {
+            public function __construct(private readonly Closure $value, private readonly int $cost)
+            {
+            }
+
+            public function fetch(DataRequest $request): mixed
+            {
+                return ($this->value)($request->parameters);
+            }
+
+            public function getCost(): int
+            {
+                return $this->cost;
+            }
+
+            public function getTtl(): ?int
+            {
+                return null;
+            }
+        };
+        $mismatches = [];
+        $withTwoTransportsCalled = 0;
+        $skipped = 0;
+        $start = hrtime(true);
+        for ($i = 0; $i < 300; $i++) {
+            $transports = [];
+            for ($k = $random->getInt(1, 3), $j = 0; $j < $k; $j++) {
+                $transports[] = new RecordingStageTransport("t{$j}");
+            }
+            $registry = new DataSourceRegistry();
+            $transportOf = [];
+            $costOf = [];
+            $n = $random->getInt(3, 6);
+            for ($s = 0; $s < $n; $s++) {
+                $truth = ['111' => $random->getInt(0, 1) === 1, '222' => $random->getInt(0, 1) === 1];
+                $value = static fn(array $p): bool => $truth[$p['document']];
+                $costOf["s{$s}"] = $cost = $random->getInt(0, 2);
+                $kind = $random->getInt(0, 3);                  // half of the sources are deferred
+                if ($kind >= 2) {
+                    $transport = $transports[$random->getInt(0, count($transports) - 1)];
+                    $transportOf["s{$s}"] = spl_object_id($transport);
+                    $registry->register("s{$s}", new DeferredProbeSource($transport, $value, $cost));
+                } else {
+                    $registry->register("s{$s}", $kind === 0 ? new CallableDataSource($value, $cost) : $plain($value, $cost));
+                }
+            }
+            $build = static function (int $depth) use (&$build, $random, $n): ISpecification {
+                if ($depth === 0 || $random->getInt(0, 3) === 0) {
+                    return self::onCpf('s' . $random->getInt(0, $n - 1), $random->getInt(0, 1) === 1 ? Spec::isTrue() : Spec::isFalse());
+                }
+                return match ($random->getInt(0, 2)) {
+                    0 => $build($depth - 1)->and($build($depth - 1)),
+                    1 => $build($depth - 1)->or($build($depth - 1)),
+                    default => Spec::not($build($depth - 1)),
+                };
+            };
+            $tree = $build(3);
+            $candidate = self::customers()[$random->getInt(0, 1) === 1 ? 'c1' : 'c2'];
+            $resolver = new DataResolver($registry);
+            $callsNow = static fn(): int => array_sum(array_map(static fn(RecordingStageTransport $t): int => $t->callCount(), $transports));
+
+            $data = $resolver->resolve($tree, $candidate, ResolutionPolicy::concurrent());
+            $deferred = array_values(array_filter($data->getRequests(), static fn(DataRequest $r): bool => isset($transportOf[$r->source])));
+            $expected = count(array_unique(array_map(static fn(DataRequest $r): int => $transportOf[$r->source], $deferred)));
+            $calls = $callsNow();
+            $handed = array_sum(array_map(static fn(RecordingStageTransport $t): int => array_sum(array_map(static fn(array $c): int => count($c['keys']), $t->calls)), $transports));
+            if ($calls !== $expected || $handed !== count($deferred)) {
+                $mismatches[] = sprintf('#%d concurrent: %d fetchAll() for %d transports, %d keys handed for %d deferred requests', $i, $calls, $expected, $handed, count($deferred));
+            }
+            $withTwoTransportsCalled += $expected >= 2 ? 1 : 0;
+            $concurrent = $data->evaluate($tree, $candidate)->isSatisfied;
+
+            $before = $callsNow();
+            $data = $resolver->resolve($tree, $candidate, ResolutionPolicy::tiered());
+            $skippedKeys = array_map(static fn(DataRequest $r): string => $r->getKey(), $data->getSkippedRequests());
+            $skipped += count($skippedKeys);
+            $fetched = array_filter($deferred, static fn(DataRequest $r): bool => !in_array($r->getKey(), $skippedKeys, true));
+            $expected = count(array_unique(array_map(static fn(DataRequest $r): string => $costOf[$r->source] . ':' . $transportOf[$r->source], $fetched)));
+            if ($callsNow() - $before !== $expected) {
+                $mismatches[] = sprintf('#%d tiered: %d fetchAll() for %d pairs cost x transport', $i, $callsNow() - $before, $expected);
+            }
+            $tiered = $data->evaluate($tree, $candidate)->isSatisfied;
+            $sequential = $resolver->evaluate($tree, $candidate, ResolutionPolicy::sequential())->isSatisfied;
+            if ($concurrent !== $tiered || $concurrent !== $sequential) {
+                $mismatches[] = sprintf('#%d verdicts: concurrent %s, tiered %s, sequential %s', $i, var_export($concurrent, true), var_export($tiered, true), var_export($sequential, true));
+            }
+        }
+        $elapsed = self::ms($start);
+        self::$timings['deferred_randomized_300'] = $elapsed;
+        $this->assertEquals([], array_slice($mismatches, 0, 5), sprintf('%d mismatch(es) in 300 random trees', count($mismatches)));
+        $this->assertTrue($withTwoTransportsCalled >= 30 && $skipped >= 30, sprintf('the sample covers several transports in one stage (%d trees) and skipped requests (%d)', $withTwoTransportsCalled, $skipped));
+        $this->assertTrue($elapsed < 2000.0, sprintf('300 random trees in %.1f ms', $elapsed));
+    }
+
+    /**
+     * The rest of the stage runner of ResolvedData (2.6.0: the file entered the scope of mutation testing, and
+     * these are the answers of the code around the deferred group that no scenario pinned): the requests are a
+     * list; pendingByCost(), pendingAmong(), loadFromCache() and fetch() ignore resolved and unknown keys; a
+     * failed key never stops its stage; the fetch count adds up across stages; the cache is read and written
+     * only for a source with a TTL, and a source with a TTL works without a cache.
+     */
+    private function testStageRunnerEdgeCases(): void
+    {
+        $candidate = self::customers()['c1'];
+        $key = static fn(string $source): string => self::cpfKey($source, '111');
+        $request = static fn(string $source): DataRequest => new DataRequest($source, ['document' => '111']);
+
+        // The internal protocol over resolved and unknown keys
+        $transport = new RecordingStageTransport();
+        $registry = (new DataSourceRegistry())
+            ->register('e.cheap', new DeferredProbeSource($transport, static fn(array $p): bool => true, cost: 1))
+            ->register('e.pricey', new DeferredProbeSource($transport, static fn(array $p): bool => true, cost: 10));
+        $data = new ResolvedData($registry, ResolutionPolicy::tiered());
+        $data->add($request('e.cheap'));
+        $data->add($request('e.pricey'));
+        $this->assertEquals([0, 1], array_keys($data->getRequests()), 'getRequests() is a list');
+        $data->fetch([$key('e.cheap')]);
+        $this->assertEquals([10 => [$key('e.pricey')]], $data->pendingByCost([$key('e.cheap'), 'unknown#0', $key('e.pricey')]), 'pendingByCost(): a resolved or unknown key is not pending');
+        $this->assertEquals([$key('e.pricey')], $data->pendingAmong([$key('e.cheap'), 'unknown#0', $key('e.pricey')]), 'pendingAmong(): a list of the pending keys only');
+        $data->fetch([$key('e.cheap'), 'unknown#0', $key('e.pricey')]);
+        $this->assertEquals(2, $data->getFetchCount(), 'fetch(): a resolved or unknown key is skipped, never fetched again, and the stage goes on');
+        $this->assertEquals([['e.cheap'], ['e.pricey']], array_map(static fn(array $call): array => $call['sources'], $transport->calls));
+
+        // An unknown source fails in its stage and the stage goes on with the next key
+        $data = (new DataResolver($registry))->resolve(Spec::external('nowhere', [], Spec::isTrue())->and(self::onCpf('e.cheap', Spec::isTrue())), $candidate);
+        $this->assertTrue($data->isResolved($request('e.cheap')), 'the key after a failed one is fetched in the same stage');
+        $this->assertEquals(1, $data->getStageCount());
+
+        // Tiered with the cache: loadFromCache() answers before the first stage, so a cached expensive answer
+        // decides the verdict and the cheap source is never called
+        $cache = new InMemoryDataCache();
+        $transport = new RecordingStageTransport();
+        $registry = (new DataSourceRegistry())
+            ->register('c.cheap', new DeferredProbeSource($transport, static fn(array $p): bool => true, cost: 1, ttl: 60))
+            ->register('c.pricey', new DeferredProbeSource($transport, static fn(array $p): bool => false, cost: 10, ttl: 60));
+        $resolver = new DataResolver($registry, $cache);
+        $resolver->resolve(self::onCpf('c.pricey', Spec::isTrue()), $candidate);
+        $tree = self::onCpf('c.cheap', Spec::isTrue())->and(self::onCpf('c.pricey', Spec::isTrue()));
+        $data = $resolver->resolve($tree, $candidate, ResolutionPolicy::tiered());
+        $this->assertEquals(1, $transport->callCount(), 'only the first resolution reached the transport');
+        $this->assertEquals(['c.cheap'], array_map(static fn(DataRequest $r): string => $r->source, $data->getSkippedRequests()));
+        $this->assertEquals(1, $data->getCacheHitCount());
+        $this->assertEquals(0, $data->getFetchCount());
+        $this->assertFalse($data->evaluate($tree, $candidate)->isSatisfied);
+        $data->loadFromCache([$key('c.pricey'), 'unknown#0']);
+        $this->assertEquals(1, $data->getCacheHitCount(), 'loadFromCache(): a resolved or unknown key is not read again');
+        $fresh = new ResolvedData($registry, ResolutionPolicy::tiered(), $cache);
+        $fresh->add($request('c.pricey'));
+        $fresh->loadFromCache(['unknown#0', $key('c.pricey')]);
+        $this->assertEquals(1, $fresh->getCacheHitCount(), 'loadFromCache(): an unknown key is skipped and the next one read');
+
+        // HTTP: a call that cannot be built fails in its stage; the fetch count adds up across tiered stages
+        $httpRegistry = (new DataSourceRegistry())
+            ->register('h.cheap', $this->source('/serasa/score/{document}', 'score', 1))
+            ->register('h.pricey', $this->source('/fraud/check/{document}', 'flagged', 10))
+            ->register('h.broken', new HttpDataSource($this->server->baseUrl(), '/echo/{document}/{other}'));
+        $data = (new DataResolver($httpRegistry))->resolve(Spec::external('h.broken', ['document' => 'cpf'], Spec::alwaysTrue()), $candidate);
+        $this->assertEquals(['h.broken'], array_map(static fn(DataRequest $r): string => $r->source, $data->getFailedRequests()), 'a call that cannot be built fails at once');
+        $tree = Spec::external('h.pricey', ['document' => 'cpf'], Spec::isFalse())->and(Spec::external('h.cheap', ['document' => 'cpf'], Spec::greaterThanOrEqualTo(700)));
+        $data = (new DataResolver($httpRegistry))->resolve($tree, $candidate, ResolutionPolicy::tiered());
+        $this->assertEquals([2, 2], [$data->getStageCount(), $data->getFetchCount()], 'two HTTP stages, one call each, counted together');
+
+        // The cache is read and written only for a source with a TTL; a TTL without a cache is harmless
+        $cache = new InMemoryDataCache();
+        $cache->set($key('t.none'), 'stale', 60);
+        $registry = (new DataSourceRegistry())
+            ->register('t.none', new DeferredProbeSource(new RecordingStageTransport(), static fn(array $p): string => 'fresh'))
+            ->register('t.ttl', new DeferredProbeSource(new RecordingStageTransport(), static fn(array $p): string => 'kept', ttl: 60));
+        $data = (new DataResolver($registry, $cache))->resolve(self::onCpf('t.none', Spec::equalTo('fresh')), $candidate);
+        $this->assertEquals('fresh', $data->get($request('t.none')), 'a source without a TTL never reads the cache');
+        $this->assertEquals(0, $data->getCacheHitCount());
+        $this->assertEquals('stale', $cache->get($key('t.none')), 'nor writes it');
+        $data = (new DataResolver($registry))->resolve(self::onCpf('t.ttl', Spec::equalTo('kept')), $candidate);
+        $this->assertTrue($data->isResolved($request('t.ttl')), 'a source with a TTL and no cache');
+    }
+
+    // ==========================================
+    // Example 16.1 (docs/<language>/resolution/deferred.md)
+    // ==========================================
+
+    private function testReadme16_1BlocksAreTheSameInBothLanguages(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $english = ReadmeBlocks::of($root . '/docs/en/resolution/deferred.md', '16.1');
+        $portuguese = ReadmeBlocks::of($root . '/docs/pt-BR/resolution/deferred.md', '16.1');
+        $this->assertCount(1, $english, 'one PHP block in example 16.1 (EN)');
+        $this->assertCount(1, $portuguese, 'one PHP block in example 16.1 (pt-BR)');
+        $this->assertEquals(ReadmeBlocks::codeTokens($english[0] ?? ''), ReadmeBlocks::codeTokens($portuguese[0] ?? ''), 'example 16.1: the same code except comments');
+    }
+
+    /**
+     * Example 16.1 runs as written: the code between the markers is the block of the page token by token
+     * (its `use` lines are imports of this file; a bare expression of the page is kept here as `$rN = ...`).
+     */
+    private function testReadme16_1RunsAsWritten(): void
+    {
+        // README 16.1 >>>
+        // The transport: every pending request of its sources in the stage, in one call
+        $transport = new class implements IStageTransport {
+            public int $calls = 0;
+
+            public function fetchAll(array $pending, ?float $deadline): array
+            {
+                $this->calls++;
+                $results = [];
+                foreach ($pending as $key => [$source, $request]) {
+                    try {
+                        $results[$key] = $source->fetch($request);
+                    } catch (\Throwable $e) {
+                        $results[$key] = $e;                     // fails this request only
+                    }
+                }
+
+                return $results;
+            }
+        };
+
+        // A deferred source: its closure is the synchronous fetch(); inside a resolution the transport fetches it
+        $deferred = fn(\Closure $value): IDeferredDataSource => new class($value, $transport) implements IDeferredDataSource {
+            public function __construct(private \Closure $value, private IStageTransport $transport)
+            {
+            }
+
+            public function fetch(DataRequest $request): mixed
+            {
+                return ($this->value)($request->parameters);
+            }
+
+            public function getCost(): int
+            {
+                return 0;
+            }
+
+            public function getTtl(): ?int
+            {
+                return null;
+            }
+
+            public function getTransport(): IStageTransport
+            {
+                return $this->transport;
+            }
+        };
+
+        $registry = (new DataSourceRegistry())
+            ->register('ledger.balance', $deferred(fn(array $p): float => ['A-1' => 2500.0, 'A-2' => 10.0][$p['account']]))
+            ->register('kyc.status', $deferred(fn(array $p): string => $p['document'] === '111.444.777-35' ? 'verified' : 'pending'))
+            ->register('sanctions.hit', $deferred(fn(array $p): bool => throw new \RuntimeException('sanctions list offline')));
+
+        $rule = Spec::external('ledger.balance', ['account' => 'account'], Spec::greaterThanOrEqualTo(1000))
+            ->and(Spec::external('kyc.status', ['document' => 'cpf'], Spec::equalTo('verified')));
+
+        $customer = (object) ['cpf' => '111.444.777-35', 'account' => 'A-1'];
+        $resolver = new DataResolver($registry);
+        $data = $resolver->resolve($rule, $customer);
+
+        $r1 = $transport->calls;                                      // 1: both requests in one fetchAll()
+        $r2 = $data->getStageCount();                                 // 1
+        $r3 = $data->getFetchCount();                                 // 2
+        $r4 = $data->evaluate($rule, $customer)->isSatisfied;         // true
+
+        // A request the transport answers with a Throwable is the evaluation error of its leaf
+        $screened = $rule->and(Spec::external('sanctions.hit', ['document' => 'cpf'], Spec::isFalse()));
+        $result = $resolver->evaluate($screened, $customer);
+        $r5 = $result->isError;                                       // true
+        $r6 = $result->exception->getMessage();                       // 'sanctions list offline'
+        $r7 = $transport->calls;                                      // 2
+        // <<< README 16.1
+
+        $this->assertEquals([1, 1, 2, true, true, 'sanctions list offline', 2], [$r1, $r2, $r3, $r4, $r5, $r6, $r7], 'example 16.1: the results written in its comments');
+        $this->assertFalse($result->isSatisfied);
+        $this->assertTranscribed16_1();
+    }
+
+    /** The code between the markers of example 16.1 is the block of docs/en/resolution/deferred.md. */
+    private function assertTranscribed16_1(): void
+    {
+        $source = (string) file_get_contents(__FILE__);
+        $start = strpos($source, "// README 16.1 >>>\n");
+        $end = strpos($source, "// <<< README 16.1\n");
+        $this->assertTrue($start !== false && $end !== false && $end > $start, 'transcription of example 16.1 marked');
+        $tokens = ReadmeBlocks::codeTokens(substr($source, (int) $start, (int) $end - (int) $start));
+        $transcribed = [];
+        for ($i = 0, $n = count($tokens); $i < $n; $i++) {
+            if (preg_match('/^\$r\d+$/', $tokens[$i]) === 1 && ($tokens[$i + 1] ?? null) === '=') {
+                $i++;
+                continue;
+            }
+            $transcribed[] = $tokens[$i];
+        }
+        $block = ReadmeBlocks::of(dirname(__DIR__, 2) . '/docs/en/resolution/deferred.md', '16.1')[0] ?? '';
+        preg_match_all('/^use ([^;]+);$/m', $block, $imports);
+        $this->assertCount(6, $imports[1], 'example 16.1 imports six names');
+        foreach ($imports[1] as $import) {
+            $this->assertTrue(str_contains($source, "\nuse {$import};\n"), "example 16.1: {$import} is imported by this file too");
+        }
+        $code = ReadmeBlocks::codeTokens((string) preg_replace('/^use [^;]+;$/m', '', $block));
+        $this->assertTrue(count($code) > 100 && $transcribed === $code, sprintf(
+            'example 16.1: the transcription is the code of the page (%d tokens transcribed, %d on the page)',
+            count($transcribed),
+            count($code)
+        ));
     }
 
     // ==========================================

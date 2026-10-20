@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php: the runner keeps its 32 suites.
  *
- * @version    2.5.2
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -40,7 +40,8 @@ final class DocumentationTreeTest extends TestCase
 
     /**
      * PHP blocks per page, the same in both languages; a page not listed has none. The 58 blocks of the
-     * examples of the former README (2.5.0), moved page by page, plus the first use (new in 2.5.1).
+     * examples of the former README (2.5.0), moved page by page, plus the first use (new in 2.5.1), plus the
+     * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -69,6 +70,7 @@ final class DocumentationTreeTest extends TestCase
         'state-machine/use-cases' => 2,                       // example 15
         'resolution/concurrent' => 2,                         // example 16
         'resolution/async' => 1,                              // example 22.2
+        'resolution/deferred' => 1,                           // example 16.1 (2.6.0)
         'events/from-specifications' => 3,                    // example 18
         'events/time-based' => 3,                             // example 18.1
         'feature-flags/index' => 2,                           // example 19
@@ -97,8 +99,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use. */
-    private const PHP_BLOCKS_TOTAL = 58 + 1;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1;
 
     // (a) -----------------------------------------------------------------------------------------------
 
@@ -195,7 +197,7 @@ final class DocumentationTreeTest extends TestCase
 
     public function testEveryPageHasTheDeclaredNumberOfPhpBlocks(): void
     {
-        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use');
+        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1');
         foreach (self::LANGUAGES as $language) {
             $total = 0;
             foreach (self::pages($language) as $page) {

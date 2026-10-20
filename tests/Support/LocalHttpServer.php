@@ -16,7 +16,13 @@ use RuntimeException;
  * stop() terminates the server and its workers (SIGTERM, then SIGKILL) and removes the state
  * directory; the tests call it in a `finally`, so the server never outlives the suite.
  *
- * @version    1.10.0
+ * The server's standard streams are redirected to /dev/null by `/bin/sh` (which then `exec`s PHP, so the
+ * pid is the server's), not by `['file', '/dev/null', ...]` descriptors of proc_open() (2.6.0): inside a
+ * mutant process of Infection the `file://` stream wrapper is Infection's own userland interceptor, a
+ * stream opened through it has no file descriptor, and proc_open() failed with "posix_spawn() failed: Bad
+ * file descriptor", failing Module 21 for every mutant whatever the mutation (spurious kills).
+ *
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Support
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -60,13 +66,14 @@ final class LocalHttpServer
             'PATH' => (string) getenv('PATH'),
         ];
         $command = [
+            '/bin/sh', '-c', 'exec "$0" "$@" </dev/null >/dev/null 2>&1',
             PHP_BINARY, '-d', 'xdebug.mode=off', '-d', 'display_errors=0',
             '-S', '127.0.0.1:' . $this->port,
             __DIR__ . '/resolution_router.php',
         ];
         $process = proc_open(
             $command,
-            [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+            [],
             $pipes,
             $this->stateDir,
             $env

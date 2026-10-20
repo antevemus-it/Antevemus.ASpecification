@@ -30,7 +30,13 @@ use Throwable;
  * of this resolution, listed by getPendingRequests() too; it is never cached, so the next resolution asks
  * again.
  *
- * @version    2.5.0
+ * A stage fetches its requests in three groups, in this order (2.6.0, forward 045): the HTTP sources together
+ * in one `curl_multi` batch; then the deferred sources (IDeferredDataSource), one IStageTransport::fetchAll()
+ * call per transport with every request of that transport; then the other sources, one after the other. The
+ * groups are serialized: HTTP and transports never interleave. A stage without deferred sources runs exactly
+ * as before 2.6.0.
+ *
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -196,13 +202,16 @@ final class ResolvedData
         return $this->entries[$request->getKey()]['error'] ?? null;
     }
 
-    /** Number of fetch stages run (one `curl_multi` batch plus the callable sources of the stage). */
+    /**
+     * Number of fetch stages run (a stage: the `curl_multi` batch, one fetchAll() per stage transport and the
+     * other sources, one after the other; a stage answered only by the cache is not counted).
+     */
     public function getStageCount(): int
     {
         return $this->stageCount;
     }
 
-    /** Number of requests handed to the sources (cache hits excluded; each key at most once). */
+    /** Number of requests handed to the sources or their transports (cache hits excluded; each key at most once). */
     public function getFetchCount(): int
     {
         return $this->fetchCount;
@@ -309,7 +318,8 @@ final class ResolvedData
 
     /**
      * @internal Runs one fetch stage: every pending key given, HTTP sources together in one
-     * `curl_multi`, then the other sources one after the other. Each key ends resolved or failed.
+     * `curl_multi`, then the deferred sources (one fetchAll() per stage transport, transports in the order
+     * their first key was met), then the other sources one after the other. Each key ends resolved or failed.
      *
      * @param list<string> $keys
      */
@@ -317,6 +327,8 @@ final class ResolvedData
     {
         $calls = [];
         $httpSources = [];
+        /** @var array<int, array{transport: IStageTransport, pending: array<string, array{IDeferredDataSource, DataRequest}>}> $deferred */
+        $deferred = [];
         $others = [];
 
         foreach ($keys as $key) {
@@ -342,10 +354,21 @@ final class ResolvedData
                 }
                 continue;
             }
+            if ($source instanceof IDeferredDataSource) {
+                try {
+                    // The group keeps the transport alive, so its object id is not reused during the stage
+                    $transport = $source->getTransport();
+                    $deferred[spl_object_id($transport)]['transport'] = $transport;
+                    $deferred[spl_object_id($transport)]['pending'][$key] = [$source, $request];
+                } catch (Throwable $e) {
+                    $this->fail($key, $e);
+                }
+                continue;
+            }
             $others[$key] = $source;
         }
 
-        if ($calls === [] && $others === []) {
+        if ($calls === [] && $deferred === [] && $others === []) {
             return;
         }
         $this->stageCount++;
@@ -375,6 +398,10 @@ final class ResolvedData
                     $this->fail($key, $e);
                 }
             }
+        }
+
+        foreach ($deferred as $group) {
+            $this->fetchThroughTransport($group['transport'], $group['pending']);
         }
 
         foreach ($others as $key => $source) {
@@ -425,6 +452,40 @@ final class ResolvedData
             'The request to data source "%s" could not be resolved.',
             $request->source
         ));
+    }
+
+    /**
+     * The deferred keys of one transport: failed with the resolution time limit when it has passed, otherwise
+     * handed to fetchAll() together; a key it did not answer fails, a crash of the call fails all of them.
+     *
+     * @param array<string, array{IDeferredDataSource, DataRequest}> $pending
+     */
+    private function fetchThroughTransport(IStageTransport $transport, array $pending): void
+    {
+        if ($this->deadline !== null && CurlMultiTransport::now() >= $this->deadline) {
+            foreach ($pending as $key => [, $request]) {
+                $this->fail((string) $key, DataFetchException::resolutionTimeout($request->source));
+            }
+            return;
+        }
+        $this->fetchCount += count($pending);
+        try {
+            $results = $transport->fetchAll($pending, $this->deadline);
+        } catch (Throwable $e) {
+            $results = array_fill_keys(array_keys($pending), $e);
+        }
+        foreach ($pending as $key => [$source, $request]) {
+            $key = (string) $key;
+            if (!array_key_exists($key, $results)) {
+                $this->fail($key, DataFetchException::noTransportResult($request->source));
+                continue;
+            }
+            if ($results[$key] instanceof Throwable) {
+                $this->fail($key, $results[$key]);
+                continue;
+            }
+            $this->succeed($key, $results[$key], $source);
+        }
     }
 
     /**

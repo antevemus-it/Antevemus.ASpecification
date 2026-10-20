@@ -23,8 +23,8 @@ Key highlights & upcoming roadmap:
 13. **PHP-Native Serializer Retirement, Step 2: Removal & JSON-Only Envelope** (persisted per-entity metadata) (Shipped in v2.0.0)
 14. **Shared Property Accessor with ALinq** (`antevemus/adeep-property-access`) (Shipped in v2.0.0)
 15. **Concurrent Data Resolution for I/O-Bound Specifications** (core shipped in v1.10.0)
-15b. **Fibers/Revolt Adapter for Non-HTTP Sources** (satellite package `antevemus/aspecification-async`)
-16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis) (16a shipped in v2.4.0; 16b scheduled for v2.7.0)
+15b. **Fibers/Revolt Adapter for Non-HTTP Sources** (core hook `IDeferredDataSource`/`IStageTransport` shipped in v2.6.0; satellite package `antevemus/aspecification-revolt` next)
+16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis) (16a shipped in v2.4.0; 16b scheduled for v2.8.0)
 16a. **Specification Serialization** (a canonical JSON with short, stable names, `SpecificationCodec`, never a class taken from the input) (Shipped in v2.4.0)
 16b. **Distributed Cache Adapters** (PSR-16)
 17. **GraphQL AST & OpenAPI 3.1 Query Compilers**

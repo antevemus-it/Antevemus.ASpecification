@@ -12,10 +12,11 @@ use Throwable;
  * CallableDataSource - A Data Source Backed by a Plain, Synchronous Callable
  *
  * For data that does not come over HTTP: a repository, a gRPC client, an SDK, a computation. The
- * callable receives the parameters of the request (sorted by name) and returns the value. In the
- * core it runs synchronously: inside a resolution stage the callable sources run one after the
- * other, after the HTTP calls of the stage (concurrency for non-HTTP sources is the job of the
- * Fibers/Revolt satellite package, roadmap milestone 15b).
+ * callable receives the parameters of the request (sorted by name) and returns the value. It runs
+ * synchronously: inside a resolution stage the callable sources run one after the other, after the
+ * HTTP calls and the stage transports of the stage. For non-HTTP sources fetched concurrently, a
+ * source implements IDeferredDataSource and its IStageTransport fetches the requests of the stage
+ * together (2.6.0); a satellite package (roadmap milestone 15b) provides them under an event loop.
  *
  * <code>
  * $balance = new CallableDataSource(fn(array $p): float => $accounts->balanceOf($p['account']), cost: 1);
@@ -23,7 +24,7 @@ use Throwable;
  *
  * An exception of the callable becomes a DataFetchException (the original kept as previous).
  *
- * @version    1.10.0
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

@@ -24,9 +24,10 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  *
  * - resolve(): collects the requests of the tree for the candidate (deduplicated: two leaves asking
  *   the same data cause one fetch), fetches them according to the policy and returns ResolvedData.
- *   The HTTP calls of a stage run together in one `curl_multi`; the other sources run one after the
- *   other in the stage. A failed fetch is not thrown: it becomes the evaluation error of the leaves
- *   that need it.
+ *   The HTTP calls of a stage run together in one `curl_multi`; then the deferred sources
+ *   (IDeferredDataSource, 2.6.0), one IStageTransport::fetchAll() per transport; then the other
+ *   sources one after the other. A failed fetch is not thrown: it becomes the evaluation error of the
+ *   leaves that need it.
  * - evaluate(): resolve() and evaluate the tree inside the resolution scope of the data.
  *
  * Policies (ResolutionPolicy): `concurrent()` (default) fetches everything in one stage and reports
@@ -39,7 +40,7 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * Optional cache between resolutions (IDataCache), keyed by canonical request key, with the TTL of
  * each source. No retry, no circuit breaker (outside the core, D11).
  *
- * @version    1.10.0
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>

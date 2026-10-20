@@ -19,9 +19,10 @@ use Throwable;
  * body of a response, the URL and the parameter values never reach them. The original exception of
  * a parser or of a callable source is kept as the previous exception, for the log.
  * Since 2.5.0 also the request of an asynchronous source whose submission outcome is unknown
- * (submissionOutcomeUnknown(), AsyncDataSource).
+ * (submissionOutcomeUnknown(), AsyncDataSource); since 2.6.0 the request of a deferred source its stage
+ * transport did not answer (noTransportResult(), IStageTransport).
  *
- * @version    2.5.0
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution\Exceptions
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -128,6 +129,18 @@ final class DataFetchException extends DataResolutionException
     {
         return new self(
             sprintf('Data source "%s": the outcome of a submitted request is unknown (no ticket was stored); it is not sent again until it is reconciled or its ticket is cleared.', $sourceName),
+            $sourceName
+        );
+    }
+
+    /**
+     * The stage transport of a deferred source (IStageTransport, 2.6.0) answered without a result for one
+     * of the requests it was handed: the request is failed, never left pending.
+     */
+    public static function noTransportResult(string $sourceName): self
+    {
+        return new self(
+            sprintf('The stage transport returned no result for data source "%s".', $sourceName),
             $sourceName
         );
     }

@@ -162,6 +162,10 @@
         {
           "text": "Fontes assíncronas",
           "path": "resolution/async"
+        },
+        {
+          "text": "Fontes adiadas e transportes de estágio",
+          "path": "resolution/deferred"
         }
       ]
     },

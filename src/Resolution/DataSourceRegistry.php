@@ -20,9 +20,10 @@ use InvalidArgumentException;
  * Names: letters, digits, `_`, `.`, `-` and `:`, starting with a letter or digit
  * (`credit.score`, `fraud-check`). A name is registered once: registering it again is refused, so a
  * source cannot be swapped by accident. An HTTP source is refused when `ext-curl` is not loaded
- * (forward 026 D12); callable sources work without it.
+ * (forward 026 D12); callable sources work without it, and so do deferred sources
+ * (IDeferredDataSource, 2.6.0): their transport is not the registry's concern.
  *
- * @version    1.10.0
+ * @version    2.6.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
