@@ -2,7 +2,7 @@
 
 ### 16.1. Fontes Adiadas e Transportes de Estágio (Módulo 21)
 
-O `DataResolver` busca juntas as fontes HTTP de um estágio (`curl_multi`, veja o [exemplo 16](concurrent.md)); um `CallableDataSource` roda de forma síncrona, uma depois da outra. Desde a v2.6.0 o core tem um gancho pelo qual um pacote de fora dele busca também as fontes **que não são HTTP** de forma concorrente: a fonte implementa `IDeferredDataSource` e nomeia o seu `IStageTransport`, e o resolvedor entrega todos os pedidos pendentes daquele transporte no estágio a uma única chamada de `fetchAll()`. O pacote satélite `antevemus/aspecification-revolt` (planejado, veja o [roadmap](../project/roadmap.md)) implementa os dois sob o event loop do Revolt (Fibers); o core não tem dependência nenhuma e não roda event loop.
+O `DataResolver` busca juntas as fontes HTTP de um estágio (`curl_multi`, veja o [exemplo 16](concurrent.md)); um `CallableDataSource` roda de forma síncrona, uma depois da outra. Desde a v2.6.0 o core tem um gancho pelo qual um pacote de fora dele busca também as fontes **que não são HTTP** de forma concorrente: a fonte implementa `IDeferredDataSource` e nomeia o seu `IStageTransport`, e o resolvedor entrega todos os pedidos pendentes daquele transporte no estágio a uma única chamada de `fetchAll()`. O pacote satélite [`antevemus/aspecification-revolt`](https://github.com/antevemus-it/Antevemus.ASpecificationRevolt) (v1.0.0, 2026-10-20) implementa os dois sob o event loop do Revolt (Fibers); o core não tem dependência nenhuma e não roda event loop.
 
 As duas interfaces, em `Antevemus\ASpecification\Resolution`:
 
@@ -104,3 +104,7 @@ $result->isError;                                       // true
 $result->exception->getMessage();                       // 'sanctions list offline'
 $transport->calls;                                      // 2
 ```
+
+## Outros event loops
+
+O gancho não conhece event loop nenhum: o core chama `fetchAll()` e espera que ele retorne, e nunca referencia uma biblioteca de event loop, os futures dela ou Fibers. O `antevemus/aspecification-revolt` é a implementação para o Revolt e o Amp: uma `RevoltDataSource` e um `RevoltStageTransport` que rodam os pedidos de um estágio em Fibers sob o event loop do Revolt. A página [Arquitetura](https://github.com/antevemus-it/Antevemus.ASpecificationRevolt/blob/main/docs/pt-BR/internals/architecture.md) dele explica por que ele é construído sobre o Revolt e o Amp, e o que um satélite para outro event loop (ReactPHP, ...) implementa: uma fonte que implementa `IDeferredDataSource`, um transporte que implementa `IStageTransport`, e as falhas das próprias fontes do core. Um pacote assim não tocaria nem no core nem no do Revolt.

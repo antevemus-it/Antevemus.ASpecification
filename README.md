@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.6.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.0)
+[![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-32%2F32%20Suites%20Pass%20(18131%20Assertions)%20%2B%20Domian%20Parity%20219-success)](docs/en/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
@@ -168,7 +168,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 ## 🧪 Quality
 
 - **Runner:** `php tests/run_all.php`, 32/32 suites, 18 131 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 553 tests and 79 932 assertions, the Domian parity suite (219 tests) included.
+- **PHPUnit:** `vendor/bin/phpunit`, 553 tests and 79 928 assertions, the Domian parity suite (219 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).

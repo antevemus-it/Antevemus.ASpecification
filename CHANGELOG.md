@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-10-21
+
+A PATCH release with documentation only: the page of the deferred sources points to the Revolt satellite and to what a satellite for another event loop implements. No change in `src/`, in the tests nor in the behaviour.
+
+### Documentation
+
+- **`resolution/deferred.md`** (EN) and its pt-BR twin: a final section, "Other event loops" ("Outros event loops"), prose only. The hook knows no event loop; `antevemus/aspecification-revolt` is the implementation for Revolt and Amp; its Architecture page (`docs/en/internals/architecture.md` and `docs/pt-BR/internals/architecture.md` of that repository, linked by its GitHub URL) explains why it is built on Revolt and Amp and what a satellite for another event loop (ReactPHP, ...) implements. The PHP block of example 16.1 is unchanged and still ends its example: the new `##` heading comes after it.
+- The satellite is no longer "planned" or "next": the first paragraph of `resolution/deferred.md` (both languages, now linking the repository), milestone 15b of `project/roadmap.md` (both languages) and of `ROADMAP.md` say it shipped as v1.0.0 on 2026-10-20.
+- README (EN and pt-BR): the Release badge reads v2.6.1.
+
+### Notes
+
+- **Suite:** PHPUnit 553 tests, 79 928 assertions, 2 skipped (2.6.0: 79 932); the runner 32/32 suites, 18 131 assertions, unchanged. The −4 are in `DocumentationTreeTest` (2 361 → 2 357): the first paragraph of `resolution/deferred.md` no longer links `../project/roadmap.md` (it links the satellite's repository by its absolute URL), and each relative link cost one assertion in the link check and one in the internal-line guard, in each language. The new section adds no file, no PHP block and no relative link (its only link is an absolute URL, which both checks skip). Module 21 still reads the one block of example 16.1 from each language, since the example is cut at the next `##` heading.
+- **Mutation testing:** not run again; `src/` did not change.
+
 ## [2.6.0] - 2026-10-20
 
 A MINOR release with the core half of roadmap milestone 15b (forward 045, phase 2): **deferred sources and stage transports**, a hook through which a package outside the core fetches the non-HTTP sources of a resolution stage concurrently. Two new interfaces and one new exception factory; no new dependency, no method added to an existing interface, no change in the reference DDLs. A stage without deferred sources runs exactly as in 2.5.2.

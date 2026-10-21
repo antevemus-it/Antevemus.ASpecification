@@ -2,7 +2,7 @@
 
 ### 16.1. Deferred Sources and Stage Transports (Module 21)
 
-The `DataResolver` fetches the HTTP sources of a stage together (`curl_multi`, see [example 16](concurrent.md)); a `CallableDataSource` runs synchronously, one after the other. Since v2.6.0 the core has a hook through which a package outside it fetches **non-HTTP** sources concurrently too: a source implements `IDeferredDataSource` and names its `IStageTransport`, and the resolver hands every pending request of that transport in the stage to one `fetchAll()` call. The satellite package `antevemus/aspecification-revolt` (planned, see the [roadmap](../project/roadmap.md)) implements both under the Revolt event loop (Fibers); the core itself has no dependency and runs no event loop.
+The `DataResolver` fetches the HTTP sources of a stage together (`curl_multi`, see [example 16](concurrent.md)); a `CallableDataSource` runs synchronously, one after the other. Since v2.6.0 the core has a hook through which a package outside it fetches **non-HTTP** sources concurrently too: a source implements `IDeferredDataSource` and names its `IStageTransport`, and the resolver hands every pending request of that transport in the stage to one `fetchAll()` call. The satellite package [`antevemus/aspecification-revolt`](https://github.com/antevemus-it/Antevemus.ASpecificationRevolt) (v1.0.0, 2026-10-20) implements both under the Revolt event loop (Fibers); the core itself has no dependency and runs no event loop.
 
 The two interfaces, in `Antevemus\ASpecification\Resolution`:
 
@@ -104,3 +104,7 @@ $result->isError;                                       // true
 $result->exception->getMessage();                       // 'sanctions list offline'
 $transport->calls;                                      // 2
 ```
+
+## Other event loops
+
+The hook knows no event loop: the core calls `fetchAll()` and waits for it to return, and never references an event loop library, its futures or Fibers. `antevemus/aspecification-revolt` is the implementation for Revolt and Amp: a `RevoltDataSource` and a `RevoltStageTransport` that run the requests of a stage in Fibers under the Revolt event loop. Its [Architecture](https://github.com/antevemus-it/Antevemus.ASpecificationRevolt/blob/main/docs/en/internals/architecture.md) page explains why it is built on Revolt and Amp, and what a satellite for another event loop (ReactPHP, ...) implements: a source that implements `IDeferredDataSource`, a transport that implements `IStageTransport`, and the failures of the core's own sources. Such a package would touch neither the core nor the Revolt one.

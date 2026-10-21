@@ -272,9 +272,9 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 
 ### Satellite package (no version of the core)
 
-### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-revolt`) ⚡
+### 15b. Fibers/Revolt Adapter for Non-HTTP Sources (`antevemus/aspecification-revolt`) ⚡ (Shipped as v1.0.0 on 2026-10-20)
 - **Description:** A satellite package with an adapter for applications whose SDKs are already asynchronous (Revolt event loop, Fibers): non-HTTP sources of a stage fetched concurrently instead of one after the other, behind the same `DataResolver` and `IDataSource` contract shipped in v1.10.0 (milestone 15). It stays out of the core so that the core keeps a single runtime dependency, from the same author and with no dependencies of its own (`antevemus/adeep-property-access`).
-- **Plan:** forward 045: the core hook (`IDeferredDataSource`/`IStageTransport`) shipped in v2.6.0 (above), and the satellite is next: a new repository `Antevemus.ASpecificationRevolt` built like `Antevemus.ADeepPropertyAccess`, with a `RevoltDataSource` (an `IDeferredDataSource` over Revolt/Amp futures) and a `RevoltStageTransport` (bounded concurrency, the stage deadline enforced through cancellation, the application's Revolt loop when one is running). The core only gained the hook, a `suggest` line and the page of example 16.1. It is the pair of ALinq milestone 12 (async collection), which gets its own forward in the ALinq repository.
+- **Plan:** forward 045: the core hook (`IDeferredDataSource`/`IStageTransport`) shipped in v2.6.0 (above), and the satellite shipped as v1.0.0 on 2026-10-20 ([repository](https://github.com/antevemus-it/Antevemus.ASpecificationRevolt), [Packagist](https://packagist.org/packages/antevemus/aspecification-revolt)): a new repository `Antevemus.ASpecificationRevolt` built like `Antevemus.ADeepPropertyAccess`, with a `RevoltDataSource` (an `IDeferredDataSource` over Revolt/Amp futures) and a `RevoltStageTransport` (bounded concurrency, the stage deadline enforced through cancellation, the application's Revolt loop when one is running). The core only gained the hook, a `suggest` line and the page of example 16.1. It is the pair of ALinq milestone 12 (async collection), which gets its own forward in the ALinq repository.
 
 ---
 
