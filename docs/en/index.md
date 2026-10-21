@@ -30,7 +30,7 @@ The official documentation of the library, one page per topic. The same pages ex
 ### Repositories
 
 - [Partitioned DAG](repositories/partitioned-dag.md) (example 4): Repositories partitioned by specifications, with early pruning of disjoint branches.
-- [Persistence and cache](repositories/persistence-and-cache.md) (example 5): File repositories and the hybrid L1 (RAM) + L2 (disk) tier.
+- [Persistence and cache](repositories/persistence-and-cache.md) (examples 5 and 5.1): File repositories, the hybrid L1 (RAM) + L2 (disk) tier and its write-behind mode.
 - [PDO repository](repositories/pdo.md) (example 17): `PdoRepository`: queries are specifications compiled to SQL.
 - [Lifecycle](repositories/pdo-lifecycle.md) (example 17.1): Timestamps, soft delete, hooks and the SQL log.
 - [Batch writes](repositories/pdo-batch.md) (example 17.2): Batch writes and set-based operations.
@@ -75,6 +75,10 @@ The official documentation of the library, one page per topic. The same pages ex
 
 - [Feature flags](feature-flags/index.md) (example 19): Flags declared in code and switched in the database, with targeting and an audit trail.
 - [Window and rollout](feature-flags/window-and-rollout.md) (example 19.1): The validity window and the percentage rollout of a flag.
+
+### Caching
+
+- [Caching](caching/index.md) (examples 23 and 23.1): The rule catalog, the feature flags and the routing clusters of a partitioned repository read through a shared PSR-16 cache.
 
 ### Benchmarking
 

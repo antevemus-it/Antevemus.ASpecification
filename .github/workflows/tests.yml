@@ -83,6 +83,37 @@ jobs:
       - name: Module runner
         run: php tests/run_all.php
 
+  # 2.8.0: psr/simple-cache is optional (a suggest): without it the library works as before, the caching decorators
+  # cannot be built, their PHPUnit tests are skipped and Module 43 checks the library without it.
+  without-psr-simple-cache:
+    name: PHP 8.4 without psr/simple-cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: json, mbstring, curl, pdo_sqlite, sysvsem, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies without psr/simple-cache
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          composer remove --dev --no-interaction --no-progress psr/simple-cache
+
+      - name: Check that psr/simple-cache is not installed
+        run: |
+          php -r 'require "vendor/autoload.php"; exit(interface_exists("Psr\\SimpleCache\\CacheInterface") ? 1 : 0);'
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit --no-coverage
+
+      - name: Module runner
+        run: php tests/run_all.php
+
   alinq-integration:
     name: PHP 8.4 with ALinq
     runs-on: ubuntu-latest

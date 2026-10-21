@@ -70,6 +70,8 @@ $suites = [
     'Módulo 36: Motor de Regras, TCriteria e Dados Assíncronos para um Consumidor Real (tipos só consulta, precedência, rótulos, sem acento, subquery, pendente)' => new \Antevemus\ASpecification\Tests\Unit\Module36_RuleEngineCriteriaAndAsyncDataTest(),
     'Módulo 40: Máquina de Estados para um Consumidor Real (códigos legados, definição versionada em PDO, tenant)' => new \Antevemus\ASpecification\Tests\Unit\Module40_StateMachineRealConsumerTest(),
     'Módulo 41: Prazos em Tempo Útil (calendários de dias úteis e de horário, feriados, pausa e paridade com o relógio de SLA)' => new \Antevemus\ASpecification\Tests\Unit\Module41_BusinessTimeDeadlinesTest(),
+    'Módulo 42: Repositório Híbrido com Gravação Adiada (MemoryAsyncFile, persist(), registro do repositório)' => new \Antevemus\ASpecification\Tests\Unit\Module42_WriteBehindRepositoryTest(),
+    'Módulo 43: Cache Distribuído PSR-16 (catálogo de regras, feature flags e clusters de roteamento do DAG)' => new \Antevemus\ASpecification\Tests\Unit\Module43_DistributedCacheTest(),
 ];
 
 $startTime = microtime(true);

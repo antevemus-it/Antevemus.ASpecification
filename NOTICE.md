@@ -58,7 +58,8 @@ Provenance, at package level (PHP namespace <- Domian package, net.sourceforge.d
       SpecificationHelper                                                   <- api.util, api/core SpecificationUtils
     Contracts\Repositories\* (except Serialization), Repositories\AbstractRepository,
       PartitionRepository, InMemoryRepository, NullRepository, UnsupportedRepository,
-      NotImplementedRepository, EntityPersistenceMetaData, PersistentEntity    <- api.repository, core.repository
+      NotImplementedRepository, EntityPersistenceMetaData, PersistentEntity,
+      RepositoryPersistenceMetaData                                         <- api.repository, core.repository
     Repositories\File\SingleFileRepository, FilePerEntityRepository,
       InMemoryAndFileRepository (XML/XStream replaced by JSON)              <- xstream-repository
     Contracts\Entities\*, Entities\*                                         <- api.entity, core.entity

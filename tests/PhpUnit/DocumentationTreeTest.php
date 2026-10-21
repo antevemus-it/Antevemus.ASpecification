@@ -22,9 +22,9 @@ use PHPUnit\Framework\TestCase;
  * (h) nothing of the internal line leaks to a public page or README: no Reversa or internal docs/ path, no
  * Azure DevOps link, and no relative link outside the language folders but to the public root files.
  *
- * It is a PHPUnit-only test, not a module of tests/run_all.php: the runner keeps its 34 suites.
+ * It is a PHPUnit-only test, not a module of tests/run_all.php (36 suites since 2.8.0).
  *
- * @version    2.7.0
+ * @version    2.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -42,7 +42,9 @@ final class DocumentationTreeTest extends TestCase
      * PHP blocks per page, the same in both languages; a page not listed has none. The 58 blocks of the
      * examples of the former README (2.5.0), moved page by page, plus the first use (new in 2.5.1), plus the
      * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
-     * example 23 (new in 2.7.0: legacy state codes, versioned definitions and tenants of the state machine).
+     * example 23 and the two of example 14.11 (new in 2.7.0: the state machine for a real consumer and the
+     * deadlines in business time), plus the block of example 5.1 (new in 2.8.0: the write-behind hybrid repository)
+     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -54,7 +56,7 @@ final class DocumentationTreeTest extends TestCase
         'specifications/text-comparison' => 2,                // examples 20 and 20.1, one each
         'specifications/serialization' => 1,                  // example 21
         'repositories/partitioned-dag' => 1,                  // example 4
-        'repositories/persistence-and-cache' => 1,            // example 5
+        'repositories/persistence-and-cache' => 2,            // examples 5 and 5.1 (2.8.0), one each
         'repositories/pdo' => 3,                              // example 17
         'repositories/pdo-lifecycle' => 3,                    // example 17.1
         'repositories/pdo-batch' => 1,                        // example 17.2
@@ -78,6 +80,7 @@ final class DocumentationTreeTest extends TestCase
         'events/time-based' => 3,                             // example 18.1
         'feature-flags/index' => 2,                           // example 19
         'feature-flags/window-and-rollout' => 1,              // example 19.1
+        'caching/index' => 2,                                 // examples 23 and 23.1 (2.8.0), one each
         'benchmarking/index' => 1,                            // example 6
     ];
 
@@ -102,8 +105,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2;
 
     // (a) -----------------------------------------------------------------------------------------------
 
@@ -200,7 +203,7 @@ final class DocumentationTreeTest extends TestCase
 
     public function testEveryPageHasTheDeclaredNumberOfPhpBlocks(): void
     {
-        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11');
+        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11 + example 5.1 + the caching examples');
         foreach (self::LANGUAGES as $language) {
             $total = 0;
             foreach (self::pages($language) as $page) {

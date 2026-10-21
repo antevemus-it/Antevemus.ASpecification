@@ -30,7 +30,7 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 ### Repositórios
 
 - [DAG de partições](repositories/partitioned-dag.md) (exemplo 4): Repositórios particionados por especificações, com poda antecipada de ramos disjuntos.
-- [Persistência e cache](repositories/persistence-and-cache.md) (exemplo 5): Repositórios em arquivo e a camada híbrida L1 (RAM) + L2 (disco).
+- [Persistência e cache](repositories/persistence-and-cache.md) (exemplos 5 e 5.1): Repositórios em arquivo, a camada híbrida L1 (RAM) + L2 (disco) e o seu modo de gravação adiada.
 - [Repositório PDO](repositories/pdo.md) (exemplo 17): `PdoRepository`: consultas são especificações compiladas para SQL.
 - [Ciclo de vida](repositories/pdo-lifecycle.md) (exemplo 17.1): Carimbos de tempo, exclusão lógica, ganchos e o log de SQL.
 - [Escrita em lote](repositories/pdo-batch.md) (exemplo 17.2): Escrita em lote e operações sobre conjuntos.
@@ -75,6 +75,10 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 
 - [Feature flags](feature-flags/index.md) (exemplo 19): Flags declaradas no código e ligadas no banco, com alvo e histórico.
 - [Vigência e rollout](feature-flags/window-and-rollout.md) (exemplo 19.1): A vigência e o rollout por porcentagem de uma flag.
+
+### Cache
+
+- [Cache](caching/index.md) (exemplos 23 e 23.1): O catálogo de regras, as feature flags e os clusters de roteamento de um repositório particionado lidos por um cache PSR-16 compartilhado.
 
 ### Benchmarking
 

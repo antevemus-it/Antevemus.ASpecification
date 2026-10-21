@@ -24,9 +24,9 @@ Key highlights & upcoming roadmap:
 14. **Shared Property Accessor with ALinq** (`antevemus/adeep-property-access`) (Shipped in v2.0.0)
 15. **Concurrent Data Resolution for I/O-Bound Specifications** (core shipped in v1.10.0)
 15b. **Fibers/Revolt Adapter for Non-HTTP Sources** (core hook `IDeferredDataSource`/`IStageTransport` shipped in v2.6.0; satellite package `antevemus/aspecification-revolt` shipped as v1.0.0 on 2026-10-20)
-16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis) (16a shipped in v2.4.0; 16b scheduled for v2.8.0)
+16. **Distributed Specification Cache** (PSR-6 / PSR-16 / Redis) (Shipped: 16a in v2.4.0, 16b in v2.8.0)
 16a. **Specification Serialization** (a canonical JSON with short, stable names, `SpecificationCodec`, never a class taken from the input) (Shipped in v2.4.0)
-16b. **Distributed Cache Adapters** (PSR-16)
+16b. **Distributed Cache Adapters** (PSR-16: the rule catalog, the feature flags and the routing clusters of a partitioned repository, `psr/simple-cache` optional) (Shipped in v2.8.0)
 17. **GraphQL AST & OpenAPI 3.1 Query Compilers**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**
 19. **Specification-Driven Domain Event Triggers** (Shipped in v1.11.0)
@@ -37,7 +37,7 @@ Key highlights & upcoming roadmap:
 21c. **`PdoRepository` Follow-ups II** (`ManyToMany`, marking a hand-built collection as loaded, `iterate()` with relations over unbuffered MySQL, `CHAR(1)` booleans) (Shipped in v1.14.0)
 22. **Accent-Insensitive Text Comparison** (an explicit option that ignores case and accents, with the same answer in memory and in SQL) (Shipped in v2.1.0)
 22b. **Accent-Insensitive Wildcards and Regular Expressions** (`wildcard()` and `regex()` with `TextComparison`; translated where a database answers as memory, refused elsewhere) (Shipped in v2.3.0)
-23. **Write-Behind Hybrid Repository** (the Domian `INMEMORY_AND_FILE` mode: memory now, disk on `persist()`)
+23. **Write-Behind Hybrid Repository** (the Domian `INMEMORY_AND_FILE` mode: memory now, disk on `persist()`) (Shipped in v2.8.0)
 24. **Declared Feature Flags With Targeting and an Audit Trail** (Shipped in v2.1.0)
 24b. **Feature Flag Target by a Catalog Rule** (`targetRuleCode`, `IRuleCatalog::findRuleByCode()`, a rule body in `spec_json`) (Shipped in v2.4.0)
 24c. **Percentage Rollout of a Feature Flag** (a stable bucket per subject from `xxh3` of the code and the key, set through the audited path) (Shipped in v2.3.0)

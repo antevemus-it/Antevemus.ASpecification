@@ -26,7 +26,7 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 11: Dynamic Rule Engine & Document Matrix... ✅ PASS (859 assertions)
 • [SUITE] Module 12: SQL Query Visitor & Multi-DBMS Dialects... ✅ PASS (536 assertions)
 • [SUITE] Module 13: TCriteria Builder & Adianti Database Bridge... ✅ PASS (576 assertions)
-• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (2279 assertions)
+• [SUITE] Module 14: ALinq Synergy & Fluent LINQ Collections... ✅ PASS (2327 assertions)
 • [SUITE] Module 15: Declarative PHP 8.4 Attributes (#[AssertSpec])... ✅ PASS (221 assertions)
 • [SUITE] Module 16: Relational Rule Catalog (PdoRuleCatalog)... ✅ PASS (1252 assertions)
 • [SUITE] Module 17: Specification-Driven State Machine... ✅ PASS (618 assertions)
@@ -47,14 +47,14 @@ Report below as printed by the runner, with its Portuguese labels translated; th
 • [SUITE] Module 36: Rule Engine, TCriteria and Asynchronous Data for a Real Consumer (lookup-only types, precedence, labels, accents, subqueries, pending)... ✅ PASS (4353 assertions)
 • [SUITE] Module 40: State Machine for a Real Consumer (legacy codes, versioned definition over PDO, tenant)... ✅ PASS (14335 assertions)
 • [SUITE] Module 41: Deadlines in Business Time (business-day and working-hours calendars, holidays, pause and parity with the SLA clock)... ✅ PASS (6061 assertions)
-
+• [SUITE] Module 42: Write-Behind Hybrid Repository (MemoryAsyncFile, persist(), repository record)... ✅ PASS (691 assertions)
 ====================================================================
- FINAL RESULT: 34/34 SUITES PASSED (100% PASS)
- TOTAL ASSERTIONS: 38619 | DURATION: ~26s | REGRESSIONS: 0
+ FINAL RESULT: 36/36 SUITES PASSED (100% PASS)
+ TOTAL ASSERTIONS: 39417 | DURATION: ~26s | REGRESSIONS: 0
 ====================================================================
 ```
 
-- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities (219 PHPUnit tests, 2 106 assertions; `vendor/bin/phpunit` runs 555 tests and 100 531 assertions in total, two of them skipped without `ext-intl`). Since v2.1.0 seven of its assertions state that integer bounds are not closed (Domian's leaves are typed `Integer`, these accept any number), each with a note.
+- **Domian Parity suite:** `tests/Parity/` transcribes the Domian (Java) tests for the specification algebra, the partition DAG, the synchronizers, entities and utilities, and since v2.8.0 the persistent-repository tests over Domian's `INMEMORY_AND_FILE` mode, run against the write-behind hybrid (227 PHPUnit tests, 2 150 assertions; `vendor/bin/phpunit` runs 614 tests and 102 237 assertions in total, two of them skipped without `ext-intl`). Since v2.1.0 seven of its assertions state that integer bounds are not closed (Domian's leaves are typed `Integer`, these accept any number), each with a note.
 - **Soundness bench of the algebra (v2.1.0):** `tests/PhpUnit/AlgebraSoundnessTest.php` checks every promise of the algebra against the evaluation: `equals()` (same answers and annotated failures), `isGeneralizationOf()`/`isSpecialCaseOf()`, `isDisjointWith()`, `isTautology()`/`isContradiction()`, `simplify()`, the deduplication of `and()`/`or()` and the partition lookup. Its pool of over 700 specifications covers every concrete specification class of `src/` (comparison, `in`, nulls, text with the three `TextComparison` cases, date-times, value objects, collections and entities, method calls, the wrappers of `a()`, user subclasses with predicates of their own, annotated variants) and composites generated with a fixed seed, tried pair by pair against about 80 boundary candidates (the same value in distinct instances, the same instant in other zones and classes, `'1'`/`1`/`true`, `null`, fractions, accents, entities of sibling types). A guard fails the suite when a concrete specification class is missing from the pool. The fixed part runs in the default suite in about 10 seconds; `ASPEC_SOUNDNESS_EXTENDED=1` widens it to about 3 million pairs and `ASPEC_SOUNDNESS_DUMP=<file>` writes the violations as JSON lines. `AlgebraSoundnessCasesTest` keeps a reproduction of each defect it found, and `DateSqlParityTest` compares memory and SQL for the date-time leaves. Since v2.4.0 the bench also checks the serialization (Module 31): every serializable tree of the pool (505 of 746 without `ext-intl`, 518 of 756 with it, in 2.5.0) comes back `equals()` in both directions, with a canonical text and the same answers, and translates to the same SQL (ANSI, PostgreSQL, MySQL) and `TCriteria`; every other tree is refused for a reason of the contract (callbacks, external data, flags, machine guards, subqueries, user leaves without the contract). Since v2.5.0 the pool holds labelled targets and the subqueries of `inSubquery()`/`existsIn()` (an evaluation error on every candidate), and labelling any specification of the pool keeps its answers, its failures (reported against the label), its SQL and its `TCriteria`. `SpecificationCodecTest` covers the format of every node, the values, the limits and about 46 malformed documents.
 - **Public API Documentation:** 1,200+ methods documented via structured corporate PHPDoc blocks.
 - **Java (Domian) Traceability:** conceptual and architectural parity with the upstream framework (public API and class names follow Domian; see the provenance table in [NOTICE.md](https://github.com/antevemus-it/Antevemus.ASpecification/blob/main/NOTICE.md)).

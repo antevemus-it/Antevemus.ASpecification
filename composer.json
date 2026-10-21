@@ -40,7 +40,8 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
-        "infection/infection": "^0.31.9 || ^0.35.6"
+        "infection/infection": "^0.31.9 || ^0.35.6",
+        "psr/simple-cache": "^3.0"
     },
     "suggest": {
         "ext-pdo": "PdoRepository (repository over PDO: specifications compiled to SQL, attribute or builder mapping), the PDO persistence of the state machine and the PDO domain-event outbox",
@@ -48,7 +49,8 @@
         "ext-intl": "TextComparison::IgnoreCaseAndAccents and Spec::equalIgnoreCaseAndAccents(): text compared ignoring case and accents (Normalizer: NFD without the nonspacing marks); without it those specifications are refused when built (MissingExtensionException) and every other text operator keeps working",
         "ext-curl": "HttpDataSource: concurrent data resolution over HTTP through curl_multi (DataResolver, Module 21); without it an HttpDataSource is refused when registered and CallableDataSource keeps working",
         "ext-sysvsem": "SysVSemaphoreSynchronizer: read/write lock shared between processes through SysV IPC semaphores (SemaphoreSynchronizer is intra-process)",
-        "antevemus/aspecification-revolt": "^1.0 — RevoltDataSource and RevoltStageTransport: the non-HTTP sources of a resolution stage fetched concurrently under the Revolt event loop (Fibers, Amp futures) through the IDeferredDataSource/IStageTransport hook of 2.6.0"
+        "antevemus/aspecification-revolt": "^1.0 — RevoltDataSource and RevoltStageTransport: the non-HTTP sources of a resolution stage fetched concurrently under the Revolt event loop (Fibers, Amp futures) through the IDeferredDataSource/IStageTransport hook of 2.6.0",
+        "psr/simple-cache": "^1.0 || ^2.0 || ^3.0 — CachedRuleCatalog, CachedFeatureFlagStore and PartitionRepository::withIndexCache() (2.8.0): the rule catalog, the feature flags and the routing clusters of a partitioned repository read through a PSR-16 cache shared between servers, with an implementation of your choice (Redis, Memcached, APCu); without it those classes cannot be built and nothing else changes"
     },
     "autoload": {
         "psr-4": {

@@ -19,6 +19,10 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
  * - ReadWrite, ReadOnly, WriteOnly: every operation goes to the file, like FILE, with an access restriction;
  * - Snapshot: in-memory working area synchronized to disk at load()/store()/close(), like INMEMORY_AND_FILE.
  *
+ * Since 2.8.0 InMemoryAndFileRepository runs write-behind in MemoryAsyncFile and MemoryAsyncDelegated (writes in
+ * memory, the storage written by persist(), load() discarding what was not persisted, as Domian does), and
+ * write-through in every other mode.
+ *
  * Features:
  * - Identification of physical file-only storage (FileOnly)
  * - Identification of delegated third-party persistence (DelegatedOnly)
@@ -27,7 +31,7 @@ namespace Antevemus\ASpecification\Contracts\Repositories;
  * - Support for delegated asynchronous persistence (MemoryAsyncDelegated)
  * - Introspection of storage characteristics (file-based, memory-based, asynchronous)
  *
- * @version    1.4.4
+ * @version    2.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -48,10 +52,10 @@ enum PersistenceDefinition: string
     /** Transient, non-persisted repository: in-memory only, nothing ever reaches the disk (Domian INMEMORY). */
     case Transient = 'TRANSIENT';
 
-    /** In-memory repository with periodic asynchronous file recording (Domian INMEMORY_AND_FILE). */
+    /** In-memory repository with periodic asynchronous file recording (Domian INMEMORY_AND_FILE): the write-behind mode of InMemoryAndFileRepository (2.8.0). */
     case MemoryAsyncFile = 'MEMORY_ASYNC_FILE';
 
-    /** In-memory repository with asynchronous persistence delegated externally (Domian INMEMORY_AND_DELEGATED). */
+    /** In-memory repository with asynchronous persistence delegated externally (Domian INMEMORY_AND_DELEGATED): write-behind over any persistent backend (2.8.0). */
     case MemoryAsyncDelegated = 'MEMORY_ASYNC_DELEGATED';
 
     /** Persistent file repository with synchronous read and write enabled (Domian FILE). */

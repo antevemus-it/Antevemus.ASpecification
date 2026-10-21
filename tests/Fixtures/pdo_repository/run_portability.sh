@@ -21,6 +21,9 @@
 # 2.7.0: Module40_StateMachineRealConsumerTest, the state machine for a real consumer (legacy state codes, the
 # versioned definitions with drafts over PDO, two connections publishing at once, tenants InMemory = PDO, a
 # database of the 2.6 DDL and its additive migration, the acceptance replay) on the three of them.
+# 2.8.0: Module43_DistributedCacheTest over a real Redis 7.4 (disposable container) through the development PSR-16
+# client of the suite (tests/Support/RedisCache.php, RESP over TCP; nothing enters require): two servers sharing
+# one cache with real TTLs, and a second PHP process reading the catalog entries and routing clusters this one wrote.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -32,10 +35,11 @@ TAG="aspec028-$$-${RANDOM}"
 PG="${TAG}-pg"
 MY="${TAG}-my"
 MA="${TAG}-ma"
+RD="${TAG}-redis"
 PHP=(env XDEBUG_MODE=off php -d xdebug.mode=off)
 
 cleanup() {
-    docker rm -f "$PG" "$MY" "$MA" >/dev/null 2>&1 || true
+    docker rm -f "$PG" "$MY" "$MA" "$RD" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
@@ -170,3 +174,21 @@ DOCKERFILE
         tests/PhpUnit/AlgebraSoundnessTest.php tests/PhpUnit/AlgebraSoundnessCasesTest.php tests/PhpUnit/DateSqlParityTest.php \
         tests/PhpUnit/SpecificationCodecTest.php
 done
+
+# 2.8.0: the shared-cache scenarios of Module 43 over a real Redis (see the header).
+RD_PORT="$(free_port)"
+docker run -d --rm --name "$RD" -p "127.0.0.1:${RD_PORT}:6379" redis:7.4-alpine >/dev/null
+export ASPEC_REDIS_DSN="tcp://127.0.0.1:${RD_PORT}"
+for _ in $(seq 1 60); do
+    if docker exec "$RD" redis-cli ping 2>/dev/null | grep -q PONG; then
+        break
+    fi
+    sleep 1
+done
+"${PHP[@]}" -r '
+require "tests/bootstrap.php";
+require_once "tests/Unit/Module43_DistributedCacheTest.php";
+$t = new Antevemus\ASpecification\Tests\Unit\Module43_DistributedCacheTest();
+$t->run();
+echo "Module43_DistributedCacheTest (Redis ", getenv("ASPEC_REDIS_DSN"), ") OK ", $t->getAssertionCount(), " assertions\n";
+'

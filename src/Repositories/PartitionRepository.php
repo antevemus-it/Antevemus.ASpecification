@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Repositories;
 
+use Antevemus\ASpecification\Cache\CacheKeys;
+use Antevemus\ASpecification\Cache\CachedPartitionIndex;
 use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\PartitionCreationException;
@@ -16,10 +18,14 @@ use Antevemus\ASpecification\Contracts\Repositories\IPersistentRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IRepository;
 use Antevemus\ASpecification\Contracts\Repositories\ITextualFormatRepository;
 use Antevemus\ASpecification\Contracts\Repositories\IVolatileRepository;
+use Antevemus\ASpecification\FeatureFlags\IFeatureFlagErrorReporter;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Closure;
 use Generator;
 use InvalidArgumentException;
+use LogicException;
+use Psr\SimpleCache\CacheInterface;
 use SplObjectStorage;
 use Throwable;
 
@@ -60,11 +66,16 @@ use Throwable;
  *       (setDagIndexEnabled()).
  *   Both switches are process-wide; tests/Benchmark/REPORT-dag-index.md holds the measurements that
  *   decided their defaults.
+ * - Routing clusters shared between processes (2.8.0, opt-in): withIndexCache() on the root keeps the
+ *   clusters of (i) in a PSR-16 cache (CachedPartitionIndex), keyed by the fingerprint of each node's
+ *   partitions, so only the first process that routes through a node pays the isDisjointWith() pairs;
+ *   every other one reads them. The data of the partitions never enters the cache, and nothing changes
+ *   without the call (psr/simple-cache is optional).
  *
  * @template T of IEntity
  * @extends AbstractRepository<T>
  * @implements IPartitionRepository<T>
- * @version    1.6.0
+ * @version    2.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -125,6 +136,9 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     private array $routingClusters = [];
 
     private int $nextClusterId = 0;
+
+    /** Routing clusters shared between processes (2.8.0); set on a root by withIndexCache(), read through the root. */
+    private ?CachedPartitionIndex $indexCache = null;
 
     /**
      * Subtree index (RN-06 (ii)) and the graph version it was built at; 'plan' is null when the subtree
@@ -204,6 +218,51 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
     public static function setDagIndexEnabled(bool $enabled): void
     {
         self::$dagIndexEnabled = $enabled;
+    }
+
+    /**
+     * Keeps the routing clusters (part (i) of the index) of every node of the graph rooted here in a PSR-16 cache shared
+     * between processes (2.8.0): the clusters of a node are read from the cache when its direct partitions
+     * have the fingerprint of an entry (CachedPartitionIndex), and built and stored otherwise. The clusters are
+     * used only with setDagRoutingEnabled(true); this call is what makes them pay off in a request-per-process
+     * server, where every request builds the graph again. Results never depend on it. Returns this node (a
+     * graph is bound to its objects, so it is configured in place, not copied).
+     *
+     * @param CacheInterface $cache The shared PSR-16 cache
+     * @param string $repositoryId Name of this partitioned repository in the cache (not empty)
+     * @param int $ttl Seconds an entry lives (>= 1; the clusters never go stale, the TTL only frees memory)
+     * @param string $prefix Prefix of every key (A-Z, a-z, 0-9, "_" and ".")
+     * @param IFeatureFlagErrorReporter|null $reporter Where cache failures are reported (they are misses)
+     * @param SpecificationCodec|null $codec Writes the partitions' specifications for the fingerprint (register your own leaves on it)
+     * @return static
+     * @throws LogicException When this node is not the root of its graph
+     * @throws InvalidArgumentException When the repository id is empty, the TTL is below 1 or the prefix is not valid
+     */
+    public function withIndexCache(
+        CacheInterface $cache,
+        string $repositoryId,
+        int $ttl = CachedPartitionIndex::DEFAULT_TTL,
+        string $prefix = CacheKeys::DEFAULT_PREFIX,
+        ?IFeatureFlagErrorReporter $reporter = null,
+        ?SpecificationCodec $codec = null
+    ): static {
+        if (!$this->isRoot()) {
+            throw new LogicException('withIndexCache() configures a whole partition graph: call it on its root.');
+        }
+        $this->indexCache = new CachedPartitionIndex($cache, $repositoryId, $ttl, $prefix, $reporter, $codec);
+        $this->dropRouting(); // clusters built before the call are built again through the cache
+
+        return $this;
+    }
+
+    /**
+     * The routing cluster cache of the graph this node belongs to (the root's), or null without withIndexCache().
+     */
+    public function getIndexCache(): ?CachedPartitionIndex
+    {
+        $root = $this->rootPartition;
+
+        return $root instanceof self ? $root->indexCache : null;
     }
 
     /**
@@ -659,13 +718,48 @@ class PartitionRepository extends AbstractRepository implements IPartitionReposi
             return null;
         }
         if ($this->routingIndex === null) {
-            $this->routingIndex = [];
-            $this->routingClusters = [];
-            foreach ($this->subPartitions as $partition) {
-                $this->addToRouting($partition);
-            }
+            $this->buildRouting();
         }
         return $this->routingIndex;
+    }
+
+    /**
+     * Builds the routing clusters of the direct partitions: read from the graph's index cache when it holds
+     * the fingerprint of these partitions (2.8.0), placed one by one through the algebra otherwise (and then
+     * stored in the cache, when there is one).
+     *
+     * @return void
+     */
+    private function buildRouting(): void
+    {
+        $this->routingIndex = [];
+        $this->routingClusters = [];
+        $partitions = [];
+        foreach ($this->subPartitions as $partition) {
+            $partitions[] = $partition;
+        }
+
+        $cache = count($partitions) > 1 ? $this->getIndexCache() : null;
+        $fingerprint = $cache?->fingerprint(array_map(static fn(IPartitionRepository $partition): ?ISpecification => $partition->getSpecification(), $partitions));
+        $clusters = $fingerprint !== null ? $cache->load($fingerprint, count($partitions)) : null;
+        if ($clusters !== null) {
+            $first = $this->nextClusterId;
+            foreach ($partitions as $i => $partition) {
+                $oid = spl_object_id($partition);
+                $cluster = $first + $clusters[$i];
+                $this->routingIndex[$oid] = [$partition, $partition->getSpecification(), $cluster];
+                $this->routingClusters[$cluster][$oid] = true;
+            }
+            $this->nextClusterId = $first + max($clusters) + 1;
+            return;
+        }
+
+        foreach ($partitions as $partition) {
+            $this->addToRouting($partition);
+        }
+        if ($fingerprint !== null) {
+            $cache->store($fingerprint, array_map(fn(IPartitionRepository $partition): int => $this->routingIndex[spl_object_id($partition)][2], $partitions));
+        }
     }
 
     /**

@@ -204,6 +204,15 @@
       ]
     },
     {
+      "text": "Cache",
+      "items": [
+        {
+          "text": "Cache",
+          "path": "caching/index"
+        }
+      ]
+    },
+    {
       "text": "Benchmarking",
       "items": [
         {

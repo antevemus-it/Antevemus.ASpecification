@@ -79,6 +79,7 @@ src/
 │   ├── HttpDataSource.php    # Modelo de URL com parâmetros codificados, buscado por curl_multi
 │   ├── CallableDataSource.php # Qualquer callable síncrono; DataSourceRegistry, IDataCache, InMemoryDataCache
 │   └── AsyncDataSource.php   # Envia uma vez, consulta depois (v2.5.0): AsyncPoll, IAsyncTicketStore, stores InMemory e Callable; Exceptions/DataPendingException
+├── Cache/                     # Cache PSR-16 compartilhado (Módulo 43, v2.8.0): CachedRuleCatalog, CachedRuleTypeCatalog, CachedFeatureFlagStore, CachedPartitionIndex, PdoCatalogVersion, CacheKeys; Exceptions/CacheFailureException
 ├── FeatureFlags/              # Feature flags declaradas (Módulo 27, v2.1.0): FeatureFlags, FeatureFlagRegistry, FeatureFlagDefinition, FeatureEnabledSpecification, FeatureFlagReason; FeatureFlagChangeKind (v2.3.0)
 │   ├── Exceptions/           # FeatureFlagException, FeatureFlagStoreException, StaleFeatureFlagException, UndeclaredFeatureFlagException...
 │   └── PdoFeatureFlagStore.php # IFeatureFlagStore sobre as tabelas de resources/sql/feature_flags.ansi.sql (ou existentes); InMemoryFeatureFlagStore

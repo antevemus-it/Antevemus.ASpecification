@@ -8,7 +8,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-34%2F34%20Suites%20Pass%20(38619%20Assertions)%20%2B%20Domian%20Parity%20219-success)](docs/pt-BR/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-36%2F36%20Suites%20Pass%20(39417%20Assertions)%20%2B%20Domian%20Parity%20227-success)](docs/pt-BR/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -103,7 +103,7 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 **Repositórios**
 
 - [DAG de partições](docs/pt-BR/repositories/partitioned-dag.md) (exemplo 4) · [EN](docs/en/repositories/partitioned-dag.md): Repositórios particionados por especificações, com poda antecipada de ramos disjuntos.
-- [Persistência e cache](docs/pt-BR/repositories/persistence-and-cache.md) (exemplo 5) · [EN](docs/en/repositories/persistence-and-cache.md): Repositórios em arquivo e a camada híbrida L1 (RAM) + L2 (disco).
+- [Persistência e cache](docs/pt-BR/repositories/persistence-and-cache.md) (exemplos 5 e 5.1) · [EN](docs/en/repositories/persistence-and-cache.md): Repositórios em arquivo, a camada híbrida L1 (RAM) + L2 (disco) e o seu modo de gravação adiada.
 - [Repositório PDO](docs/pt-BR/repositories/pdo.md) (exemplo 17) · [EN](docs/en/repositories/pdo.md): `PdoRepository`: consultas são especificações compiladas para SQL.
 - [Ciclo de vida](docs/pt-BR/repositories/pdo-lifecycle.md) (exemplo 17.1) · [EN](docs/en/repositories/pdo-lifecycle.md): Carimbos de tempo, exclusão lógica, ganchos e o log de SQL.
 - [Escrita em lote](docs/pt-BR/repositories/pdo-batch.md) (exemplo 17.2) · [EN](docs/en/repositories/pdo-batch.md): Escrita em lote e operações sobre conjuntos.
@@ -149,6 +149,10 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 - [Feature flags](docs/pt-BR/feature-flags/index.md) (exemplo 19) · [EN](docs/en/feature-flags/index.md): Flags declaradas no código e ligadas no banco, com alvo e histórico.
 - [Vigência e rollout](docs/pt-BR/feature-flags/window-and-rollout.md) (exemplo 19.1) · [EN](docs/en/feature-flags/window-and-rollout.md): A vigência e o rollout por porcentagem de uma flag.
 
+**Cache**
+
+- [Cache](docs/pt-BR/caching/index.md) (exemplos 23 e 23.1) · [EN](docs/en/caching/index.md): O catálogo de regras, as feature flags e os clusters de roteamento de um repositório particionado lidos por um cache PSR-16 compartilhado.
+
 **Benchmarking**
 
 - [Benchmarking](docs/pt-BR/benchmarking/index.md) (exemplo 6) · [EN](docs/en/benchmarking/index.md): `StopWatch` e `InstrumentationUtils`.
@@ -169,8 +173,8 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 ## 🧪 Qualidade
 
-- **Runner:** `php tests/run_all.php`, 34/34 suítes, 38 619 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 555 testes e 100.531 asserções, a suíte de paridade com o Domian (219 testes) inclusa.
+- **Runner:** `php tests/run_all.php`, 36/36 suítes, 39 417 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 614 testes e 102.237 asserções, a suíte de paridade com o Domian (227 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

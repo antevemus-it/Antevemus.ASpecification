@@ -8,7 +8,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-34%2F34%20Suites%20Pass%20(38619%20Assertions)%20%2B%20Domian%20Parity%20219-success)](docs/en/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-36%2F36%20Suites%20Pass%20(39417%20Assertions)%20%2B%20Domian%20Parity%20227-success)](docs/en/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -103,7 +103,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 **Repositories**
 
 - [Partitioned DAG](docs/en/repositories/partitioned-dag.md) (example 4) · [pt-BR](docs/pt-BR/repositories/partitioned-dag.md): Repositories partitioned by specifications, with early pruning of disjoint branches.
-- [Persistence and cache](docs/en/repositories/persistence-and-cache.md) (example 5) · [pt-BR](docs/pt-BR/repositories/persistence-and-cache.md): File repositories and the hybrid L1 (RAM) + L2 (disk) tier.
+- [Persistence and cache](docs/en/repositories/persistence-and-cache.md) (examples 5 and 5.1) · [pt-BR](docs/pt-BR/repositories/persistence-and-cache.md): File repositories, the hybrid L1 (RAM) + L2 (disk) tier and its write-behind mode.
 - [PDO repository](docs/en/repositories/pdo.md) (example 17) · [pt-BR](docs/pt-BR/repositories/pdo.md): `PdoRepository`: queries are specifications compiled to SQL.
 - [Lifecycle](docs/en/repositories/pdo-lifecycle.md) (example 17.1) · [pt-BR](docs/pt-BR/repositories/pdo-lifecycle.md): Timestamps, soft delete, hooks and the SQL log.
 - [Batch writes](docs/en/repositories/pdo-batch.md) (example 17.2) · [pt-BR](docs/pt-BR/repositories/pdo-batch.md): Batch writes and set-based operations.
@@ -149,6 +149,10 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 - [Feature flags](docs/en/feature-flags/index.md) (example 19) · [pt-BR](docs/pt-BR/feature-flags/index.md): Flags declared in code and switched in the database, with targeting and an audit trail.
 - [Window and rollout](docs/en/feature-flags/window-and-rollout.md) (example 19.1) · [pt-BR](docs/pt-BR/feature-flags/window-and-rollout.md): The validity window and the percentage rollout of a flag.
 
+**Caching**
+
+- [Caching](docs/en/caching/index.md) (examples 23 and 23.1) · [pt-BR](docs/pt-BR/caching/index.md): The rule catalog, the feature flags and the routing clusters of a partitioned repository read through a shared PSR-16 cache.
+
 **Benchmarking**
 
 - [Benchmarking](docs/en/benchmarking/index.md) (example 6) · [pt-BR](docs/pt-BR/benchmarking/index.md): `StopWatch` and `InstrumentationUtils`.
@@ -169,8 +173,8 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 
 ## 🧪 Quality
 
-- **Runner:** `php tests/run_all.php`, 34/34 suites, 38 619 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 555 tests and 100 531 assertions, the Domian parity suite (219 tests) included.
+- **Runner:** `php tests/run_all.php`, 36/36 suites, 39 417 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 614 tests and 102 237 assertions, the Domian parity suite (227 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).

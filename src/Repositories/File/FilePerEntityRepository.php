@@ -8,10 +8,12 @@ use Antevemus\ASpecification\Contracts\Entities\IEntity;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\Repositories\Exceptions\RepositoryException;
 use Antevemus\ASpecification\Contracts\Repositories\IEntityPersistenceMetaData;
+use Antevemus\ASpecification\Contracts\Repositories\IWriteBehindBackend;
 use Antevemus\ASpecification\Contracts\Repositories\PersistenceDefinition;
 use Antevemus\ASpecification\Contracts\Repositories\Serialization\IEntitySerializer;
 use Antevemus\ASpecification\Specifications\Collection\UniqueEntitySpecification;
 use Antevemus\ASpecification\Helpers\SpecificationHelper;
+use Antevemus\ASpecification\Repositories\RepositoryPersistenceMetaData;
 
 /**
  * FilePerEntityRepository - Entity repository persisting one file per entity
@@ -31,20 +33,35 @@ use Antevemus\ASpecification\Helpers\SpecificationHelper;
  * - On-demand filesystem iteration: iterate*() reads the directory entry by entry (readdir), never the whole listing
  * - Persistence metadata per entity, written with the entity on put() and hydrated from its file
  *   (2.0.0); reads served by this instance reach the files on store() or close()
+ * - Backend of the write-behind hybrid (IWriteBehindBackend, 2.8.0): persistSnapshot() writes every
+ *   entity of the working set (each file atomically: a temporary file renamed over it), deletes the files
+ *   of the entities absent from it, and stores the repository record in `_repository.json` next to them.
+ *   The replacement is atomic per file, not for the whole directory. `_repository.json` is the record only
+ *   when it holds `__repository_metadata` (it is then never listed as an entity, and an entity whose file
+ *   would be it is refused); a directory without it behaves as before
  *
  * @template T of IEntity
  * @extends AbstractFileRepository<T>
- * @version    2.0.0
+ * @implements IWriteBehindBackend<T>
+ * @version    2.8.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\File
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-class FilePerEntityRepository extends AbstractFileRepository
+class FilePerEntityRepository extends AbstractFileRepository implements IWriteBehindBackend
 {
     /** Extension of the files written by the PHP-native serializer of 1.x (removed in 2.0.0). */
     private const LEGACY_NATIVE_EXTENSION = 'bin';
+
+    /** File of the repository record of the write-behind hybrid, next to the entity files (2.8.0). */
+    public const REPOSITORY_RECORD_FILE = '_repository.json';
+
+    /**
+     * Record of the write-behind repository read by load() or stored by persistSnapshot() (2.8.0).
+     */
+    private ?RepositoryPersistenceMetaData $repositoryMetaData = null;
 
     /**
      * Ids whose metadata record changed in this instance after the entity was last written
@@ -96,6 +113,85 @@ class FilePerEntityRepository extends AbstractFileRepository
         if (!is_dir($this->storagePath)) {
             @mkdir($this->storagePath, 0777, true);
         }
+        $this->repositoryMetaData = $this->readRepositoryRecord();
+    }
+
+    /**
+     * Path of the repository record file (`_repository.json` in the storage directory).
+     *
+     * @return string
+     */
+    public function getRepositoryRecordPath(): string
+    {
+        return rtrim($this->storagePath, "/\\") . DIRECTORY_SEPARATOR . self::REPOSITORY_RECORD_FILE;
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * Writes each entity of the working set (one atomic write per file), deletes the files of the
+     * entities absent from it, then writes `_repository.json`. When a write fails the files written
+     * before it keep their new content (the replacement is atomic per file) and this instance keeps its
+     * previous repository record.
+     *
+     * @throws RepositoryException In ReadOnly mode, or when a file cannot be written
+     */
+    public function persistSnapshot(array $entities, array $writtenIds, RepositoryPersistenceMetaData $metaData): void
+    {
+        $this->assertWritable();
+
+        if ($this->persistenceDefinition === PersistenceDefinition::Transient
+            || $this->persistenceDefinition === PersistenceDefinition::MemoryOnly) {
+            return;
+        }
+
+        $written = array_fill_keys(array_map('strval', $writtenIds), true);
+        $kept = [];
+        foreach ($entities as $entity) {
+            if (!$entity instanceof IEntity) {
+                continue;
+            }
+            $id = (string) $entity->getEntityId();
+            $target = $this->getFilePath($id);
+            $kept[$target] = true;
+            if (!isset($this->metadataMap[$id])) {
+                $this->hydrateMetadataFromFile($id);
+            }
+            if (isset($written[$id]) || !isset($this->metadataMap[$id])) {
+                $this->writeEntityFile($entity, $target);
+                continue;
+            }
+            $this->writeEntityFile($entity, $target, false);
+        }
+
+        foreach ($this->scanEntityFiles() as $filePath) {
+            if (!isset($kept[$filePath])) {
+                $this->withExclusiveLock($filePath, static function () use ($filePath): void {
+                    if (file_exists($filePath)) {
+                        @unlink($filePath);
+                    }
+                });
+            }
+        }
+        foreach (array_keys($this->metadataMap) as $id) {
+            if (!isset($kept[$this->getFilePath((string) $id)])) {
+                unset($this->metadataMap[$id], $this->unflushedMetadata[$id]);
+            }
+        }
+
+        $this->writeAtomic(
+            $this->getRepositoryRecordPath(),
+            $this->encodeDocument([RepositoryPersistenceMetaData::KEY => $metaData->toArray()])
+        );
+        $this->repositoryMetaData = $metaData;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRepositoryMetaData(): ?RepositoryPersistenceMetaData
+    {
+        return $this->repositoryMetaData;
     }
 
     /**
@@ -162,7 +258,34 @@ class FilePerEntityRepository extends AbstractFileRepository
             // The record persisted with the previous version of the entity keeps counting.
             $this->hydrateMetadataFromFile($id);
         }
-        $this->recordWriteMetadata($entity);
+        $this->writeEntityFile($entity, $target);
+    }
+
+    /**
+     * Writes the file of an entity with its persistence metadata (when its serialized form is a JSON
+     * object), counting one write in its record unless $countWrite is false.
+     *
+     * @param IEntity $entity
+     * @param string $target File of the entity
+     * @param bool $countWrite Whether the write counts in the entity's record
+     * @return void
+     * @throws RepositoryException When the file would be the repository record, or cannot be written
+     */
+    private function writeEntityFile(IEntity $entity, string $target, bool $countWrite = true): void
+    {
+        if ($target === $this->getRepositoryRecordPath() && $this->isRepositoryRecordFile($target)) {
+            throw new RepositoryException(sprintf(
+                'The entity "%s" cannot be stored: its file would be %s, the repository record of %s.',
+                (string) $entity->getEntityId(),
+                self::REPOSITORY_RECORD_FILE,
+                $this->storagePath
+            ));
+        }
+
+        $id = (string) $entity->getEntityId();
+        if ($countWrite || !isset($this->metadataMap[$id])) {
+            $this->recordWriteMetadata($entity);
+        }
 
         $content = $this->serializer->serialize($entity);
         $document = json_decode($content, true);
@@ -415,6 +538,9 @@ class FilePerEntityRepository extends AbstractFileRepository
         $files = [];
         foreach ($entries !== false ? $entries : [] as $path) {
             if (str_ends_with($path, $suffix)) {
+                if ($this->isRepositoryRecordFile($path)) {
+                    continue;
+                }
                 $files[] = $path;
             } elseif ($suffix !== $legacySuffix && str_ends_with($path, $legacySuffix) && is_file($path)) {
                 throw self::legacyNativeFormatException($path);
@@ -459,7 +585,7 @@ class FilePerEntityRepository extends AbstractFileRepository
                     continue;
                 }
                 $path = $directory . $entry;
-                if (is_file($path)) {
+                if (is_file($path) && !$this->isRepositoryRecordFile($path)) {
                     yield $path;
                 }
             }
@@ -548,6 +674,45 @@ class FilePerEntityRepository extends AbstractFileRepository
         if ($block !== null) {
             $this->metadataMap[$id] = self::importMetadata($block, $id, $target);
         }
+    }
+
+    /**
+     * Tells whether a file of the storage directory is the repository record: named `_repository.json`
+     * and holding `__repository_metadata`. Any other content under that name is an entity file, as before
+     * 2.8.0.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private function isRepositoryRecordFile(string $path): bool
+    {
+        if (basename($path) !== self::REPOSITORY_RECORD_FILE || !is_file($path)) {
+            return false;
+        }
+        $content = @file_get_contents($path);
+        if (!is_string($content) || !str_contains($content, '"' . RepositoryPersistenceMetaData::KEY . '"')) {
+            return false;
+        }
+        $document = json_decode($content, true);
+
+        return is_array($document) && array_key_exists(RepositoryPersistenceMetaData::KEY, $document);
+    }
+
+    /**
+     * Reads the repository record (`_repository.json`), null when the directory holds none.
+     *
+     * @return RepositoryPersistenceMetaData|null
+     * @throws RepositoryException When the record is malformed
+     */
+    private function readRepositoryRecord(): ?RepositoryPersistenceMetaData
+    {
+        $path = $this->getRepositoryRecordPath();
+        if (!$this->isRepositoryRecordFile($path)) {
+            return null;
+        }
+        $document = json_decode((string) $this->withSharedLock($path, static fn(): string|false => @file_get_contents($path)), true);
+
+        return RepositoryPersistenceMetaData::fromArray($document[RepositoryPersistenceMetaData::KEY] ?? null, $path);
     }
 
     /**

@@ -24,9 +24,9 @@ Principais destaques:
 14. **Acessor de propriedades compartilhado com o ALinq** (`antevemus/adeep-property-access`) (entregue na v2.0.0)
 15. **Resolução Concorrente de Dados para Especificações Dependentes de I/O** (núcleo entregue na v1.10.0)
 15b. **Adaptador Fibers/Revolt para Fontes Que Não São HTTP** (gancho do core `IDeferredDataSource`/`IStageTransport` entregue na v2.6.0; pacote satélite `antevemus/aspecification-revolt` entregue como v1.0.0 em 2026-10-20)
-16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (16a entregue na v2.4.0; 16b agendado para a v2.8.0)
+16. **Cache Distribuído de Especificações** (PSR-6 / PSR-16 / Redis) (entregue: 16a na v2.4.0, 16b na v2.8.0)
 16a. **Serialização de Especificações** (JSON canônico com nomes curtos e estáveis, `SpecificationCodec`, nunca uma classe vinda da entrada) (entregue na v2.4.0)
-16b. **Adaptadores de Cache Distribuído** (PSR-16)
+16b. **Adaptadores de Cache Distribuído** (PSR-16: o catálogo de regras, as feature flags e os clusters de roteamento de um repositório particionado, `psr/simple-cache` opcional) (entregue na v2.8.0)
 17. **Compiladores AST para GraphQL & OpenAPI 3.1**
 18. **Doctrine ORM & Laravel Eloquent Query Visitors**
 19. **Disparo de Eventos de Domínio por Especificação** (entregue na v1.11.0)
@@ -37,7 +37,7 @@ Principais destaques:
 21c. **Continuações do `PdoRepository` II** (`ManyToMany`, declarar como carregada uma coleção montada à mão, `iterate()` com relações sobre MySQL sem buffer, booleanos `CHAR(1)`) (entregue na v1.14.0)
 22. **Comparação de Texto Sem Acento** (opção explícita que ignora maiúsculas e acentos, com a mesma resposta em memória e no SQL) (entregue na v2.1.0)
 22b. **Curingas e Expressões Regulares Sem Acento** (`wildcard()` e `regex()` com `TextComparison`; traduzidos onde o banco responde como a memória, recusados nos demais) (entregue na v2.3.0)
-23. **Repositório Híbrido com Gravação Adiada** (o modo `INMEMORY_AND_FILE` do Domian: memória agora, disco no `persist()`)
+23. **Repositório Híbrido com Gravação Adiada** (o modo `INMEMORY_AND_FILE` do Domian: memória agora, disco no `persist()`) (Entregue na v2.8.0)
 24. **Feature Flags Declaradas, com Alvo e Histórico** (entregue na v2.1.0)
 24b. **Alvo de Feature Flag por Regra do Catálogo** (`targetRuleCode`, `IRuleCatalog::findRuleByCode()`, corpo da regra em `spec_json`) (entregue na v2.4.0)
 24c. **Rollout de Feature Flag por Porcentagem** (bucket estável por sujeito a partir do `xxh3` do código e da chave, gravado pelo caminho auditado) (entregue na v2.3.0)
