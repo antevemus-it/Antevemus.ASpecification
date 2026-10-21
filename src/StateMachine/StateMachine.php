@@ -7,7 +7,10 @@ namespace Antevemus\ASpecification\StateMachine;
 use Antevemus\ASpecification\Results\FailureSeverity;
 use Antevemus\ASpecification\Results\SpecificationFailure;
 use Antevemus\ASpecification\Results\SpecificationResult;
+use Antevemus\ASpecification\StateMachine\Calendar\DeadlineCalendarRegistry;
+use Antevemus\ASpecification\StateMachine\Calendar\IDeadlineCalendar;
 use Antevemus\ASpecification\StateMachine\Exceptions\InvalidSnapshotException;
+use Antevemus\ASpecification\StateMachine\Exceptions\UnknownDeadlineCalendarException;
 use Antevemus\ASpecification\StateMachine\Exceptions\UnknownGuardException;
 use DateTimeImmutable;
 
@@ -43,6 +46,13 @@ use DateTimeImmutable;
  *   Ceasing to hold resumes: `dueAt = occurredAt + remaining`. A state entered by this event starts
  *   a fresh deadline (the balance is dropped) and pauses at once if the condition holds. A pause
  *   condition that throws rejects the event (ERROR, `evaluation_error`).
+ * - Business time (2.7.0): a deadline that names a calendar gets it from the DeadlineCalendarRegistry
+ *   given to the constructor, with the context of the call, each time it needs it (entering the
+ *   state, pausing, resuming). Its duration counts working seconds of that calendar; the balance of a
+ *   pause is `workSecondsBetween(occurredAt, dueAt)` and resuming places it with `advance()`. A
+ *   calendar factory that throws rejects the event (ERROR, `evaluation_error`); a duration the
+ *   calendar cannot place within its limit of days rejects it with CODE_DEADLINE_SOURCE_INVALID.
+ *   A deadline without calendar computes exactly as before.
  * - Effects in SCXML order: every exit, then every transition action, then every entry; within a
  *   phase, regions then actions in declaration order. A transition to the same state reenters
  *   (exit + entry, deadline recomputed); a targetless transition runs only its actions.
@@ -51,7 +61,7 @@ use DateTimeImmutable;
  *   not hold the machine open. A machine with no final state anywhere is never done. Once done,
  *   the machine is inert: every event is unhandled (CODE_MACHINE_DONE) and nextEvents() is empty.
  *
- * @version    1.9.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -68,18 +78,28 @@ final class StateMachine
 
     private readonly GuardRegistry $guards;
 
+    private readonly DeadlineCalendarRegistry $calendars;
+
     /**
      * @param GuardRegistry|null $guards Guard factories (default: built-ins only)
+     * @param DeadlineCalendarRegistry|null $calendars Calendars of the deadlines that name one (2.7.0; default: none)
      */
-    public function __construct(?GuardRegistry $guards = null)
+    public function __construct(?GuardRegistry $guards = null, ?DeadlineCalendarRegistry $calendars = null)
     {
         $this->guards = $guards ?? new GuardRegistry();
+        $this->calendars = $calendars ?? new DeadlineCalendarRegistry();
     }
 
     /** The guard registry used to compile guards. */
     public function getGuardRegistry(): GuardRegistry
     {
         return $this->guards;
+    }
+
+    /** The calendars of the deadlines (2.7.0); empty unless given to the constructor. */
+    public function getCalendarRegistry(): DeadlineCalendarRegistry
+    {
+        return $this->calendars;
     }
 
     /**
@@ -127,9 +147,11 @@ final class StateMachine
             $states[$region->name] = $initial->name;
             $dueAt[$region->name] = null;
             if ($initial->deadline !== null) {
-                $dueAt[$region->name] = $initial->deadline->resolveDue($occurredAt, $context);
-                if ($dueAt[$region->name] === null) {
-                    $rejections[$region->name] = $this->sourceInvalid($region, $initial, null, null);
+                $due = $this->dueOf($region, $initial, null, null, $occurredAt, $context);
+                if ($due instanceof SpecificationResult) {
+                    $rejections[$region->name] = $due;
+                } else {
+                    $dueAt[$region->name] = $due;
                 }
             }
             $taken[] = new TakenTransition($region->name, null, $initial->name, null, null);
@@ -523,9 +545,10 @@ final class StateMachine
                 }
                 $due = null;
                 if ($target->deadline !== null) {
-                    $due = $target->deadline->resolveDue($event->occurredAt, $context);
-                    if ($due === null) {
-                        $rejections[$region->name] = $this->sourceInvalid($region, $target, $transition, $event);
+                    $due = $this->dueOf($region, $target, $transition, $event, $event->occurredAt, $context);
+                    if ($due instanceof SpecificationResult) {
+                        $rejections[$region->name] = $due;
+                        $due = null;
                     }
                 }
                 $next = $next->withState($region->name, $target->name, $due);
@@ -598,17 +621,89 @@ final class StateMachine
             }
 
             $remaining = $next->pausedRemaining($region->name);
-            if ($holds && $remaining === null) {
-                $due = $next->dueAt($region->name);
-                if ($due !== null) {
-                    $result = $result->withPaused($region->name, self::remainingSeconds($due, $event->occurredAt));
-                }
-            } elseif (!$holds && $remaining !== null) {
-                $result = $result->withDueAt($region->name, self::resumeAt($event->occurredAt, $remaining));
+            $due = $next->dueAt($region->name);
+            $pauses = $holds && $remaining === null && $due !== null;
+            $resumes = !$holds && $remaining !== null;
+            if (!$pauses && !$resumes) {
+                continue;
             }
+            $calendar = $this->calendarOf($region, $state, $event, $context);
+            if ($calendar instanceof SpecificationResult) {
+                $errors[$region->name] = $calendar;
+                continue;
+            }
+            if ($pauses) {
+                \assert($due !== null);
+                $result = $result->withPaused(
+                    $region->name,
+                    $calendar === null ? self::remainingSeconds($due, $event->occurredAt) : $calendar->workSecondsBetween($event->occurredAt, $due)
+                );
+                continue;
+            }
+            \assert($remaining !== null);
+            $resumed = $calendar === null ? self::resumeAt($event->occurredAt, $remaining) : $calendar->advance($event->occurredAt, $remaining);
+            if ($resumed === null) {
+                $errors[$region->name] = $this->sourceInvalid($region, $state, null, $event, true);
+                continue;
+            }
+            $result = $result->withDueAt($region->name, $resumed);
         }
 
         return [$result, $errors];
+    }
+
+    /**
+     * The due instant of the deadline of $state entered at $at, or the failure that rejects the
+     * step (invalid source, a calendar factory that throws, a duration the calendar cannot place).
+     *
+     * @param object|array<mixed>|null $context
+     */
+    private function dueOf(
+        RegionDefinition $region,
+        StateDefinition $state,
+        ?TransitionDefinition $transition,
+        ?Event $event,
+        DateTimeImmutable $at,
+        object|array|null $context
+    ): DateTimeImmutable|SpecificationResult {
+        \assert($state->deadline !== null);
+        $calendar = $this->calendarOf($region, $state, $event, $context);
+        if ($calendar instanceof SpecificationResult) {
+            return $calendar;
+        }
+
+        return $state->deadline->resolveDue($at, $context, $calendar)
+            ?? $this->sourceInvalid($region, $state, $transition, $event);
+    }
+
+    /**
+     * The calendar of the deadline of $state for this call: null when it names none, the ERROR
+     * failure (`evaluation_error`) when its factory throws.
+     *
+     * @param object|array<mixed>|null $context
+     * @throws UnknownDeadlineCalendarException When the name is not registered (definition not validated)
+     */
+    private function calendarOf(
+        RegionDefinition $region,
+        StateDefinition $state,
+        ?Event $event,
+        object|array|null $context
+    ): IDeadlineCalendar|SpecificationResult|null {
+        \assert($state->deadline !== null);
+        $name = $state->deadline->calendar;
+        if ($name === null) {
+            return null;
+        }
+        try {
+            return $this->calendars->resolve($name, $context);
+        } catch (UnknownDeadlineCalendarException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->locate(
+                SpecificationResult::error($e, 'Deadline:calendar'),
+                ['region' => $region->name, 'state' => $state->name, 'calendar' => $name, 'event' => $event?->type ?? self::START_EVENT]
+            );
+        }
     }
 
     /**
@@ -638,34 +733,58 @@ final class StateMachine
     }
 
     /**
-     * The ERROR failure of a deadline whose context source is missing or invalid (forward 025, D8).
-     * The message names the path, never the value read from the context.
+     * The ERROR failure of a deadline whose context source is missing or invalid (forward 025, D8),
+     * or, with a calendar (2.7.0), whose duration the calendar cannot place within its limit of
+     * days ($beyondCalendar, or a fixed `after` duration). The message names the path, never the
+     * value read from the context.
      */
     private function sourceInvalid(
         RegionDefinition $region,
         StateDefinition $state,
         ?TransitionDefinition $transition,
-        ?Event $event
+        ?Event $event,
+        bool $beyondCalendar = false
     ): SpecificationResult {
-        \assert($state->deadline !== null);
-        $path = (string) $state->deadline->sourcePath();
-        $expected = $state->deadline->atFrom !== null
-            ? 'a DateTimeInterface or an ISO-8601 instant with date, time and offset'
-            : 'an ISO-8601 duration';
-        $metadata = ['region' => $region->name, 'state' => $state->name, 'path' => $path, 'source' => $state->deadline->sourceKind()];
+        $deadline = $state->deadline;
+        \assert($deadline !== null);
+        $path = $deadline->sourcePath();
+        $metadata = ['region' => $region->name, 'state' => $state->name];
+        if ($path !== null) {
+            $metadata['path'] = $path;
+        }
+        $metadata['source'] = $deadline->sourceKind();
+        if ($deadline->calendar !== null) {
+            $metadata['calendar'] = $deadline->calendar;
+        }
         if ($transition !== null) {
             $metadata['transition_id'] = $transition->id;
         }
         $metadata['event'] = $event?->type ?? self::START_EVENT;
 
-        return SpecificationResult::failure(
-            message: sprintf(
+        if ($beyondCalendar || $path === null) {
+            $message = sprintf(
+                "The deadline of state '%s' in region '%s' cannot be computed: calendar '%s' cannot place it within its limit of days.",
+                $state->name,
+                $region->name,
+                (string) $deadline->calendar
+            );
+        } else {
+            $expected = match (true) {
+                $deadline->atFrom !== null => 'a DateTimeInterface or an ISO-8601 instant with date, time and offset',
+                $deadline->calendar !== null => sprintf("an ISO-8601 duration without years or months that calendar '%s' can place", $deadline->calendar),
+                default => 'an ISO-8601 duration',
+            };
+            $message = sprintf(
                 "The deadline of state '%s' in region '%s' cannot be computed: the context value at '%s' is missing or invalid (expected %s).",
                 $state->name,
                 $region->name,
                 $path,
                 $expected
-            ),
+            );
+        }
+
+        return SpecificationResult::failure(
+            message: $message,
             code: TransitionResult::CODE_DEADLINE_SOURCE_INVALID,
             ruleName: 'StateMachine',
             property: $path,

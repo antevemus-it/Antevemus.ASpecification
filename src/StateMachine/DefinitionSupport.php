@@ -13,8 +13,12 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * of associative arrays, lists kept in order) and deterministic transition id generation. Kept
  * in one place so that every definition class applies exactly the same rules.
  *
+ * Since 2.7.0 it also checks and normalizes the legacy code of a state (StateDefinition::$code):
+ * an integer, or a non-empty text without surrounding whitespace, where a canonical integer text
+ * (`"20"`) is the same code as the integer (`20`).
+ *
  * @internal
- * @version    1.8.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -196,5 +200,50 @@ final class DefinitionSupport
         }
 
         return $data[$field];
+    }
+    /**
+     * Asserts a state code is an integer or a non-empty text without surrounding whitespace (2.7.0).
+     * A float, a bool, an array or null is refused (`KIND_MALFORMED`).
+     *
+     * @param mixed $code Code to check
+     * @param string $state State name (for the message)
+     * @return int|string The code, as given
+     * @throws InvalidMachineDefinitionException
+     */
+    public static function assertCode(mixed $code, string $state): int|string
+    {
+        if (is_int($code) || (is_string($code) && $code !== '' && trim($code) === $code)) {
+            return $code;
+        }
+
+        throw InvalidMachineDefinitionException::single(
+            MachineDefinitionError::KIND_MALFORMED,
+            sprintf(
+                'The code of state "%s" must be an integer or a non-empty string without surrounding whitespace (got %s).',
+                $state,
+                is_string($code) ? '"' . $code . '"' : get_debug_type($code)
+            ),
+            state: $state
+        );
+    }
+
+    /**
+     * The normalized form of a state code (2.7.0): a canonical integer text (`"20"`, `"-3"`, `"0"`,
+     * within the integer range) becomes the integer, any other code is kept. So `"20"` and `20` are the
+     * same code, which is what several PDO drivers return for an integer column, while `"020"` and
+     * `"20 "` are other codes.
+     *
+     * @param int|string $code Code as declared or as read
+     * @return int|string
+     */
+    public static function normalizeCode(int|string $code): int|string
+    {
+        // The integer whose text is exactly the code: "020", "+5", "-0", " 5", "1e3" and a text beyond the
+        // integer range do not come back to themselves, so they stay texts.
+        if (is_string($code) && (string) (int) $code === $code) {
+            return (int) $code;
+        }
+
+        return $code;
     }
 }

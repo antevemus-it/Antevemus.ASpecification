@@ -22,9 +22,9 @@ use PHPUnit\Framework\TestCase;
  * (h) nothing of the internal line leaks to a public page or README: no Reversa or internal docs/ path, no
  * Azure DevOps link, and no relative link outside the language folders but to the public root files.
  *
- * It is a PHPUnit-only test, not a module of tests/run_all.php: the runner keeps its 32 suites.
+ * It is a PHPUnit-only test, not a module of tests/run_all.php: the runner keeps its 34 suites.
  *
- * @version    2.6.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -41,7 +41,8 @@ final class DocumentationTreeTest extends TestCase
     /**
      * PHP blocks per page, the same in both languages; a page not listed has none. The 58 blocks of the
      * examples of the former README (2.5.0), moved page by page, plus the first use (new in 2.5.1), plus the
-     * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook).
+     * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
+     * example 23 (new in 2.7.0: legacy state codes, versioned definitions and tenants of the state machine).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -68,6 +69,8 @@ final class DocumentationTreeTest extends TestCase
         'integrations/adianti-host' => 1,                     // example 22.3
         'state-machine/index' => 7,                           // example 14 (14.1 to 14.7)
         'state-machine/use-cases' => 2,                       // example 15
+        'state-machine/real-consumer' => 3,                   // example 23 (23.1 to 23.3, 2.7.0)
+        'state-machine/business-time' => 2,                   // example 14.11 (2.7.0): business-time deadlines and the holiday table
         'resolution/concurrent' => 2,                         // example 16
         'resolution/async' => 1,                              // example 22.2
         'resolution/deferred' => 1,                           // example 16.1 (2.6.0)
@@ -99,8 +102,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2;
 
     // (a) -----------------------------------------------------------------------------------------------
 
@@ -197,7 +200,7 @@ final class DocumentationTreeTest extends TestCase
 
     public function testEveryPageHasTheDeclaredNumberOfPhpBlocks(): void
     {
-        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1');
+        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11');
         foreach (self::LANGUAGES as $language) {
             $total = 0;
             foreach (self::pages($language) as $page) {

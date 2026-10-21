@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\StateMachine\Persistence\Pdo;
 
+use Antevemus\ASpecification\StateMachine\DefinitionSupport;
 use Antevemus\ASpecification\StateMachine\EventOrigin;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachinePersistenceException;
 use Antevemus\ASpecification\StateMachine\Persistence\HistoryEntry;
+use Antevemus\ASpecification\StateMachine\Persistence\IMachineDefinitionRepository;
 use Antevemus\ASpecification\StateMachine\Persistence\IMachineHistoryStore;
 use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
+use Antevemus\ASpecification\StateMachine\Runner\MachineRunner;
+use InvalidArgumentException;
 
 /**
  * PdoMachineHistoryStore - Append-Only History over PDO
@@ -16,7 +20,14 @@ use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
  * Table `state_machine_history` (forward 023, D15): INSERT only, read by instance in write order
  * (instance version, sort order). A duplicate position is a primary key violation.
  *
- * @version    1.8.0
+ * Since 2.7.0, with the opt-in columns `from_state_code` and `to_state_code` mapped
+ * (PdoMachineSchema::COLUMNS_SINCE_2_7), each row also carries the legacy codes of its states, derived
+ * from the definition the step ran on (for the source state of a migration row, from the version the
+ * instance left), as integers when the codes are, so a report can join the legacy tables in plain SQL.
+ * The store then needs the definition repository; mapping the columns without it is refused on
+ * construction. The codes are a projection: findByInstance() reads the rows as before.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -25,15 +36,28 @@ use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
  */
 final class PdoMachineHistoryStore implements IMachineHistoryStore
 {
-    public function __construct(private readonly PdoMachineSchema $schema)
-    {
+    /**
+     * @param PdoMachineSchema $schema Tables, column map and statements
+     * @param IMachineDefinitionRepository|null $definitions Definitions the steps ran on; required when the
+     *                                                      code columns are mapped (2.7.0)
+     * @throws InvalidArgumentException When a code column is mapped without a definition repository
+     */
+    public function __construct(
+        private readonly PdoMachineSchema $schema,
+        private readonly ?IMachineDefinitionRepository $definitions = null
+    ) {
+        if (($schema->hasColumn('from_state_code') || $schema->hasColumn('to_state_code')) && $definitions === null) {
+            throw new InvalidArgumentException(
+                'The columns from_state_code/to_state_code are mapped, but the history store has no definition repository to derive the state codes from: pass it (MachinePersistence::pdo(..., definitions: $repository)).'
+            );
+        }
     }
 
     /** {@inheritdoc} */
     public function append(array $entries): void
     {
         foreach ($entries as $entry) {
-            $this->schema->insert('history', [
+            $row = [
                 'instance_id' => $entry->instanceId,
                 'instance_version' => $entry->instanceVersion,
                 'sort_order' => $entry->sortOrder,
@@ -49,8 +73,28 @@ final class PdoMachineHistoryStore implements IMachineHistoryStore
                 'idempotency_key' => $entry->idempotencyKey,
                 'event_origin' => $entry->origin->value,
                 'occurred_at' => PersistenceSupport::toText($entry->occurredAt),
-            ]);
+            ];
+            if ($this->schema->hasColumn('from_state_code')) {
+                $fromVersion = $entry->eventType === MachineRunner::MIGRATE_EVENT && is_int($entry->payload['from_version'] ?? null)
+                    ? $entry->payload['from_version']
+                    : $entry->machineVersion;
+                $row['from_state_code'] = $entry->fromState === null ? null : $this->code($entry->machineKey, $fromVersion, $entry->region, $entry->fromState);
+            }
+            if ($this->schema->hasColumn('to_state_code')) {
+                $row['to_state_code'] = $this->code($entry->machineKey, $entry->machineVersion, $entry->region, $entry->toState);
+            }
+            $this->schema->insert('history', $row);
         }
+    }
+
+    /**
+     * The normalized legacy code of a state of a definition version, or null.
+     */
+    private function code(string $machineKey, int $version, string $region, string $state): int|string|null
+    {
+        $code = $this->definitions?->get($machineKey, $version)->codeOf($region, $state);
+
+        return $code === null ? null : DefinitionSupport::normalizeCode($code);
     }
 
     /** {@inheritdoc} */

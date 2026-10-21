@@ -8,7 +8,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-32%2F32%20Suites%20Pass%20(18131%20Assertions)%20%2B%20Domian%20Parity%20219-success)](docs/pt-BR/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-34%2F34%20Suites%20Pass%20(38619%20Assertions)%20%2B%20Domian%20Parity%20219-success)](docs/pt-BR/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -129,7 +129,9 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 **Máquina de estados**
 
 - [Máquina de estados](docs/pt-BR/state-machine/index.md) (exemplo 14) · [EN](docs/en/state-machine/index.md): Guards são especificações: regiões paralelas, definição em JSON, o runner e prazos persistidos.
+- [Prazos em tempo útil](docs/pt-BR/state-machine/business-time.md) (exemplo 14.11) · [EN](docs/en/state-machine/business-time.md): dias úteis, horário de trabalho e feriados; uma pausa que não gasta o fim de semana.
 - [Casos de uso](docs/pt-BR/state-machine/use-cases.md) (exemplo 15) · [EN](docs/en/state-machine/use-cases.md): `IUseCase`, `UseCaseRunner` e o resultado comum à máquina.
+- [Um consumidor real](docs/pt-BR/state-machine/real-consumer.md) (exemplo 23) · [EN](docs/en/state-machine/real-consumer.md): códigos legados dos estados, definições versionadas no banco com rascunho e publicação, e tenants compartilhando uma máquina.
 
 **Resolução de dados**
 
@@ -167,8 +169,8 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 ## 🧪 Qualidade
 
-- **Runner:** `php tests/run_all.php`, 32/32 suítes, 18 131 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 553 testes e 79.928 asserções, a suíte de paridade com o Domian (219 testes) inclusa.
+- **Runner:** `php tests/run_all.php`, 34/34 suítes, 38 619 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 555 testes e 100.531 asserções, a suíte de paridade com o Domian (219 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

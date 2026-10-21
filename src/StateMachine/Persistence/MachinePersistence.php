@@ -33,7 +33,10 @@ use PDO;
  * $runner = new MachineRunner(Spec::stateMachine($guards), $definitions, $persistence);
  * </code>
  *
- * @version    1.8.0
+ * Since 2.7.0 pdo() takes the definition repository (`definitions:`), which the instance and history
+ * stores need when the legacy state codes are projected (`columns: PdoMachineSchema::COLUMNS_SINCE_2_7`).
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -89,21 +92,25 @@ final class MachinePersistence
      * @param array<string, string> $tables Table names by role (see PdoMachineSchema::DEFAULT_TABLES)
      * @param array<string, string> $columns Real column names by canonical column
      * @param bool $withRejectionLog Whether to write the optional rejection log
+     * @param IMachineDefinitionRepository|null $definitions Definitions the instances are pinned to (2.7.0):
+     *                                                      required to project the state codes
      * @return self
-     * @throws \InvalidArgumentException When a name is not a plain SQL identifier or is unknown
+     * @throws \InvalidArgumentException When a name is not a plain SQL identifier or is unknown, or a
+     *                                   code column is mapped without $definitions
      */
     public static function pdo(
         PDO $pdo,
         string $schema = '',
         array $tables = [],
         array $columns = [],
-        bool $withRejectionLog = false
+        bool $withRejectionLog = false,
+        ?IMachineDefinitionRepository $definitions = null
     ): self {
         $definition = new PdoMachineSchema($pdo, $schema, $tables, $columns);
 
         return new self(
-            new PdoMachineInstanceStore($definition),
-            new PdoMachineHistoryStore($definition),
+            new PdoMachineInstanceStore($definition, $definitions),
+            new PdoMachineHistoryStore($definition, $definitions),
             new PdoEffectOutbox($definition),
             new PdoIdempotencyStore($definition),
             new PdoTransactionManager($pdo),

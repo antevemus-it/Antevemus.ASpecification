@@ -15,6 +15,7 @@ use Antevemus\ASpecification\Specifications\Logical\AlwaysTrueSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
+use Antevemus\ASpecification\StateMachine\Calendar\DeadlineCalendarRegistry;
 use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException;
 
 /**
@@ -36,6 +37,10 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  *   inState naming a region or state that does not exist, or a guard whose factory fails (the
  *   deadline with no source or more than one is refused earlier, when the definition is built,
  *   with the same exception type and the kind `invalid_deadline`)
+ * - deadline naming a calendar the DeadlineCalendarRegistry does not know (`unknown_calendar`,
+ *   2.7.0; only when the registry is given: the runner always gives the core's). A calendar with
+ *   `atFrom`, or with years or months in `after`, is refused when the deadline is built
+ *   (`invalid_deadline`)
  *
  * Warnings (list of MachineDefinitionWarning):
  * - state unreachable from the initial state of its region
@@ -54,7 +59,7 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * and and/or/not of decidable operands. Outside it (closures, method calls, custom classes) the
  * algebra cannot decide and no overlap warning is issued.
  *
- * @version    1.9.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -73,15 +78,17 @@ final class MachineDefinitionValidator
      * @param MachineDefinition $definition Definition to validate
      * @param GuardRegistry $guards Guard factories the definition will run with
      * @param list<string>|null $knownActions Action names that have an implementation; null skips the check
+     * @param DeadlineCalendarRegistry|null $calendars Calendars the definition will run with (2.7.0); null skips the check
      * @return list<MachineDefinitionWarning>
      * @throws InvalidMachineDefinitionException When the definition has at least one error
      */
     public static function validate(
         MachineDefinition $definition,
         GuardRegistry $guards,
-        ?array $knownActions = null
+        ?array $knownActions = null,
+        ?DeadlineCalendarRegistry $calendars = null
     ): array {
-        $report = self::analyze($definition, $guards, $knownActions);
+        $report = self::analyze($definition, $guards, $knownActions, $calendars);
         if (!$report->isValid()) {
             throw new InvalidMachineDefinitionException(
                 $report->errors,
@@ -99,12 +106,14 @@ final class MachineDefinitionValidator
      * @param MachineDefinition $definition Definition to analyze
      * @param GuardRegistry $guards Guard factories the definition will run with
      * @param list<string>|null $knownActions Action names that have an implementation; null skips the check
+     * @param DeadlineCalendarRegistry|null $calendars Calendars the definition will run with (2.7.0); null skips the check
      * @return MachineValidationReport
      */
     public static function analyze(
         MachineDefinition $definition,
         GuardRegistry $guards,
-        ?array $knownActions = null
+        ?array $knownActions = null,
+        ?DeadlineCalendarRegistry $calendars = null
     ): MachineValidationReport {
         $errors = [];
         $warnings = [];
@@ -133,6 +142,21 @@ final class MachineDefinitionValidator
                 }
                 foreach ($state->transitions as $transition) {
                     self::checkTransition($definition, $region, $state->name, $transition, $guards, $actionSet, $errors);
+                }
+                $calendar = $state->deadline?->calendar;
+                if ($calendar !== null && $calendars !== null && !$calendars->has($calendar)) {
+                    $errors[] = new MachineDefinitionError(
+                        MachineDefinitionError::KIND_UNKNOWN_CALENDAR,
+                        sprintf(
+                            "The deadline of state '%s.%s' counts in calendar '%s', which is not registered (registered: %s).",
+                            $region->name,
+                            $state->name,
+                            $calendar,
+                            $calendars->names() === [] ? 'none' : implode(', ', $calendars->names())
+                        ),
+                        $region->name,
+                        $state->name
+                    );
                 }
                 if ($state->deadline?->pausedWhile !== null) {
                     self::checkGuardRefs(

@@ -60,7 +60,8 @@ src/
 ├── Results/                   # SpecificationResult, SpecificationFailure, FailureSeverity, IOutcome
 ├── StateMachine/              # Spec-driven state machine (Modules 17 and 18): builder, definition, validator, pure core
 │   ├── Persistence/          # Ports, MachinePersistence, InMemory/ and Pdo/ stores (resources/sql/state_machine.ansi.sql)
-│   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrations
+│   │                         # v2.7.0: PdoMachineDefinitionRepository, drafts (IMachineDefinitionDrafts), tenants (ITenantScopedInstanceStore), IMachineInstanceLister (Module 40)
+│   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrations (v2.7.0: MachineMigrations, migrateAll())
 ├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Module 19)
 ├── Persistence/               # ITransactionManager, PdoTransactionManager: the transaction port shared by the repository, outboxes and machine stores (v1.11.0); IQueryLogger, InMemoryQueryLogger (v1.13.0)
 ├── DomainEvents/              # Domain events from specifications (Module 23, v1.11.0) and from the passage of time (Module 24, v1.12.0)

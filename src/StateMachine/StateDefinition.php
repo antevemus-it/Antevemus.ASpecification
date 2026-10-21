@@ -14,9 +14,16 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * region). A final state is inert: the validator refuses a final state that declares transitions
  * (D10), and region-level transitions never fire from it.
  *
- * Array form: `{"name": "...", "final": false, "entry": [...], "exit": [...], "deadline": {...}|null, "transitions": [...]}`.
+ * Since 2.7.0 a state may carry a legacy `code` (the integer id of the table the machine replaces,
+ * or a text): data of the definition, versioned with it, that changes nothing in how the machine
+ * runs. Codes are unique in the whole machine (MachineDefinition, `KIND_DUPLICATE`) and a canonical
+ * integer text is the same code as the integer (`"20"` ≡ `20`).
  *
- * @version    1.8.0
+ * Array form: `{"name": "...", "final": false, "entry": [...], "exit": [...], "deadline": {...}|null, "transitions": [...]}`,
+ * plus `"code": 20` only when the state has a code (so the fingerprint of a definition without codes
+ * is the one it had before 2.7.0).
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -36,6 +43,9 @@ final class StateDefinition
     /** @var list<TransitionDefinition> */
     public readonly array $transitions;
 
+    /** Legacy code of the state (2.7.0), null when it has none. */
+    public readonly int|string|null $code;
+
     /**
      * @param string $name State name (no dots), unique within its region
      * @param bool $final Whether the state is final (inert)
@@ -43,6 +53,7 @@ final class StateDefinition
      * @param list<ActionRef> $exit Exit actions, in order
      * @param list<TransitionDefinition> $transitions Transitions, in priority order
      * @param DeadlineDefinition|null $deadline Optional persisted deadline
+     * @param int|string|null $code Legacy code (2.7.0): an integer or a non-empty text without surrounding whitespace
      * @throws InvalidMachineDefinitionException
      */
     public function __construct(
@@ -51,9 +62,11 @@ final class StateDefinition
         array $entry = [],
         array $exit = [],
         array $transitions = [],
-        public readonly ?DeadlineDefinition $deadline = null
+        public readonly ?DeadlineDefinition $deadline = null,
+        int|string|null $code = null
     ) {
         $this->name = DefinitionSupport::assertName($name, 'state name', true);
+        $this->code = $code === null ? null : DefinitionSupport::assertCode($code, $name);
         foreach ([...$entry, ...$exit] as $action) {
             if (!$action instanceof ActionRef) {
                 throw InvalidMachineDefinitionException::single(
@@ -98,7 +111,7 @@ final class StateDefinition
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'name' => $this->name,
             'final' => $this->final,
             'entry' => array_map(static fn(ActionRef $a): array => $a->toArray(), $this->entry),
@@ -106,6 +119,11 @@ final class StateDefinition
             'deadline' => $this->deadline?->toArray(),
             'transitions' => array_map(static fn(TransitionDefinition $t): array => $t->toArray(), $this->transitions),
         ];
+        if ($this->code !== null) {
+            $array['code'] = $this->code;
+        }
+
+        return $array;
     }
 
     /**
@@ -139,6 +157,16 @@ final class StateDefinition
             );
         }
 
+        $code = $data['code'] ?? null;
+        if ($code !== null && !is_int($code) && !is_string($code)) {
+            throw InvalidMachineDefinitionException::single(
+                MachineDefinitionError::KIND_MALFORMED,
+                sprintf('The code of state "%s" must be an integer or a string (got %s).', $name, get_debug_type($code)),
+                $region,
+                $name
+            );
+        }
+
         $transitions = [];
         foreach (DefinitionSupport::optionalList($data, 'transitions', "state '{$name}'") as $transition) {
             $transitions[] = self::transitionFromArray($transition, $region, $name, $takenIds);
@@ -150,7 +178,8 @@ final class StateDefinition
             array_map(ActionRef::fromArray(...), DefinitionSupport::optionalList($data, 'entry', "state '{$name}'")),
             array_map(ActionRef::fromArray(...), DefinitionSupport::optionalList($data, 'exit', "state '{$name}'")),
             $transitions,
-            $deadline === null ? null : DeadlineDefinition::fromArray($deadline)
+            $deadline === null ? null : DeadlineDefinition::fromArray($deadline),
+            $code
         );
     }
 

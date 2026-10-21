@@ -47,7 +47,12 @@
 --                              paused_remaining (since 1.9.0, forward
 --                              025, D11): whole seconds left of a paused
 --                              deadline, whose due_at is then NULL (so
---                              a paused region is never due)
+--                              a paused region is never due); since
+--                              2.7.0 the seconds are in the unit of the
+--                              deadline's calendar: working seconds of
+--                              that calendar when the deadline names one
+--                              (DeadlineCalendarRegistry), wall-clock
+--                              seconds when it does not
 --   state_machine_history      append-only trail (D15, RN-07): one row
 --                              per region moved, plus start and
 --                              migration rows; key = (instance,
@@ -59,6 +64,42 @@
 --                              idempotency_key)
 --   state_machine_rejection    optional rejection log (RN-07, off by
 --                              default)
+--   state_machine_definition   (since 2.7.0) published machine
+--                              definitions, read by
+--                              PdoMachineDefinitionRepository: one row per
+--                              (machine_key, version), immutable; the
+--                              canonical JSON of the definition, its
+--                              fingerprint (checked on every read) and
+--                              who published it, when and why (NULL for
+--                              a definition registered by code)
+--   state_machine_definition_draft
+--                              (since 2.7.0) at most one draft per
+--                              machine key: the array a screen saved,
+--                              the version it started from and its
+--                              revision (compare-and-set)
+--
+-- Opt-in columns (since 2.7.0), read and written only when the stores
+-- are given columns: PdoMachineSchema::COLUMNS_SINCE_2_7 (and the
+-- definition repository, MachinePersistence::pdo(..., definitions:)):
+--   tenant             state_machine_instance and state_machine_region:
+--                      the tenant the instance belongs to (an opaque
+--                      text of the application); the region copy lets
+--                      findDueForTenant() filter without a join, over
+--                      UNIQUE (tenant, machine_key, due_at, ...)
+--   current_state_code state_machine_region: the legacy code of the
+--                      current state (StateDefinition::$code), derived
+--                      from the definition; from_state_code and
+--                      to_state_code in state_machine_history. Declared
+--                      VARCHAR(120) here, which holds integer and text
+--                      codes; when every code is an integer, declare
+--                      them INTEGER and add a foreign key to the legacy
+--                      table (the stores write an integer code as an
+--                      integer)
+--   definition (TEXT)  a real definition is larger than VARCHAR(4000);
+--                      TEXT is accepted by PostgreSQL, MySQL/MariaDB
+--                      (64 KiB; MEDIUMTEXT above that) and SQLite; use
+--                      CLOB (Oracle, DB2) or NVARCHAR(MAX) (SQL Server)
+--                      elsewhere
 --
 -- Upgrading a database created by the 1.8 script (1.9.0): CREATE TABLE
 -- IF NOT EXISTS does not add a column to an existing table, so add the
@@ -70,6 +111,22 @@
 -- Until then the 1.9 stores keep working with the old table for every
 -- definition that never pauses a deadline (the column is only written
 -- for a paused region); the first paused region fails without it.
+--
+-- Additive migration 2.6 -> 2.7.0, for tables created by an older
+-- script. This script creates the two new tables by itself (CREATE
+-- TABLE IF NOT EXISTS); the opt-in columns of the existing tables and
+-- their index are added once, by hand (PostgreSQL, MySQL, MariaDB and
+-- SQLite accept them as they are), then the stores are given columns:
+-- PdoMachineSchema::COLUMNS_SINCE_2_7. Nothing changes for an
+-- application that does not run it: without the columns there is no
+-- tenant nor code projection, and everything else works as before.
+--
+--   ALTER TABLE state_machine_instance ADD COLUMN tenant VARCHAR(120);
+--   ALTER TABLE state_machine_region ADD COLUMN tenant VARCHAR(120);
+--   ALTER TABLE state_machine_region ADD COLUMN current_state_code VARCHAR(120);
+--   ALTER TABLE state_machine_history ADD COLUMN from_state_code VARCHAR(120);
+--   ALTER TABLE state_machine_history ADD COLUMN to_state_code VARCHAR(120);
+--   CREATE UNIQUE INDEX uq_smr_tenant_due ON state_machine_region (tenant, machine_key, due_at, instance_id, region);
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS state_machine_instance (
@@ -81,6 +138,7 @@ CREATE TABLE IF NOT EXISTS state_machine_instance (
     done                     CHAR(1)        DEFAULT 'N' NOT NULL,
     created_at               VARCHAR(26)    NOT NULL,
     updated_at               VARCHAR(26)    NOT NULL,
+    tenant                   VARCHAR(120),
     CONSTRAINT pk_state_machine_instance PRIMARY KEY (instance_id),
     CONSTRAINT chk_smi_done CHECK (done IN ('Y', 'N')),
     CONSTRAINT chk_smi_version CHECK (version >= 1 AND machine_version >= 1)
@@ -94,10 +152,13 @@ CREATE TABLE IF NOT EXISTS state_machine_region (
     due_at                   VARCHAR(26),
     sort_order               INTEGER        NOT NULL,
     paused_remaining         INTEGER,
+    tenant                   VARCHAR(120),
+    current_state_code       VARCHAR(120),
     CONSTRAINT pk_state_machine_region PRIMARY KEY (instance_id, region),
     CONSTRAINT fk_smr_instance FOREIGN KEY (instance_id)
         REFERENCES state_machine_instance (instance_id) ON DELETE CASCADE,
-    CONSTRAINT uq_smr_due UNIQUE (machine_key, due_at, instance_id, region)
+    CONSTRAINT uq_smr_due UNIQUE (machine_key, due_at, instance_id, region),
+    CONSTRAINT uq_smr_tenant_due UNIQUE (tenant, machine_key, due_at, instance_id, region)
 );
 
 CREATE TABLE IF NOT EXISTS state_machine_history (
@@ -116,6 +177,8 @@ CREATE TABLE IF NOT EXISTS state_machine_history (
     idempotency_key          VARCHAR(190),
     event_origin             VARCHAR(10)    NOT NULL,
     occurred_at              VARCHAR(26)    NOT NULL,
+    from_state_code          VARCHAR(120),
+    to_state_code            VARCHAR(120),
     CONSTRAINT pk_state_machine_history PRIMARY KEY (instance_id, instance_version, sort_order),
     CONSTRAINT chk_smh_origin CHECK (event_origin IN ('external', 'internal'))
 );
@@ -173,4 +236,27 @@ CREATE TABLE IF NOT EXISTS state_machine_rejection (
     CONSTRAINT uq_smrj_instance UNIQUE (instance_id, rejection_id),
     CONSTRAINT chk_smrj_status CHECK (status IN ('rejected', 'unhandled')),
     CONSTRAINT chk_smrj_origin CHECK (event_origin IN ('external', 'internal'))
+);
+
+CREATE TABLE IF NOT EXISTS state_machine_definition (
+    machine_key              VARCHAR(120)   NOT NULL,
+    version                  INTEGER        NOT NULL,
+    definition               TEXT           NOT NULL,
+    fingerprint              CHAR(64)       NOT NULL,
+    published_at             VARCHAR(26),
+    published_by             VARCHAR(120),
+    reason                   VARCHAR(2000),
+    CONSTRAINT pk_state_machine_definition PRIMARY KEY (machine_key, version),
+    CONSTRAINT chk_smd_version CHECK (version >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS state_machine_definition_draft (
+    machine_key              VARCHAR(120)   NOT NULL,
+    definition               TEXT           NOT NULL,
+    based_on_version         INTEGER,
+    revision                 INTEGER        NOT NULL,
+    updated_at               VARCHAR(26)    NOT NULL,
+    updated_by               VARCHAR(120),
+    CONSTRAINT pk_state_machine_definition_draft PRIMARY KEY (machine_key),
+    CONSTRAINT chk_smdd_revision CHECK (revision >= 1)
 );

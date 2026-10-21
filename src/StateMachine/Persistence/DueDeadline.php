@@ -20,7 +20,10 @@ use DateTimeImmutable;
  * the SQL visitor, the InMemory store evaluates it over the same projection, so both answer the
  * same by construction.
  *
- * @version    1.8.0
+ * Since 2.7.0 a due deadline carries the tenant of its instance (null when it has none, or when the
+ * store does not keep tenants), and specification() filters by tenant when one is given.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -35,6 +38,9 @@ final class DueDeadline
     /** Property of the projection holding the machine key. */
     public const PROPERTY_MACHINE_KEY = 'machineKey';
 
+    /** Property of the projection holding the tenant (2.7.0). */
+    public const PROPERTY_TENANT = 'tenant';
+
     public readonly DateTimeImmutable $dueAt;
 
     /**
@@ -43,35 +49,42 @@ final class DueDeadline
      * @param string $region Region whose deadline is due
      * @param string $state State the region is in
      * @param DateTimeImmutable $dueAt Due instant (stored in UTC)
+     * @param string|null $tenant Tenant of the instance (2.7.0), null when none
      */
     public function __construct(
         public readonly string $instanceId,
         public readonly string $machineKey,
         public readonly string $region,
         public readonly string $state,
-        DateTimeImmutable $dueAt
+        DateTimeImmutable $dueAt,
+        public readonly ?string $tenant = null
     ) {
         $this->dueAt = PersistenceSupport::utc($dueAt);
     }
 
     /**
      * The search of due deadlines as a specification over the deadline projection: `dueAt` (text
-     * form, UTC) is set and `<= now`, and, when given, `machineKey` equals the key.
+     * form, UTC) is set and `<= now`, and, when given, `machineKey` equals the key and (2.7.0)
+     * `tenant` equals the tenant.
      *
      * @param DateTimeImmutable $now Reference instant
      * @param string|null $machineKey Optional machine key filter
+     * @param string|null $tenant Optional tenant filter (2.7.0)
      * @return ISpecification
      */
-    public static function specification(DateTimeImmutable $now, ?string $machineKey = null): ISpecification
+    public static function specification(DateTimeImmutable $now, ?string $machineKey = null, ?string $tenant = null): ISpecification
     {
         $due = Spec::property(
             self::PROPERTY_DUE_AT,
             Spec::isNotNull()->and(Spec::lessThanOrEqualTo(PersistenceSupport::toText($now)))
         );
+        if ($machineKey !== null) {
+            $due = $due->and(Spec::property(self::PROPERTY_MACHINE_KEY, Spec::equalTo($machineKey)));
+        }
 
-        return $machineKey === null
+        return $tenant === null
             ? $due
-            : $due->and(Spec::property(self::PROPERTY_MACHINE_KEY, Spec::equalTo($machineKey)));
+            : $due->and(Spec::property(self::PROPERTY_TENANT, Spec::equalTo($tenant)));
     }
 
     /**
@@ -81,12 +94,17 @@ final class DueDeadline
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'instance_id' => $this->instanceId,
             'machine_key' => $this->machineKey,
             'region' => $this->region,
             'state' => $this->state,
             'due_at' => PersistenceSupport::toText($this->dueAt),
         ];
+        if ($this->tenant !== null) {
+            $array['tenant'] = $this->tenant;
+        }
+
+        return $array;
     }
 }

@@ -50,3 +50,4 @@ Principais destaques:
 27. **Motor de Regras para um Consumidor Real** (tipos de regra só consulta, a regra mais específica de um tipo, rótulo humano do alvo, Adianti como host) (Entregue na v2.5.0)
 28. **TCriteria Sem Acento e Com Subquery** (`withAccentFolding()`, `inSubquery()`, `existsIn()`, também no `toSql()`) (Entregue na v2.5.0)
 29. **Fontes de Dados Assíncronas** (`AsyncDataSource`: envia uma vez, consulta depois, dado pendente nunca aprovado nem reprovado) (Entregue na v2.5.0)
+30. **Máquina de Estados para um Consumidor Real** (códigos legados dos estados, definições versionadas em PDO com rascunho e publicação, guard `spec`, `migrateAll()`, tenants, prazos em tempo útil) (Entregue na v2.7.0)

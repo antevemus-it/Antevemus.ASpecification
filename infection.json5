@@ -4,7 +4,9 @@
 // the new and changed files of the rule engine (RuleSpecificationRegistry, DynamicSpecificationEngine,
 // RulePrecedence and the two catalogs), of the TCriteria bridge (the visitor, the builder and the three new
 // TFilters) and of the asynchronous data sources; since 2.6.0 (forward 045) the stage runner of the resolution
-// (ResolvedData, with the deferred group of the stage transports) and DataFetchException; every other file of src/
+// (ResolvedData, with the deferred group of the stage transports) and DataFetchException; since 2.7.0 the new files of
+// the state machine for a real consumer (MachineDefinitionDiff, the drafts and PdoMachineDefinitionRepository, the
+// tenant and lister ports, the ready-made migrations and their report, DefinitionDraftConflictException); every other file of src/
 // is excluded by the negative look-ahead below (a new top-level folder of src/ stays out of scope until it is
 // named here). The Criteria/ classes extend Adianti's TFilter, so Infection loads tests/bootstrap.php (the stubs of the suite) itself.
 // Runs in the scheduled workflow (.github/workflows/quality.yml)
@@ -23,12 +25,15 @@
 // streams in /bin/sh; measured locally (Infection 0.35.6, container, PHP 8.4 with pcov, memory_limit=2G): 4683 mutants,
 // 4184 killed, 30 errors, 4 time-outs, 465 escaped, MSI 90.07 (ResolvedData 96.3, DataFetchException 100). The floor
 // stays 89; the CI measurement of 2.6.0 goes to RELEASING.md on the release day.
+// 2.7.0: the deadline calendars (src/StateMachine/Calendar/, every file, and UnknownDeadlineCalendarException) enter
+// the scope as they are born; the changed deadline code of the core (DeadlineDefinition, StateMachine, the validator)
+// is measured apart with --filter, the rest of src/StateMachine/ staying out of scope until it is named here.
 {
     "$schema": "vendor/infection/infection/resources/schema.json",
     "source": {
         "directories": ["src"],
         "excludes": [
-            "~^(?!Specifications/|Serialization/|AbstractSpecification\\.php$|AbstractCompositeSpecification\\.php$|Engine/(?:RuleSpecificationRegistry|DynamicSpecificationEngine|RulePrecedence|InMemoryRuleCatalog|PdoRuleCatalog)\\.php$|Criteria/(?:TAccentInsensitiveFilter|TSubqueryFilter|TConstantFilter|TCriteriaBuilder|CriteriaSpecificationVisitor)\\.php$|Resolution/(?:AsyncDataSource|AsyncPoll|AsyncTicket|CallableAsyncTicketStore|InMemoryAsyncTicketStore|IAsyncTicketStore)\\.php$|Resolution/ResolvedData\\.php$|Resolution/Exceptions/(?:DataPendingException|DataFetchException)\\.php$)~"
+            "~^(?!Specifications/|Serialization/|AbstractSpecification\\.php$|AbstractCompositeSpecification\\.php$|Engine/(?:RuleSpecificationRegistry|DynamicSpecificationEngine|RulePrecedence|InMemoryRuleCatalog|PdoRuleCatalog)\\.php$|Criteria/(?:TAccentInsensitiveFilter|TSubqueryFilter|TConstantFilter|TCriteriaBuilder|CriteriaSpecificationVisitor)\\.php$|Resolution/(?:AsyncDataSource|AsyncPoll|AsyncTicket|CallableAsyncTicketStore|InMemoryAsyncTicketStore|IAsyncTicketStore)\\.php$|Resolution/ResolvedData\\.php$|Resolution/Exceptions/(?:DataPendingException|DataFetchException)\\.php$|StateMachine/MachineDefinitionDiff\\.php$|StateMachine/Persistence/(?:DefinitionDraftSupport|DraftInfo|MachineDefinitionDraft|PublishedMachineDefinition|IMachineDefinitionDrafts|ITenantScopedInstanceStore|IMachineInstanceLister)\\.php$|StateMachine/Persistence/Pdo/PdoMachineDefinitionRepository\\.php$|StateMachine/Runner/(?:ByStateNameMigration|MachineMigrations|InstanceMigration|IDefinitionAwareMachineMigration)\\.php$|StateMachine/Exceptions/DefinitionDraftConflictException\\.php$|StateMachine/Calendar/|StateMachine/Exceptions/UnknownDeadlineCalendarException\\.php$)~"
         ]
     },
     "bootstrap": "tests/bootstrap.php",

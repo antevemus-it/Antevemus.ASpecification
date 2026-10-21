@@ -37,7 +37,15 @@ use PDOStatement;
  * map, give the real names exactly as the catalog stores them (lowercase for unquoted DDL in
  * PostgreSQL).
  *
- * @version    1.9.0
+ * Opt-in columns (2.7.0): the tenant of an instance (`state_machine_instance.tenant` and the
+ * projection `state_machine_region.tenant`) and the legacy codes of the states
+ * (`state_machine_region.current_state_code`, `state_machine_history.from_state_code` and
+ * `to_state_code`) are mapped only when the consumer says so, with `columns:
+ * PdoMachineSchema::COLUMNS_SINCE_2_7` (merged with any other mapping): a table created by an older
+ * DDL keeps working untouched after the update. Unmapped, they are never read nor written; hasColumn()
+ * tells the stores which ones are there.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -79,12 +87,30 @@ final class PdoMachineSchema
         ],
     ];
 
+    /** Canonical columns added to the reference DDL in 2.7.0, by table (absent unless mapped). */
+    public const TABLE_COLUMNS_SINCE_2_7 = [
+        'instance' => ['tenant'],
+        'region' => ['tenant', 'current_state_code'],
+        'history' => ['from_state_code', 'to_state_code'],
+    ];
+
+    /**
+     * Column map of tables created (or migrated) by the reference DDL of 2.7.0: the tenant of the
+     * instance and the legacy codes of the states. Pass it as `$columns` (merged with any other mapping).
+     */
+    public const COLUMNS_SINCE_2_7 = [
+        'tenant' => 'tenant',
+        'current_state_code' => 'current_state_code',
+        'from_state_code' => 'from_state_code',
+        'to_state_code' => 'to_state_code',
+    ];
+
     private const IDENTIFIER = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
     /** @var array<string, string> Role => schema-qualified table name */
     private readonly array $tables;
 
-    /** @var array<string, string> Canonical column => real column, for every canonical column */
+    /** @var array<string, string> Canonical column => real column, for every canonical column (and the mapped opt-in ones) */
     private readonly array $columns;
 
     /** Dialect of the driver; it must paginate (limit() bounds findDue() and the effect outbox). */
@@ -95,7 +121,8 @@ final class PdoMachineSchema
      * @param string $schema Optional schema (or database) qualifying every table; '' = unqualified
      * @param array<string, string> $tables Table names by role; missing roles keep the default
      * @param array<string, string> $columns Real column names by canonical column; missing columns keep
-     *                                       the canonical name
+     *                                       the canonical name; the opt-in columns of 2.7.0 exist only
+     *                                       when mapped (COLUMNS_SINCE_2_7)
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
      * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException When the
@@ -136,12 +163,13 @@ final class PdoMachineSchema
 
         $known = self::canonicalColumns();
         $map = array_combine($known, $known);
+        $accepted = [...$known, ...self::optionalColumns()];
         foreach ($columns as $canonical => $real) {
-            if (!is_string($canonical) || !in_array($canonical, $known, true)) {
+            if (!is_string($canonical) || !in_array($canonical, $accepted, true)) {
                 throw new InvalidArgumentException(sprintf(
                     'Unknown state machine column "%s". Expected one of: %s.',
                     (string) $canonical,
-                    implode(', ', $known)
+                    implode(', ', $accepted)
                 ));
             }
             if (!is_string($real) || preg_match(self::IDENTIFIER, $real) !== 1) {
@@ -169,6 +197,25 @@ final class PdoMachineSchema
     public static function canonicalColumns(): array
     {
         return array_values(array_unique(array_merge(...array_values(self::TABLE_COLUMNS))));
+    }
+
+    /**
+     * Every opt-in canonical column (2.7.0), without duplicates.
+     *
+     * @return list<string>
+     */
+    public static function optionalColumns(): array
+    {
+        return array_values(array_unique(array_merge(...array_values(self::TABLE_COLUMNS_SINCE_2_7))));
+    }
+
+    /**
+     * True when the canonical column is in use: always for the columns of TABLE_COLUMNS, and for an
+     * opt-in column of 2.7.0 only when it was mapped.
+     */
+    public function hasColumn(string $canonical): bool
+    {
+        return isset($this->columns[$canonical]);
     }
 
     /** The connection. */

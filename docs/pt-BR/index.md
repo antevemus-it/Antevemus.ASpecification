@@ -56,7 +56,9 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 ### Máquina de estados
 
 - [Máquina de estados](state-machine/index.md) (exemplo 14): Guards são especificações: regiões paralelas, definição em JSON, o runner e prazos persistidos.
+- [Prazos em tempo útil](state-machine/business-time.md) (exemplo 14.11): dias úteis, horário de trabalho e feriados; uma pausa que não gasta o fim de semana.
 - [Casos de uso](state-machine/use-cases.md) (exemplo 15): `IUseCase`, `UseCaseRunner` e o resultado comum à máquina.
+- [Um consumidor real](state-machine/real-consumer.md) (exemplo 23): códigos legados dos estados, definições versionadas no banco com rascunho e publicação, e tenants compartilhando uma máquina.
 
 ### Resolução de dados
 

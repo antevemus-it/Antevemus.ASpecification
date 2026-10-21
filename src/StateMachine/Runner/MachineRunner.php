@@ -12,6 +12,7 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
 use Antevemus\ASpecification\StateMachine\Exceptions\MachineInstanceAlreadyExistsException;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachineInstanceNotFoundException;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachineMigrationException;
+use Antevemus\ASpecification\StateMachine\Exceptions\StateMachineException;
 use Antevemus\ASpecification\StateMachine\Exceptions\SyncEffectFailedException;
 use Antevemus\ASpecification\StateMachine\Exceptions\UnknownMachineDefinitionException;
 use Antevemus\ASpecification\StateMachine\MachineDefinition;
@@ -20,6 +21,8 @@ use Antevemus\ASpecification\StateMachine\MachineSnapshot;
 use Antevemus\ASpecification\StateMachine\Persistence\DueDeadline;
 use Antevemus\ASpecification\StateMachine\Persistence\HistoryEntry;
 use Antevemus\ASpecification\StateMachine\Persistence\IMachineDefinitionRepository;
+use Antevemus\ASpecification\StateMachine\Persistence\IMachineInstanceLister;
+use Antevemus\ASpecification\StateMachine\Persistence\ITenantScopedInstanceStore;
 use Antevemus\ASpecification\StateMachine\Persistence\MachineInstance;
 use Antevemus\ASpecification\StateMachine\Persistence\MachinePersistence;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxEntry;
@@ -62,7 +65,20 @@ use Throwable;
  *
  * The runner reads no clock: every instant comes from the events (or the caller's $now).
  *
- * @version    1.9.0
+ * Since 2.7.0:
+ * - tenant: start() takes the tenant the instance belongs to (an opaque text of the application, fixed
+ *   for the life of the instance); send(), load(), can(), nextEvents(), migrate(), findDue() and
+ *   deliverDue() take it at the end. With a tenant, the instance is loaded through
+ *   ITenantScopedInstanceStore::loadForTenant(), so an instance of another tenant is
+ *   MachineInstanceNotFoundException, the same error as an unknown id; a tenant asked of a store that
+ *   is not tenant-scoped is a StateMachineException. Without a tenant everything works as before
+ *   (the operator's routine delivers the deadlines of every tenant);
+ * - migrateAll(): the instances of one version moved to another in batches, one transaction per
+ *   instance, a report per instance (IMachineInstanceLister);
+ * - a registered IDefinitionAwareMachineMigration (MachineMigrations::byStateName()) receives the
+ *   validated target definition.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Runner
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -126,12 +142,14 @@ final class MachineRunner
      *                                          conditions of the initial states (no guard runs at start)
      * @param DateTimeImmutable $occurredAt Instant of the start (deadlines count from it)
      * @param string|null $actor Who started it, recorded in the history
+     * @param string|null $tenant Tenant the instance belongs to (2.7.0), fixed for its life; null = none
      * @return TransitionResult Accepted start result (event null); rejected, with nothing written,
      *                          when an initial deadline cannot be computed (SM_DEADLINE_SOURCE_INVALID)
-     * @throws MachineInstanceAlreadyExistsException When the id is taken
+     * @throws MachineInstanceAlreadyExistsException When the id is taken (by any tenant)
      * @throws UnknownMachineDefinitionException When the definition is not registered
      * @throws InvalidMachineDefinitionException When the definition is refused by the validator
      * @throws SyncEffectFailedException When a synchronous entry effect throws (nothing written)
+     * @throws InvalidArgumentException When the tenant is empty, padded or longer than 120 characters
      */
     public function start(
         string $instanceId,
@@ -139,14 +157,15 @@ final class MachineRunner
         ?int $version,
         object|array|null $context,
         DateTimeImmutable $occurredAt,
-        ?string $actor = null
+        ?string $actor = null,
+        ?string $tenant = null
     ): TransitionResult {
         PersistenceSupport::assertInstanceId($instanceId);
         $version ??= $this->definitions->latestVersion($machineKey)
             ?? throw new UnknownMachineDefinitionException(sprintf('Machine "%s" has no registered version.', $machineKey));
         $definition = $this->definitionFor($machineKey, $version);
 
-        return $this->persistence->transactions->transactional(function () use ($instanceId, $definition, $context, $occurredAt, $actor): TransitionResult {
+        return $this->persistence->transactions->transactional(function () use ($instanceId, $definition, $context, $occurredAt, $actor, $tenant): TransitionResult {
             if ($this->persistence->instances->load($instanceId) !== null) {
                 throw new MachineInstanceAlreadyExistsException(sprintf('Machine instance "%s" already exists.', $instanceId));
             }
@@ -154,7 +173,7 @@ final class MachineRunner
             if (!$result->isAccepted()) {
                 return $result;
             }
-            $instance = new MachineInstance($instanceId, $result->snapshot, 1, $occurredAt, $occurredAt);
+            $instance = new MachineInstance($instanceId, $result->snapshot, 1, $occurredAt, $occurredAt, $tenant);
             $this->persistence->instances->insert($instance);
 
             $rows = [];
@@ -180,25 +199,28 @@ final class MachineRunner
      * @param string|null $actor Who triggered it, recorded in the history
      * @param int|null $expectedVersion Version the caller saw (optimistic lock across a UI round
      *                                  trip); null = no check beyond the internal CAS
+     * @param string|null $tenant Tenant the caller acts for (2.7.0); null = no tenant check
      * @return TransitionResult The result (the original one for a repeated idempotency key)
-     * @throws MachineInstanceNotFoundException When the id is unknown
+     * @throws MachineInstanceNotFoundException When the id is unknown (or belongs to another tenant)
      * @throws ConcurrencyConflictException When the version moved (nothing written)
      * @throws SyncEffectFailedException When a synchronous effect throws (nothing written)
      * @throws InvalidArgumentException When the event type is reserved by the runner
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
      */
     public function send(
         string $instanceId,
         Event $event,
         object|array|null $context = null,
         ?string $actor = null,
-        ?int $expectedVersion = null
+        ?int $expectedVersion = null,
+        ?string $tenant = null
     ): TransitionResult {
         if ($event->type === self::START_EVENT || $event->type === self::MIGRATE_EVENT) {
             throw new InvalidArgumentException(sprintf('Event type "%s" is reserved by the machine runner.', $event->type));
         }
 
-        return $this->persistence->transactions->transactional(function () use ($instanceId, $event, $context, $actor, $expectedVersion): TransitionResult {
-            $instance = $this->mustLoad($instanceId);
+        return $this->persistence->transactions->transactional(function () use ($instanceId, $event, $context, $actor, $expectedVersion, $tenant): TransitionResult {
+            $instance = $this->mustLoad($instanceId, $tenant);
 
             if ($event->idempotencyKey !== null) {
                 $original = $this->persistence->idempotency->find($instanceId, $event->idempotencyKey);
@@ -256,13 +278,14 @@ final class MachineRunner
     }
 
     /**
-     * Loads a persisted instance.
+     * Loads a persisted instance (of the tenant, when one is given, 2.7.0).
      *
-     * @throws MachineInstanceNotFoundException When the id is unknown
+     * @throws MachineInstanceNotFoundException When the id is unknown (or belongs to another tenant)
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
      */
-    public function load(string $instanceId): MachineInstance
+    public function load(string $instanceId, ?string $tenant = null): MachineInstance
     {
-        return $this->mustLoad($instanceId);
+        return $this->mustLoad($instanceId, $tenant);
     }
 
     /**
@@ -271,12 +294,13 @@ final class MachineRunner
      * @param string $instanceId Instance id
      * @param Event $event Event to test
      * @param object|array<mixed>|null $context Domain context read by the guards
+     * @param string|null $tenant Tenant the caller acts for (2.7.0); null = no tenant check
      * @return TransitionResult
-     * @throws MachineInstanceNotFoundException When the id is unknown
+     * @throws MachineInstanceNotFoundException When the id is unknown (or belongs to another tenant)
      */
-    public function can(string $instanceId, Event $event, object|array|null $context = null): TransitionResult
+    public function can(string $instanceId, Event $event, object|array|null $context = null, ?string $tenant = null): TransitionResult
     {
-        $instance = $this->mustLoad($instanceId);
+        $instance = $this->mustLoad($instanceId, $tenant);
 
         return $this->machine->can($this->definitionFor($instance->getMachineKey(), $instance->getMachineVersion()), $instance->snapshot, $event, $context);
     }
@@ -287,12 +311,13 @@ final class MachineRunner
      * @param string $instanceId Instance id
      * @param object|array<mixed>|null $context Domain context read by the guards
      * @param DateTimeImmutable $occurredAt Instant used for the test events
+     * @param string|null $tenant Tenant the caller acts for (2.7.0); null = no tenant check
      * @return array<string, TransitionResult>
-     * @throws MachineInstanceNotFoundException When the id is unknown
+     * @throws MachineInstanceNotFoundException When the id is unknown (or belongs to another tenant)
      */
-    public function nextEvents(string $instanceId, object|array|null $context, DateTimeImmutable $occurredAt): array
+    public function nextEvents(string $instanceId, object|array|null $context, DateTimeImmutable $occurredAt, ?string $tenant = null): array
     {
-        $instance = $this->mustLoad($instanceId);
+        $instance = $this->mustLoad($instanceId, $tenant);
 
         return $this->machine->nextEvents(
             $this->definitionFor($instance->getMachineKey(), $instance->getMachineVersion()),
@@ -334,19 +359,22 @@ final class MachineRunner
      * @param DateTimeImmutable $occurredAt Instant of the migration
      * @param string|null $actor Who migrated it
      * @param int|null $expectedVersion Version the caller saw; null = no check beyond the CAS
-     * @return MachineInstance The migrated instance
+     * @param string|null $tenant Tenant the caller acts for (2.7.0); null = no tenant check
+     * @return MachineInstance The migrated instance (its tenant kept)
      * @throws MachineMigrationException When no migration is registered or its result does not conform
      * @throws ConcurrencyConflictException When the version moved
+     * @throws MachineInstanceNotFoundException When the id is unknown (or belongs to another tenant)
      */
     public function migrate(
         string $instanceId,
         int $toVersion,
         DateTimeImmutable $occurredAt,
         ?string $actor = null,
-        ?int $expectedVersion = null
+        ?int $expectedVersion = null,
+        ?string $tenant = null
     ): MachineInstance {
-        return $this->persistence->transactions->transactional(function () use ($instanceId, $toVersion, $occurredAt, $actor, $expectedVersion): MachineInstance {
-            $instance = $this->mustLoad($instanceId);
+        return $this->persistence->transactions->transactional(function () use ($instanceId, $toVersion, $occurredAt, $actor, $expectedVersion, $tenant): MachineInstance {
+            $instance = $this->mustLoad($instanceId, $tenant);
             if ($expectedVersion !== null && $expectedVersion !== $instance->version) {
                 throw new ConcurrencyConflictException($instanceId, $expectedVersion, $instance->version);
             }
@@ -361,7 +389,9 @@ final class MachineRunner
                 ));
             $target = $this->definitionFor($key, $toVersion);
 
-            $migrated = $migration->migrate($instance->snapshot);
+            $migrated = $migration instanceof IDefinitionAwareMachineMigration
+                ? $migration->migrateTo($instance->snapshot, $target)
+                : $migration->migrate($instance->snapshot);
             $this->assertConforms($target, $migrated);
             $done = StateMachine::isDone($target, $migrated);
             if ($done !== $migrated->isDone()) {
@@ -389,16 +419,80 @@ final class MachineRunner
     }
 
     /**
-     * Due deadlines (D18), as found by the instance store.
+     * Migrates the instances of one version to another in a batch (2.7.0): the ids of at most $limit
+     * instances pinned to $fromVersion (after $after, in the store's order of the id), each migrated by
+     * migrate() in its own transaction through the migration registered for (key, from, to). A
+     * concurrency conflict, a snapshot the target refuses or an instance gone or moved since the listing
+     * is skipped and reported; the next run retries it. Call it again (with the last id as $after when
+     * skipped instances stay) until it returns an empty list.
+     *
+     * @param string $machineKey Machine key
+     * @param int $fromVersion Version the instances are pinned to
+     * @param int $toVersion Target version
+     * @param DateTimeImmutable $occurredAt Instant of the migrations
+     * @param string|null $actor Who migrated them
+     * @param int $limit Maximum number of instances in this batch (>= 1)
+     * @param string|null $after List after this id (keyset paging); null = from the start
+     * @return list<InstanceMigration>
+     * @throws MachineMigrationException When no migration is registered for (key, from, to)
+     * @throws StateMachineException When the instance store cannot list instances (IMachineInstanceLister)
+     * @throws UnknownMachineDefinitionException|InvalidMachineDefinitionException When the target cannot run
+     */
+    public function migrateAll(
+        string $machineKey,
+        int $fromVersion,
+        int $toVersion,
+        DateTimeImmutable $occurredAt,
+        ?string $actor = null,
+        int $limit = 100,
+        ?string $after = null
+    ): array {
+        $lister = $this->persistence->instances;
+        if (!$lister instanceof IMachineInstanceLister) {
+            throw new StateMachineException(sprintf(
+                'migrateAll() needs an instance store that lists instances (IMachineInstanceLister); %s does not.',
+                get_debug_type($lister)
+            ));
+        }
+        if (!isset($this->migrations[self::migrationKey($machineKey, $fromVersion, $toVersion)])) {
+            throw new MachineMigrationException(sprintf(
+                'No migration is registered for machine "%s" from v%d to v%d.',
+                $machineKey,
+                $fromVersion,
+                $toVersion
+            ));
+        }
+        $this->definitionFor($machineKey, $toVersion);
+
+        $outcomes = [];
+        foreach ($lister->idsByMachineVersion($machineKey, $fromVersion, $limit, $after) as $instanceId) {
+            try {
+                $outcomes[] = new InstanceMigration($instanceId, $this->migrate($instanceId, $toVersion, $occurredAt, $actor));
+            } catch (ConcurrencyConflictException | MachineMigrationException | MachineInstanceNotFoundException $e) {
+                $outcomes[] = new InstanceMigration($instanceId, null, $e->getMessage());
+            }
+        }
+
+        return $outcomes;
+    }
+
+    /**
+     * Due deadlines (D18), as found by the instance store (of one tenant, when given, 2.7.0).
      *
      * @param DateTimeImmutable $now Reference instant
      * @param string|null $machineKey Only this machine, when given
      * @param int $limit Maximum number of deadlines
+     * @param string|null $tenant Only this tenant's instances (2.7.0); null = every instance
      * @return list<DueDeadline>
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
      */
-    public function findDue(DateTimeImmutable $now, ?string $machineKey = null, int $limit = 100): array
+    public function findDue(DateTimeImmutable $now, ?string $machineKey = null, int $limit = 100, ?string $tenant = null): array
     {
-        return $this->persistence->instances->findDue($now, $machineKey, $limit);
+        if ($tenant === null) {
+            return $this->persistence->instances->findDue($now, $machineKey, $limit);
+        }
+
+        return $this->tenantScopedStore()->findDueForTenant($now, $tenant, $machineKey, $limit);
     }
 
     /**
@@ -420,18 +514,23 @@ final class MachineRunner
      * @param string|null $actor Recorded in the history (e.g. "scheduler")
      * @param (Closure(DueDeadline, MachineInstance): (object|array<mixed>|null))|null $contextProvider
      *        Domain context of each delivery; null sends a null context (1.8.0 behavior)
+     * @param string|null $tenant Only this tenant's deadlines (2.7.0); null = every instance
      * @return list<DeadlineDelivery>
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
      */
     public function deliverDue(
         DateTimeImmutable $now,
         ?string $machineKey = null,
         int $limit = 100,
         ?string $actor = null,
-        ?Closure $contextProvider = null
+        ?Closure $contextProvider = null,
+        ?string $tenant = null
     ): array {
         $deliveries = [];
-        foreach ($this->findDue($now, $machineKey, $limit) as $deadline) {
-            $instance = $this->persistence->instances->load($deadline->instanceId);
+        foreach ($this->findDue($now, $machineKey, $limit, $tenant) as $deadline) {
+            $instance = $tenant === null
+                ? $this->persistence->instances->load($deadline->instanceId)
+                : $this->tenantScopedStore()->loadForTenant($deadline->instanceId, $tenant);
             if ($instance === null) {
                 $deliveries[] = new DeadlineDelivery($deadline, null, 'The instance no longer exists.');
                 continue;
@@ -451,7 +550,7 @@ final class MachineRunner
             );
             try {
                 $context = $contextProvider !== null ? $contextProvider($deadline, $instance) : null;
-                $deliveries[] = new DeadlineDelivery($deadline, $this->send($deadline->instanceId, $event, $context, $actor));
+                $deliveries[] = new DeadlineDelivery($deadline, $this->send($deadline->instanceId, $event, $context, $actor, null, $tenant));
             } catch (ConcurrencyConflictException | SyncEffectFailedException $e) {
                 $deliveries[] = new DeadlineDelivery($deadline, null, $e->getMessage());
             }
@@ -462,7 +561,7 @@ final class MachineRunner
 
     /**
      * The definition of the (key, version) pair, validated once per runner with the core's guard
-     * registry (D17: refused definitions never run).
+     * registry and, since 2.7.0, its calendar registry (D17: refused definitions never run).
      *
      * @throws UnknownMachineDefinitionException When the pair is not registered
      * @throws InvalidMachineDefinitionException When the validator refuses it
@@ -472,7 +571,7 @@ final class MachineRunner
         $definition = $this->definitions->get($machineKey, $version);
         $cacheKey = $machineKey . '#' . $version;
         if (!isset($this->validated[$cacheKey])) {
-            MachineDefinitionValidator::validate($definition, $this->machine->getGuardRegistry());
+            MachineDefinitionValidator::validate($definition, $this->machine->getGuardRegistry(), null, $this->machine->getCalendarRegistry());
             $this->validated[$cacheKey] = true;
         }
 
@@ -570,12 +669,35 @@ final class MachineRunner
     }
 
     /**
+     * Loads the instance, confined to the tenant when one is given: another tenant's instance is the
+     * same "does not exist" as an unknown id.
+     *
      * @throws MachineInstanceNotFoundException
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
      */
-    private function mustLoad(string $instanceId): MachineInstance
+    private function mustLoad(string $instanceId, ?string $tenant = null): MachineInstance
     {
-        return $this->persistence->instances->load($instanceId)
-            ?? throw new MachineInstanceNotFoundException(sprintf('Machine instance "%s" does not exist.', $instanceId));
+        $instance = $tenant === null
+            ? $this->persistence->instances->load($instanceId)
+            : $this->tenantScopedStore()->loadForTenant($instanceId, $tenant);
+
+        return $instance ?? throw new MachineInstanceNotFoundException(sprintf('Machine instance "%s" does not exist.', $instanceId));
+    }
+
+    /**
+     * @throws StateMachineException When the instance store is not tenant-scoped
+     */
+    private function tenantScopedStore(): ITenantScopedInstanceStore
+    {
+        $store = $this->persistence->instances;
+        if (!$store instanceof ITenantScopedInstanceStore) {
+            throw new StateMachineException(sprintf(
+                'A tenant was given, but the instance store %s does not keep tenants (ITenantScopedInstanceStore).',
+                get_debug_type($store)
+            ));
+        }
+
+        return $store;
     }
 
     private static function migrationKey(string $machineKey, int $fromVersion, int $toVersion): string

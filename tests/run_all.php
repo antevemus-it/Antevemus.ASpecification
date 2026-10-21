@@ -68,6 +68,8 @@ $suites = [
     'Módulo 30: Feature Flags II (janela de validade pelo serviço e rollout percentual)' => new \Antevemus\ASpecification\Tests\Unit\Module30_FeatureFlagsIITest(),
     'Módulo 31: Serialização de Especificações e Alvo de Flag por Regra do Catálogo' => new \Antevemus\ASpecification\Tests\Unit\Module31_SpecificationSerializationTest(),
     'Módulo 36: Motor de Regras, TCriteria e Dados Assíncronos para um Consumidor Real (tipos só consulta, precedência, rótulos, sem acento, subquery, pendente)' => new \Antevemus\ASpecification\Tests\Unit\Module36_RuleEngineCriteriaAndAsyncDataTest(),
+    'Módulo 40: Máquina de Estados para um Consumidor Real (códigos legados, definição versionada em PDO, tenant)' => new \Antevemus\ASpecification\Tests\Unit\Module40_StateMachineRealConsumerTest(),
+    'Módulo 41: Prazos em Tempo Útil (calendários de dias úteis e de horário, feriados, pausa e paridade com o relógio de SLA)' => new \Antevemus\ASpecification\Tests\Unit\Module41_BusinessTimeDeadlinesTest(),
 ];
 
 $startTime = microtime(true);

@@ -22,9 +22,10 @@ use Throwable;
  *   (offsets included) in its JSON.
  * - JSON columns are encoded without escaped slashes or unicode and keep zero fractions.
  * - Error messages recorded by the outbox never carry a stack trace.
+ * - A tenant (2.7.0) is a non-empty text without surrounding whitespace, at most 120 characters.
  *
  * @internal
- * @version    1.8.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -38,6 +39,9 @@ final class PersistenceSupport
 
     /** Maximum length of an instance id (column `instance_id`). */
     public const MAX_INSTANCE_ID_LENGTH = 120;
+
+    /** Maximum length of a tenant (column `tenant`, 2.7.0). */
+    public const MAX_TENANT_LENGTH = 120;
 
     /** Maximum length of a recorded error message (column `last_error`). */
     public const MAX_ERROR_LENGTH = 2000;
@@ -150,5 +154,24 @@ final class PersistenceSupport
         }
 
         return $instanceId;
+    }
+
+    /**
+     * Asserts a tenant (2.7.0) is non-empty, without surrounding whitespace and at most
+     * MAX_TENANT_LENGTH characters.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function assertTenant(string $tenant): string
+    {
+        if ($tenant === '' || trim($tenant) !== $tenant || mb_strlen($tenant) > self::MAX_TENANT_LENGTH) {
+            throw new InvalidArgumentException(sprintf(
+                'The tenant of a machine instance must be a non-empty string without surrounding whitespace and at most %d characters (got "%s").',
+                self::MAX_TENANT_LENGTH,
+                $tenant
+            ));
+        }
+
+        return $tenant;
     }
 }

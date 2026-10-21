@@ -24,8 +24,11 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
  * - Lossless array/JSON round-trip, JSON-friendly by construction
  * - Deterministic fingerprint (sha256 of the canonical JSON)
  * - Lookup of regions and transitions by name/id
+ * - Legacy state codes (2.7.0): stateByCode(), codeOf(), codesOf(), hasStateCodes(); a code is unique
+ *   in the whole machine (a duplicate is `KIND_DUPLICATE`) and `"20"` is the same code as `20`
+ * - Structural diff between two versions (2.7.0): diff()
  *
- * @version    1.8.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -45,6 +48,9 @@ final class MachineDefinition
 
     /** @var array<string, array{region: string, state: string|null, transition: TransitionDefinition}> */
     private array $transitionsById = [];
+
+    /** @var array<int|string, array{region: string, state: StateDefinition}> Normalized code => location */
+    private array $statesByCode = [];
 
     /**
      * @param string $key Stable machine key
@@ -86,6 +92,7 @@ final class MachineDefinition
             $this->regionsByName[$region->name] = $region;
 
             foreach ($region->states as $state) {
+                $this->indexCode($region->name, $state);
                 foreach ($state->transitions as $transition) {
                     $this->indexTransition($region->name, $state->name, $transition);
                 }
@@ -132,6 +139,66 @@ final class MachineDefinition
     public function allTransitions(): array
     {
         return array_values($this->transitionsById);
+    }
+
+    /**
+     * The state that carries a legacy code (2.7.0), with its region, or null. A canonical integer
+     * text finds the integer code and the other way round (`"20"` ≡ `20`), because several PDO
+     * drivers return an integer column as text.
+     *
+     * @param int|string $code Code to look up
+     * @return array{region: string, state: StateDefinition}|null
+     */
+    public function stateByCode(int|string $code): ?array
+    {
+        return $this->statesByCode[DefinitionSupport::normalizeCode($code)] ?? null;
+    }
+
+    /**
+     * The legacy code of a state, as declared (2.7.0); null when the state has none or does not exist.
+     */
+    public function codeOf(string $region, string $state): int|string|null
+    {
+        return $this->getRegion($region)?->getState($state)?->code;
+    }
+
+    /**
+     * The legacy code of the current state of each region of a snapshot (2.7.0), in the snapshot's
+     * region order; null for a region whose current state has no code (or is unknown to this
+     * definition).
+     *
+     * @param MachineSnapshot $snapshot Snapshot to project
+     * @return array<string, int|string|null>
+     */
+    public function codesOf(MachineSnapshot $snapshot): array
+    {
+        $codes = [];
+        foreach ($snapshot->getStates() as $region => $state) {
+            $codes[$region] = $this->codeOf($region, $state);
+        }
+
+        return $codes;
+    }
+
+    /** True when at least one state of the machine carries a legacy code (2.7.0). */
+    public function hasStateCodes(): bool
+    {
+        return $this->statesByCode !== [];
+    }
+
+    /**
+     * The structural difference from this definition to another version of the same machine
+     * (2.7.0): regions, states and transitions added, removed or changed. It is what a screen needs
+     * to decide how to migrate the instances of this version (MachineMigrations::byStateName() needs
+     * no removed state the instances are in).
+     *
+     * @param MachineDefinition $target The other version (normally the next one)
+     * @return MachineDefinitionDiff
+     * @throws \InvalidArgumentException When the target belongs to another machine key
+     */
+    public function diff(MachineDefinition $target): MachineDefinitionDiff
+    {
+        return MachineDefinitionDiff::between($this, $target);
     }
 
     /**
@@ -267,6 +334,32 @@ final class MachineDefinition
         }
 
         return $ids;
+    }
+
+    private function indexCode(string $region, StateDefinition $state): void
+    {
+        if ($state->code === null) {
+            return;
+        }
+        $code = DefinitionSupport::normalizeCode($state->code);
+        $taken = $this->statesByCode[$code] ?? null;
+        if ($taken !== null) {
+            throw InvalidMachineDefinitionException::single(
+                MachineDefinitionError::KIND_DUPLICATE,
+                sprintf(
+                    'Machine "%s" gives code %s to state "%s.%s" and to state "%s.%s": a state code is unique in the whole machine.',
+                    $this->key,
+                    json_encode($state->code),
+                    $taken['region'],
+                    $taken['state']->name,
+                    $region,
+                    $state->name
+                ),
+                $region,
+                $state->name
+            );
+        }
+        $this->statesByCode[$code] = ['region' => $region, 'state' => $state];
     }
 
     private function indexTransition(string $region, ?string $state, TransitionDefinition $transition): void

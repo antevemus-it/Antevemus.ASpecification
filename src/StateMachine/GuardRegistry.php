@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\StateMachine;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
@@ -28,12 +29,23 @@ use InvalidArgumentException;
  * - `payloadHas`  params `{"field": "motive"}`         → PayloadHasSpecification
  * - `eventOrigin` params `{"origin": "internal"}`      → EventOriginSpecification
  *
+ * Opt-in guard (2.7.0, enableSpecGuard()):
+ * - `spec`        params `{"document": {"v": 1, "spec": {...}}}` → the specification of a
+ *   SpecificationCodec document, evaluated over the CONTEXT of the candidate (what the application
+ *   passes to send()/can()), so a definition edited by a screen can carry a condition such as
+ *   `amount < 10000` without a guard written in code. The document is rooted at the context when the
+ *   guard is built (a top-level property `amount` reads `context.amount`, also inside and/or/not;
+ *   any other node reads the context itself), so an array context works in a transition guard and in
+ *   a deadline pause alike, and a failure names the property as `context.amount`. It is off by default: enabling it lets whoever
+ *   edits the definition write any condition the codec reads over the context (the codec's limits of
+ *   depth and size apply, and it reads no callback, table or service).
+ *
  * Features:
  * - Fluent registration of closures, overriding by name
  * - Guard expression compilation (and/or/not, because/withCode annotations)
  * - Missing guard → UnknownGuardException (the validator reports it at load time)
  *
- * @version    1.8.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -50,6 +62,9 @@ final class GuardRegistry
 
     /** Built-in guard: the event has the given `origin`. */
     public const EVENT_ORIGIN = 'eventOrigin';
+
+    /** Opt-in guard (2.7.0): a specification serialized by SpecificationCodec, evaluated over the context. */
+    public const SPEC = 'spec';
 
     /** @var array<string, Closure(array<mixed>): ISpecification> */
     private array $factories = [];
@@ -95,6 +110,76 @@ final class GuardRegistry
     {
         $this->factories[DefinitionSupport::assertName($name, 'guard name')] = $factory;
         return $this;
+    }
+
+    /**
+     * Registers the `spec` guard (2.7.0): its parameter `document` is a document of the codec
+     * (`SpecificationCodec::encode()`), decoded when the guard is built and evaluated over the context
+     * of the candidate. A document the codec refuses fails the build, so the validator reports it
+     * (`guard_build_failed`) before the definition runs or is published.
+     *
+     * @param SpecificationCodec|null $codec Codec reading the documents (null = a default codec: core
+     *                                       types, default limits); register your own types on it
+     * @return self
+     */
+    public function enableSpecGuard(?SpecificationCodec $codec = null): self
+    {
+        $codec ??= new SpecificationCodec();
+
+        return $this->register(self::SPEC, static function (array $params) use ($codec): ISpecification {
+            $document = $params['document'] ?? null;
+            if (!is_array($document)) {
+                throw new InvalidArgumentException('spec expects the parameter "document" as a specification document {"v": 1, "spec": {...}}.');
+            }
+
+            if (array_key_exists('spec', $document)) {
+                $document['spec'] = self::rootedAtContext($document['spec']);
+            }
+
+            return $codec->decode($document);
+        });
+    }
+
+    /**
+     * Roots a node of a codec document at the context of the candidate: a property path `p` becomes
+     * `context.p` (so an array context is read by path, under isSatisfiedBy() too: pause conditions),
+     * and/or/not keep their shape with their operands rooted, any other node is wrapped in a property
+     * `context` (it then reads the context itself). A malformed node is left as is for the codec to
+     * refuse.
+     */
+    private static function rootedAtContext(mixed $node): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+        $type = $node['t'] ?? null;
+        if (($type === 'and' || $type === 'or') && is_array($node['s'] ?? null) && array_is_list($node['s'])) {
+            $node['s'] = array_map(self::rootedAtContext(...), $node['s']);
+            return $node;
+        }
+        if ($type === 'not' && is_array($node['s'] ?? null)) {
+            $node['s'] = self::rootedAtContext($node['s']);
+            return $node;
+        }
+        if ($type === 'property' && is_string($node['p'] ?? null) && !array_key_exists('base', $node)) {
+            $node['p'] = 'context.' . $node['p'];
+            return $node;
+        }
+
+        return ['t' => 'property', 'p' => 'context', 's' => $node];
+    }
+
+    /**
+     * A reference to the `spec` guard carrying the document of a specification (2.7.0), for the
+     * builder (`->guard(GuardRegistry::specRef(Spec::property('amount', Spec::lessThan(10000))))`).
+     *
+     * @param ISpecification $specification Condition over the context
+     * @param SpecificationCodec|null $codec Codec writing the document (null = a default codec)
+     * @return GuardRef
+     */
+    public static function specRef(ISpecification $specification, ?SpecificationCodec $codec = null): GuardRef
+    {
+        return GuardExpression::ref(self::SPEC, ['document' => ($codec ?? new SpecificationCodec())->encode($specification)]);
     }
 
     /**

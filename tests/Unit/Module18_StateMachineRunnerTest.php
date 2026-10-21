@@ -276,7 +276,8 @@ class Module18_StateMachineRunnerTest extends TestCase
         $statements = implode("\n", array_filter(explode("\n", $ddl), static fn(string $l): bool => !str_starts_with(ltrim($l), '--')));
         $this->assertFalse(str_contains($statements, '.state_machine_'), 'The reference DDL does not qualify a schema');
         $this->assertFalse((bool) preg_match('/CREATE\s+INDEX/i', $statements), 'No CREATE INDEX (MySQL has no CREATE INDEX IF NOT EXISTS)');
-        $this->assertEquals(6, preg_match_all('/CREATE TABLE IF NOT EXISTS/', $statements), 'Six idempotent CREATE TABLE statements');
+        // 2.7.0: two more tables (the published definitions and their drafts, Module 40)
+        $this->assertEquals(8, preg_match_all('/CREATE TABLE IF NOT EXISTS/', $statements), 'Eight idempotent CREATE TABLE statements (six since 1.8.0, two since 2.7.0)');
 
         $pdo = $this->sqlite();
         self::loadDdl($pdo, $ddl); // idempotent: a second run is harmless
@@ -284,7 +285,8 @@ class Module18_StateMachineRunnerTest extends TestCase
         foreach (PdoMachineSchema::DEFAULT_TABLES as $role => $table) {
             $info = $pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC);
             $columns = array_map(static fn(array $c): string => $c['name'], $info);
-            $this->assertEquals(PdoMachineSchema::TABLE_COLUMNS[$role], $columns, "Columns of {$table} match the canonical list");
+            // 2.7.0: the DDL also declares the opt-in columns (tenant, state codes), last; unmapped, the stores never touch them
+            $this->assertEquals([...PdoMachineSchema::TABLE_COLUMNS[$role], ...(PdoMachineSchema::TABLE_COLUMNS_SINCE_2_7[$role] ?? [])], $columns, "Columns of {$table} match the canonical list");
             $pk = array_filter($info, static fn(array $c): bool => (int) $c['pk'] > 0);
             $this->assertTrue($pk !== [], "{$table} has a primary key");
         }

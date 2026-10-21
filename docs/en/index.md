@@ -56,7 +56,9 @@ The official documentation of the library, one page per topic. The same pages ex
 ### State machine
 
 - [State machine](state-machine/index.md) (example 14): Guards are specifications: parallel regions, JSON definitions, the runner and persisted deadlines.
+- [Deadlines in business time](state-machine/business-time.md) (example 14.11): business days, working hours and holidays; a pause that does not spend the weekend.
 - [Use cases](state-machine/use-cases.md) (example 15): `IUseCase`, `UseCaseRunner` and the result shared with the machine.
+- [A real consumer](state-machine/real-consumer.md) (example 23): legacy state codes, definitions versioned in the database with drafts and publication, and tenants sharing one machine.
 
 ### Data resolution
 

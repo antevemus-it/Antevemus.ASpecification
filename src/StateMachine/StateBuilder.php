@@ -9,7 +9,7 @@ use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionExc
 /**
  * StateBuilder - Fluent Builder of a StateDefinition
  *
- * @version    1.9.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -29,6 +29,8 @@ final class StateBuilder
 
     private ?DeadlineDefinition $deadline = null;
 
+    private int|string|null $code = null;
+
     /**
      * @param RegionBuilder $region Parent builder
      * @param string $name State name
@@ -47,6 +49,19 @@ final class StateBuilder
     public function final(bool $final = true): self
     {
         $this->final = $final;
+        return $this;
+    }
+
+    /**
+     * Gives the state its legacy code (2.7.0): the integer id (or text key) of the table the machine
+     * replaces, unique in the whole machine. The code is data of the definition; it does not change how
+     * the machine runs. MachineDefinition::stateByCode() and codeOf() map one to the other.
+     *
+     * @param int|string $code Integer, or a non-empty text without surrounding whitespace
+     */
+    public function code(int|string $code): self
+    {
+        $this->code = DefinitionSupport::assertCode($code, $this->name);
         return $this;
     }
 
@@ -81,21 +96,25 @@ final class StateBuilder
      * read from the context (`deadline(event: 'STAGE_OVERDUE', afterFrom: 'context.deadlines.stage')`)
      * or the due instant read from the context (`deadline(event: 'SLA_BREACHED', atFrom:
      * 'context.sla_due_at')`). The optional pause condition is a guard expression, or a
-     * `'region.state'` string as a shorthand for `inState` (`pausedWhile: 'pending.open'`).
+     * `'region.state'` string as a shorthand for `inState` (`pausedWhile: 'pending.open'`). Since
+     * 2.7.0 a fixed or context duration may count in a named calendar (`calendar: 'business'`).
      *
      * @param string|null $after ISO-8601 duration (e.g. 'P3D')
      * @param string|null $event Event delivered when it expires (internal); required
      * @param string|null $afterFrom Context path of an ISO-8601 duration (e.g. 'context.deadlines.stage')
      * @param string|null $atFrom Context path of the due instant (e.g. 'context.sla_due_at')
      * @param GuardExpression|string|null $pausedWhile Pause condition; a string is an inState path
-     * @throws InvalidMachineDefinitionException When the event is missing or the sources are not exactly one
+     * @param string|null $calendar Name of the calendar the duration counts in (DeadlineCalendarRegistry, 2.7.0)
+     * @throws InvalidMachineDefinitionException When the event is missing, the sources are not exactly
+     *                                           one, or the calendar comes with `atFrom` or years/months
      */
     public function deadline(
         ?string $after = null,
         ?string $event = null,
         ?string $afterFrom = null,
         ?string $atFrom = null,
-        GuardExpression|string|null $pausedWhile = null
+        GuardExpression|string|null $pausedWhile = null,
+        ?string $calendar = null
     ): self {
         if ($event === null) {
             throw InvalidMachineDefinitionException::single(
@@ -107,7 +126,7 @@ final class StateBuilder
         if (is_string($pausedWhile)) {
             $pausedWhile = GuardExpression::ref(GuardRegistry::IN_STATE, ['state' => $pausedWhile]);
         }
-        $this->deadline = new DeadlineDefinition($after, $event, $afterFrom, $atFrom, $pausedWhile);
+        $this->deadline = new DeadlineDefinition($after, $event, $afterFrom, $atFrom, $pausedWhile, $calendar);
         return $this;
     }
 
@@ -200,6 +219,6 @@ final class StateBuilder
             $transitions[] = $transition->toDefinition($region, $this->name, $taken);
         }
 
-        return new StateDefinition($this->name, $this->final, $this->entry, $this->exit, $transitions, $this->deadline);
+        return new StateDefinition($this->name, $this->final, $this->entry, $this->exit, $transitions, $this->deadline, $this->code);
     }
 }

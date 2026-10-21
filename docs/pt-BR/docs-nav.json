@@ -147,8 +147,16 @@
           "path": "state-machine/index"
         },
         {
+          "text": "Prazos em tempo útil",
+          "path": "state-machine/business-time"
+        },
+        {
           "text": "Casos de uso",
           "path": "state-machine/use-cases"
+        },
+        {
+          "text": "Um consumidor real",
+          "path": "state-machine/real-consumer"
         }
       ]
     },

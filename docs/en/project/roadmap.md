@@ -50,3 +50,4 @@ Key highlights & upcoming roadmap:
 27. **A Rule Engine for a Real Consumer** (lookup-only rule types, the most specific rule of a type, a human label for the target, Adianti as the host) (Shipped in v2.5.0)
 28. **TCriteria Without Accents and With Subqueries** (`withAccentFolding()`, `inSubquery()`, `existsIn()`, also in `toSql()`) (Shipped in v2.5.0)
 29. **Asynchronous Data Sources** (`AsyncDataSource`: submit once, poll later, a pending datum never approved nor refused) (Shipped in v2.5.0)
+30. **The State Machine for a Real Consumer** (legacy state codes, definitions versioned over PDO with drafts and publication, the `spec` guard, `migrateAll()`, tenants, deadlines in business time) (Shipped in v2.7.0)

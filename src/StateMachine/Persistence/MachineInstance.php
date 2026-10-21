@@ -17,7 +17,12 @@ use InvalidArgumentException;
  * instants of creation and last change, both taken from the events (never from a clock) and kept
  * in UTC (PersistenceSupport).
  *
- * @version    1.8.0
+ * Since 2.7.0 an instance may belong to a tenant: an opaque text chosen by the application (at most
+ * 120 characters; a unit id 7 goes as "7"), fixed at start and kept by every next step and migration.
+ * The tenant is whose instance it is, not who acts on it (that is the actor of each step). Null is an
+ * instance without tenant, as before 2.7.0.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -30,20 +35,25 @@ final class MachineInstance
     public readonly DateTimeImmutable $createdAt;
     public readonly DateTimeImmutable $updatedAt;
 
+    /** Tenant the instance belongs to (2.7.0), null when it has none. */
+    public readonly ?string $tenant;
+
     /**
      * @param string $instanceId Instance id (non-empty, at most 120 characters)
      * @param MachineSnapshot $snapshot Current snapshot
      * @param int $version Optimistic lock version (>= 1)
      * @param DateTimeImmutable $createdAt Instant of the start event
      * @param DateTimeImmutable $updatedAt Instant of the last accepted event or migration
-     * @throws InvalidArgumentException When the id or the version is invalid
+     * @param string|null $tenant Tenant (2.7.0): non-empty, at most 120 characters; null = none
+     * @throws InvalidArgumentException When the id, the version or the tenant is invalid
      */
     public function __construct(
         string $instanceId,
         public readonly MachineSnapshot $snapshot,
         public readonly int $version,
         DateTimeImmutable $createdAt,
-        DateTimeImmutable $updatedAt
+        DateTimeImmutable $updatedAt,
+        ?string $tenant = null
     ) {
         $this->instanceId = PersistenceSupport::assertInstanceId($instanceId);
         if ($version < 1) {
@@ -51,6 +61,7 @@ final class MachineInstance
         }
         $this->createdAt = PersistenceSupport::utc($createdAt);
         $this->updatedAt = PersistenceSupport::utc($updatedAt);
+        $this->tenant = $tenant === null ? null : PersistenceSupport::assertTenant($tenant);
     }
 
     /** Machine key of the snapshot. */
@@ -66,11 +77,11 @@ final class MachineInstance
     }
 
     /**
-     * Returns a copy with the next snapshot, version + 1 and the given change instant.
+     * Returns a copy with the next snapshot, version + 1 and the given change instant (the tenant is kept).
      */
     public function next(MachineSnapshot $snapshot, DateTimeImmutable $updatedAt): self
     {
-        return new self($this->instanceId, $snapshot, $this->version + 1, $this->createdAt, $updatedAt);
+        return new self($this->instanceId, $snapshot, $this->version + 1, $this->createdAt, $updatedAt, $this->tenant);
     }
 
     /**
@@ -80,12 +91,17 @@ final class MachineInstance
      */
     public function toArray(): array
     {
-        return [
+        $array = [
             'instance_id' => $this->instanceId,
             'version' => $this->version,
             'snapshot' => $this->snapshot->toArray(),
             'created_at' => PersistenceSupport::toText($this->createdAt),
             'updated_at' => PersistenceSupport::toText($this->updatedAt),
         ];
+        if ($this->tenant !== null) {
+            $array['tenant'] = $this->tenant;
+        }
+
+        return $array;
     }
 }

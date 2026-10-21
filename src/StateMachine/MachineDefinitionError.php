@@ -18,7 +18,7 @@ use Stringable;
  * - Location (region, state, transition id) when applicable
  * - Human-readable message
  *
- * @version    1.9.0
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -65,6 +65,13 @@ final class MachineDefinitionError implements Stringable
      * context path that is not `context.<path>` (forward 025, D12).
      */
     public const KIND_INVALID_DEADLINE = 'invalid_deadline';
+
+    /**
+     * A deadline names a calendar that the DeadlineCalendarRegistry given to the validator does not
+     * know (2.7.0). Combining a calendar with `atFrom`, or with a duration in years or months, is
+     * refused when the deadline is built, with KIND_INVALID_DEADLINE.
+     */
+    public const KIND_UNKNOWN_CALENDAR = 'unknown_calendar';
 
     /**
      * @param string $kind One of the KIND_* constants

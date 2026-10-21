@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\StateMachine;
 
 use Antevemus\ADeepPropertyAccess\PropertyAccess;
+use Antevemus\ASpecification\StateMachine\Calendar\IDeadlineCalendar;
 use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException;
 use DateInterval;
 use DateTimeImmutable;
@@ -36,12 +37,23 @@ use LogicException;
  * the remaining whole seconds are kept in the snapshot; when it stops holding, the deadline resumes
  * at `occurredAt + remaining`. Reentering the state restarts the deadline and drops the balance.
  *
- * Array form: `{"after": "P3D", "event": "QUOTE_EXPIRED"}`, `{"afterFrom": "context.x", "event": "..."}`
- * or `{"atFrom": "context.y", "event": "..."}`, each with an optional `"pausedWhile": <guard expression>`.
- * The keys of an unused source and of an absent pause are omitted, so a definition without the
- * 1.9.0 fields keeps its 1.8.0 array form and fingerprint.
+ * Business time (2.7.0): a deadline may name a calendar (`calendar: 'business'`), resolved by the
+ * core in its DeadlineCalendarRegistry. The duration of `after`/`afterFrom` then counts working
+ * seconds of that calendar: each day is the calendar's secondsPerDay(), hours, minutes and
+ * seconds count as such, and years and months are refused (a month of business days is
+ * ambiguous): in `after` when the definition is built, in a context duration as an invalid
+ * source. `atFrom` with a calendar is refused (the instant is already absolute). The pause keeps
+ * the working seconds left (`workSecondsBetween(occurredAt, dueAt)`) and resumes with
+ * `advance(occurredAt, balance)`. The due instant is computed once, on entering or resuming, and
+ * stored: a holiday registered later does not move a deadline already running.
  *
- * @version    2.0.0
+ * Array form: `{"after": "P3D", "event": "QUOTE_EXPIRED"}`, `{"afterFrom": "context.x", "event": "..."}`
+ * or `{"atFrom": "context.y", "event": "..."}`, each with an optional `"pausedWhile": <guard expression>`
+ * and, for `after`/`afterFrom`, an optional `"calendar": "<name>"`. The keys of an unused source,
+ * of an absent pause and of an absent calendar are omitted, so a definition without the 1.9.0 or
+ * 2.7.0 fields keeps its earlier array form and fingerprint.
+ *
+ * @version    2.7.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -79,6 +91,9 @@ final class DeadlineDefinition
     /** Pause condition, or null when the deadline never pauses. */
     public readonly ?GuardExpression $pausedWhile;
 
+    /** Name of the calendar the duration counts in (DeadlineCalendarRegistry), or null for elapsed time. */
+    public readonly ?string $calendar;
+
     /**
      * Backward compatible with 1.8.0: `new DeadlineDefinition('P3D', 'EXPIRE')`.
      *
@@ -87,14 +102,17 @@ final class DeadlineDefinition
      * @param string|null $afterFrom Context path (`context.a.b`) of an ISO-8601 duration
      * @param string|null $atFrom Context path (`context.a.b`) of the due instant
      * @param GuardExpression|null $pausedWhile Condition under which the deadline is paused
-     * @throws InvalidMachineDefinitionException When there is not exactly one valid source
+     * @param string|null $calendar Name of the calendar the duration counts in (2.7.0); null = elapsed time
+     * @throws InvalidMachineDefinitionException When there is not exactly one valid source, or the
+     *                                           calendar is combined with `atFrom` or with years/months
      */
     public function __construct(
         ?string $after,
         string $event,
         ?string $afterFrom = null,
         ?string $atFrom = null,
-        ?GuardExpression $pausedWhile = null
+        ?GuardExpression $pausedWhile = null,
+        ?string $calendar = null
     ) {
         $this->event = DefinitionSupport::assertName($event, 'deadline event type');
         $sources = array_keys(array_filter(
@@ -133,10 +151,35 @@ final class DeadlineDefinition
                 );
             }
         }
+        if ($calendar !== null) {
+            DefinitionSupport::assertName($calendar, 'deadline calendar name');
+            if ($atFrom !== null) {
+                throw InvalidMachineDefinitionException::single(
+                    MachineDefinitionError::KIND_INVALID_DEADLINE,
+                    sprintf(
+                        'The deadline of event "%s" reads its due instant from "%s" and cannot count it in calendar "%s": the instant is already absolute.',
+                        $event,
+                        $atFrom,
+                        $calendar
+                    )
+                );
+            }
+            if ($after !== null && self::hasYearsOrMonths(new DateInterval($after))) {
+                throw InvalidMachineDefinitionException::single(
+                    MachineDefinitionError::KIND_INVALID_DEADLINE,
+                    sprintf(
+                        'The deadline "after" value "%s" counts in calendar "%s" and must not use years or months (a month of working days is ambiguous): use days, hours, minutes and seconds.',
+                        $after,
+                        $calendar
+                    )
+                );
+            }
+        }
         $this->after = $after;
         $this->afterFrom = $afterFrom;
         $this->atFrom = $atFrom;
         $this->pausedWhile = $pausedWhile;
+        $this->calendar = $calendar;
     }
 
     /**
@@ -164,10 +207,18 @@ final class DeadlineDefinition
      *
      * @param DateTimeImmutable $enteredAt Instant of the event that entered the state
      * @return DateTimeImmutable
-     * @throws LogicException When the deadline reads its source from the context (use resolveDue())
+     * @throws LogicException When the deadline reads its source from the context, or counts in a
+     *                        calendar (use resolveDue())
      */
     public function dueFrom(DateTimeImmutable $enteredAt): DateTimeImmutable
     {
+        if ($this->calendar !== null) {
+            throw new LogicException(sprintf(
+                'The deadline of event "%s" counts in calendar "%s": use resolveDue() with the calendar.',
+                $this->event,
+                $this->calendar
+            ));
+        }
         if ($this->after === null) {
             throw new LogicException(sprintf(
                 'The deadline of event "%s" reads its source from "%s": use resolveDue() with the context.',
@@ -182,24 +233,45 @@ final class DeadlineDefinition
     /**
      * Computes the due instant from the instant the state was entered and the context. Pure.
      *
+     * Without $calendar the duration is added as a DateInterval (wall-clock), as before 2.7.0. With
+     * a calendar it is converted to working seconds (days x secondsPerDay() + hours, minutes and
+     * seconds; years or months make the source invalid) and placed with the calendar's advance().
+     *
      * @param DateTimeImmutable $enteredAt Instant of the event that entered the state
      * @param object|array<mixed>|null $context Domain context given to the transition
-     * @return DateTimeImmutable|null The due instant; null when the context source is missing or invalid
+     * @param IDeadlineCalendar|null $calendar Calendar the duration counts in (2.7.0); required when the deadline names one
+     * @return DateTimeImmutable|null The due instant; null when the context source is missing or
+     *                                invalid, or when the calendar cannot place it within its limit
+     * @throws LogicException When the deadline names a calendar and none is given
      */
-    public function resolveDue(DateTimeImmutable $enteredAt, object|array|null $context): ?DateTimeImmutable
+    public function resolveDue(DateTimeImmutable $enteredAt, object|array|null $context, ?IDeadlineCalendar $calendar = null): ?DateTimeImmutable
     {
+        if ($calendar === null && $this->calendar !== null) {
+            throw new LogicException(sprintf(
+                'The deadline of event "%s" counts in calendar "%s": give resolveDue() the calendar.',
+                $this->event,
+                $this->calendar
+            ));
+        }
         if ($this->after !== null) {
-            return $this->dueFrom($enteredAt);
+            return $calendar === null
+                ? $this->dueFrom($enteredAt)
+                : self::advanceBy($calendar, $enteredAt, new DateInterval($this->after));
         }
         try {
             $value = PropertyAccess::getValue([self::CONTEXT_ROOT => $context], (string) $this->sourcePath());
         } catch (\Throwable) {
             return null;
         }
+        if ($this->afterFrom === null) {
+            return self::toInstant($value);
+        }
+        if ($calendar === null) {
+            return self::addDuration($enteredAt, $value);
+        }
+        $interval = self::toInterval($value);
 
-        return $this->afterFrom !== null
-            ? self::addDuration($enteredAt, $value)
-            : self::toInstant($value);
+        return $interval === null ? null : self::advanceBy($calendar, $enteredAt, $interval);
     }
 
     /**
@@ -222,6 +294,9 @@ final class DeadlineDefinition
         $array['event'] = $this->event;
         if ($this->pausedWhile !== null) {
             $array['pausedWhile'] = $this->pausedWhile->toArray();
+        }
+        if ($this->calendar !== null) {
+            $array['calendar'] = $this->calendar;
         }
 
         return $array;
@@ -262,7 +337,8 @@ final class DeadlineDefinition
             DefinitionSupport::requireString($data, 'event', 'a deadline'),
             $optional('afterFrom'),
             $optional('atFrom'),
-            $pausedWhile === null ? null : GuardExpression::fromArray($pausedWhile)
+            $pausedWhile === null ? null : GuardExpression::fromArray($pausedWhile),
+            $optional('calendar')
         );
     }
 
@@ -286,17 +362,58 @@ final class DeadlineDefinition
      */
     private static function addDuration(DateTimeImmutable $enteredAt, mixed $value): ?DateTimeImmutable
     {
+        $interval = self::toInterval($value);
+
+        return $interval === null ? null : $enteredAt->add($interval);
+    }
+
+    /**
+     * The duration read from the context as a DateInterval; null when it is not an ISO-8601
+     * duration (negative included).
+     */
+    private static function toInterval(mixed $value): ?DateInterval
+    {
         if ($value instanceof DateInterval) {
-            return $value->invert === 1 ? null : $enteredAt->add($value);
+            return $value->invert === 1 ? null : $value;
         }
         if (!is_string($value) || !str_starts_with($value, 'P')) {
             return null;
         }
         try {
-            return $enteredAt->add(new DateInterval($value));
+            return new DateInterval($value);
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * The instant at which the duration, counted in working seconds of the calendar, runs out;
+     * null when the duration has years or months, or the calendar cannot place it.
+     */
+    private static function advanceBy(IDeadlineCalendar $calendar, DateTimeImmutable $enteredAt, DateInterval $interval): ?DateTimeImmutable
+    {
+        $seconds = self::workSecondsOf($interval, $calendar->secondsPerDay());
+
+        return $seconds === null ? null : $calendar->advance($enteredAt, $seconds);
+    }
+
+    /** True when the duration counts years or months (refused in a calendar). */
+    private static function hasYearsOrMonths(DateInterval $interval): bool
+    {
+        return $interval->y !== 0 || $interval->m !== 0;
+    }
+
+    /**
+     * Working seconds of a duration: days x $secondsPerDay + hours, minutes and whole seconds (a
+     * week is seven days); null when it has years or months.
+     */
+    private static function workSecondsOf(DateInterval $interval, int $secondsPerDay): ?int
+    {
+        if (self::hasYearsOrMonths($interval)) {
+            return null;
+        }
+
+        return $interval->d * $secondsPerDay + $interval->h * 3600 + $interval->i * 60 + $interval->s;
     }
 
     /**

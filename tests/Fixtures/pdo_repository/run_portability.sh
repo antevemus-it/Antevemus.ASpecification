@@ -18,6 +18,9 @@
 # ext-intl, where the accent battery of toCriteria() with withAccentFolding() runs too; the TCriteria is dumped
 # by the REAL Adianti 8.1.0 and 8.7.0 of ../Antevemus.AdiantiTemplates (mounted read-only) and executed on the
 # three databases.
+# 2.7.0: Module40_StateMachineRealConsumerTest, the state machine for a real consumer (legacy state codes, the
+# versioned definitions with drafts over PDO, two connections publishing at once, tenants InMemory = PDO, a
+# database of the 2.6 DDL and its additive migration, the acceptance replay) on the three of them.
 # Ports are bound to 127.0.0.1 on random free ports; all
 # containers are removed on exit, also on failure or interruption. No other database or host is touched.
 #
@@ -84,7 +87,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();
