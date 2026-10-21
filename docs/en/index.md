@@ -19,10 +19,10 @@ The official documentation of the library, one page per topic. The same pages ex
 
 ### Specifications
 
-- [Fluent chaining](specifications/fluent-chaining.md) (example 1): Business rules composed as natural-language sentences.
+- [Fluent chaining](specifications/fluent-chaining.md) (examples 1 and 1.1): Business rules composed as natural-language sentences; int-typed leaves (`asInteger()`, `Spec::int()`).
 - [Notification pattern](specifications/notification-pattern.md) (example 2): `evaluate()`: every failure with its code, message and property, without exceptions.
 - [Partial satisfaction](specifications/partial-satisfaction.md) (example 3): `remainderUnsatisfiedBy()`: only the clauses a candidate still fails.
-- [Tautology and simplification](specifications/tautology-and-simplification.md) (example 12): `isTautology()`, `isContradiction()` and `simplify()`.
+- [Tautology and simplification](specifications/tautology-and-simplification.md) (examples 12 and 12.1): `isTautology()`, `isContradiction()` and `simplify()`.
 - [Method calls](specifications/method-calls.md) (example 13): `MethodParameterizedSpecification`: a rule that calls a method of the candidate.
 - [Text comparison](specifications/text-comparison.md) (examples 20 and 20.1): Comparison ignoring case and accents, wildcards and regular expressions, in memory and in SQL.
 - [Serialization](specifications/serialization.md) (example 21): `SpecificationCodec`: specifications as canonical JSON, read back without `unserialize()`.

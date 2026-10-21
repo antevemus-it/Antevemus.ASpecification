@@ -27,9 +27,11 @@ declare(strict_types=1);
  * - Human label of a target (labelled, 2.5.0)
  * - Subqueries over any table for toSql()/toCriteria() (inSubquery, existsIn, 2.5.0)
  * - TCriteria ignoring accents for a declared database (toCriteria(..., accentFolding), 2.5.0)
+ * - Integer leaves: Spec::int() and the relational factories narrowed to their leaf class, so asInteger()
+ *   is visible to the IDE and to static analysis (2.9.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    2.5.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -41,10 +43,17 @@ namespace Antevemus\ASpecification;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Factory\IntegerSpecificationFactory;
 use Antevemus\ASpecification\Factory\SpecificationFactory;
 use Antevemus\ASpecification\Repositories\Pdo\InQuerySpecification;
 use Antevemus\ASpecification\Repositories\Pdo\PdoRepository;
 use Antevemus\ASpecification\Resolution\ExternalDataSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\LabelledSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Specifications\Reflection\MethodParameterizedSpecification;
@@ -311,10 +320,12 @@ final class Spec
     /**
      * Specifies that candidate value must equal the expected value.
      *
+     * Returns the leaf class (2.9.0, covariant), so `Spec::equalTo(12)->asInteger()` is visible to the IDE.
+     *
      * @param mixed $value Expected value
-     * @return ISpecification
+     * @return EqualSpecification<mixed>
      */
-    public static function equalTo(mixed $value): ISpecification
+    public static function equalTo(mixed $value): EqualSpecification
     {
         return self::getFactory()->equalTo($value);
     }
@@ -323,9 +334,9 @@ final class Spec
      * Syntactic alias for equalTo().
      *
      * @param mixed $value Expected value
-     * @return ISpecification
+     * @return EqualSpecification<mixed>
      */
-    public static function equal(mixed $value): ISpecification
+    public static function equal(mixed $value): EqualSpecification
     {
         return self::getFactory()->equalTo($value);
     }
@@ -349,9 +360,9 @@ final class Spec
      * Specifies that candidate value must NOT equal the given value.
      *
      * @param mixed $value Value not allowed
-     * @return ISpecification
+     * @return NotEqualSpecification<mixed>
      */
-    public static function notEqual(mixed $value): ISpecification
+    public static function notEqual(mixed $value): NotEqualSpecification
     {
         return self::getFactory()->notEqual($value);
     }
@@ -359,10 +370,12 @@ final class Spec
     /**
      * Specifies that candidate value must be strictly greater than threshold.
      *
+     * Returns the leaf class (2.9.0, covariant), so `Spec::greaterThan(10)->asInteger()` is visible to the IDE.
+     *
      * @param mixed $value Exclusive lower bound
-     * @return ISpecification
+     * @return GreaterThanSpecification<mixed>
      */
-    public static function greaterThan(mixed $value): ISpecification
+    public static function greaterThan(mixed $value): GreaterThanSpecification
     {
         return self::getFactory()->greaterThan($value);
     }
@@ -371,9 +384,9 @@ final class Spec
      * Specifies that candidate value must be greater than or equal to threshold.
      *
      * @param mixed $value Inclusive lower bound
-     * @return ISpecification
+     * @return GreaterThanOrEqualSpecification<mixed>
      */
-    public static function greaterThanOrEqualTo(mixed $value): ISpecification
+    public static function greaterThanOrEqualTo(mixed $value): GreaterThanOrEqualSpecification
     {
         return self::getFactory()->greaterThanOrEqualTo($value);
     }
@@ -382,9 +395,9 @@ final class Spec
      * Specifies that candidate value must be strictly less than threshold.
      *
      * @param mixed $value Exclusive upper bound
-     * @return ISpecification
+     * @return LessThanSpecification<mixed>
      */
-    public static function lessThan(mixed $value): ISpecification
+    public static function lessThan(mixed $value): LessThanSpecification
     {
         return self::getFactory()->lessThan($value);
     }
@@ -393,11 +406,23 @@ final class Spec
      * Specifies that candidate value must be less than or equal to threshold.
      *
      * @param mixed $value Inclusive upper bound
-     * @return ISpecification
+     * @return LessThanOrEqualSpecification<mixed>
      */
-    public static function lessThanOrEqualTo(mixed $value): ISpecification
+    public static function lessThanOrEqualTo(mixed $value): LessThanOrEqualSpecification
     {
         return self::getFactory()->lessThanOrEqualTo($value);
+    }
+
+    /**
+     * The factory of the int-typed relational leaves (2.9.0, forward 044): `Spec::int()->greaterThan(10)`,
+     * `Spec::int()->between(1, 12)`, `Spec::int()->in(1, 2, 3)`. Each leaf is the one of the general factory
+     * made int-typed with asInteger(): it refuses every non-null candidate that is not an int (a float, 12.0
+     * included, a numeric text, a boolean) with IncompatibleTypeException, and two int-typed leaves close their
+     * bounds (`x > 10` is `x >= 11`). The SQL, TCriteria and ALinq translations do not change.
+     */
+    public static function int(): IntegerSpecificationFactory
+    {
+        return new IntegerSpecificationFactory();
     }
 
     /**

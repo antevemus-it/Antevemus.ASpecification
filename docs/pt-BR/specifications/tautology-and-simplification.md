@@ -72,4 +72,32 @@ $engine->validate((object) ['status' => 'CLOSED'], 'rental_contract')->getFailur
 
 Dois limites, ambos declarados nas docblocks. A equivalência vale para **candidatos não nulos**, a mesma premissa de `isTautology()`/`isContradiction()`: `AND`/`OR`/`NOT` recusam `null` quaisquer que sejam os operandos, e o nó que sobra depois da simplificação pode não recusar (`alwaysTrue()->and(alwaysTrue())` recusa `null`, `alwaysTrue()` aceita). E é uma equivalência **só de valor de verdade**: remover um ramo redundante pode remover um ramo que lançaria exceção, e as mensagens padrão de nós sem anotação podem mudar; só as mensagens e os códigos anotados são garantidos. Nada simplifica sozinho: os visitors SQL, TCriteria e ALinq compilam a árvore como recebida, e o motor de regras simplifica só quando pedido.
 
-**A álgebra nunca promete mais do que a avaliação entrega** (desde a v2.1.0). `equals()`, subsunção, disjunção, `isTautology()`/`isContradiction()`, `simplify()`, a deduplicação de `and()`/`or()` e a busca de partição são conferidos por uma bancada de solidez contra a avaliação de toda classe concreta de especificação sobre candidatos de fronteira (Qualidade de Código); onde discordavam, a álgebra agora prova menos. Duas consequências valem saber. **Datas são comparadas pelo instante**: `equalTo()`, `notEqual()` e `in()` comparam um `DateTimeInterface` pelo instante, qualquer que seja a classe e o fuso, como as folhas relacionais, `at()` e o visitor de SQL já faziam, então `Spec::equalTo(new DateTimeImmutable('2025-01-01 10:00', new DateTimeZone('UTC')))` aceita `new DateTime('2025-01-01 07:00', new DateTimeZone('America/Sao_Paulo'))` em memória como no banco (até a 2.0.0 a memória comparava instâncias); outros objetos são comparados por identidade, na avaliação e no `equals()`. E **limites inteiros não são fechados**: as folhas relacionais aceitam qualquer número, então `greaterThan(10)` e `lessThan(11)` não são disjuntas (`10.5` satisfaz as duas) e a conjunção delas não some na simplificação; um modo inteiro opcional está no roadmap (marco 25).
+**A álgebra nunca promete mais do que a avaliação entrega** (desde a v2.1.0). `equals()`, subsunção, disjunção, `isTautology()`/`isContradiction()`, `simplify()`, a deduplicação de `and()`/`or()` e a busca de partição são conferidos por uma bancada de solidez contra a avaliação de toda classe concreta de especificação sobre candidatos de fronteira (Qualidade de Código); onde discordavam, a álgebra agora prova menos. Duas consequências valem saber. **Datas são comparadas pelo instante**: `equalTo()`, `notEqual()` e `in()` comparam um `DateTimeInterface` pelo instante, qualquer que seja a classe e o fuso, como as folhas relacionais, `at()` e o visitor de SQL já faziam, então `Spec::equalTo(new DateTimeImmutable('2025-01-01 10:00', new DateTimeZone('UTC')))` aceita `new DateTime('2025-01-01 07:00', new DateTimeZone('America/Sao_Paulo'))` em memória como no banco (até a 2.0.0 a memória comparava instâncias); outros objetos são comparados por identidade, na avaliação e no `equals()`. E **limites inteiros não são fechados**: as folhas relacionais aceitam qualquer número, então `greaterThan(10)` e `lessThan(11)` não são disjuntas (`10.5` satisfaz as duas) e a conjunção delas não some na simplificação, a menos que as duas folhas sejam inteiras (desde a v2.9.0: o exemplo 12.1 abaixo mostra como recuperar o fechamento).
+
+### 12.1. Recuperando o Fechamento: Folhas Inteiras (Módulo 44)
+
+Quando o domínio é de inteiros (parcelas, meses, quantidades), torne as folhas inteiras: `asInteger()` numa folha, ou `Spec::int()` para uma regra inteira (exemplo 1.1). Uma folha inteira recusa todo candidato que não seja int, inclusive `12.0`, então entre duas folhas inteiras `x > 10` é `x >= 11` e `x < 11` é `x <= 10`: disjunção, subsunção, `isContradiction()` e `simplify()` voltam a provar o que provavam até a v2.0.0, e desta vez a promessa vale, porque a avaliação recusa `10.5`. Contra uma folha que não é inteira nada é fechado, como antes; um limite no fim da faixa de int (`PHP_INT_MAX`, `PHP_INT_MIN`) fica aberto. `simplify()` continua sem acrescentar nó: `x > 10 ∧ x < 12` continua uma conjunção, não vira `x = 11`.
+
+```php
+use Antevemus\ASpecification\Spec;
+
+// Folhas que aceitam float não são fechadas: 10.5 satisfaz as duas
+Spec::greaterThan(10)->isDisjointWith(Spec::lessThan(11));                // false
+
+// Inteiras dos dois lados, x > 10 é x >= 11: o fechamento volta
+$over10 = Spec::int()->greaterThan(10);
+$under11 = Spec::lessThan(11)->asInteger();
+$over10->isDisjointWith($under11);                                        // true
+Spec::int()->greaterThanOrEqualTo(11)->isGeneralizationOf($over10);       // true: os mesmos inteiros
+Spec::isContradiction($over10->and($under11));                            // true
+Spec::simplify($over10->and($under11));                                   // alwaysFalse()
+Spec::simplify($over10->or(Spec::int()->greaterThanOrEqualTo(11)))
+    ->equals(Spec::int()->greaterThanOrEqualTo(11));                      // true: sobra uma folha
+
+// A promessa vale porque a avaliação recusa o que fica entre os inteiros
+$over10->evaluate(10.5)->isError;                                         // true
+$under11->evaluate(10.5)->isError;                                        // true
+
+// Só entre duas folhas inteiras: contra uma folha que aceita float nada é fechado
+$over10->isDisjointWith(Spec::lessThan(11));                              // false
+```

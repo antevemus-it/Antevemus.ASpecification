@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\Factory\Traits;
 
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 
 /**
@@ -14,8 +19,12 @@ use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
  * - Relational specifications (=, !=, <, <=, >, >=)
  * - Set membership (in)
  * - Semantic aliases (atMost, atLeast, under, over, exactly, etc.)
+ * - The relational methods (equalTo, notEqualTo, notEqual, lessThan, lessThanOrEqualTo, greaterThan,
+ *   greaterThanOrEqualTo) declare their leaf class (2.9.0, covariant with the factory interfaces), so
+ *   asInteger() is visible to the IDE and to static analysis; they build the leaf the comparison
+ *   sub-factory builds
  *
- * @version    1.5.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Factory\Traits
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -28,11 +37,11 @@ trait ComparisonSpecificationOperationsTrait
      * Creates equality specification (==).
      *
      * @param mixed $value Comparison target value
-     * @return ISpecification Equality specification
+     * @return EqualSpecification<mixed> Equality specification
      */
-    public function equalTo(mixed $value): ISpecification
+    public function equalTo(mixed $value): EqualSpecification
     {
-        return $this->comparisonFactory->equalTo($value);
+        return new EqualSpecification($value);
     }
 
     /**
@@ -50,9 +59,9 @@ trait ComparisonSpecificationOperationsTrait
      * Creates inequality specification (!=).
      *
      * @param mixed $value Comparison target value
-     * @return ISpecification Inequality specification
+     * @return NotEqualSpecification<mixed> Inequality specification
      */
-    public function notEqualTo(mixed $value): ISpecification
+    public function notEqualTo(mixed $value): NotEqualSpecification
     {
         return new NotEqualSpecification($value);
     }
@@ -61,44 +70,44 @@ trait ComparisonSpecificationOperationsTrait
      * Creates less-than specification (<).
      *
      * @param mixed $value Upper bound value (exclusive)
-     * @return ISpecification Less-than specification
+     * @return LessThanSpecification<mixed> Less-than specification
      */
-    public function lessThan(mixed $value): ISpecification
+    public function lessThan(mixed $value): LessThanSpecification
     {
-        return $this->comparisonFactory->lessThan($value);
+        return new LessThanSpecification($value);
     }
 
     /**
      * Creates less-than-or-equal specification (<=).
      *
      * @param mixed $value Upper bound value (inclusive)
-     * @return ISpecification Less-than-or-equal specification
+     * @return LessThanOrEqualSpecification<mixed> Less-than-or-equal specification
      */
-    public function lessThanOrEqualTo(mixed $value): ISpecification
+    public function lessThanOrEqualTo(mixed $value): LessThanOrEqualSpecification
     {
-        return $this->comparisonFactory->lessThanOrEqualTo($value);
+        return new LessThanOrEqualSpecification($value);
     }
 
     /**
      * Creates greater-than specification (>).
      *
      * @param mixed $value Lower bound value (exclusive)
-     * @return ISpecification Greater-than specification
+     * @return GreaterThanSpecification<mixed> Greater-than specification
      */
-    public function greaterThan(mixed $value): ISpecification
+    public function greaterThan(mixed $value): GreaterThanSpecification
     {
-        return $this->comparisonFactory->greaterThan($value);
+        return new GreaterThanSpecification($value);
     }
 
     /**
      * Creates greater-than-or-equal specification (>=).
      *
      * @param mixed $value Lower bound value (inclusive)
-     * @return ISpecification Greater-than-or-equal specification
+     * @return GreaterThanOrEqualSpecification<mixed> Greater-than-or-equal specification
      */
-    public function greaterThanOrEqualTo(mixed $value): ISpecification
+    public function greaterThanOrEqualTo(mixed $value): GreaterThanOrEqualSpecification
     {
-        return $this->comparisonFactory->greaterThanOrEqualTo($value);
+        return new GreaterThanOrEqualSpecification($value);
     }
 
     /**
@@ -184,9 +193,9 @@ trait ComparisonSpecificationOperationsTrait
      * Alias for notEqualTo().
      *
      * @param mixed $value Comparison target value
-     * @return ISpecification
+     * @return NotEqualSpecification<mixed>
      */
-    public function notEqual(mixed $value): ISpecification
+    public function notEqual(mixed $value): NotEqualSpecification
     {
         return new NotEqualSpecification($value);
     }

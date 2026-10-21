@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php (36 suites since 2.8.0).
  *
- * @version    2.8.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -44,14 +44,14 @@ final class DocumentationTreeTest extends TestCase
      * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
      * example 23 and the two of example 14.11 (new in 2.7.0: the state machine for a real consumer and the
      * deadlines in business time), plus the block of example 5.1 (new in 2.8.0: the write-behind hybrid repository)
-     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache).
+     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
-        'specifications/fluent-chaining' => 1,                // example 1
+        'specifications/fluent-chaining' => 2,                // examples 1 and 1.1 (2.9.0)
         'specifications/notification-pattern' => 1,           // example 2
         'specifications/partial-satisfaction' => 1,           // example 3
-        'specifications/tautology-and-simplification' => 2,   // example 12
+        'specifications/tautology-and-simplification' => 3,   // example 12 (2 blocks) and 12.1 (2.9.0)
         'specifications/method-calls' => 1,                   // example 13
         'specifications/text-comparison' => 2,                // examples 20 and 20.1, one each
         'specifications/serialization' => 1,                  // example 21
@@ -105,8 +105,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2;
 
     // (a) -----------------------------------------------------------------------------------------------
 
@@ -203,7 +203,7 @@ final class DocumentationTreeTest extends TestCase
 
     public function testEveryPageHasTheDeclaredNumberOfPhpBlocks(): void
     {
-        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11 + example 5.1 + the caching examples');
+        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11 + example 5.1 + the caching examples + examples 1.1 and 12.1');
         foreach (self::LANGUAGES as $language) {
             $total = 0;
             foreach (self::pages($language) as $page) {

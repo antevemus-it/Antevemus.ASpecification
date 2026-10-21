@@ -12,6 +12,14 @@ use Antevemus\ASpecification\Repositories\PartitionRepository;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LooseEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\SameInstantSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
 use Antevemus\ASpecification\Specifications\String\ContainsSpecification;
@@ -96,9 +104,10 @@ final class EqDynamicLeaf extends AbstractSpecification
  * contains('b'), and()/or() of composites dropped an operand, and a partition of `contains('b')`
  * replaced the partition of `contains('a')`. Every check below fails with the former equals().
  * Since 2.5.0 also the subqueries of Spec::inSubquery()/Spec::existsIn() (table, filter and field mapping in
- * AbstractSubquerySpecification).
+ * AbstractSubquerySpecification). Since 2.9.0 the relational leaves too: the integer mode of asInteger() is a
+ * private property of AbstractComparableValueBoundSpecification.
  *
- * @version    2.5.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -147,6 +156,27 @@ final class AncestorPrivateStateEqualityTest extends TestCase
             [new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o'), new ExistsSubquerySpecification('t1', ['fk' => 'id'], Spec::property('kind', Spec::equalTo('b')), 'o')],
             [new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o', ['kind' => 'k1']), new ExistsSubquerySpecification('t1', ['fk' => 'id'], $where, 'o', ['kind' => 'k2'])],
         ];
+
+        // 2.9.0 (forward 044): the integer mode of a relational leaf lives in a private property of
+        // AbstractComparableValueBoundSpecification; an int-typed leaf refuses 10.5 where the other answers it
+        foreach ([
+            EqualSpecification::class => static fn(mixed $v) => Spec::equalTo($v),
+            NotEqualSpecification::class => static fn(mixed $v) => Spec::notEqual($v),
+            LessThanSpecification::class => static fn(mixed $v) => Spec::lessThan($v),
+            LessThanOrEqualSpecification::class => static fn(mixed $v) => Spec::lessThanOrEqualTo($v),
+            GreaterThanSpecification::class => static fn(mixed $v) => Spec::greaterThan($v),
+            GreaterThanOrEqualSpecification::class => static fn(mixed $v) => Spec::greaterThanOrEqualTo($v),
+        ] as $class => $make) {
+            $pairs[$class] = [
+                [$make(10), $make(10)->asInteger()],
+                [$make(10)->asInteger(), $make(11)->asInteger()],
+                [$make(10)->asInteger()->because('r'), $make(10)->because('r')],
+            ];
+        }
+        // The two subclasses that cannot be int-typed inherit the property too: their value still tells them apart
+        $d = new \DateTimeImmutable('2026-01-01 00:00:00', new \DateTimeZone('UTC'));
+        $pairs[SameInstantSpecification::class] = [[Spec::at($d), Spec::at($d->modify('+1 second'))]];
+        $pairs[LooseEqualSpecification::class] = [[Spec::looselyEqualTo(1), Spec::looselyEqualTo(2)]];
 
         return $pairs;
     }

@@ -19,7 +19,7 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    2.1.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -52,6 +52,7 @@ class NotEqualSpecification extends AbstractComparableValueBoundSpecification
         if ($candidate === null) {
             return false;
         }
+        $this->assertIntegerCandidate($candidate); // an int-typed leaf refuses a non-int candidate (2.9.0)
         TypeCompatibility::assertEquatable($candidate, $this->value, 'NotEqualSpecification');
         return !TypeCompatibility::sameValue($candidate, $this->value);
     }

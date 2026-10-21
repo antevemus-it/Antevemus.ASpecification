@@ -34,6 +34,9 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * - Idempotence: A ∧ A = A, A ∨ A = A, by equals()
  * - Flattening of nested AND/OR nodes of the same kind
  * - Subsumption: A ∧ B = A and A ∨ B = B when A is a special case of B (1.4.4 algebra)
+ *   (since 2.9.0 two int-typed leaves close their bounds, so `int(x > 10) ∨ int(x >= 11)` keeps one of them
+ *   and `int(x > 10) ∧ int(x < 11)` is a proven contradiction; the rewrite still never adds a node, so
+ *   `int(x > 10) ∧ int(x < 12)` stays a conjunction rather than becoming `x = 11`)
  *
  * Annotations (D3): a node carrying because() or withCode() is a unit. It is simplified inside
  * (it reports a single failure, so its interior is not visible), but it is never removed, merged
@@ -69,7 +72,7 @@ use Antevemus\ASpecification\Specifications\Logical\JointDenialSpecification;
  * Automatic use (D6): no visitor and no engine simplifies by itself; the rule engine offers it
  * as an opt-in (DynamicSpecificationEngine::withSimplification()).
  *
- * @version    2.5.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -483,7 +486,8 @@ final class SpecificationSimplifier
      * structure; null when unknown (a class whose evaluation is not known here, a subclass that
      * redefines isSatisfiedBy(), a property restriction, a method call). The type guards of the
      * comparison leaves are the main source of errors: equalTo(1)/notEqual(1) raise on a float, a
-     * relational leaf on a value of another family, at() on anything but a date-time.
+     * relational leaf on a value of another family, an int-typed leaf (asInteger(), 2.9.0) on anything but
+     * an int, at() on anything but a date-time.
      *
      * @param ISpecification<mixed> $specification
      * @return list<string>|null
@@ -520,6 +524,9 @@ final class SpecificationSimplifier
             Comparison\GreaterThanSpecification::class,
             Comparison\GreaterThanOrEqualSpecification::class
         ) && $specification instanceof Comparison\AbstractComparableValueBoundSpecification) {
+            if ($specification->isInteger()) {
+                return ['int']; // an int-typed leaf raises on a float too (2.9.0)
+            }
             $value = $specification->getValue();
             return match (true) {
                 is_int($value), is_float($value) => ['int', 'float'],

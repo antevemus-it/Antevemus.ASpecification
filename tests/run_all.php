@@ -72,6 +72,7 @@ $suites = [
     'Módulo 41: Prazos em Tempo Útil (calendários de dias úteis e de horário, feriados, pausa e paridade com o relógio de SLA)' => new \Antevemus\ASpecification\Tests\Unit\Module41_BusinessTimeDeadlinesTest(),
     'Módulo 42: Repositório Híbrido com Gravação Adiada (MemoryAsyncFile, persist(), registro do repositório)' => new \Antevemus\ASpecification\Tests\Unit\Module42_WriteBehindRepositoryTest(),
     'Módulo 43: Cache Distribuído PSR-16 (catálogo de regras, feature flags e clusters de roteamento do DAG)' => new \Antevemus\ASpecification\Tests\Unit\Module43_DistributedCacheTest(),
+    'Módulo 44: Folhas Inteiras (asInteger(), Spec::int(), limites inteiros fechados entre folhas inteiras, tradução inalterada)' => new \Antevemus\ASpecification\Tests\Unit\Module44_IntegerLeavesTest(),
 ];
 
 $startTime = microtime(true);

@@ -7,6 +7,7 @@ namespace Antevemus\ASpecification\Specifications\Comparison;
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\IValueBoundSpecification;
+use Antevemus\ASpecification\Specifications\Exceptions\IncompatibleTypeException;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\SpecificationAlgebra;
 use Antevemus\ASpecification\Specifications\SubsumptionAndEqualityTrait;
@@ -24,10 +25,14 @@ use Antevemus\ASpecification\Serialization\SpecificationCodec;
  * are decided by interval arithmetic:
  *
  * - `x > 5 ⊇ x > 7`, `x >= 5 ⊇ x > 5`, `x < 10 ⊇ x = 3`, `x <> 5 ⊇ x < 5`
- * - `x < 5 ⟂ x >= 5`, `x = 5 ⟂ x = 6`, `x = 5 ⟂ x <> 5`; bounds are never closed over the integers:
- *   `x > 10` and `x < 11` are not disjoint and `x >= 5` does not generalize `x > 4`, because the leaves
- *   accept a float candidate (10.5, 4.5) and the library has no leaf typed to int (2.1.0, forward 037
- *   P2; up to 2.0.0 integer bounds were closed, x > 10 ≡ x >= 11)
+ * - `x < 5 ⟂ x >= 5`, `x = 5 ⟂ x = 6`, `x = 5 ⟂ x <> 5`; a leaf that is not int-typed is never closed
+ *   over the integers: `x > 10` and `x < 11` are not disjoint and `x >= 5` does not generalize `x > 4`,
+ *   because the leaves accept a float candidate (10.5, 4.5) (2.1.0, forward 037 P2; up to 2.0.0 integer
+ *   bounds were closed, x > 10 ≡ x >= 11)
+ * - int-typed leaves (asInteger(), Spec::int(); 2.9.0, forward 044) close their bounds against each other:
+ *   `x > a` is `x >= a + 1` and `x < b` is `x <= b - 1` when BOTH leaves are int-typed, so
+ *   `int(x > 10) ⟂ int(x < 11)` and `int(x >= 5) ⊇ int(x > 4)`; an int-typed leaf against one that is not
+ *   gets the rules above, unclosed
  * - the negation of a leaf is the leaf with the inverted operator (`¬(x < 10) ≡ x >= 10`)
  *
  * Values are compared with the PHP comparison operators, so integers, floats, strings and
@@ -43,6 +48,17 @@ use Antevemus\ASpecification\Serialization\SpecificationCodec;
  * and any other text byte by byte, so `'1a' > '10'` while `'1a' < '9'` and `x > '9'` does not contain
  * `x > '10'`.
  *
+ * Integer mode (2.9.0, forward 044, D1-D4): asInteger() returns a copy of the leaf whose getType() is 'int'.
+ * Its bound must be an int (a float, even 10.0, a text or a date-time is refused with
+ * InvalidArgumentException) and its evaluation refuses every non-null candidate that is not an int with
+ * IncompatibleTypeException: a float (12.0 included), a numeric text, a boolean. It is what
+ * `declare(strict_types=1)` does with an `int` parameter; the conversion belongs to the input boundary
+ * (a mapper, json_decode(), which already gives an int for `12`). Null keeps the answer of the leaf. Only
+ * the library leaves of the six operators can be int-typed: a subclass that redefines isSatisfiedBy()
+ * (LooseEqualSpecification, at(), a user leaf) is refused with LogicException, because its predicate would
+ * not apply the integer guard. The SQL, TCriteria and ALinq translations do not change: the column of the
+ * database already holds integers, and ALinq evaluates the leaf itself.
+ *
  * Reference values are compared the way the leaves compare a candidate with them (2.1.0): date-times
  * by instant, whatever their class or time zone (the relational operators order them by instant, and
  * equalTo()/notEqual()/at() test them by instant, BUG-20261013-LIZI), anything else strictly
@@ -51,7 +67,7 @@ use Antevemus\ASpecification\Serialization\SpecificationCodec;
  * @template T
  * @extends AbstractSpecification<T>
  * @implements IValueBoundSpecification<T>
- * @version    2.4.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -62,10 +78,26 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
 {
     use SubsumptionAndEqualityTrait;
 
+    /** The predicates that apply the integer guard of asInteger() (2.9.0): the six operators of the library. */
+    private const INTEGER_PREDICATES = [
+        EqualSpecification::class,
+        NotEqualSpecification::class,
+        LessThanSpecification::class,
+        LessThanOrEqualSpecification::class,
+        GreaterThanSpecification::class,
+        GreaterThanOrEqualSpecification::class,
+    ];
+
     /**
      * Reference value (right operand of the relation).
      */
     protected readonly mixed $value;
+
+    /**
+     * True for an int-typed leaf (asInteger(), 2.9.0): set only on the fresh copy asInteger() returns, so a
+     * leaf never changes after it is built.
+     */
+    private bool $integer = false;
 
     /**
      * @param mixed $value Reference value; a mutable DateTime is defensively cloned
@@ -112,7 +144,78 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
      */
     public function getType(): string
     {
+        if ($this->integer) {
+            return 'int';
+        }
+
         return $this->value instanceof DateTimeInterface ? DateTimeInterface::class : 'mixed';
+    }
+
+    /**
+     * The int-typed copy of this leaf (2.9.0, forward 044): `Spec::greaterThan(10)->asInteger()`. The copy
+     * keeps the operator, the bound and the annotations, answers getType() with 'int', refuses every
+     * non-null candidate that is not an int (IncompatibleTypeException: a float, 12.0 included, a numeric
+     * text, a boolean) and closes its bound against another int-typed leaf (`x > 10` is `x >= 11`). The
+     * leaf itself is not changed; an int-typed leaf returns itself.
+     *
+     * @return static
+     * @throws \InvalidArgumentException When the bound is not an int (10.5, 10.0, '10', a date-time, null)
+     * @throws \LogicException When the leaf does not evaluate with the predicate of its operator (a loose
+     *                         equality, at(), a subclass that redefines isSatisfiedBy())
+     */
+    public function asInteger(): static
+    {
+        if ($this->integer) {
+            return $this;
+        }
+        if (!SpecificationAlgebra::evaluatesAs($this, ...self::INTEGER_PREDICATES)) {
+            throw new \LogicException(sprintf(
+                '%s cannot be int-typed: asInteger() applies to the leaves of equalTo(), notEqual(), greaterThan(), greaterThanOrEqualTo(), lessThan() and lessThanOrEqualTo(), whose predicate applies the integer guard; a subclass that redefines isSatisfiedBy() would not.',
+                static::class
+            ));
+        }
+        if (!is_int($this->value)) {
+            throw new \InvalidArgumentException(sprintf(
+                '%s cannot be int-typed with a bound of type %s (%s): an int-typed leaf takes an int bound; convert the value before building the rule.',
+                (new \ReflectionClass($this))->getShortName(),
+                get_debug_type($this->value),
+                is_scalar($this->value) ? var_export($this->value, true) : get_debug_type($this->value)
+            ));
+        }
+        $copy = clone $this;
+        $copy->integer = true;
+
+        return $copy;
+    }
+
+    /**
+     * True for an int-typed leaf (asInteger(), Spec::int(); 2.9.0).
+     */
+    public function isInteger(): bool
+    {
+        return $this->integer;
+    }
+
+    /**
+     * The guard of an int-typed leaf, called by the predicate of each operator before it compares: a
+     * non-null candidate that is not an int is refused (2.9.0, forward 044, D2). It does nothing for a
+     * leaf that is not int-typed.
+     *
+     * @throws IncompatibleTypeException When the leaf is int-typed and the candidate is not an int
+     */
+    protected function assertIntegerCandidate(mixed $candidate): void
+    {
+        if (!$this->integer || $candidate === null || is_int($candidate)) {
+            return;
+        }
+        $rule = (new \ReflectionClass($this))->getShortName();
+
+        throw new IncompatibleTypeException($rule, $candidate, $this->value, sprintf(
+            '%s is int-typed and refuses the candidate %s of type %s: only an int is a candidate (a float, even without a fractional part, a numeric text or a boolean is refused); convert the value at the input boundary.',
+            $rule,
+            is_scalar($candidate) ? var_export($candidate, true) : get_debug_type($candidate),
+            get_debug_type($candidate)
+        ));
     }
 
     /**
@@ -129,7 +232,10 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
             return new NotSpecification($this);
         }
 
-        return static::createFor($this->getRelationalOperator()->getInvertedBinaryRelation(), $this->value);
+        $inverted = static::createFor($this->getRelationalOperator()->getInvertedBinaryRelation(), $this->value);
+
+        // The inversion of an int-typed leaf is int-typed (¬int(x < 10) ≡ int(x >= 10), 2.9.0)
+        return $this->integer && $inverted instanceof self ? $inverted->asInteger() : $inverted;
     }
 
     /**
@@ -311,15 +417,40 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
     }
 
     /**
-     * Operators and values of two leaves, as the interval rules read them. Integer bounds are not closed
-     * (x > 10 is not x >= 11): the leaves accept float candidates, so the domain is dense (2.1.0,
-     * forward 037 P2; up to 2.0.0 the closing made x > 10 ⟂ x < 11 although 10.5 satisfies both).
+     * Operators and values of two leaves, as the interval rules read them. Bounds are not closed (x > 10 is
+     * not x >= 11) unless BOTH leaves are int-typed: a leaf that is not accepts float candidates, so its
+     * domain is dense (2.1.0, forward 037 P2; up to 2.0.0 the closing made x > 10 ⟂ x < 11 although 10.5
+     * satisfies both). Two int-typed leaves accept ints only, so `x > a` is `x >= a + 1` and `x < b` is
+     * `x <= b - 1` (2.9.0, forward 044, D4); a bound at PHP_INT_MAX/PHP_INT_MIN is left open (a + 1 would be a
+     * float), which proves less, never more.
      *
      * @return array{RelationalOperator, mixed, RelationalOperator, mixed}
      */
     private static function normalize(self $a, self $b): array
     {
+        if ($a->integer && $b->integer) {
+            return [...self::closed($a->getRelationalOperator(), $a->value), ...self::closed($b->getRelationalOperator(), $b->value)];
+        }
+
         return [$a->getRelationalOperator(), $a->value, $b->getRelationalOperator(), $b->value];
+    }
+
+    /**
+     * The closed form of an int bound: `> a` as `>= a + 1`, `< b` as `<= b - 1`; any other operator, or a
+     * bound at the end of the int range, as it is.
+     *
+     * @return array{RelationalOperator, mixed}
+     */
+    private static function closed(RelationalOperator $operator, mixed $value): array
+    {
+        if ($operator === RelationalOperator::GREATER_THAN && is_int($value) && $value < PHP_INT_MAX) {
+            return [RelationalOperator::GREATER_THAN_OR_EQUAL, $value + 1];
+        }
+        if ($operator === RelationalOperator::LESS_THAN && is_int($value) && $value > PHP_INT_MIN) {
+            return [RelationalOperator::LESS_THAN_OR_EQUAL, $value - 1];
+        }
+
+        return [$operator, $value];
     }
 
     private static function isLowerBound(RelationalOperator $operator): bool
@@ -344,22 +475,33 @@ abstract class AbstractComparableValueBoundSpecification extends AbstractSpecifi
      * {@inheritdoc}
      *
      * The reference value under `v`: `{"t": "eq", "v": 18}` (2.4.0, forward 041; `eq`, `neq`, `gt`, `gte`,
-     * `lt`, `lte`, `looseEq` and `at` share this form; a date-time is written as `{"$date": ...}`).
+     * `lt`, `lte`, `looseEq` and `at` share this form; a date-time is written as `{"$date": ...}`). An
+     * int-typed leaf adds `"int": true`: `{"t": "gte", "v": 12, "int": true}` (2.9.0, forward 044, D6); a
+     * leaf that is not int-typed is written as before.
      */
     public function toArray(): array
     {
-        return ['v' => $this->value];
+        return $this->integer ? ['v' => $this->value, 'int' => true] : ['v' => $this->value];
     }
 
     /**
      * {@inheritdoc}
      *
-     * The constructor of the concrete leaf checks the value (an ordered leaf refuses null and booleans).
+     * The constructor of the concrete leaf checks the value (an ordered leaf refuses null and booleans);
+     * `"int"` is optional and, when present, must be `true` (2.9.0): the leaf is read back int-typed, and
+     * asInteger() checks the bound as when it was built.
      */
     public static function fromArray(array $data, SpecificationCodec $codec): static
     {
-        $codec->expectKeys($data, ['v']);
+        $codec->expectKeys($data, ['v'], ['int']);
+        $leaf = new static($codec->value($data, 'v'));
+        if (!array_key_exists('int', $data)) {
+            return $leaf;
+        }
+        if ($data['int'] !== true) {
+            throw $codec->invalid('"int" must be true when present (an int-typed leaf); a leaf that is not int-typed has no "int".');
+        }
 
-        return new static($codec->value($data, 'v'));
+        return $leaf->asInteger();
     }
 }

@@ -15,7 +15,7 @@ use DateTimeInterface;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    2.2.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -57,6 +57,7 @@ class LessThanOrEqualSpecification extends AbstractComparableValueBoundSpecifica
         if ($candidate === null) {
             return false;
         }
+        $this->assertIntegerCandidate($candidate); // an int-typed leaf refuses a non-int candidate (2.9.0)
         TypeCompatibility::assertOrderable($candidate, $this->value, 'LessThanOrEqualSpecification');
         return $candidate <= $this->value;
     }

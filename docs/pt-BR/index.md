@@ -19,10 +19,10 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 
 ### Especificações
 
-- [Fluent chaining](specifications/fluent-chaining.md) (exemplo 1): Regras de negócio compostas como frases em linguagem natural.
+- [Fluent chaining](specifications/fluent-chaining.md) (exemplos 1 e 1.1): Regras de negócio compostas como frases em linguagem natural; folhas inteiras (`asInteger()`, `Spec::int()`).
 - [Notification pattern](specifications/notification-pattern.md) (exemplo 2): `evaluate()`: todas as falhas com código, mensagem e propriedade, sem exceções.
 - [Satisfação parcial](specifications/partial-satisfaction.md) (exemplo 3): `remainderUnsatisfiedBy()`: só as cláusulas que o candidato ainda não satisfaz.
-- [Tautologia e simplificação](specifications/tautology-and-simplification.md) (exemplo 12): `isTautology()`, `isContradiction()` e `simplify()`.
+- [Tautologia e simplificação](specifications/tautology-and-simplification.md) (exemplos 12 e 12.1): `isTautology()`, `isContradiction()` e `simplify()`.
 - [Chamadas de método](specifications/method-calls.md) (exemplo 13): `MethodParameterizedSpecification`: uma regra que chama um método do candidato.
 - [Comparação de texto](specifications/text-comparison.md) (exemplos 20 e 20.1): Comparação ignorando maiúsculas e acentos, curingas e expressões regulares, em memória e no SQL.
 - [Serialização](specifications/serialization.md) (exemplo 21): `SpecificationCodec`: especificações como JSON canônico, lidas de volta sem `unserialize()`.

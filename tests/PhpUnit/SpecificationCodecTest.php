@@ -166,7 +166,7 @@ final class SctLooseText extends EqualSpecification
  * the fuzz with the marker file and the catalog/flag integration in Module31_SpecificationSerializationTest.
  * Since 2.5.0 the 45th name, `labelled` (forward 048, D11).
  *
- * @version    2.5.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -687,7 +687,13 @@ final class SpecificationCodecTest extends TestCase
         yield 'node without t' => ['{"v":1,"spec":{"v":1}}', $e, '?', 'needs a string "t"'];
         yield 't not a string' => ['{"v":1,"spec":{"t":1}}', $e, '?', 'needs a string "t"'];
         yield 'unknown t' => ['{"v":1,"spec":{"t":"Antevemus\\\\ASpecification\\\\Specifications\\\\Comparison\\\\EqualSpecification","v":1}}', $n, 'Antevemus\\ASpecification\\Specifications\\Comparison\\EqualSpecification', 'Unknown specification name'];
-        yield 'unknown key' => ['{"v":1,"spec":{"t":"eq","v":1,"w":2}}', $e, 'eq', 'Unknown key "w" (expected: v)'];
+        yield 'unknown key' => ['{"v":1,"spec":{"t":"eq","v":1,"w":2}}', $e, 'eq', 'Unknown key "w" (expected: v, int)'];
+        // 2.9.0 (forward 044, D6): "int" marks an int-typed leaf; it is true or absent, and the bound is checked as when built
+        yield 'int not true' => ['{"v":1,"spec":{"t":"gt","v":10,"int":false}}', $e, 'gt', '"int" must be true when present'];
+        yield 'int as a number' => ['{"v":1,"spec":{"t":"gte","v":12,"int":1}}', $e, 'gte', '"int" must be true when present'];
+        yield 'int with a float bound' => ['{"v":1,"spec":{"t":"gt","v":10.5,"int":true}}', $e, 'gt', 'cannot be int-typed with a bound of type float'];
+        yield 'int with a float bound without fraction' => ['{"v":1,"spec":{"t":"lt","v":11.0,"int":true}}', $e, 'lt', 'cannot be int-typed with a bound of type float'];
+        yield 'int on a loose equality' => ['{"v":1,"spec":{"t":"looseEq","v":1,"int":true}}', $e, 'looseEq', 'cannot be int-typed'];
         yield 'unknown key of a leaf without keys' => ['{"v":1,"spec":{"t":"isNull","v":1}}', $e, 'isNull', 'Unknown key "v" (expected: none)'];
         yield 'missing key' => ['{"v":1,"spec":{"t":"eq"}}', $e, 'eq', 'Missing key "v"'];
         yield 'missing child' => ['{"v":1,"spec":{"t":"not"}}', $e, 'not', 'Missing key "s"'];

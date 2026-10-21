@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\Collection\AllEntitiesSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
 use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
@@ -89,8 +90,11 @@ enum AlgebraGender
  *  - Day-granularity dates (testComparableValueBoundSpecifications_Day_*): a DateTime domain is
  *    dense, so after(today) and before(tomorrow) intersect; only the timestamp table is ported.
  *  - where() twice and and(name, spec) before where() do not throw (deliberate PHP relaxation).
+ *  - Integer bounds (since 2.1.0): leaves that are not int-typed accept 10.5, so they are not closed (seven
+ *    assertions noted "sem fechamento inteiro"). Since 2.9.0 the integer tables run a second time with
+ *    int-typed leaves (asInteger()), Domian's typed Integer, and hold as Domian wrote them, closed rows included.
  *
- * @version    2.2.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Parity
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -787,7 +791,27 @@ final class DomianSpecificationAlgebraTest extends TestCase
      */
     public function testComparableValueBoundSpecificationsInteger(): void
     {
-        $this->assertDisjointnessTable(self::numericVars(10, 11, 6), [
+        $this->assertDisjointnessTable(self::numericVars(10, 11, 6), self::integerTable(), 'integer');
+    }
+
+    /**
+     * IsDisjointWith_ValueBoundSpecifications_Test.testNegatedComparableValueBoundSpecifications_Integer (156 rows):
+     * ¬(x < 10) ≡ x >= 10, ¬¬A ≡ A, up to three levels of negation.
+     */
+    public function testNegatedComparableValueBoundSpecificationsInteger(): void
+    {
+        $this->assertDisjointnessTable(self::numericVars(10, 11, 6), self::negatedIntegerTable(), 'negated integer');
+    }
+
+    /**
+     * The rows of testComparableValueBoundSpecifications_Integer as this library answers them for leaves that are
+     * not int-typed.
+     *
+     * @return array<int, array{bool, string, string}>
+     */
+    private static function integerTable(): array
+    {
+        return [
             [false, 'lessThan10', 'lessThan10'],
             [false, 'lessThan10', 'lessThanOrEqualTo10'],
             [true, 'lessThan10', 'greaterThan10'],
@@ -836,16 +860,18 @@ final class DomianSpecificationAlgebraTest extends TestCase
             [true, 'greaterThanOrEqualTo10', 'lessThanOrEqualTo6'],
             [false, 'greaterThanOrEqualTo10', 'greaterThan6'],
             [false, 'greaterThanOrEqualTo10', 'greaterThanOrEqualTo6'],
-        ], 'integer');
+        ];
     }
 
     /**
-     * IsDisjointWith_ValueBoundSpecifications_Test.testNegatedComparableValueBoundSpecifications_Integer (156 rows):
-     * ¬(x < 10) ≡ x >= 10, ¬¬A ≡ A, up to three levels of negation.
+     * The rows of testNegatedComparableValueBoundSpecifications_Integer as this library answers them for leaves
+     * that are not int-typed.
+     *
+     * @return array<int, array{bool, string, string}>
      */
-    public function testNegatedComparableValueBoundSpecificationsInteger(): void
+    private static function negatedIntegerTable(): array
     {
-        $this->assertDisjointnessTable(self::numericVars(10, 11, 6), [
+        return [
             [true, 'lessThan10', 'not(lessThan10)'],
             [true, 'lessThan10', 'not(lessThanOrEqualTo10)'],
             [false, 'lessThan10', 'not(greaterThan10)'],
@@ -1002,7 +1028,72 @@ final class DomianSpecificationAlgebraTest extends TestCase
             [false, 'not(greaterThanOrEqualTo10)', 'not(lessThanOrEqualTo6)'],
             [false, 'not(greaterThanOrEqualTo10)', 'not(greaterThan6)'],
             [false, 'not(greaterThanOrEqualTo10)', 'not(greaterThanOrEqualTo6)'],
-        ], 'negated integer');
+        ];
+    }
+
+    /**
+     * The rows where Domian closes the integer bounds and this library, for leaves that are not int-typed, does
+     * not (the rows noted "sem fechamento inteiro" above): Domian's leaves are typed Integer.
+     */
+    private const CLOSED_BY_DOMIAN = [
+        'integer' => [['greaterThan10', 'lessThan11']],
+        'negated integer' => [
+            ['not(lessThanOrEqualTo10)', 'lessThan11'],
+            ['not(lessThanOrEqualTo10)', 'not(greaterThanOrEqualTo11)'],
+            ['greaterThan10', 'not(greaterThanOrEqualTo11)'],
+        ],
+    ];
+
+    /**
+     * The table of Domian itself: the rows of $table with the closed rows answered as Domian answers them
+     * (disjoint), each checked to be one the library leaves open for leaves that are not int-typed.
+     *
+     * @param array<int, array{bool, string, string}> $rows
+     * @return array<int, array{bool, string, string}>
+     */
+    private static function domianRows(array $rows, string $table): array
+    {
+        $closed = 0;
+        foreach ($rows as $index => [$expected, $a, $b]) {
+            if (in_array([$a, $b], self::CLOSED_BY_DOMIAN[$table], true)) {
+                self::assertFalse($expected, "{$table}: {$a} / {$b} is a row the library leaves open");
+                $rows[$index][0] = true;
+                $closed++;
+            }
+        }
+        self::assertSame(count(self::CLOSED_BY_DOMIAN[$table]), $closed, "{$table}: every closed row of Domian found");
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, ISpecification>
+     */
+    private static function integerVars(int $ten, int $eleven, int $six): array
+    {
+        return array_map(
+            static fn(ISpecification $leaf): ISpecification => $leaf instanceof AbstractComparableValueBoundSpecification ? $leaf->asInteger() : $leaf,
+            self::numericVars($ten, $eleven, $six)
+        );
+    }
+
+    /**
+     * testComparableValueBoundSpecifications_Integer of Domian with int-typed leaves (2.9.0, forward 044): Domian's
+     * leaves are typed Integer, and so are these, so its 48 rows hold as Domian wrote them, the closed one
+     * included (greaterThan(10) ⟂ lessThan(11): no int lies between 10 and 11, and 10.5 is refused).
+     */
+    public function testComparableValueBoundSpecificationsIntegerWithIntTypedLeaves(): void
+    {
+        $this->assertDisjointnessTable(self::integerVars(10, 11, 6), self::domianRows(self::integerTable(), 'integer'), 'integer, int-typed');
+    }
+
+    /**
+     * testNegatedComparableValueBoundSpecifications_Integer of Domian with int-typed leaves (2.9.0): the negation of
+     * an int-typed leaf is the int-typed leaf of the inverted operator, so its 156 rows hold as Domian wrote them.
+     */
+    public function testNegatedComparableValueBoundSpecificationsIntegerWithIntTypedLeaves(): void
+    {
+        $this->assertDisjointnessTable(self::integerVars(10, 11, 6), self::domianRows(self::negatedIntegerTable(), 'negated integer'), 'negated integer, int-typed');
     }
 
     /**
@@ -1933,6 +2024,21 @@ final class DomianSpecificationAlgebraTest extends TestCase
         self::assertTrue(Spec::lessThan(5)->intersectsWith(Spec::greaterThan(3)));
         self::assertTrue(Spec::allOf(Spec::greaterThan(1), Spec::lessThan(9))->intersectsWith(Spec::equalTo(5)));
         self::assertFalse(Spec::allOf(Spec::greaterThan(1), Spec::lessThan(9))->intersectsWith(Spec::equalTo(50)));
+    }
+
+    /**
+     * The three assertions of testIntervalSubsumptionOfRelationalLeaves() and testIntervalDisjointnessOfRelationalLeaves()
+     * noted "sem fechamento inteiro", with int-typed leaves (2.9.0, forward 044): closed as in Domian.
+     */
+    public function testIntTypedLeavesCloseTheBoundsAsDomian(): void
+    {
+        self::assertTrue(Spec::int()->greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::int()->greaterThan(4)), 'int-typed: x > 4 is x >= 5');
+        self::assertTrue(Spec::int()->greaterThan(10)->isDisjointWith(Spec::int()->lessThan(11)), 'int-typed: no int between 10 and 11');
+        self::assertTrue(Spec::int()->lessThan(10)->isDisjointWith(Spec::int()->greaterThan(9)), 'int-typed: no int between 9 and 10');
+        // only when both sides are int-typed
+        self::assertFalse(Spec::int()->greaterThanOrEqualTo(5)->isGeneralizationOf(Spec::greaterThan(4)), '4.5 satisfies x > 4');
+        self::assertFalse(Spec::int()->greaterThan(10)->isDisjointWith(Spec::lessThan(11)), 'the closing needs both sides int-typed');
+        self::assertFalse(Spec::greaterThan(10)->isDisjointWith(Spec::int()->lessThan(11)));
     }
 
     public function testNegationResolution(): void

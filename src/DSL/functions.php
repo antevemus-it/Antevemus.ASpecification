@@ -17,9 +17,12 @@ declare(strict_types=1);
  * - String evaluation and pattern matching (matches, contains, startsWith, endsWith); the text operators
  *   take `bool|TextComparison`, TextComparison::IgnoreCaseAndAccents ignoring accents too (2.1.0);
  *   `matchesWildcardExpression()` too and `matches()` an optional TextComparison (2.3.0)
+ * - The relational functions (equalTo, equal, notEqual, greaterThan, greaterThanOrEqualTo, lessThan,
+ *   lessThanOrEqualTo) declare their leaf class (2.9.0, covariant), so `greaterThan(10)->asInteger()` is
+ *   visible to the IDE and to static analysis
  * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    2.3.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -31,6 +34,12 @@ namespace Antevemus\ASpecification\DSL;
 
 use Antevemus\ASpecification\Contracts\ICompositeSpecification;
 use Antevemus\ASpecification\Contracts\ISpecification;
+use Antevemus\ASpecification\Specifications\Comparison\EqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification;
+use Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification;
 use Antevemus\ASpecification\Specifications\PropertySpecification;
 use Antevemus\ASpecification\Spec;
 use Antevemus\ASpecification\Specifications\String\TextComparison;
@@ -185,9 +194,9 @@ function is(mixed $value): ISpecification
  * Creates a strict equality (`===`) leaf specification.
  *
  * @param mixed $value Expected value
- * @return ISpecification Leaf equality specification
+ * @return EqualSpecification<mixed> Leaf equality specification
  */
-function equalTo(mixed $value): ISpecification
+function equalTo(mixed $value): EqualSpecification
 {
     return Spec::equalTo($value);
 }
@@ -207,9 +216,9 @@ function looselyEqualTo(mixed $value): ISpecification
  * Syntactic alias for equalTo().
  *
  * @param mixed $value Expected value
- * @return ISpecification Leaf equality specification
+ * @return EqualSpecification<mixed> Leaf equality specification
  */
-function equal(mixed $value): ISpecification
+function equal(mixed $value): EqualSpecification
 {
     return Spec::equal($value);
 }
@@ -218,9 +227,9 @@ function equal(mixed $value): ISpecification
  * Creates a strict inequality (`!==`) leaf specification.
  *
  * @param mixed $value Value candidate must NOT possess
- * @return ISpecification Leaf inequality specification
+ * @return NotEqualSpecification<mixed> Leaf inequality specification
  */
-function notEqual(mixed $value): ISpecification
+function notEqual(mixed $value): NotEqualSpecification
 {
     return Spec::notEqual($value);
 }
@@ -229,9 +238,9 @@ function notEqual(mixed $value): ISpecification
  * Creates a greater-than (`>`) comparison specification.
  *
  * @param mixed $value Exclusive lower bound
- * @return ISpecification Greater-than comparison specification
+ * @return GreaterThanSpecification<mixed> Greater-than comparison specification
  */
-function greaterThan(mixed $value): ISpecification
+function greaterThan(mixed $value): GreaterThanSpecification
 {
     return Spec::greaterThan($value);
 }
@@ -240,9 +249,9 @@ function greaterThan(mixed $value): ISpecification
  * Creates a greater-than-or-equal-to (`>=`) comparison specification.
  *
  * @param mixed $value Inclusive lower bound
- * @return ISpecification Greater-than-or-equal comparison specification
+ * @return GreaterThanOrEqualSpecification<mixed> Greater-than-or-equal comparison specification
  */
-function greaterThanOrEqualTo(mixed $value): ISpecification
+function greaterThanOrEqualTo(mixed $value): GreaterThanOrEqualSpecification
 {
     return Spec::greaterThanOrEqualTo($value);
 }
@@ -251,9 +260,9 @@ function greaterThanOrEqualTo(mixed $value): ISpecification
  * Creates a less-than (`<`) comparison specification.
  *
  * @param mixed $value Exclusive upper bound
- * @return ISpecification Less-than comparison specification
+ * @return LessThanSpecification<mixed> Less-than comparison specification
  */
-function lessThan(mixed $value): ISpecification
+function lessThan(mixed $value): LessThanSpecification
 {
     return Spec::lessThan($value);
 }
@@ -262,9 +271,9 @@ function lessThan(mixed $value): ISpecification
  * Creates a less-than-or-equal-to (`<=`) comparison specification.
  *
  * @param mixed $value Inclusive upper bound
- * @return ISpecification Less-than-or-equal comparison specification
+ * @return LessThanOrEqualSpecification<mixed> Less-than-or-equal comparison specification
  */
-function lessThanOrEqualTo(mixed $value): ISpecification
+function lessThanOrEqualTo(mixed $value): LessThanOrEqualSpecification
 {
     return Spec::lessThanOrEqualTo($value);
 }

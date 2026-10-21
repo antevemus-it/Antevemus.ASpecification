@@ -42,7 +42,7 @@ Principais destaques:
 24b. **Alvo de Feature Flag por Regra do Catálogo** (`targetRuleCode`, `IRuleCatalog::findRuleByCode()`, corpo da regra em `spec_json`) (entregue na v2.4.0)
 24c. **Rollout de Feature Flag por Porcentagem** (bucket estável por sujeito a partir do `xxh3` do código e da chave, gravado pelo caminho auditado) (entregue na v2.3.0)
 24d. **API para a Vigência de uma Feature Flag** (`setValidity()`, compare-and-set pela versão da linha, linha de histórico com tipo) (entregue na v2.3.0)
-25. **Modo Inteiro Opcional para as Folhas Relacionais** (`asInteger()`, `Spec::int()`: limites inteiros fechados onde for correto)
+25. **Modo Inteiro Opcional para as Folhas Relacionais** (`asInteger()`, `Spec::int()`: uma folha inteira recusa todo candidato que não seja int, inclusive `12.0`, e fecha os limites contra outra, então `x > 10` e `x < 11` voltam a ser disjuntas; as fábricas relacionais devolvem a classe da folha) (Entregue na v2.9.0)
 26. **Auditoria de Solidez da Álgebra de Especificações** (bancada por força bruta sobre toda classe de especificação; a álgebra nunca promete mais do que a avaliação entrega) (entregue na v2.1.0)
 
 26b. **Decisões pendentes da bancada de solidez** (um valor-padrão tipado, `isBlankString()`/`defaultNumber()`/`defaultValueOfType()`, é "um valor daquele tipo, e o seu padrão" e recusa `null`, que só o `defaultValue()` sem tipo aceita; `NAN` é recusado pelas folhas ordenadas como candidato e como limite, de modo que `not(lessThan(v))` e `greaterThanOrEqualTo(v)` concordam em todo candidato que respondem) (Entregue na v2.2.0)

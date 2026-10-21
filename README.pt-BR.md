@@ -8,7 +8,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-36%2F36%20Suites%20Pass%20(39417%20Assertions)%20%2B%20Domian%20Parity%20227-success)](docs/pt-BR/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Suites%20Pass%20(43925%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/pt-BR/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -92,10 +92,10 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 **Especificações**
 
-- [Fluent chaining](docs/pt-BR/specifications/fluent-chaining.md) (exemplo 1) · [EN](docs/en/specifications/fluent-chaining.md): Regras de negócio compostas como frases em linguagem natural.
+- [Fluent chaining](docs/pt-BR/specifications/fluent-chaining.md) (exemplos 1 e 1.1) · [EN](docs/en/specifications/fluent-chaining.md): Regras de negócio compostas como frases em linguagem natural; folhas inteiras (`asInteger()`, `Spec::int()`).
 - [Notification pattern](docs/pt-BR/specifications/notification-pattern.md) (exemplo 2) · [EN](docs/en/specifications/notification-pattern.md): `evaluate()`: todas as falhas com código, mensagem e propriedade, sem exceções.
 - [Satisfação parcial](docs/pt-BR/specifications/partial-satisfaction.md) (exemplo 3) · [EN](docs/en/specifications/partial-satisfaction.md): `remainderUnsatisfiedBy()`: só as cláusulas que o candidato ainda não satisfaz.
-- [Tautologia e simplificação](docs/pt-BR/specifications/tautology-and-simplification.md) (exemplo 12) · [EN](docs/en/specifications/tautology-and-simplification.md): `isTautology()`, `isContradiction()` e `simplify()`.
+- [Tautologia e simplificação](docs/pt-BR/specifications/tautology-and-simplification.md) (exemplos 12 e 12.1) · [EN](docs/en/specifications/tautology-and-simplification.md): `isTautology()`, `isContradiction()` e `simplify()`.
 - [Chamadas de método](docs/pt-BR/specifications/method-calls.md) (exemplo 13) · [EN](docs/en/specifications/method-calls.md): `MethodParameterizedSpecification`: uma regra que chama um método do candidato.
 - [Comparação de texto](docs/pt-BR/specifications/text-comparison.md) (exemplos 20 e 20.1) · [EN](docs/en/specifications/text-comparison.md): Comparação ignorando maiúsculas e acentos, curingas e expressões regulares, em memória e no SQL.
 - [Serialização](docs/pt-BR/specifications/serialization.md) (exemplo 21) · [EN](docs/en/specifications/serialization.md): `SpecificationCodec`: especificações como JSON canônico, lidas de volta sem `unserialize()`.
@@ -173,8 +173,8 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 ## 🧪 Qualidade
 
-- **Runner:** `php tests/run_all.php`, 36/36 suítes, 39 417 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 614 testes e 102.237 asserções, a suíte de paridade com o Domian (227 testes) inclusa.
+- **Runner:** `php tests/run_all.php`, 37/37 suítes, 43 925 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 624 testes e 107.097 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

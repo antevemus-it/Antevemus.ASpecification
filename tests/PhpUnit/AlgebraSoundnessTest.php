@@ -302,7 +302,13 @@ final class AsbEven extends AbstractSpecification
  * labelling any specification of the pool keeps its answers, its failures (reported against the label),
  * its SQL and its TCriteria, and comes back equal from the codec.
  *
- * @version    2.5.0
+ * Integer leaves (2.9.0, forward 044, RN-02): the pool holds int-typed leaves of the six operators
+ * (asInteger(), Spec::int()), whose bounds close against each other (int(x > 10) ⟂ int(x < 11)), the
+ * candidates 10, 10.0, 10.5, '10', 11 and 12, and trees that mix them with the numeric leaves, generated
+ * from a seed of their own so that every specification of 2.5.0 is still in the pool as it was; a guard
+ * fails when a class asInteger() accepts is missing int-typed.
+ *
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -354,6 +360,40 @@ final class AlgebraSoundnessTest extends TestCase
 
         self::assertNotEmpty(self::libraryClasses(), 'The scan of src/ found no specification class: the scan is broken');
         self::assertSame([], $missing, 'Concrete specification classes of src/ missing from the soundness pool: add them to leaves()');
+    }
+
+    /**
+     * 2.9.0 (forward 044): every class that asInteger() accepts has an int-typed leaf in the pool, alone and
+     * inside the generated trees, and the pool holds the candidates that tell an int-typed leaf apart (10,
+     * 10.0, 10.5, '10').
+     */
+    public function testEveryIntegerLeafClassIsInThePoolIntTyped(): void
+    {
+        $integerClasses = [];
+        $inTrees = 0;
+        foreach (self::world()['specs'] as $entry) {
+            $found = [];
+            self::collectIntegerLeaves($entry['spec'], $found);
+            $integerClasses += $found;
+            $inTrees += $entry['composite'] && $found !== [] ? 1 : 0;
+        }
+        ksort($integerClasses);
+        $expected = [
+            \Antevemus\ASpecification\Specifications\Comparison\EqualSpecification::class => true,
+            \Antevemus\ASpecification\Specifications\Comparison\GreaterThanOrEqualSpecification::class => true,
+            \Antevemus\ASpecification\Specifications\Comparison\GreaterThanSpecification::class => true,
+            \Antevemus\ASpecification\Specifications\Comparison\LessThanOrEqualSpecification::class => true,
+            \Antevemus\ASpecification\Specifications\Comparison\LessThanSpecification::class => true,
+            \Antevemus\ASpecification\Specifications\Comparison\NotEqualSpecification::class => true,
+        ];
+        ksort($expected);
+        self::assertSame($expected, $integerClasses, 'every class asInteger() accepts is in the pool int-typed');
+        self::assertGreaterThan(40, $inTrees, 'int-typed leaves inside the generated trees');
+        $candidates = self::world()['candidates'];
+        foreach (['10' => 10, '10.0' => 10.0, '10.5' => 10.5, "'10'" => '10'] as $label => $value) {
+            self::assertArrayHasKey($label, $candidates);
+            self::assertSame($value, $candidates[$label]);
+        }
     }
 
     // ==========================================
@@ -974,7 +1014,9 @@ final class AlgebraSoundnessTest extends TestCase
         return [
             'null' => null,
             '0' => 0, '1' => 1, '2' => 2, '5' => 5, '6' => 6, '10' => 10, '-1' => -1,
+            '11' => 11, '12' => 12, // 2.9.0: the integers between and around the bounds of the int-typed leaves
             '1.0' => 1.0, '4.5' => 4.5, '5.0' => 5.0, '5.5' => 5.5, '9.5' => 9.5, '10.5' => 10.5,
+            '10.0' => 10.0, // 2.9.0 (forward 044): a float without a fractional part, refused by the int-typed leaves
             'NAN' => NAN, // 2.2.0 (#70): refused by the ordered leaves, equal to nothing for the equality ones
             "''" => '', "'1'" => '1', "'5'" => '5', "'10'" => '10', "'9'" => '9', "'1a'" => '1a', "'1e1'" => '1e1',
             "'a'" => 'a', "'b'" => 'b', "'ab'" => 'ab', "'A'" => 'A', "'abc'" => 'abc', "'ação'" => 'ação', "'acao'" => 'acao', "'AÇÃO'" => 'AÇÃO',
@@ -1007,6 +1049,8 @@ final class AlgebraSoundnessTest extends TestCase
             'Box(null)' => new AsbBox(null),
             'Box(1)' => new AsbBox(1),
             'Box(5)' => new AsbBox(5),
+            'Box(10)' => new AsbBox(10),
+            'Box(10.5)' => new AsbBox(10.5),
             "Box('a')" => new AsbBox('a'),
             "Box('A')" => new AsbBox('A'),
             "Box('')" => new AsbBox(''),
@@ -1030,7 +1074,7 @@ final class AlgebraSoundnessTest extends TestCase
      * Leaves of the pool: [label, specification, family]. The family groups the specifications whose
      * candidates overlap, so that composites and pairs are generated where they mean something.
      *
-     * @return list<array{0: string, 1: ISpecification, 2: string}>
+     * @return list<array{0: string, 1: ISpecification, 2: string, 3?: bool}>
      */
     private static function leaves(): array
     {
@@ -1283,15 +1327,43 @@ final class AlgebraSoundnessTest extends TestCase
         $add('number', "inQuery(rows.id where label startsWith 'a')", new InQuerySpecification($rows, Spec::property('label', Spec::startsWith('a')), 'id'));
         $add('number', "inQuery(rows.id where label startsWith 'b')", new InQuerySpecification($rows, Spec::property('label', Spec::startsWith('b')), 'id'));
 
+        // Int-typed leaves (2.9.0, forward 044): the six operators, the bounds two int-typed leaves close
+        // (x > 10 is x >= 11, so int(x > 10) ⟂ int(x < 11)), the bounds at the end of the int range (left
+        // open) and the factory forms. They are marked (4th element) so that the composites of 2.5.0 are
+        // generated as before and theirs come from a seed of their own (composites()).
+        $addInt = static function (string $label, ISpecification $spec) use (&$leaves): void {
+            $leaves[] = [$label, $spec, 'number', true];
+        };
+        $addInt('int.greaterThan(10)', Spec::int()->greaterThan(10));
+        $addInt('int.lessThan(11)', Spec::int()->lessThan(11));
+        $addInt('int.greaterThanOrEqualTo(11)', Spec::int()->greaterThanOrEqualTo(11));
+        $addInt('int.lessThanOrEqualTo(10)', Spec::int()->lessThanOrEqualTo(10));
+        $addInt('int.greaterThan(4)', Spec::int()->greaterThan(4));
+        $addInt('int.greaterThanOrEqualTo(5)', Spec::int()->greaterThanOrEqualTo(5));
+        $addInt('int.lessThan(12)', Spec::int()->lessThan(12));
+        $addInt('int.equalTo(10)', Spec::int()->equalTo(10));
+        $addInt('int.equalTo(11)', Spec::int()->equalTo(11));
+        $addInt('int.notEqualTo(10)', Spec::int()->notEqualTo(10));
+        $addInt('int.notEqualTo(11)', Spec::int()->notEqualTo(11));
+        $addInt('greaterThan(10)->asInteger()', Spec::greaterThan(10)->asInteger());
+        $addInt('int.greaterThan(PHP_INT_MAX)', Spec::int()->greaterThan(PHP_INT_MAX));
+        $addInt('int.lessThan(PHP_INT_MIN)', Spec::int()->lessThan(PHP_INT_MIN));
+        $addInt('int.between(1, 12)', Spec::int()->between(1, 12));
+        $addInt('int.between(11, 10)', Spec::int()->between(11, 10));
+        $addInt('int.in(10, 11)', Spec::int()->in(10, 11));
+        $addInt("labelled('M', int.lessThan(11))", Spec::labelled('M', Spec::int()->lessThan(11)));
+
         // Annotated variants (because()/withCode())
         $annotated = [];
-        foreach ($leaves as [$label, $spec, $family]) {
-            if (!$spec instanceof AbstractSpecification || !in_array($label, ['equal(1)', 'lessThan(5)', "contains('a')", 'in(1, 2)', 'isNull()', 'all(Customer)', 'unique(1)', 'equal(d)', 'at(d)', 'calling(total, [3], greaterThan(5))', "property(x, equal(1))", 'specify(Customer)', 'a(unique(1))', 'featureEnabled(on)'], true)) {
+        foreach ($leaves as $leaf) {
+            [$label, $spec, $family] = $leaf;
+            if (!$spec instanceof AbstractSpecification || !in_array($label, ['equal(1)', 'lessThan(5)', "contains('a')", 'in(1, 2)', 'isNull()', 'all(Customer)', 'unique(1)', 'equal(d)', 'at(d)', 'calling(total, [3], greaterThan(5))', "property(x, equal(1))", 'specify(Customer)', 'a(unique(1))', 'featureEnabled(on)', 'int.greaterThan(10)'], true)) {
                 continue;
             }
-            $annotated[] = ["{$label}.because(r1)", $spec->because('r1'), $family];
-            $annotated[] = ["{$label}.because(r2)", $spec->because('r2'), $family];
-            $annotated[] = ["{$label}.withCode(C1)", $spec->withCode('C1'), $family];
+            $integer = $leaf[3] ?? false;
+            $annotated[] = ["{$label}.because(r1)", $spec->because('r1'), $family, $integer];
+            $annotated[] = ["{$label}.because(r2)", $spec->because('r2'), $family, $integer];
+            $annotated[] = ["{$label}.withCode(C1)", $spec->withCode('C1'), $family, $integer];
         }
 
         return array_merge($leaves, $annotated);
@@ -1300,14 +1372,19 @@ final class AlgebraSoundnessTest extends TestCase
     /**
      * Composites generated with a fixed seed inside each family (the 'any' leaves join every family).
      *
-     * @param list<array{0: string, 1: ISpecification, 2: string}> $leaves
+     * @param list<array{0: string, 1: ISpecification, 2: string, 3?: bool}> $leaves
      * @return list<array{0: string, 1: ISpecification, 2: string}>
      */
     private static function composites(array $leaves): array
     {
         $extended = self::extended();
         $byFamily = [];
+        $integerLeaves = [];
         foreach ($leaves as $leaf) {
+            if ($leaf[3] ?? false) {
+                $integerLeaves[] = $leaf; // 2.9.0: below, with a seed of their own
+                continue;
+            }
             $byFamily[$leaf[2]][] = $leaf;
         }
         $any = $byFamily['any'] ?? [];
@@ -1339,6 +1416,21 @@ final class AlgebraSoundnessTest extends TestCase
         $customer = Spec::specify(AsbCustomer::class);
         $composites[] = ["specify(Customer).where(name, startsWith('a')).andWhere(active, equal(true))", $customer->where('name', Spec::startsWith('a'))->andWhere('active', Spec::equal(true)), 'entity'];
         $composites[] = ["specify(Vip).where(name, equal('ana'))", Spec::specify(AsbVip::class)->where('name', Spec::equal('ana')), 'entity'];
+
+        // 2.9.0 (forward 044): trees over the int-typed leaves mixed with the numeric ones (int × int closes
+        // the bounds, int × mixed does not), and property restrictions over them, from a seed of their own so
+        // that every composite above is the one of 2.5.0
+        mt_srand(self::SEED + 44);
+        $pool = array_merge($integerLeaves, $byFamily['number'] ?? [], $any);
+        $integerOnly = array_merge($integerLeaves, $any);
+        for ($n = 0; $n < ($extended ? 160 : 48); $n++) {
+            [$label, $spec] = self::randomTree($n % 2 === 0 ? $integerOnly : $pool, $extended ? 4 : 3, $n);
+            $composites[] = [$label, $spec, 'number'];
+        }
+        for ($n = 0; $n < ($extended ? 40 : 10); $n++) {
+            [$label, $spec] = self::randomTree($integerOnly, 2, $n);
+            $composites[] = ["property(x, {$label})", Spec::property('x', $spec), 'box'];
+        }
 
         return $composites;
     }
@@ -1719,6 +1811,21 @@ final class AlgebraSoundnessTest extends TestCase
      *
      * @return list<class-string>
      */
+    /**
+     * The classes of the int-typed relational leaves inside a specification (2.9.0).
+     *
+     * @param array<class-string, true> $found
+     */
+    private static function collectIntegerLeaves(ISpecification $spec, array &$found): void
+    {
+        if ($spec instanceof \Antevemus\ASpecification\Specifications\Comparison\AbstractComparableValueBoundSpecification && $spec->isInteger()) {
+            $found[$spec::class] = true;
+        }
+        foreach (self::childSpecifications($spec) as $child) {
+            self::collectIntegerLeaves($child, $found);
+        }
+    }
+
     private static function unavailableClasses(): array
     {
         return extension_loaded('intl') ? [] : [\Antevemus\ASpecification\Specifications\String\EqualIgnoreCaseAndAccentsStringSpecification::class];

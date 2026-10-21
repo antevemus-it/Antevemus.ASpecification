@@ -11,7 +11,7 @@ use DateTimeInterface;
  *
  * Validates whether the candidate is strictly less than the configured threshold (number,
  * string or date-time instant), providing interval subsumption ($x < 100 \supseteq x < 50$)
- * and disjointness ($x < 10 \perp x >= 10$; integer bounds are not closed since 2.1.0).
+ * and disjointness ($x < 10 \perp x >= 10$; integer bounds are not closed since 2.1.0, except between two int-typed leaves, asInteger(), since 2.9.0).
  *
  * Features:
  * - Strict magnitude comparison (`<`) on numbers, strings and DateTimeInterface
@@ -20,7 +20,7 @@ use DateTimeInterface;
  *
  * @template T
  * @extends AbstractComparableValueBoundSpecification<T>
- * @version    2.2.0
+ * @version    2.9.0
  * @package    Antevemus\ASpecification
  * @subpackage Specifications\Comparison
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -62,6 +62,7 @@ class LessThanSpecification extends AbstractComparableValueBoundSpecification
         if ($candidate === null) {
             return false;
         }
+        $this->assertIntegerCandidate($candidate); // an int-typed leaf refuses a non-int candidate (2.9.0)
         TypeCompatibility::assertOrderable($candidate, $this->value, 'LessThanSpecification');
         return $candidate < $this->value;
     }

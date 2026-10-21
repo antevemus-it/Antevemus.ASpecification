@@ -42,7 +42,7 @@ Key highlights & upcoming roadmap:
 24b. **Feature Flag Target by a Catalog Rule** (`targetRuleCode`, `IRuleCatalog::findRuleByCode()`, a rule body in `spec_json`) (Shipped in v2.4.0)
 24c. **Percentage Rollout of a Feature Flag** (a stable bucket per subject from `xxh3` of the code and the key, set through the audited path) (Shipped in v2.3.0)
 24d. **An API for the Validity Window of a Feature Flag** (`setValidity()`, compare-and-set on the row version, a typed history row) (Shipped in v2.3.0)
-25. **Optional Integer Mode for the Relational Leaves** (`asInteger()`, `Spec::int()`: integer bounds closed where it is sound)
+25. **Optional Integer Mode for the Relational Leaves** (`asInteger()`, `Spec::int()`: an int-typed leaf refuses every candidate that is not an int, `12.0` included, and closes its bounds against another, so `x > 10` and `x < 11` are disjoint again; the relational factories return their leaf class) (Shipped in v2.9.0)
 26. **Soundness Audit of the Specification Algebra** (a brute-force bench over every specification class; the algebra never promises more than the evaluation delivers) (Shipped in v2.1.0)
 
 26b. **Pending Decisions of the Soundness Bench** (a typed default value, `isBlankString()`/`defaultNumber()`/`defaultValueOfType()`, is "a value of that type and its default" and refuses `null`, which only the untyped `defaultValue()` accepts; `NAN` is refused by the ordered leaves as a candidate and as a bound, so `not(lessThan(v))` and `greaterThanOrEqualTo(v)` agree on every candidate they answer) (Shipped in v2.2.0)
