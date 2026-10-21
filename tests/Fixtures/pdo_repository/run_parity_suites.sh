@@ -27,6 +27,10 @@
 #   - Module40_StateMachineRealConsumerTest (2.7.0): the state machine for a real consumer: the definitions
 #     over PDO (round trip, tampering, drafts, two connections publishing at once), tenants (InMemory = PDO),
 #     the code projection, a database of the 2.6 DDL and its additive migration, the acceptance replay;
+#   - Module45_StateMachineAdoptionTest (2.10.0): adopting the machine in a running system: startAt() with
+#     tenant, the event of the step in the outbox (the opt-in column event_snapshot, a database of the 2.9 DDL
+#     and its additive migration), the JSON columns refused above VARCHAR(4000) by the database and accepted
+#     by the wide variants of the DDL's header, and sendMany() == send() over random sequences;
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -74,7 +78,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

@@ -29,7 +29,10 @@
 --                      original offsets
 --   snapshot, payload, params, reason, transition_result
 --                      JSON as text (VARCHAR(4000) for portability;
---                      widen to TEXT/JSONB/CLOB when payloads are larger)
+--                      widen them when payloads are larger: see "Wide
+--                      JSON columns" below; the stores never truncate
+--                      nor check the length, the column is the limit)
+--   event_snapshot     (since 2.10.0) JSON as text, TEXT
 --   done               'Y' or 'N'
 --   event_origin       external | internal
 --   status (outbox)    pending | delivered | failed
@@ -100,6 +103,52 @@
 --                      (64 KiB; MEDIUMTEXT above that) and SQLite; use
 --                      CLOB (Oracle, DB2) or NVARCHAR(MAX) (SQL Server)
 --                      elsewhere
+--
+-- Opt-in column (since 2.10.0), read and written only when the stores
+-- are given columns: PdoMachineSchema::COLUMNS_SINCE_2_10 (merge it
+-- with COLUMNS_SINCE_2_7 when both are wanted):
+--   event_snapshot     state_machine_outbox: the event of the step that
+--                      wrote the effect (type, payload, actor, origin,
+--                      instant), handed to the effect handlers through
+--                      EffectContext; TEXT, as the definition column
+--                      (CLOB on Oracle and DB2, NVARCHAR(MAX) on SQL
+--                      Server)
+--
+-- Additive migration 2.9 -> 2.10.0, for tables created by an older
+-- script (PostgreSQL, MySQL, MariaDB and SQLite accept it as it is),
+-- then the stores are given columns: PdoMachineSchema::COLUMNS_SINCE_2_10.
+-- Nothing changes for an application that does not run it: without the
+-- column the handlers see EffectContext::hasEvent() false.
+--
+--   ALTER TABLE state_machine_outbox ADD COLUMN event_snapshot TEXT;
+--
+-- Wide JSON columns (since 2.10.0, documented, not applied here): the
+-- JSON columns are VARCHAR(4000) so the script runs everywhere, and the
+-- PDO stores neither truncate nor validate their length: a longer value
+-- is refused by the database itself (PostgreSQL 22001 "value too long";
+-- MySQL and MariaDB in strict mode, 1406 "Data too long"; SQLite does not
+-- enforce VARCHAR lengths). When a payload can be larger (a free-text
+-- observation, an HTML body), widen the columns that carry it, once,
+-- with the migration tool of the application. The library ships no such
+-- migration: the change is per database and is the application's.
+--   payload            state_machine_history and state_machine_rejection
+--   transition_result  state_machine_idempotency (holds the payload too)
+--   snapshot           state_machine_instance (when the regions or the
+--                      deadlines are many)
+--   reason             state_machine_rejection
+-- Per database:
+--   PostgreSQL         ALTER TABLE state_machine_history ALTER COLUMN payload TYPE TEXT;
+--                      ALTER TABLE state_machine_idempotency ALTER COLUMN transition_result TYPE TEXT;
+--   MySQL, MariaDB     ALTER TABLE state_machine_history MODIFY payload MEDIUMTEXT;
+--                      ALTER TABLE state_machine_idempotency MODIFY transition_result MEDIUMTEXT NOT NULL;
+--                      (TEXT holds 64 KiB, MEDIUMTEXT 16 MiB; a UNIQUE
+--                      or index on these columns is not needed)
+--   SQLite             nothing: VARCHAR(n) is not enforced
+--   Oracle, DB2        a CLOB column (add, copy, drop, rename)
+--   SQL Server         ALTER TABLE state_machine_history ALTER COLUMN payload NVARCHAR(MAX);
+--                      ALTER TABLE state_machine_idempotency ALTER COLUMN transition_result NVARCHAR(MAX) NOT NULL;
+-- (the same for state_machine_rejection.payload and .reason, and for
+-- state_machine_instance.snapshot, which is NOT NULL)
 --
 -- Upgrading a database created by the 1.8 script (1.9.0): CREATE TABLE
 -- IF NOT EXISTS does not add a column to an existing table, so add the
@@ -201,6 +250,7 @@ CREATE TABLE IF NOT EXISTS state_machine_outbox (
     enqueued_at              VARCHAR(26)    NOT NULL,
     delivered_at             VARCHAR(26),
     last_attempt_at          VARCHAR(26),
+    event_snapshot           TEXT,
     CONSTRAINT pk_state_machine_outbox PRIMARY KEY (instance_id, instance_version, sort_order),
     CONSTRAINT uq_smo_pending UNIQUE (status, enqueued_at, instance_id, instance_version, sort_order),
     CONSTRAINT chk_smo_status CHECK (status IN ('pending', 'delivered', 'failed')),

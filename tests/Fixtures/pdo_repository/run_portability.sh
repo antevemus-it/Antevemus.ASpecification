@@ -21,6 +21,9 @@
 # 2.7.0: Module40_StateMachineRealConsumerTest, the state machine for a real consumer (legacy state codes, the
 # versioned definitions with drafts over PDO, two connections publishing at once, tenants InMemory = PDO, a
 # database of the 2.6 DDL and its additive migration, the acceptance replay) on the three of them.
+# 2.10.0: Module45_StateMachineAdoptionTest, adopting the machine in a running system (startAt() with tenant, the
+# event of the step in the outbox through the opt-in column, the 2.9 DDL and its additive migration, the wide JSON
+# columns of the DDL's header, sendMany() == send() over random sequences) on the three of them.
 # 2.8.0: Module43_DistributedCacheTest over a real Redis 7.4 (disposable container) through the development PSR-16
 # client of the suite (tests/Support/RedisCache.php, RESP over TCP; nothing enters require): two servers sharing
 # one cache with real TTLs, and a second PHP process reading the catalog entries and routing clusters this one wrote.
@@ -91,7 +94,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

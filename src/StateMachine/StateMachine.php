@@ -10,8 +10,10 @@ use Antevemus\ASpecification\Results\SpecificationResult;
 use Antevemus\ASpecification\StateMachine\Calendar\DeadlineCalendarRegistry;
 use Antevemus\ASpecification\StateMachine\Calendar\IDeadlineCalendar;
 use Antevemus\ASpecification\StateMachine\Exceptions\InvalidSnapshotException;
+use Antevemus\ASpecification\StateMachine\Exceptions\StateMachineException;
 use Antevemus\ASpecification\StateMachine\Exceptions\UnknownDeadlineCalendarException;
 use Antevemus\ASpecification\StateMachine\Exceptions\UnknownGuardException;
+use Closure;
 use DateTimeImmutable;
 
 /**
@@ -60,8 +62,20 @@ use DateTimeImmutable;
  *   without final states (an orthogonal flag such as "pending none/open") is auxiliary and does
  *   not hold the machine open. A machine with no final state anywhere is never done. Once done,
  *   the machine is inert: every event is unhandled (CODE_MACHINE_DONE) and nextEvents() is empty.
+ * - Primary reason (2.10.0): a rejected result also names the failures to show
+ *   (TransitionResult::getPrimaryReason()) and keeps those of every other refusing candidate as
+ *   details. Within the first rejecting region, the candidate that came closest wins: one whose
+ *   guard could not be evaluated; otherwise the candidates neither refused by a role guard
+ *   (GuardRegistry::markRoleGuards()) nor internal-only; among them the one with the fewest
+ *   failures; then priority order (the state's transitions before the region's, in declaration
+ *   order: the most specific first).
+ * - Classification (2.10.0): nextEvents() classifies each listed event (CandidateReason) and treats
+ *   `payloadHas` as "requires": an event refused only because the test payload is empty is
+ *   MISSING_PAYLOAD, with the fields to ask for; its status and reason stay as transition() gives them.
+ * - Import (2.10.0): snapshotAt() builds the snapshot of an instance already in given states (a
+ *   process brought from another system), with no entry action and no guard.
  *
- * @version    2.7.0
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +89,12 @@ final class StateMachine
      * runner records for the start rows of the history).
      */
     public const START_EVENT = 'machine.start';
+
+    /**
+     * Type of the internal event the pause conditions see when a snapshot is imported (2.10.0; the same
+     * reserved type the runner records for the history rows of startAt()).
+     */
+    public const IMPORT_EVENT = 'machine.import';
 
     private readonly GuardRegistry $guards;
 
@@ -184,6 +204,106 @@ final class StateMachine
     }
 
     /**
+     * Computes the snapshot of an instance imported in given states (2.10.0): each region in the state
+     * given for it (a region left out starts in its initial state), with NO entry action and NO guard
+     * (the states are a fact brought from elsewhere, not a transition). Deadlines are computed as at the
+     * start, counting from $at (and from the context for `afterFrom`/`atFrom` sources), and paused when
+     * their `pausedWhile` holds on the imported snapshot (seen with the internal event IMPORT_EVENT). One
+     * TakenTransition per region (`from` and `transitionId` null), no effect. The snapshot is done when
+     * the done rule says so, which needs $allowFinal.
+     *
+     * When a deadline source is missing or invalid (or a pause condition throws), the import is REJECTED
+     * exactly as a start is (reason CODE_DEADLINE_SOURCE_INVALID or `evaluation_error`); its snapshot is
+     * informative only.
+     *
+     * @param MachineDefinition $definition Machine definition (validated beforehand)
+     * @param array<string, string> $statesByRegion Region name => state name
+     * @param object|array<mixed>|null $context Domain context read by deadline sources and pause conditions
+     * @param DateTimeImmutable $at Instant the deadlines count from
+     * @param bool $allowFinal Whether a final state may be given (an instance imported already finished)
+     * @return TransitionResult Accepted result whose snapshot is the imported snapshot (or rejected, see above)
+     * @throws InvalidSnapshotException When a region is unknown, a state is not declared in its region, or a
+     *                                  final state is given without $allowFinal
+     */
+    public function snapshotAt(
+        MachineDefinition $definition,
+        array $statesByRegion,
+        object|array|null $context,
+        DateTimeImmutable $at,
+        bool $allowFinal = false
+    ): TransitionResult {
+        foreach ($statesByRegion as $name => $state) {
+            if ($definition->getRegion((string) $name) === null) {
+                throw new InvalidSnapshotException(sprintf(
+                    'Machine "%s" v%d has no region "%s"; the regions are [%s].',
+                    $definition->key,
+                    $definition->version,
+                    (string) $name,
+                    implode(', ', $definition->regionNames())
+                ));
+            }
+            if (!is_string($state)) {
+                throw new InvalidSnapshotException(sprintf('The state given for region "%s" must be a state name (got %s).', (string) $name, get_debug_type($state)));
+            }
+        }
+
+        $states = [];
+        $dueAt = [];
+        $taken = [];
+        /** @var array<string, SpecificationResult> $rejections */
+        $rejections = [];
+        foreach ($definition->regions as $region) {
+            $name = $statesByRegion[$region->name] ?? $region->initial;
+            $state = $name !== null ? $region->getState($name) : null;
+            if ($state === null) {
+                throw new InvalidSnapshotException(sprintf(
+                    'Region "%s" of machine "%s" v%d declares no state "%s"; its states are [%s].',
+                    $region->name,
+                    $definition->key,
+                    $definition->version,
+                    (string) $name,
+                    implode(', ', $region->stateNames())
+                ));
+            }
+            if ($state->final && !$allowFinal) {
+                throw new InvalidSnapshotException(sprintf(
+                    'State "%s" of region "%s" is final; importing an instance in a final state needs allowFinal.',
+                    $state->name,
+                    $region->name
+                ));
+            }
+            $states[$region->name] = $state->name;
+            $dueAt[$region->name] = null;
+            if ($state->deadline !== null) {
+                $due = $this->dueOf($region, $state, null, null, $at, $context);
+                if ($due instanceof SpecificationResult) {
+                    $rejections[$region->name] = $due;
+                } else {
+                    $dueAt[$region->name] = $due;
+                }
+            }
+            $taken[] = new TakenTransition($region->name, null, $state->name, null, null);
+        }
+
+        $snapshot = new MachineSnapshot($definition->key, $definition->version, $states, $dueAt);
+        $snapshot = $snapshot->withDone(self::isDone($definition, $snapshot));
+        if ($rejections === []) {
+            [$snapshot, $rejections] = $this->applyPauses($definition, $snapshot, Event::internal(self::IMPORT_EVENT, $at), $context);
+        }
+        if ($rejections !== []) {
+            return new TransitionResult(
+                TransitionStatus::REJECTED,
+                null,
+                $snapshot,
+                reason: SpecificationResult::combine(...$rejections),
+                rejections: $rejections
+            );
+        }
+
+        return new TransitionResult(TransitionStatus::ACCEPTED, null, $snapshot, $taken);
+    }
+
+    /**
      * Computes what the event does to the snapshot. Pure: nothing is executed nor persisted.
      *
      * @param MachineDefinition $definition Machine definition (the version the snapshot is pinned to)
@@ -221,6 +341,8 @@ final class StateMachine
         $selected = [];
         /** @var array<string, SpecificationResult> $rejections */
         $rejections = [];
+        /** @var array<string, list<array{transition: TransitionDefinition, state: StateDefinition, verdict: SpecificationResult}>> $refused */
+        $refused = [];
 
         foreach ($definition->regions as $region) {
             $state = $region->getState($snapshot->stateOf($region->name));
@@ -231,6 +353,7 @@ final class StateMachine
             }
 
             $failures = [];
+            $tried = [];
             $chosen = null;
             foreach ($candidates as $transition) {
                 $verdict = $this->checkCandidate($region, $state, $transition, $candidate);
@@ -239,6 +362,7 @@ final class StateMachine
                     break;
                 }
                 $failures[] = $verdict;
+                $tried[] = ['transition' => $transition, 'state' => $state, 'verdict' => $verdict];
                 if ($verdict->isError) {
                     break;
                 }
@@ -248,16 +372,21 @@ final class StateMachine
                 $selected[$region->name] = ['region' => $region, 'from' => $state, 'transition' => $chosen];
             } else {
                 $rejections[$region->name] = SpecificationResult::combine(...$failures);
+                $refused[$region->name] = $tried;
             }
         }
 
         if ($rejections !== []) {
+            [$primary, $details] = $this->primaryOf($refused, $candidate);
+
             return new TransitionResult(
                 TransitionStatus::REJECTED,
                 $event,
                 $snapshot,
                 reason: SpecificationResult::combine(...array_values($rejections)),
-                rejections: $rejections
+                rejections: $rejections,
+                primaryReason: $primary,
+                details: $details
             );
         }
 
@@ -313,6 +442,12 @@ final class StateMachine
      * candidate is internal-only (declared internal, or the current state's deadline event) are
      * omitted unless $includeInternal is true.
      *
+     * Since 2.10.0 each result also carries its classification (TransitionResult::getCandidateReason(),
+     * see CandidateReason) and, for MISSING_PAYLOAD, the payload fields to ask for
+     * (getMissingPayload()): `payloadHas` is read as "requires" (a region whose candidate passes once
+     * those fields are given is not counted as refusing), so the panel keeps the button and asks for the
+     * data. The status and the reason of each result are those of transition(), unchanged.
+     *
      * @param MachineDefinition $definition Machine definition
      * @param MachineSnapshot $snapshot Current snapshot
      * @param object|array<mixed>|null $context Domain context read by the guards
@@ -351,12 +486,8 @@ final class StateMachine
             if (!$hasExternal && !$includeInternal) {
                 continue;
             }
-            $results[$type] = $this->transition(
-                $definition,
-                $snapshot,
-                Event::external((string) $type, $occurredAt),
-                $context
-            );
+            $event = Event::external((string) $type, $occurredAt);
+            $results[$type] = $this->classify($definition, $snapshot, $event, $context, $this->transition($definition, $snapshot, $event, $context));
         }
 
         return $results;
@@ -400,6 +531,37 @@ final class StateMachine
         TransitionDefinition $transition,
         TransitionCandidate $candidate
     ): SpecificationResult {
+        $implicit = $this->implicitRefusal($region, $state, $transition, $candidate);
+        if ($implicit !== null) {
+            return $implicit;
+        }
+
+        if ($transition->guard === null) {
+            return SpecificationResult::satisfied();
+        }
+
+        try {
+            $specification = $this->guards->compile($transition->guard);
+            $result = $specification->evaluate($candidate);
+        } catch (UnknownGuardException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $result = SpecificationResult::error($e, 'Guard:' . $transition->id, code: $transition->guard->getCode());
+        }
+
+        return $result->isSatisfied ? $result : $this->stamp($result, $region, $transition, $candidate->event);
+    }
+
+    /**
+     * The failure of the implicit guards of a candidate (internal-only transition reached by an external
+     * event, deadline event not due), or null when they pass.
+     */
+    private function implicitRefusal(
+        RegionDefinition $region,
+        StateDefinition $state,
+        TransitionDefinition $transition,
+        TransitionCandidate $candidate
+    ): ?SpecificationResult {
         $event = $candidate->event;
         $isDeadlineEvent = $state->deadline !== null && $state->deadline->event === $event->type;
 
@@ -433,20 +595,222 @@ final class StateMachine
             }
         }
 
-        if ($transition->guard === null) {
-            return SpecificationResult::satisfied();
+        return null;
+    }
+
+    /**
+     * The primary reason of a rejection and the details (2.10.0): within the first rejecting region, the
+     * candidate that came closest (see the class description); every other refusing candidate of every
+     * rejecting region goes to the details, in the order tried.
+     *
+     * @param array<string, list<array{transition: TransitionDefinition, state: StateDefinition, verdict: SpecificationResult}>> $refused
+     * @return array{0: SpecificationResult|null, 1: list<SpecificationResult>} Primary (null = the reason) and details
+     */
+    private function primaryOf(array $refused, TransitionCandidate $candidate): array
+    {
+        $all = array_merge(...array_values($refused));
+        if (count($all) === 1) {
+            return [null, []];
+        }
+        $first = $refused[array_key_first($refused)];
+        $best = null;
+        $bestRank = null;
+        foreach ($first as $tried) {
+            $verdict = $tried['verdict'];
+            // Compared in order, false before true: an evaluation error first, then a candidate the caller may
+            // send (neither internal-only nor refused by a role guard), then the fewest failures; on a tie the
+            // earlier candidate (the most specific) stays.
+            $rank = [
+                !$verdict->isError,
+                ($this->isInternalOnly($tried['state'], $tried['transition']) && !$candidate->event->isInternal())
+                    || $this->refusedByRole($tried['transition'], $candidate),
+                count($verdict->failures),
+            ];
+            if ($bestRank === null || $rank < $bestRank) {
+                $best = $verdict;
+                $bestRank = $rank;
+            }
+        }
+        $details = [];
+        foreach ($all as $tried) {
+            if ($tried['verdict'] !== $best) {
+                $details[] = $tried['verdict'];
+            }
         }
 
+        return [$best, $details];
+    }
+
+    /**
+     * True when a role guard (GuardRegistry::markRoleGuards()) of the transition refuses the candidate:
+     * its guard, with every leaf that is not a role guard assumed out of the way, fails (2.10.0).
+     */
+    private function refusedByRole(TransitionDefinition $transition, TransitionCandidate $candidate): bool
+    {
+        $guard = $transition->guard;
+        if ($guard === null) {
+            return false;
+        }
         try {
-            $specification = $this->guards->compile($transition->guard);
-            $result = $specification->evaluate($candidate);
-        } catch (UnknownGuardException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            $result = SpecificationResult::error($e, 'Guard:' . $transition->id, code: $transition->guard->getCode());
+            return !$this->holdsAssuming($guard, $candidate, fn(GuardRef $ref): bool => !$this->guards->isRoleGuard($ref->name));
+        } catch (\Throwable) {
+            // A role guard that throws is an evaluation error, already reported as such: not a refusal by role.
+            return false;
+        }
+    }
+
+    /**
+     * Evaluates a guard expression with some leaves assumed out of the way (2.10.0): an assumed leaf is
+     * true where the expression needs it true and false under a `not`, so it never causes a refusal.
+     *
+     * @param Closure(GuardRef): bool $assume Whether a leaf is assumed
+     */
+    private function holdsAssuming(GuardExpression $expression, TransitionCandidate $candidate, Closure $assume, bool $positive = true): bool
+    {
+        if ($expression instanceof GuardRef) {
+            return $assume($expression) ? $positive : $this->guards->build($expression->name, $expression->params)->isSatisfiedBy($candidate);
+        }
+        if ($expression instanceof GuardNot) {
+            return !$this->holdsAssuming($expression->operand, $candidate, $assume, !$positive);
+        }
+        if ($expression instanceof GuardAllOf) {
+            foreach ($expression->operands as $operand) {
+                if (!$this->holdsAssuming($operand, $candidate, $assume, $positive)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        if ($expression instanceof GuardAnyOf) {
+            foreach ($expression->operands as $operand) {
+                if ($this->holdsAssuming($operand, $candidate, $assume, $positive)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        return $result->isSatisfied ? $result : $this->stamp($result, $region, $transition, $event);
+        throw new StateMachineException('Unsupported guard expression node: ' . get_class($expression));
+    }
+
+    /**
+     * The `payloadHas` fields of a guard (where the guard needs them present) that the event payload does
+     * not provide, in the order of the guard (2.10.0; repeated when the guard repeats them).
+     *
+     * @return list<string>
+     */
+    private function missingPayloadFields(GuardExpression $expression, TransitionCandidate $candidate, bool $positive = true): array
+    {
+        if ($expression instanceof GuardRef) {
+            $field = $expression->params['field'] ?? null;
+            if (!$positive || $expression->name !== GuardRegistry::PAYLOAD_HAS || !is_string($field)) {
+                return [];
+            }
+
+            return (new PayloadHasSpecification($field))->isSatisfiedBy($candidate) ? [] : [$field];
+        }
+        if ($expression instanceof GuardNot) {
+            return $this->missingPayloadFields($expression->operand, $candidate, !$positive);
+        }
+        /** @var GuardAllOf|GuardAnyOf $expression the only other nodes */
+        $fields = [];
+        foreach ($expression->operands as $operand) {
+            $fields = [...$fields, ...$this->missingPayloadFields($operand, $candidate, $positive)];
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Classifies a result of nextEvents() (2.10.0; see CandidateReason). Status and reason unchanged.
+     *
+     * @param object|array<mixed>|null $context
+     */
+    private function classify(
+        MachineDefinition $definition,
+        MachineSnapshot $snapshot,
+        Event $event,
+        object|array|null $context,
+        TransitionResult $result
+    ): TransitionResult {
+        if ($result->isUnhandled()) {
+            return $result;
+        }
+        $missing = [];
+        $reason = CandidateReason::ALLOWED;
+        if (!$result->isAccepted()) {
+            $candidate = new TransitionCandidate($context, $event, $snapshot);
+            /** @var list<CandidateReason> $refusals */
+            $refusals = [];
+            foreach ($definition->regions as $region) {
+                $state = $region->getState($snapshot->stateOf($region->name));
+                \assert($state !== null);
+                $byCandidate = [];
+                $passes = false;
+                foreach ($region->candidatesFor($state, $event->type) as $transition) {
+                    $verdict = $this->checkCandidate($region, $state, $transition, $candidate);
+                    if ($verdict->isSatisfied) {
+                        $passes = true;
+                        break;
+                    }
+                    if ($verdict->isError || $this->implicitRefusal($region, $state, $transition, $candidate) !== null) {
+                        $byCandidate[] = CandidateReason::GUARD_REFUSED;
+                        if ($verdict->isError) {
+                            break;
+                        }
+                        continue;
+                    }
+                    \assert($transition->guard !== null);
+                    if ($this->refusedByRole($transition, $candidate)) {
+                        $byCandidate[] = CandidateReason::ROLE_REFUSED;
+                        continue;
+                    }
+                    $fields = $this->missingPayloadFields($transition->guard, $candidate);
+                    if ($fields !== [] && $this->requiresOnly($transition->guard, $candidate)) {
+                        $missing = [...$missing, ...$fields];
+                        $passes = true;
+                        break;
+                    }
+                    $byCandidate[] = CandidateReason::GUARD_REFUSED;
+                }
+                if (!$passes && $byCandidate !== []) {
+                    $refusals[] = in_array(CandidateReason::GUARD_REFUSED, $byCandidate, true)
+                        ? CandidateReason::GUARD_REFUSED
+                        : CandidateReason::ROLE_REFUSED;
+                }
+            }
+            $reason = match (true) {
+                in_array(CandidateReason::ROLE_REFUSED, $refusals, true) => CandidateReason::ROLE_REFUSED,
+                $refusals !== [] || $missing === [] => CandidateReason::GUARD_REFUSED,
+                default => CandidateReason::MISSING_PAYLOAD,
+            };
+            $missing = $reason === CandidateReason::MISSING_PAYLOAD ? array_unique($missing) : [];
+        }
+
+        return new TransitionResult(
+            $result->status,
+            $result->event,
+            $result->snapshot,
+            $result->getTransitions(),
+            $result->getEffects(),
+            $result->reason,
+            $result->getRejections(),
+            $result->primaryReason,
+            $result->getDetails(),
+            $reason,
+            $missing
+        );
+    }
+
+    /**
+     * True when the guard passes once its `payloadHas` leaves are assumed provided (2.10.0). Called only for
+     * a guard that was evaluated without error, so its leaves evaluate.
+     */
+    private function requiresOnly(GuardExpression $guard, TransitionCandidate $candidate): bool
+    {
+        return $this->holdsAssuming($guard, $candidate, static fn(GuardRef $ref): bool => $ref->name === GuardRegistry::PAYLOAD_HAS);
     }
 
     /**

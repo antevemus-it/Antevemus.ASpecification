@@ -7,6 +7,7 @@ namespace Antevemus\ASpecification\StateMachine\Persistence\Pdo;
 use Antevemus\ASpecification\StateMachine\Effect;
 use Antevemus\ASpecification\StateMachine\EffectPhase;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachinePersistenceException;
+use Antevemus\ASpecification\StateMachine\Persistence\EventSnapshot;
 use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutbox;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxEntry;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxStatus;
@@ -21,7 +22,11 @@ use DateTimeImmutable;
  * instance is still undelivered and not exhausted. Marks are single-row UPDATEs by primary key
  * with `attempts = attempts + 1`.
  *
- * @version    1.8.0
+ * Since 2.10.0, with the opt-in column `event_snapshot` mapped (PdoMachineSchema::COLUMNS_SINCE_2_10),
+ * each entry is written and read back with the event of its step (EventSnapshot, JSON); unmapped, the
+ * column is never touched and an entry read back has no event.
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -56,7 +61,9 @@ final class PdoEffectOutbox implements IEffectOutbox
                 'enqueued_at' => PersistenceSupport::toText($entry->enqueuedAt),
                 'delivered_at' => $entry->deliveredAt === null ? null : PersistenceSupport::toText($entry->deliveredAt),
                 'last_attempt_at' => $entry->lastAttemptAt === null ? null : PersistenceSupport::toText($entry->lastAttemptAt),
-            ]);
+            ] + ($this->schema->hasColumn('event_snapshot') ? [
+                'event_snapshot' => $entry->event === null ? null : PersistenceSupport::encodeJson($entry->event->toArray()),
+            ] : []));
         }
     }
 
@@ -79,7 +86,7 @@ final class PdoEffectOutbox implements IEffectOutbox
 
         $sql = $s->limit(sprintf(
             'SELECT %s FROM %s o WHERE %s AND NOT EXISTS (SELECT 1 FROM %s p WHERE p.%s = o.%s AND %s AND (p.%s < o.%s OR (p.%s = o.%s AND p.%s < o.%s))) ORDER BY o.%s, o.%s',
-            $s->selectList(PdoMachineSchema::TABLE_COLUMNS['outbox'], 'o'),
+            $s->selectList($this->columns(), 'o'),
             $s->table('outbox'),
             $open('o', 'o'),
             $s->table('outbox'),
@@ -140,7 +147,7 @@ final class PdoEffectOutbox implements IEffectOutbox
     {
         $rows = $this->schema->fetchAll(sprintf(
             'SELECT %s FROM %s WHERE %s = :instance_id ORDER BY %s, %s',
-            $this->schema->selectList(PdoMachineSchema::TABLE_COLUMNS['outbox']),
+            $this->schema->selectList($this->columns()),
             $this->schema->table('outbox'),
             $this->schema->column('instance_id'),
             $this->schema->column('instance_version'),
@@ -174,6 +181,18 @@ final class PdoEffectOutbox implements IEffectOutbox
     }
 
     /**
+     * The canonical columns read: those of the reference DDL, plus `event_snapshot` when mapped (2.10.0).
+     *
+     * @return list<string>
+     */
+    private function columns(): array
+    {
+        return $this->schema->hasColumn('event_snapshot')
+            ? [...PdoMachineSchema::TABLE_COLUMNS['outbox'], 'event_snapshot']
+            : PdoMachineSchema::TABLE_COLUMNS['outbox'];
+    }
+
+    /**
      * @param array<string, mixed> $row
      */
     private function hydrate(array $row): OutboxEntry
@@ -202,7 +221,25 @@ final class PdoEffectOutbox implements IEffectOutbox
             $row['last_error'] === null ? null : (string) $row['last_error'],
             PersistenceSupport::fromText((string) $row['enqueued_at']),
             $row['delivered_at'] === null ? null : PersistenceSupport::fromText((string) $row['delivered_at']),
-            $row['last_attempt_at'] === null ? null : PersistenceSupport::fromText((string) $row['last_attempt_at'])
+            $row['last_attempt_at'] === null ? null : PersistenceSupport::fromText((string) $row['last_attempt_at']),
+            self::eventOf($row['event_snapshot'] ?? null)
         );
+    }
+
+    /**
+     * The event snapshot of a row (2.10.0), or null when the column is unmapped or empty.
+     *
+     * @throws MachinePersistenceException When the stored snapshot is malformed
+     */
+    private static function eventOf(mixed $stored): ?EventSnapshot
+    {
+        if ($stored === null || $stored === '') {
+            return null;
+        }
+        try {
+            return EventSnapshot::fromArray(PersistenceSupport::decodeJson((string) $stored, 'event snapshot'));
+        } catch (\InvalidArgumentException $e) {
+            throw new MachinePersistenceException('Stored event snapshot is malformed: ' . $e->getMessage(), 0, $e);
+        }
     }
 }

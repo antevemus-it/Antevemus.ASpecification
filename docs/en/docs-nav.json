@@ -157,6 +157,10 @@
         {
           "text": "A real consumer",
           "path": "state-machine/real-consumer"
+        },
+        {
+          "text": "Adopting it in a running system",
+          "path": "state-machine/adoption"
         }
       ]
     },

@@ -286,7 +286,8 @@ class Module18_StateMachineRunnerTest extends TestCase
             $info = $pdo->query("PRAGMA table_info({$table})")->fetchAll(PDO::FETCH_ASSOC);
             $columns = array_map(static fn(array $c): string => $c['name'], $info);
             // 2.7.0: the DDL also declares the opt-in columns (tenant, state codes), last; unmapped, the stores never touch them
-            $this->assertEquals([...PdoMachineSchema::TABLE_COLUMNS[$role], ...(PdoMachineSchema::TABLE_COLUMNS_SINCE_2_7[$role] ?? [])], $columns, "Columns of {$table} match the canonical list");
+            // 2.10.0: and the event of the step in the outbox (event_snapshot), after them
+            $this->assertEquals([...PdoMachineSchema::TABLE_COLUMNS[$role], ...(PdoMachineSchema::TABLE_COLUMNS_SINCE_2_7[$role] ?? []), ...(PdoMachineSchema::TABLE_COLUMNS_SINCE_2_10[$role] ?? [])], $columns, "Columns of {$table} match the canonical list");
             $pk = array_filter($info, static fn(array $c): bool => (int) $c['pk'] > 0);
             $this->assertTrue($pk !== [], "{$table} has a primary key");
         }

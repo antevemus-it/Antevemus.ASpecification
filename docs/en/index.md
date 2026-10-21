@@ -59,6 +59,7 @@ The official documentation of the library, one page per topic. The same pages ex
 - [Deadlines in business time](state-machine/business-time.md) (example 14.11): business days, working hours and holidays; a pause that does not spend the weekend.
 - [Use cases](state-machine/use-cases.md) (example 15): `IUseCase`, `UseCaseRunner` and the result shared with the machine.
 - [A real consumer](state-machine/real-consumer.md) (example 23): legacy state codes, definitions versioned in the database with drafts and publication, and tenants sharing one machine.
+- [Adopting it in a running system](state-machine/adoption.md) (example 24): importing processes under way, effect handlers that read the event, an action panel that tells "give the data" from "not yours" with one reason to show, wide JSON columns and batches with `sendMany()`.
 
 ### Data resolution
 

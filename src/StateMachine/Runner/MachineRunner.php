@@ -19,7 +19,9 @@ use Antevemus\ASpecification\StateMachine\MachineDefinition;
 use Antevemus\ASpecification\StateMachine\MachineDefinitionValidator;
 use Antevemus\ASpecification\StateMachine\MachineSnapshot;
 use Antevemus\ASpecification\StateMachine\Persistence\DueDeadline;
+use Antevemus\ASpecification\StateMachine\Persistence\EventSnapshot;
 use Antevemus\ASpecification\StateMachine\Persistence\HistoryEntry;
+use Antevemus\ASpecification\StateMachine\Persistence\IBatchIdempotencyStore;
 use Antevemus\ASpecification\StateMachine\Persistence\IMachineDefinitionRepository;
 use Antevemus\ASpecification\StateMachine\Persistence\IMachineInstanceLister;
 use Antevemus\ASpecification\StateMachine\Persistence\ITenantScopedInstanceStore;
@@ -78,7 +80,18 @@ use Throwable;
  * - a registered IDefinitionAwareMachineMigration (MachineMigrations::byStateName()) receives the
  *   validated target definition.
  *
- * @version    2.7.0
+ * Since 2.10.0:
+ * - startAt(): creates an instance already in given states (a process brought from another system),
+ *   with one history row per region of the reserved type IMPORT_EVENT, no entry action, no guard and
+ *   no effect; a final state only with allowFinal; deadlines counted from the given instant;
+ * - every outbox entry carries the event of its step (EventSnapshot), and a handler that declares a
+ *   fourth parameter receives an EffectContext (synchronous handlers here, the others through the
+ *   EffectDispatcher);
+ * - sendMany(): many events in one call, one transaction per chunk, the idempotency keys of a chunk
+ *   looked up together (IBatchIdempotencyStore); one BatchEventOutcome per event, equal to what send()
+ *   would have given (see the method). send() is unchanged.
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Runner
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -92,6 +105,15 @@ final class MachineRunner
 
     /** Reserved event type of the history rows written by migrate(). */
     public const MIGRATE_EVENT = 'machine.migrate';
+
+    /** Reserved event type of the history rows written by startAt() (2.10.0). */
+    public const IMPORT_EVENT = 'machine.import';
+
+    /** Event types send() refuses: those of the history rows the runner writes by itself (2.10.0 adds IMPORT_EVENT). */
+    public const RESERVED_EVENTS = [self::START_EVENT, self::MIGRATE_EVENT, self::IMPORT_EVENT];
+
+    /** Default number of events per transaction of sendMany() (2.10.0). */
+    public const DEFAULT_CHUNK_SIZE = 100;
 
     /** Prefix of the idempotency key of deadline events: `deadline:{region}:{due instant, UTC}`. */
     public const DEADLINE_KEY_PREFIX = 'deadline:';
@@ -184,7 +206,78 @@ final class MachineRunner
                 );
             }
             $this->persistence->history->append($rows);
-            $this->writeEffects($instance, $result->getEffects(), $occurredAt);
+            $this->writeEffects($instance, $result->getEffects(), $occurredAt, new EventSnapshot(self::START_EVENT, [], $actor, EventOrigin::INTERNAL, $occurredAt));
+
+            return $result;
+        });
+    }
+
+    /**
+     * Creates an instance already in the given states (2.10.0): a process brought from another system
+     * (a migration of open processes) enters the machine where it stands, not at the initial state.
+     *
+     * Version 1, one history row per region (event type IMPORT_EVENT, from null, to the state, internal
+     * origin, the actor and the payload given here), NO entry action, NO guard, NO effect: the states are
+     * a fact, not a transition. A region left out of $statesByRegion starts in its initial state. The
+     * deadlines of the given states count from $at (and from the context for `afterFrom`/`atFrom`), and
+     * pause when their `pausedWhile` holds, as at the start. A final state is refused unless $allowFinal
+     * (an instance imported already finished is then created done).
+     *
+     * @param string $instanceId Instance id chosen by the caller (at most 120 characters)
+     * @param string $machineKey Machine key
+     * @param int|null $version Definition version; null = the latest registered
+     * @param array<string, string> $statesByRegion Region name => state name
+     * @param object|array<mixed>|null $context Domain context read by deadline sources and pause conditions
+     * @param DateTimeImmutable $at Instant of the import (deadlines count from it)
+     * @param string|null $actor Who imported it, recorded in the history
+     * @param array<mixed> $payload Data of the import recorded in the history rows (e.g. the id in the
+     *                              other system); empty by default
+     * @param bool $allowFinal Whether a final state may be given
+     * @param string|null $tenant Tenant the instance belongs to, fixed for its life; null = none
+     * @return TransitionResult Accepted result (event null, no effect); rejected, with nothing written,
+     *                          when a deadline cannot be computed (SM_DEADLINE_SOURCE_INVALID)
+     * @throws \Antevemus\ASpecification\StateMachine\Exceptions\InvalidSnapshotException When a region is
+     *         unknown, a state is not declared in its region, or a final state is given without $allowFinal
+     * @throws MachineInstanceAlreadyExistsException When the id is taken (by any tenant)
+     * @throws UnknownMachineDefinitionException When the definition is not registered
+     * @throws InvalidMachineDefinitionException When the definition is refused by the validator
+     * @throws InvalidArgumentException When the tenant is empty, padded or longer than 120 characters
+     */
+    public function startAt(
+        string $instanceId,
+        string $machineKey,
+        ?int $version,
+        array $statesByRegion,
+        object|array|null $context,
+        DateTimeImmutable $at,
+        ?string $actor = null,
+        array $payload = [],
+        bool $allowFinal = false,
+        ?string $tenant = null
+    ): TransitionResult {
+        PersistenceSupport::assertInstanceId($instanceId);
+        $version ??= $this->definitions->latestVersion($machineKey)
+            ?? throw new UnknownMachineDefinitionException(sprintf('Machine "%s" has no registered version.', $machineKey));
+        $definition = $this->definitionFor($machineKey, $version);
+        $result = $this->machine->snapshotAt($definition, $statesByRegion, $context, $at, $allowFinal);
+
+        return $this->persistence->transactions->transactional(function () use ($instanceId, $definition, $result, $at, $actor, $payload, $tenant): TransitionResult {
+            if ($this->persistence->instances->load($instanceId) !== null) {
+                throw new MachineInstanceAlreadyExistsException(sprintf('Machine instance "%s" already exists.', $instanceId));
+            }
+            if (!$result->isAccepted()) {
+                return $result;
+            }
+            $this->persistence->instances->insert(new MachineInstance($instanceId, $result->snapshot, 1, $at, $at, $tenant));
+
+            $rows = [];
+            foreach ($result->getTransitions() as $order => $taken) {
+                $rows[] = new HistoryEntry(
+                    $instanceId, 1, $order, $definition->key, $definition->version, $taken->region,
+                    null, $taken->to, self::IMPORT_EVENT, null, $payload, $actor, null, EventOrigin::INTERNAL, $at
+                );
+            }
+            $this->persistence->history->append($rows);
 
             return $result;
         });
@@ -215,7 +308,7 @@ final class MachineRunner
         ?int $expectedVersion = null,
         ?string $tenant = null
     ): TransitionResult {
-        if ($event->type === self::START_EVENT || $event->type === self::MIGRATE_EVENT) {
+        if (in_array($event->type, self::RESERVED_EVENTS, true)) {
             throw new InvalidArgumentException(sprintf('Event type "%s" is reserved by the machine runner.', $event->type));
         }
 
@@ -267,7 +360,7 @@ final class MachineRunner
                 );
             }
             $this->persistence->history->append($rows);
-            $this->writeEffects($next, $result->getEffects(), $event->occurredAt);
+            $this->writeEffects($next, $result->getEffects(), $event->occurredAt, EventSnapshot::of($event, $actor));
 
             if ($event->idempotencyKey !== null) {
                 $this->persistence->idempotency->record($instanceId, $event->idempotencyKey, $next->version, $result, $event->occurredAt);
@@ -275,6 +368,60 @@ final class MachineRunner
 
             return $result;
         });
+    }
+
+    /**
+     * Sends many events (2.10.0): the same work as one send() per event, in the given order, with one
+     * transaction per chunk of $chunkSize events instead of one per event, and the idempotency keys of a
+     * chunk looked up together (one `IN (...)` query with the PDO store; one find() per event with a
+     * store that does not implement IBatchIdempotencyStore). send() itself is unchanged.
+     *
+     * One BatchEventOutcome per event, in order: the result send() would have returned, or the exception
+     * send() would have thrown for that event (unknown instance, version moved, synchronous effect
+     * veto), with nothing of that event written. The snapshots, history rows, outbox entries and
+     * idempotency records are those of the same send() calls in the same order.
+     *
+     * Failures after the first write of an event (a synchronous effect veto, a key recorded meanwhile, a
+     * database error) cannot be undone alone inside the chunk's transaction:
+     * - when the runner opened that transaction, it is rolled back and the chunk is sent again one event
+     *   at a time through send(), each in its own transaction, so the result is still that of send() per
+     *   event (a database error then propagates from the event that causes it, the earlier ones of the
+     *   chunk committed, as with a loop of send());
+     * - when the caller opened it (the runner joins an open transaction), the exception propagates, as it
+     *   would from send(), and the caller rolls its transaction back.
+     * The chunks before the failing one stay committed.
+     *
+     * @param iterable<BatchEvent> $events Events, consumed once, a chunk at a time
+     * @param string|null $actor Default actor of the events that do not name one
+     * @param int $chunkSize Events per transaction (>= 1; default 100)
+     * @param string|null $tenant Tenant the caller acts for; null = no tenant check
+     * @return list<BatchEventOutcome>
+     * @throws InvalidArgumentException When $chunkSize < 1 or an item is not a BatchEvent
+     * @throws StateMachineException When a tenant is given and the store is not tenant-scoped
+     */
+    public function sendMany(iterable $events, ?string $actor = null, int $chunkSize = self::DEFAULT_CHUNK_SIZE, ?string $tenant = null): array
+    {
+        if ($chunkSize < 1) {
+            throw new InvalidArgumentException(sprintf('The chunk size must be at least 1, %d given.', $chunkSize));
+        }
+        $outcomes = [];
+        $chunk = [];
+        $index = 0;
+        foreach ($events as $item) {
+            if (!$item instanceof BatchEvent) {
+                throw new InvalidArgumentException(sprintf('sendMany() expects BatchEvent items, %s given at position %d.', get_debug_type($item), $index));
+            }
+            $chunk[$index++] = $item;
+            if (count($chunk) === $chunkSize) {
+                array_push($outcomes, ...$this->sendChunk($chunk, $actor, $tenant));
+                $chunk = [];
+            }
+        }
+        if ($chunk !== []) {
+            array_push($outcomes, ...$this->sendChunk($chunk, $actor, $tenant));
+        }
+
+        return $outcomes;
     }
 
     /**
@@ -583,9 +730,10 @@ final class MachineRunner
      * synchronous ones, in effect order, inside the transaction.
      *
      * @param list<Effect> $effects
+     * @param EventSnapshot $event The event of the step, kept with each entry (2.10.0)
      * @throws SyncEffectFailedException
      */
-    private function writeEffects(MachineInstance $instance, array $effects, DateTimeImmutable $occurredAt): void
+    private function writeEffects(MachineInstance $instance, array $effects, DateTimeImmutable $occurredAt, EventSnapshot $event): void
     {
         if ($effects === []) {
             return;
@@ -605,7 +753,8 @@ final class MachineRunner
                 null,
                 $occurredAt,
                 $sync ? $occurredAt : null,
-                $sync ? $occurredAt : null
+                $sync ? $occurredAt : null,
+                $event
             );
         }
         $this->persistence->outbox->enqueue($entries);
@@ -614,14 +763,141 @@ final class MachineRunner
             if (!$this->effects->isSync($entry->effect->action)) {
                 continue;
             }
-            $handler = $this->effects->get($entry->effect->action);
-            \assert($handler !== null);
             try {
-                $handler($entry->effect, $entry->effectKey(), $instance->instanceId);
+                $this->effects->invoke(EffectContext::of($entry));
             } catch (Throwable $e) {
                 throw new SyncEffectFailedException($instance->instanceId, $entry->effect, $e);
             }
         }
+    }
+
+    /**
+     * One chunk of sendMany(): in one transaction; replayed through send() when an event fails after its
+     * first write and the runner owns the transaction (see sendMany()).
+     *
+     * @param array<int, BatchEvent> $chunk Position in the batch => event
+     * @return list<BatchEventOutcome>
+     */
+    private function sendChunk(array $chunk, ?string $actor, ?string $tenant): array
+    {
+        $transactions = $this->persistence->transactions;
+        $owned = method_exists($transactions, 'inTransaction') && !$transactions->inTransaction();
+        try {
+            return $transactions->transactional(fn(): array => $this->sendChunkInTransaction($chunk, $actor, $tenant));
+        } catch (Throwable $e) {
+            if (!$owned) {
+                throw $e;
+            }
+        }
+
+        $outcomes = [];
+        foreach ($chunk as $index => $item) {
+            try {
+                $result = $this->send($item->instanceId, $item->event, $item->context, $item->actor ?? $actor, $item->expectedVersion, $tenant);
+                $outcomes[] = new BatchEventOutcome($index, $item, $result);
+            } catch (MachineInstanceNotFoundException | ConcurrencyConflictException | SyncEffectFailedException $e) {
+                $outcomes[] = new BatchEventOutcome($index, $item, null, $e);
+            }
+        }
+
+        return $outcomes;
+    }
+
+    /**
+     * The steps of send() for every event of a chunk, inside the chunk's transaction. A failure before
+     * the first write of an event becomes its outcome; one after it propagates (see sendChunk()).
+     *
+     * @param array<int, BatchEvent> $chunk
+     * @return list<BatchEventOutcome>
+     */
+    private function sendChunkInTransaction(array $chunk, ?string $actor, ?string $tenant): array
+    {
+        $keys = [];
+        foreach ($chunk as $item) {
+            if ($item->event->idempotencyKey !== null) {
+                $keys[$item->instanceId][] = $item->event->idempotencyKey;
+            }
+        }
+        $store = $this->persistence->idempotency;
+        $known = $keys !== [] && $store instanceof IBatchIdempotencyStore ? $store->findMany($keys) : null;
+        /** @var array<string, array<string, true>> $recorded keys recorded by this chunk */
+        $recorded = [];
+
+        $outcomes = [];
+        foreach ($chunk as $index => $item) {
+            $event = $item->event;
+            $instanceId = $item->instanceId;
+            $who = $item->actor ?? $actor;
+            try {
+                $instance = $this->mustLoad($instanceId, $tenant);
+            } catch (MachineInstanceNotFoundException $e) {
+                $outcomes[] = new BatchEventOutcome($index, $item, null, $e);
+                continue;
+            }
+            $key = $event->idempotencyKey;
+            if ($key !== null) {
+                $original = ($known === null || ($recorded[$instanceId][$key] ?? false))
+                    ? $store->find($instanceId, $key)
+                    : ($known[$instanceId][$key] ?? null);
+                if ($original !== null) {
+                    $outcomes[] = new BatchEventOutcome($index, $item, $original);
+                    continue;
+                }
+            }
+            if ($item->expectedVersion !== null && $item->expectedVersion !== $instance->version) {
+                $outcomes[] = new BatchEventOutcome($index, $item, null, new ConcurrencyConflictException($instanceId, $item->expectedVersion, $instance->version));
+                continue;
+            }
+
+            $definition = $this->definitionFor($instance->getMachineKey(), $instance->getMachineVersion());
+            $result = $this->machine->transition($definition, $instance->snapshot, $event, $item->context);
+            if (!$result->isAccepted()) {
+                $this->persistence->rejections?->record(new RejectionEntry(
+                    UlidGenerator::ulid(),
+                    $instanceId,
+                    $instance->version,
+                    $definition->key,
+                    $definition->version,
+                    $result->status,
+                    $event->type,
+                    $event->payload,
+                    $who,
+                    $key,
+                    $event->origin,
+                    $result->toArray()['reason'],
+                    $event->occurredAt
+                ));
+                $outcomes[] = new BatchEventOutcome($index, $item, $result);
+                continue;
+            }
+
+            $next = $instance->next($result->snapshot, $event->occurredAt);
+            try {
+                $this->persistence->instances->compareAndSet($next, $instance->version);
+            } catch (ConcurrencyConflictException $e) {
+                // A lost compare-and-set writes nothing (IMachineInstanceStore::compareAndSet()).
+                $outcomes[] = new BatchEventOutcome($index, $item, null, $e);
+                continue;
+            }
+
+            $rows = [];
+            foreach ($result->getTransitions() as $order => $taken) {
+                $rows[] = new HistoryEntry(
+                    $instanceId, $next->version, $order, $definition->key, $definition->version, $taken->region,
+                    $taken->from, $taken->to, $taken->eventType ?? $event->type, $taken->transitionId,
+                    $event->payload, $who, $key, $event->origin, $event->occurredAt
+                );
+            }
+            $this->persistence->history->append($rows);
+            $this->writeEffects($next, $result->getEffects(), $event->occurredAt, EventSnapshot::of($event, $who));
+            if ($key !== null) {
+                $this->persistence->idempotency->record($instanceId, $key, $next->version, $result, $event->occurredAt);
+                $recorded[$instanceId][$key] = true;
+            }
+            $outcomes[] = new BatchEventOutcome($index, $item, $result);
+        }
+
+        return $outcomes;
     }
 
     /**

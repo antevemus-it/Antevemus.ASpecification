@@ -73,6 +73,7 @@ $suites = [
     'Módulo 42: Repositório Híbrido com Gravação Adiada (MemoryAsyncFile, persist(), registro do repositório)' => new \Antevemus\ASpecification\Tests\Unit\Module42_WriteBehindRepositoryTest(),
     'Módulo 43: Cache Distribuído PSR-16 (catálogo de regras, feature flags e clusters de roteamento do DAG)' => new \Antevemus\ASpecification\Tests\Unit\Module43_DistributedCacheTest(),
     'Módulo 44: Folhas Inteiras (asInteger(), Spec::int(), limites inteiros fechados entre folhas inteiras, tradução inalterada)' => new \Antevemus\ASpecification\Tests\Unit\Module44_IntegerLeavesTest(),
+    'Módulo 45: Adoção da Máquina de Estados num Sistema em Produção (importação, contexto do efeito, painel de ações, motivo principal, colunas largas, sendMany())' => new \Antevemus\ASpecification\Tests\Unit\Module45_StateMachineAdoptionTest(),
 ];
 
 $startTime = microtime(true);

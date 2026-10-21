@@ -16,7 +16,12 @@ use DateTimeImmutable;
  * idempotency key handed to the handler, stable across retries. Failures increment `attempts`
  * and keep only the last error message, never a stack trace.
  *
- * @version    1.8.0
+ * Since 2.10.0 an entry may carry the event of the step (EventSnapshot: type, payload, actor, origin,
+ * instant), handed to the handler through EffectContext. The runner always gives it; whether a store
+ * keeps it is the store's (the PDO outbox only with the opt-in column `event_snapshot` mapped). It
+ * does not enter toArray(), whose shape is unchanged.
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -42,6 +47,7 @@ final class OutboxEntry
      * @param DateTimeImmutable $enqueuedAt Instant of the event that produced it (stored in UTC)
      * @param DateTimeImmutable|null $deliveredAt Instant of delivery
      * @param DateTimeImmutable|null $lastAttemptAt Instant of the last attempt
+     * @param EventSnapshot|null $event The event of the step that wrote it (2.10.0), when kept
      */
     public function __construct(
         public readonly string $instanceId,
@@ -55,7 +61,8 @@ final class OutboxEntry
         public readonly ?string $lastError,
         DateTimeImmutable $enqueuedAt,
         ?DateTimeImmutable $deliveredAt = null,
-        ?DateTimeImmutable $lastAttemptAt = null
+        ?DateTimeImmutable $lastAttemptAt = null,
+        public readonly ?EventSnapshot $event = null
     ) {
         $this->enqueuedAt = PersistenceSupport::utc($enqueuedAt);
         $this->deliveredAt = $deliveredAt === null ? null : PersistenceSupport::utc($deliveredAt);
@@ -84,7 +91,7 @@ final class OutboxEntry
         return new self(
             $this->instanceId, $this->instanceVersion, $this->sortOrder, $this->machineKey, $this->machineVersion,
             $this->effect, OutboxStatus::DELIVERED, $this->attempts + 1, $this->lastError,
-            $this->enqueuedAt, $at, $at
+            $this->enqueuedAt, $at, $at, $this->event
         );
     }
 
@@ -96,7 +103,7 @@ final class OutboxEntry
         return new self(
             $this->instanceId, $this->instanceVersion, $this->sortOrder, $this->machineKey, $this->machineVersion,
             $this->effect, OutboxStatus::FAILED, $this->attempts + 1, $error,
-            $this->enqueuedAt, null, $at
+            $this->enqueuedAt, null, $at, $this->event
         );
     }
 

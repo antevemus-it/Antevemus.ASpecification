@@ -9,6 +9,7 @@ use Antevemus\ASpecification\Serialization\SpecificationCodec;
 use Antevemus\ASpecification\Specifications\AndSpecification;
 use Antevemus\ASpecification\Specifications\NotSpecification;
 use Antevemus\ASpecification\Specifications\OrSpecification;
+use Antevemus\ASpecification\StateMachine\Exceptions\InvalidMachineDefinitionException;
 use Antevemus\ASpecification\StateMachine\Exceptions\StateMachineException;
 use Antevemus\ASpecification\StateMachine\Exceptions\UnknownGuardException;
 use Closure;
@@ -40,12 +41,18 @@ use InvalidArgumentException;
  *   edits the definition write any condition the codec reads over the context (the codec's limits of
  *   depth and size apply, and it reads no callback, table or service).
  *
+ * Role guards (2.10.0, markRoleGuards()): the names of the guards that check WHO acts (a role, a
+ * profile, an approval level). Marking changes no evaluation; it lets nextEvents() classify an
+ * event refused by them as CandidateReason::ROLE_REFUSED ("not yours to send") instead of
+ * GUARD_REFUSED, and lets a rejection with several candidates for the event choose as its primary
+ * reason a candidate the caller's role does not refuse.
+ *
  * Features:
  * - Fluent registration of closures, overriding by name
  * - Guard expression compilation (and/or/not, because/withCode annotations)
  * - Missing guard → UnknownGuardException (the validator reports it at load time)
  *
- * @version    2.7.0
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -68,6 +75,9 @@ final class GuardRegistry
 
     /** @var array<string, Closure(array<mixed>): ISpecification> */
     private array $factories = [];
+
+    /** @var list<string> Names marked as role guards (2.10.0), in marking order */
+    private array $roleGuards = [];
 
     /**
      * @param bool $withBuiltIns Whether to register the built-in guards
@@ -180,6 +190,42 @@ final class GuardRegistry
     public static function specRef(ISpecification $specification, ?SpecificationCodec $codec = null): GuardRef
     {
         return GuardExpression::ref(self::SPEC, ['document' => ($codec ?? new SpecificationCodec())->encode($specification)]);
+    }
+
+    /**
+     * Marks guard names as role guards (2.10.0): guards that check who acts (role, profile, approval
+     * level). The names need not be registered yet; marking changes no evaluation (see the class
+     * description).
+     *
+     * @param string ...$names Guard names
+     * @return self
+     * @throws InvalidMachineDefinitionException When a name is not a valid guard name
+     */
+    public function markRoleGuards(string ...$names): self
+    {
+        foreach ($names as $name) {
+            if (!in_array(DefinitionSupport::assertName($name, 'guard name'), $this->roleGuards, true)) {
+                $this->roleGuards[] = $name;
+            }
+        }
+
+        return $this;
+    }
+
+    /** True when the guard name was marked as a role guard (2.10.0). */
+    public function isRoleGuard(string $name): bool
+    {
+        return in_array($name, $this->roleGuards, true);
+    }
+
+    /**
+     * The names marked as role guards (2.10.0), in marking order.
+     *
+     * @return list<string>
+     */
+    public function roleGuards(): array
+    {
+        return $this->roleGuards;
     }
 
     /**

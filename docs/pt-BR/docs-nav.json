@@ -157,6 +157,10 @@
         {
           "text": "Um consumidor real",
           "path": "state-machine/real-consumer"
+        },
+        {
+          "text": "Adoção num sistema em produção",
+          "path": "state-machine/adoption"
         }
       ]
     },

@@ -32,7 +32,11 @@ use Throwable;
  * Delivery is at-least-once: two dispatchers running at the same time may deliver the same
  * entry; handlers use the idempotency key to deduplicate.
  *
- * @version    1.8.0
+ * Since 2.10.0 every handler is called through EffectHandlerRegistry::invoke(), so a handler that
+ * declares the fourth parameter receives the EffectContext of its entry (with the event of the step,
+ * when the outbox kept it).
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Runner
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -111,15 +115,14 @@ final class EffectDispatcher
      */
     private function deliver(OutboxEntry $entry): ?string
     {
-        $handler = $this->handlers->get($entry->effect->action);
-        if ($handler === null) {
+        if (!$this->handlers->has($entry->effect->action)) {
             $error = sprintf('No handler registered for action "%s".', $entry->effect->action);
             $this->outbox->markFailed($entry, $error, ($this->clock)());
 
             return $error;
         }
         try {
-            $handler($entry->effect, $entry->effectKey(), $entry->instanceId);
+            $this->handlers->invoke(EffectContext::of($entry));
         } catch (Throwable $e) {
             $error = PersistenceSupport::errorMessage($e);
             $this->outbox->markFailed($entry, $error, ($this->clock)());

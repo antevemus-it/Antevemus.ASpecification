@@ -59,6 +59,7 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 - [Prazos em tempo útil](state-machine/business-time.md) (exemplo 14.11): dias úteis, horário de trabalho e feriados; uma pausa que não gasta o fim de semana.
 - [Casos de uso](state-machine/use-cases.md) (exemplo 15): `IUseCase`, `UseCaseRunner` e o resultado comum à máquina.
 - [Um consumidor real](state-machine/real-consumer.md) (exemplo 23): códigos legados dos estados, definições versionadas no banco com rascunho e publicação, e tenants compartilhando uma máquina.
+- [Adoção num sistema em produção](state-machine/adoption.md) (exemplo 24): importação de processos em andamento, handlers de efeito que leem o evento, um painel de ações que separa "informe o dado" de "não é com você" com um motivo para mostrar, colunas JSON largas e lotes com `sendMany()`.
 
 ### Resolução de dados
 

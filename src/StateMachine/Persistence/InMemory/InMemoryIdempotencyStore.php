@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Antevemus\ASpecification\StateMachine\Persistence\InMemory;
 
 use Antevemus\ASpecification\StateMachine\Exceptions\ConcurrencyConflictException;
-use Antevemus\ASpecification\StateMachine\Persistence\IIdempotencyStore;
+use Antevemus\ASpecification\StateMachine\Persistence\IBatchIdempotencyStore;
 use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
 use Antevemus\ASpecification\StateMachine\Persistence\TransitionResultCodec;
 use Antevemus\ASpecification\StateMachine\TransitionResult;
@@ -16,16 +16,16 @@ use DateTimeImmutable;
  *
  * Same contract as PdoIdempotencyStore (forward 023, RN-09): the result is kept in its stored
  * (JSON) form and rebuilt on find(), exactly as the PDO store does, so both give back equal
- * results.
+ * results. Since 2.10.0 it also answers many keys at once (IBatchIdempotencyStore).
  *
- * @version    1.8.0
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\InMemory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class InMemoryIdempotencyStore implements IIdempotencyStore, IInMemoryTransactional
+final class InMemoryIdempotencyStore implements IBatchIdempotencyStore, IInMemoryTransactional
 {
     /** @var array<string, array<string, array{version: int, result: string}>> */
     private array $records = [];
@@ -38,6 +38,22 @@ final class InMemoryIdempotencyStore implements IIdempotencyStore, IInMemoryTran
         return $record === null
             ? null
             : TransitionResultCodec::decode(PersistenceSupport::decodeJson($record['result'], 'transition result'));
+    }
+
+    /** {@inheritdoc} */
+    public function findMany(array $keysByInstance): array
+    {
+        $found = [];
+        foreach ($keysByInstance as $instanceId => $keys) {
+            foreach ($keys as $key) {
+                $result = $this->find((string) $instanceId, $key);
+                if ($result !== null) {
+                    $found[$instanceId][$key] = $result;
+                }
+            }
+        }
+
+        return $found;
     }
 
     /** {@inheritdoc} */

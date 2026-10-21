@@ -23,7 +23,19 @@ use Antevemus\ASpecification\Results\SpecificationResult;
  * It implements IOutcome, the shape shared with the use case result (forward 023, D20; forward
  * 024, D4): UseCaseResult::fromTransition() converts it without manual mapping.
  *
- * @version    1.9.0
+ * Since 2.10.0, besides the reason (unchanged):
+ * - primaryReason: when several candidate transitions answer the same event (an approval by
+ *   ranges) and all refuse, the reason lists the failures of all of them; primaryReason is the one
+ *   to show: the failures of the candidate that came closest (see StateMachine::transition()), and
+ *   details() the failures of each other candidate, in the order they were tried. When only one
+ *   candidate refused, primaryReason equals the reason and details() is empty; when accepted or
+ *   unhandled, primaryReason is the reason;
+ * - candidateReason and missingPayload: set by nextEvents() only (null and empty elsewhere): the
+ *   classification of the listed event (CandidateReason) and, for MISSING_PAYLOAD, the payload
+ *   fields the `payloadHas` guards require.
+ * None of them enters toArray(), whose shape is unchanged.
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -62,6 +74,15 @@ final class TransitionResult implements IOutcome
     /** Satisfied when accepted; the blocking failures otherwise. */
     public readonly SpecificationResult $reason;
 
+    /** The failures to show (2.10.0): those of the candidate that came closest; the reason when only one refused. */
+    public readonly SpecificationResult $primaryReason;
+
+    /** @var list<SpecificationResult> */
+    private array $details;
+
+    /** @var list<string> */
+    private array $missingPayload;
+
     /**
      * @param TransitionStatus $status Single status of the result
      * @param Event|null $event Event processed (null for the start result)
@@ -70,6 +91,10 @@ final class TransitionResult implements IOutcome
      * @param list<Effect> $effects Effects to dispatch, in SCXML order
      * @param SpecificationResult $reason Satisfied when accepted; the blocking failures otherwise
      * @param array<string, SpecificationResult> $rejections Reason per rejecting region
+     * @param SpecificationResult|null $primaryReason Failures to show (2.10.0); null = the reason
+     * @param list<SpecificationResult> $details Failures of the other refusing candidates (2.10.0)
+     * @param CandidateReason|null $candidateReason Classification given by nextEvents() (2.10.0)
+     * @param list<string> $missingPayload Payload fields required, for MISSING_PAYLOAD (2.10.0)
      */
     public function __construct(
         public readonly TransitionStatus $status,
@@ -78,12 +103,19 @@ final class TransitionResult implements IOutcome
         array $transitions = [],
         array $effects = [],
         ?SpecificationResult $reason = null,
-        array $rejections = []
+        array $rejections = [],
+        ?SpecificationResult $primaryReason = null,
+        array $details = [],
+        public readonly ?CandidateReason $candidateReason = null,
+        array $missingPayload = []
     ) {
         $this->transitions = array_values($transitions);
         $this->effects = array_values($effects);
         $this->rejections = $rejections;
         $this->reason = $reason ?? SpecificationResult::satisfied();
+        $this->primaryReason = $primaryReason ?? $this->reason;
+        $this->details = array_values($details);
+        $this->missingPayload = array_values($missingPayload);
     }
 
     /** Single status of the result. */
@@ -165,6 +197,46 @@ final class TransitionResult implements IOutcome
     public function getRejections(): array
     {
         return $this->rejections;
+    }
+
+    /**
+     * The failures to show (2.10.0): with several refusing candidates for the event, those of the
+     * candidate that came closest; otherwise the reason itself.
+     */
+    public function getPrimaryReason(): SpecificationResult
+    {
+        return $this->primaryReason;
+    }
+
+    /**
+     * The failures of the other refusing candidates (2.10.0), one result per candidate, in the
+     * order they were tried (regions in declaration order); empty when only one candidate refused.
+     *
+     * @return list<SpecificationResult>
+     */
+    public function getDetails(): array
+    {
+        return $this->details;
+    }
+
+    /**
+     * Classification of an event listed by nextEvents() (2.10.0); null for a result that did not
+     * come from nextEvents().
+     */
+    public function getCandidateReason(): ?CandidateReason
+    {
+        return $this->candidateReason;
+    }
+
+    /**
+     * Payload fields the `payloadHas` guards require (2.10.0), in the order of the guards; non-empty
+     * only for CandidateReason::MISSING_PAYLOAD.
+     *
+     * @return list<string>
+     */
+    public function getMissingPayload(): array
+    {
+        return $this->missingPayload;
     }
 
     /**

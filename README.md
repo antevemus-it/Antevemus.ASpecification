@@ -8,7 +8,7 @@
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
 [![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Suites%20Pass%20(43925%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-38%2F38%20Suites%20Pass%20(45020%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -132,6 +132,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 - [Deadlines in business time](docs/en/state-machine/business-time.md) (example 14.11) · [pt-BR](docs/pt-BR/state-machine/business-time.md): business days, working hours and holidays; a pause that does not spend the weekend.
 - [Use cases](docs/en/state-machine/use-cases.md) (example 15) · [pt-BR](docs/pt-BR/state-machine/use-cases.md): `IUseCase`, `UseCaseRunner` and the result shared with the machine.
 - [A real consumer](docs/en/state-machine/real-consumer.md) (example 23) · [pt-BR](docs/pt-BR/state-machine/real-consumer.md): legacy state codes, definitions versioned in the database with drafts and publication, and tenants sharing one machine.
+- [Adopting it in a running system](docs/en/state-machine/adoption.md) (example 24) · [pt-BR](docs/pt-BR/state-machine/adoption.md): importing processes under way, effect handlers that read the event, an action panel that tells "give the data" from "not yours" with one reason to show, wide JSON columns and batches with `sendMany()`.
 
 **Data resolution**
 
@@ -173,8 +174,8 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 
 ## 🧪 Quality
 
-- **Runner:** `php tests/run_all.php`, 37/37 suites, 43 925 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 624 tests and 107 097 assertions, the Domian parity suite (230 tests) included.
+- **Runner:** `php tests/run_all.php`, 38/38 suites, 45 020 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 625 tests and 108 249 assertions, the Domian parity suite (230 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).

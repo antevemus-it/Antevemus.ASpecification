@@ -45,7 +45,16 @@ use PDOStatement;
  * DDL keeps working untouched after the update. Unmapped, they are never read nor written; hasColumn()
  * tells the stores which ones are there.
  *
- * @version    2.7.0
+ * Opt-in column (2.10.0): the event of the step written with each outbox entry
+ * (`state_machine_outbox.event_snapshot`, JSON as text), handed to the effect handlers through
+ * EffectContext, mapped with `columns: PdoMachineSchema::COLUMNS_SINCE_2_10` (merge it with
+ * COLUMNS_SINCE_2_7 when both are wanted: `[...COLUMNS_SINCE_2_7, ...COLUMNS_SINCE_2_10]`).
+ *
+ * Sizes: the stores never truncate nor check the length of a JSON column (snapshot, payload, params,
+ * reason, transition_result, event_snapshot); the limit is the one the table declares. The reference DDL
+ * declares VARCHAR(4000) for portability and documents the wide variant of each database.
+ *
+ * @version    2.10.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -105,6 +114,19 @@ final class PdoMachineSchema
         'to_state_code' => 'to_state_code',
     ];
 
+    /** Canonical columns added to the reference DDL in 2.10.0, by table (absent unless mapped). */
+    public const TABLE_COLUMNS_SINCE_2_10 = [
+        'outbox' => ['event_snapshot'],
+    ];
+
+    /**
+     * Column map of tables created (or migrated) by the reference DDL of 2.10.0: the event of the step
+     * kept with each outbox entry. Pass it as `$columns` (merged with any other mapping).
+     */
+    public const COLUMNS_SINCE_2_10 = [
+        'event_snapshot' => 'event_snapshot',
+    ];
+
     private const IDENTIFIER = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
     /** @var array<string, string> Role => schema-qualified table name */
@@ -122,7 +144,8 @@ final class PdoMachineSchema
      * @param array<string, string> $tables Table names by role; missing roles keep the default
      * @param array<string, string> $columns Real column names by canonical column; missing columns keep
      *                                       the canonical name; the opt-in columns of 2.7.0 exist only
-     *                                       when mapped (COLUMNS_SINCE_2_7)
+     *                                       when mapped (COLUMNS_SINCE_2_7), and so does the one of
+     *                                       2.10.0 (COLUMNS_SINCE_2_10)
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
      * @throws \Antevemus\ASpecification\Sql\Exceptions\UnsupportedSqlOperationException When the
@@ -163,7 +186,7 @@ final class PdoMachineSchema
 
         $known = self::canonicalColumns();
         $map = array_combine($known, $known);
-        $accepted = [...$known, ...self::optionalColumns()];
+        $accepted = [...$known, ...self::optionalColumns(), ...array_merge(...array_values(self::TABLE_COLUMNS_SINCE_2_10))];
         foreach ($columns as $canonical => $real) {
             if (!is_string($canonical) || !in_array($canonical, $accepted, true)) {
                 throw new InvalidArgumentException(sprintf(
@@ -211,7 +234,7 @@ final class PdoMachineSchema
 
     /**
      * True when the canonical column is in use: always for the columns of TABLE_COLUMNS, and for an
-     * opt-in column of 2.7.0 only when it was mapped.
+     * opt-in column of 2.7.0 (or 2.10.0) only when it was mapped.
      */
     public function hasColumn(string $canonical): bool
     {
