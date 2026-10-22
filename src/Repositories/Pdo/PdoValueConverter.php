@@ -38,8 +38,11 @@ use UnitEnum;
  * declared text and read STRICTLY: its true or false text in any case (trailing spaces of a CHAR
  * column ignored), NULL as null, and any other value is a DataIntegrityException, never a false.
  *
+ * canonicalDecimal() (since 2.11.0; until then a private method of PdoRepository, with the same body)
+ * gives the canonical text of a decimal aggregate (PdoRepository::aggregate()).
+ *
  * @internal Used by PdoRepository and EntityMapping; not part of the public API.
- * @version    1.14.0
+ * @version    2.11.0
  * @package    Antevemus\ASpecification
  * @subpackage Repositories\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -219,6 +222,32 @@ final class PdoValueConverter
         }
 
         throw new InvalidArgumentException(sprintf('A %s value cannot be bound as a parameter.', get_debug_type($value)));
+    }
+
+    /**
+     * Canonical decimal text of a numeric aggregate: no trailing fractional zeros; a float (SQLite)
+     * rounded to 15 significant digits first.
+     */
+    public static function canonicalDecimal(mixed $raw): string
+    {
+        if (is_float($raw)) {
+            $text = sprintf('%.15G', $raw);
+            if (stripos($text, 'E') !== false) {
+                $text = rtrim(rtrim(sprintf('%.15F', (float) $text), '0'), '.');
+            }
+        } else {
+            $text = trim((string) $raw);
+        }
+        if (str_contains($text, '.')) {
+            $text = rtrim(rtrim($text, '0'), '.');
+        }
+        if (str_starts_with($text, '.')) {
+            $text = '0' . $text;
+        } elseif (str_starts_with($text, '-.')) {
+            $text = '-0' . substr($text, 1);
+        }
+
+        return ($text === '' || $text === '-0') ? '0' : $text;
     }
 
     private function toText(ColumnMapping $column, mixed $value): string

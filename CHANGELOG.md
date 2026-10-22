@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-10-22
+
+`PdoRepository` decomposed into traits: a pure refactoring, zero behaviour change. The class had 3 559 lines and 123 methods; it now holds its state, its construction, `makePartition()` and `hydrate()` (286 lines), and its behaviour lives in eleven traits. The public API is byte for byte the one of 2.10.0.
+
+### Changed
+
+- **`PdoRepository` in eleven traits** (`src/Repositories/Pdo/Traits/`, namespace `Antevemus\ASpecification\Repositories\Pdo\Traits`): `PdoStatementKernel` (quoting, statement execution and driver errors, IN lists, identifiers, clock), `PdoQueryKernel` (specification compilation, soft delete read scope, the streamed SELECT), `PdoConfiguration` (the `with*()` options, the accessors, the `withTrashed()`/`onlyTrashed()` views), `PdoLifecycleHooks`, `PdoReadOperations`, `PdoSetOperations`, `PdoRelationRegistry`, `PdoRelationLoading`, `PdoRelationCascade`, `PdoWriteOperations`, `PdoRemoveOperations`. The class keeps the constants, the private properties, `__construct()`, `forEntity()`, `applyMapping()`, `makePartition()` and the protected `hydrate()` (the extension point, same signature). Each trait declares what it calls from the class or from another trait as `abstract private` with the exact signature, and reads the private properties of the class; private methods called on another repository of the class (`$child->stream()`, `$reader->removeMatching()`, ...) keep working because PHP's private is per class. The 150-line class docblock is distributed: each theme (reads, writes, lifecycle, soft delete, hooks, batches, set operations, relationships) is documented in the trait that implements it, every sentence kept; the class keeps the summary.
+- **Same API, measured**: the Reflection snapshot of the non-private members of `PdoRepository` (72 methods with signature, declaring class and `@throws`, `final`, interfaces, public constants) is identical to 2.10.0's; every method moved to a trait still reports `PdoRepository` as its declaring class. The only line of the snapshot that changes is the list of PRIVATE constants (`MULTI_ROW_FAMILIES` moved to `PdoDriverLimits`). A body gate over the AST (names resolved, pretty-printed) compares each of the 123 methods of 2.10.0 with its new home: 110 bodies identical, docblocks and signatures identical; the only differences are the calls rewritten to the two collaborators below and the one line of the constructor that builds `PdoDriverLimits`.
+
+### Added
+
+- **`Repositories\Pdo\PdoDriverLimits`** (`final`, `@internal`): what the driver accepts in one statement, until 2.10.0 two private methods and a private constant of `PdoRepository`, with the same bodies: `maxParameters()` (PostgreSQL and MySQL 65535; SQLite 32766 from 3.32 and 999 before; sqlsrv, mssql and dblib 2000; 999 elsewhere; computed on first use and kept, the SQLite version read only then) and `multiRowInsert()`. Built once by the repository's constructor; the views of a repository (its clones) share it.
+- **`PdoValueConverter::canonicalDecimal()`** (public static; the class stays `@internal`): the canonical text of a decimal aggregate, until 2.10.0 a private static method of `PdoRepository`, same body.
+- **Tests**: `tests/PhpUnit/PdoDriverLimitsTest.php` (every family a dialect reports, without a database: limits, multi-row INSERT, the connection never read outside SQLite; SQLite by server version around the 3.32.0 threshold, empty and unreadable versions, read once; a real SQLite connection) and `tests/PhpUnit/PdoValueConverterCanonicalDecimalTest.php` (21 values: decimal texts of PostgreSQL/MySQL, SQLite floats, integers). The expected values were measured on the 2.10.0 code before the move.
+
+### Notes
+
+- **Counts.** PHPUnit 625 tests / 108 249 assertions / 2 skipped (2.10.0) → **670 / 108 443 / 2**: +45 tests (`PdoDriverLimitsTest` 24, `PdoValueConverterCanonicalDecimalTest` 21); +194 assertions = 146 (the new tests: 125 + 21) + 48 (Module 14, through `ModuleSuitesTest`: its scan of `src/` asserts four rules per file, and `src/` has twelve new files: eleven traits and `PdoDriverLimits`). Runner 38/38 suites, 45 020 assertions → **38/38, 45 068**: +48 (Module 14, the same twelve files, 2 355 → 2 403); every other module identical.
+- **No existing test changed.** `Repositories/Pdo/` stays outside the Infection scope (MSI and floor unchanged).
+- The SQL Server branches (`syncLinks()`, `insertRows()`) still have no test with a database; the body gate proves they were moved unchanged.
+- Left for later, recorded in the ROADMAP: `@internal` on the introspection getters used only by tests and on `getConnection()`/`toSubquery()`; `Repositories/Pdo/` in the Infection scope; `PartitionRepository` (1 578 lines, base of four subclasses) stays as it is.
+
 ## [2.10.0] - 2026-10-21
 
 Adopting the state machine in a running system (milestone 30b): six gaps the first real consumer met when it planned to move a live workflow into the machine. Additive: without the new members every answer of 2.9.0 is unchanged, `send()` is unchanged, a handler with the three-parameter signature keeps working and a table created by the 2.9.0 DDL keeps working without mapping the new column.

@@ -52,3 +52,4 @@ Key highlights & upcoming roadmap:
 29. **Asynchronous Data Sources** (`AsyncDataSource`: submit once, poll later, a pending datum never approved nor refused) (Shipped in v2.5.0)
 30. **The State Machine for a Real Consumer** (legacy state codes, definitions versioned over PDO with drafts and publication, the `spec` guard, `migrateAll()`, tenants, deadlines in business time) (Shipped in v2.7.0)
 30b. **Adopting the State Machine in a Running System** (`startAt()` for processes already under way, the event snapshot for effect handlers, `nextEvents()` classified by reason, a primary reason per rejection, wide JSON columns, `sendMany()` in batches) (Shipped in v2.10.0)
+21d. **`PdoRepository` Decomposed into Traits** (eleven traits, `PdoDriverLimits`, `PdoValueConverter::canonicalDecimal()`; the same API and bodies, measured by Reflection and by an AST gate) (Shipped in v2.11.0)

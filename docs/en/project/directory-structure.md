@@ -33,6 +33,7 @@ src/
 │   ├── Pdo/                  # PdoRepository; Mapping/ (Table, Column, Id, Version, EntityMapping, IdStrategy, ColumnType) (Module 22, v1.11.0)
 │   │                         # v1.13.0: PdoAggregateQuery, InQuerySpecification; Mapping/ CreatedAt, UpdatedAt, SoftDelete, BooleanStorage, ManyToOne, OneToMany, RelationMapping (Modules 25 and 26)
 │   │                         # v1.14.0: JoinTableHop; Mapping/ ManyToMany; Exceptions/ DataIntegrityException (Modules 25 and 26)
+│   │                         # v2.11.0: Traits/ (the eleven traits of PdoRepository: statements, queries, configuration, hooks, reads, set operations, relationships, writes, removals), PdoDriverLimits
 │   └── Serialization/        # JsonEntitySerializer (the PHP-native serializer was removed in v2.0.0)
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
 ├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders; RulePrecedence (v2.5.0)

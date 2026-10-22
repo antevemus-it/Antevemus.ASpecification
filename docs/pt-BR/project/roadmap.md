@@ -52,3 +52,4 @@ Principais destaques:
 29. **Fontes de Dados Assíncronas** (`AsyncDataSource`: envia uma vez, consulta depois, dado pendente nunca aprovado nem reprovado) (Entregue na v2.5.0)
 30. **Máquina de Estados para um Consumidor Real** (códigos legados dos estados, definições versionadas em PDO com rascunho e publicação, guard `spec`, `migrateAll()`, tenants, prazos em tempo útil) (Entregue na v2.7.0)
 30b. **Adoção da Máquina de Estados num Sistema em Produção** (`startAt()` para processos já em andamento, o snapshot do evento para os handlers de efeito, `nextEvents()` classificado por motivo, um motivo principal por recusa, colunas JSON largas, `sendMany()` em lotes) (Entregue na v2.10.0)
+21d. **`PdoRepository` Decomposto em Traits** (onze traits, `PdoDriverLimits`, `PdoValueConverter::canonicalDecimal()`; a mesma API e os mesmos corpos, medidos por Reflection e por um gate na AST) (Entregue na v2.11.0)

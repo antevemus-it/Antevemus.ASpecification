@@ -285,6 +285,15 @@ Forward 045, phase 2 (2026-10-20): the half of milestone 15b that belongs to the
 
 ---
 
+## ✅ v2.11.0 — `PdoRepository` in Traits (Shipped in v2.11.0)
+
+### 21d. `PdoRepository` Decomposed into Traits 🗄️ (Shipped in v2.11.0)
+- **Description:** A pure refactoring, zero behaviour change, after the first consumer's remark that the class was one file of 3 559 lines and 123 methods. The class keeps its state, its construction, `makePartition()` and the protected `hydrate()` (286 lines); the behaviour lives in eleven traits of `Repositories\Pdo\Traits` (statement and query kernels, configuration, hooks, reads, set operations, relationship registry, loading and cascade, writes, removals), each declaring what it needs as `abstract private` and documenting the theme it implements. Two collaborators left the class: `PdoDriverLimits` (parameters per statement and multi-row `INSERT`, by driver family, now with tests per family without a database, SQL Server included) and `PdoValueConverter::canonicalDecimal()`.
+- **Proof:** The Reflection snapshot of the 72 non-private members is identical to 2.10.0's (every moved method still declared by `PdoRepository`); an AST gate compares the body of each of the 123 methods with its new home (110 identical, 16 differences limited to the calls rewritten to the two collaborators); no existing test changed; 670 tests / 108 443 assertions and runner 38/38, 45 068 (the difference is the two new test files and the four docblock rules Module 14 asserts on each of the twelve new files).
+- **Left for later (no version):** `@internal` on the six introspection getters used only by tests and on `getConnection()`/`toSubquery()`; `Repositories/Pdo/` in the Infection scope (an unmeasured score); `PartitionRepository` (1 578 lines, 61 methods, base of four subclasses with a `protected` contract) stays as it is.
+
+---
+
 ## 🗓️ Scheduled (nothing: every scheduled milestone shipped on 2026-10-21)
 
 Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 was placed at v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Reordered again on 2026-10-20: the Fibers/Revolt work (milestone 15b) is the last feature before the work on the engine resumes, and its satellite package needs a hook in the core, so the hook took v2.6.0 (above) and every scheduled version slid one minor: 046 to v2.7.0, the repositories and the cache to v2.8.0, the integer leaves to v2.9.0. 046 shipped in v2.7.0, 042 + 043 in v2.8.0 and 044 in v2.9.0 and the adoption gaps in v2.10.0 (above) on 2026-10-21: **nothing is scheduled**; new work enters this file with a consumer and a written case first. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0, 048 in v2.5.0 and the core hook of 045 in v2.6.0) and goes into the version named here; the satellite package comes next, right after the hook.
