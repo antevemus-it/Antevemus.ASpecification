@@ -175,7 +175,7 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 ## 🧪 Qualidade
 
 - **Runner:** `php tests/run_all.php`, 38/38 suítes, 45 068 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 670 testes e 108.443 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
+- **PHPUnit:** `vendor/bin/phpunit`, 679 testes e 109.381 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

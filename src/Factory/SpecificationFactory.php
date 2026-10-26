@@ -70,7 +70,7 @@ use DateTimeInterface;
  * - Immutable constructor with static factory create()
  * - Domian SpecificationFactory names kept as aliases (allEntities, isGreaterThan, blankString, isEnum, ...)
  *
- * @version    2.4.0
+ * @version    2.11.1
  * @package    Antevemus\ASpecification
  * @subpackage Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -332,7 +332,9 @@ final class SpecificationFactory implements
                     public function isSatisfiedBy(mixed $candidate): bool
                     {
                         if (!is_string($candidate)) return false;
-                        return $this->lengthSpec->isSatisfiedBy(strlen($candidate));
+                        // Characters, not bytes (2.11.1, CK-1): `strlen()` made "até 150 caracteres"
+                        // refuse a 150-character Portuguese title that fits a varchar(150).
+                        return $this->lengthSpec->isSatisfiedBy(mb_strlen($candidate, 'UTF-8'));
                     }
                     /** {@inheritdoc} */
                     public function getType(): string { return 'string'; }

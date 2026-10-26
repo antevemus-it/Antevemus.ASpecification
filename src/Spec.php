@@ -31,7 +31,7 @@ declare(strict_types=1);
  *   is visible to the IDE and to static analysis (2.9.0)
  * - Dynamic redirection via __callStatic to underlying SpecificationFactory
  *
- * @version    2.9.0
+ * @version    2.11.1
  * @package    Antevemus\ASpecification
  * @subpackage Facade
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -969,7 +969,7 @@ final class Spec
     }
 
     /**
-     * Specifies string character count satisfies length specification.
+     * Specifies string character count satisfies length specification. Counts UTF-8 characters (`mb_strlen()`), not bytes: until 2.11.0 `strlen()` made `hasLength(lessThanOrEqualTo(5))` refuse `ááááá` (5 characters, 10 bytes).
      *
      * @param ISpecification $lengthSpecification Specification applied to string length
      * @return ISpecification

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.1] - 2026-10-26
+
+A PATCH release with one correction: `Spec::hasLength()` now counts characters, as its docblock always promised. Request CK-1 from the CMS Kit (page builder, feature 025), reproduced on 2.11.0 and on 2.6.1.
+
+### Fixed
+
+- **`Spec::hasLength()` measures characters, not bytes.** The anonymous specification in `SpecificationFactory::hasLength()` used `strlen()`, so every accented letter counted twice (three times for CJK, four for emoji): `hasLength(lessThanOrEqualTo(150))` refused a 150-character Portuguese title that fits a `varchar(150)` (PostgreSQL, MySQL with utf8mb4 and SQL Server `nvarchar` all measure in characters). It now uses `mb_strlen($candidate, 'UTF-8')`. ASCII text answers exactly as before; `hasLength` is not translated to SQL (`NonTranslatableSpecificationException`), so there is no memory × SQL parity to realign. The docblocks of `Spec::hasLength()`, `IStringSpecificationFactory::hasLength()` and the DSL `hasLength()` now say so.
+
+### Added
+
+- **Tests**: `tests/PhpUnit/HasLengthCountsCharactersTest.php` (five-character texts of one to four bytes per character, the 150-character CMS Kit rule, 300 random texts over a multibyte alphabet, the empty string, non-strings).
+
+### Notes
+
+- **Counts.** PHPUnit 670 tests / 108 443 assertions / 2 skipped (2.11.0) → **679 / 109 381 / 2**: +9 tests, +938 assertions, all from the new file. Runner unchanged: 38/38 suites, 45 068 assertions, 0 regressions.
+- Consumers that worked around the byte count with `Spec::regex('/^.{0,N}$/su')` (CMS Kit `cc6a465`) can return to `hasLength()` from this version.
+- Infection scope and floor unchanged.
+
 ## [2.11.0] - 2026-10-22
 
 `PdoRepository` decomposed into traits: a pure refactoring, zero behaviour change. The class had 3 559 lines and 123 methods; it now holds its state, its construction, `makePartition()` and `hydrate()` (286 lines), and its behaviour lives in eleven traits. The public API is byte for byte the one of 2.10.0.

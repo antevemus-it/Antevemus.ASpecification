@@ -25,7 +25,7 @@ use Antevemus\ASpecification\Specifications\String\TextComparison;
  * AbstractStringSpecificationFactory and implements `matchesRegex()`/`matchesWildcard()`, must declare
  * the new parameter (TextComparison::IgnoreCaseAndAccents ignores accents, as in contains()).
  *
- * @version    2.3.0
+ * @version    2.11.1
  * @package    Antevemus\ASpecification
  * @subpackage Contracts\Factory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -215,7 +215,7 @@ interface IStringSpecificationFactory extends ISpecificationFactory
     /**
      * Creates a specification verifying string length.
      *
-     * @param ISpecification<int> $lengthSpecification Specification for length
+     * @param ISpecification<int> $lengthSpecification Specification for the length in characters (UTF-8 via `mb_strlen()`, not bytes; 2.11.1)
      * @return ISpecification<string> String length specification
      */
     public function hasLength(ISpecification $lengthSpecification): ISpecification;

@@ -22,7 +22,7 @@ declare(strict_types=1);
  *   visible to the IDE and to static analysis
  * - Declarative method call on the candidate (calling, 1.6.0)
  *
- * @version    2.9.0
+ * @version    2.11.1
  * @package    Antevemus\ASpecification
  * @subpackage DSL
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -616,7 +616,7 @@ function hasSize(ISpecification $sizeSpecification): ISpecification
 /**
  * Creates a string length specification checking character count against a length rule.
  *
- * @param ISpecification $lengthSpecification Specification evaluated on string length (e.g. greaterThan(10))
+ * @param ISpecification $lengthSpecification Specification evaluated on the string length in characters (UTF-8 via `mb_strlen()`, not bytes; e.g. greaterThan(10))
  * @return ISpecification String length specification
  */
 function hasLength(ISpecification $lengthSpecification): ISpecification

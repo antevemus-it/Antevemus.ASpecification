@@ -175,7 +175,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 ## 🧪 Quality
 
 - **Runner:** `php tests/run_all.php`, 38/38 suites, 45 068 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 670 tests and 108 443 assertions, the Domian parity suite (230 tests) included.
+- **PHPUnit:** `vendor/bin/phpunit`, 679 tests and 109 381 assertions, the Domian parity suite (230 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).
