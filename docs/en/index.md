@@ -63,7 +63,7 @@ The official documentation of the library, one page per topic. The same pages ex
 
 ### Data resolution
 
-- [Concurrent resolution](resolution/concurrent.md) (example 16): `Spec::external()` and the `DataResolver`: external data fetched concurrently.
+- [Concurrent resolution](resolution/concurrent.md) (examples 16 and 16.2): `Spec::external()` and the `DataResolver`: external data fetched concurrently; the reason and the retry delay of a failed HTTP call.
 - [Asynchronous sources](resolution/async.md) (example 22.2): `AsyncDataSource`: submit once, poll later.
 - [Deferred sources](resolution/deferred.md) (example 16.1): `IDeferredDataSource` and `IStageTransport`: the hook through which a satellite package fetches the non-HTTP sources of a stage together.
 

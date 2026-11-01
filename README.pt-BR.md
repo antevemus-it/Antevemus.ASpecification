@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
+[![Latest Version](https://img.shields.io/badge/Release-v2.12.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.12.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-38%2F38%20Suites%20Pass%20(45068%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/pt-BR/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-39%2F39%20Suites%20Pass%20(45803%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/pt-BR/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -136,7 +136,7 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 **Resolução de dados**
 
-- [Resolução concorrente](docs/pt-BR/resolution/concurrent.md) (exemplo 16) · [EN](docs/en/resolution/concurrent.md): `Spec::external()` e o `DataResolver`: dados externos buscados em paralelo.
+- [Resolução concorrente](docs/pt-BR/resolution/concurrent.md) (exemplos 16 e 16.2) · [EN](docs/en/resolution/concurrent.md): `Spec::external()` e o `DataResolver`: dados externos buscados em paralelo; o motivo e o tempo de espera de uma chamada HTTP que falhou.
 - [Fontes assíncronas](docs/pt-BR/resolution/async.md) (exemplo 22.2) · [EN](docs/en/resolution/async.md): `AsyncDataSource`: envia uma vez, consulta depois.
 - [Fontes adiadas](docs/pt-BR/resolution/deferred.md) (exemplo 16.1) · [EN](docs/en/resolution/deferred.md): `IDeferredDataSource` e `IStageTransport`: o gancho pelo qual um pacote satélite busca juntas as fontes não HTTP de um estágio.
 
@@ -174,8 +174,8 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 ## 🧪 Qualidade
 
-- **Runner:** `php tests/run_all.php`, 38/38 suítes, 45 068 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 679 testes e 109.381 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
+- **Runner:** `php tests/run_all.php`, 39/39 suítes, 45 803 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 719 testes e 119.661 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

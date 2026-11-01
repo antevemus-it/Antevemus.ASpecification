@@ -90,6 +90,49 @@ try {
 }
 ```
 
-Errors follow the 1.8.0 rule: a fetch that fails (an HTTP status outside 2xx, a transport error, the time limit of the source or of the whole resolution with `ResolutionPolicy::tiered(timeout: 3.0)`, a parser that throws, an unknown source) is an evaluation error of the leaf: a failure with the generic message, `evaluation_error = true`, and a `DataFetchException` in `$result->exception` with the status code, never the response body. There is no retry. A parameter value is percent-encoded into the URL template, so `/`, `?`, `#`, `..` or a whole URL in a document number cannot change the host or the path of the call; redirects are not followed. A cache between resolutions is optional (`new DataResolver($registry, new InMemoryDataCache())`, with the TTL of each source; failures are never cached). `ext-curl` is a `suggest`: without it an `HttpDataSource` is refused when registered and a `CallableDataSource` keeps working. The SQL, TCriteria and ALinq visitors refuse the leaf with their "non translatable" exception. State machine guards stay pure: a use case resolves the data before sending the event. Since v2.6.0 non-HTTP sources can be fetched concurrently too, through the hook of [example 16.1](deferred.md) (`IDeferredDataSource` and `IStageTransport`); the satellite package `antevemus/aspecification-revolt` (Fibers/Revolt) is the planned implementation.
+Errors follow the 1.8.0 rule: a fetch that fails (an HTTP status outside 2xx, a transport error, the time limit of the source or of the whole resolution with `ResolutionPolicy::tiered(timeout: 3.0)`, a parser that throws, an unknown source) is an evaluation error of the leaf: a failure with the generic message, `evaluation_error = true`, and a `DataFetchException` in `$result->exception` with the status code, never the response body (since v2.12.0 also the delay the provider asked for and, with an error classifier, a reason: example 16.2 below). There is no retry. A parameter value is percent-encoded into the URL template, so `/`, `?`, `#`, `..` or a whole URL in a document number cannot change the host or the path of the call; redirects are not followed. A cache between resolutions is optional (`new DataResolver($registry, new InMemoryDataCache())`, with the TTL of each source; failures are never cached). `ext-curl` is a `suggest`: without it an `HttpDataSource` is refused when registered and a `CallableDataSource` keeps working. The SQL, TCriteria and ALinq visitors refuse the leaf with their "non translatable" exception. State machine guards stay pure: a use case resolves the data before sending the event. Since v2.6.0 non-HTTP sources can be fetched concurrently too, through the hook of [example 16.1](deferred.md) (`IDeferredDataSource` and `IStageTransport`); the satellite package `antevemus/aspecification-revolt` (Fibers/Revolt) is the planned implementation.
 
 Since v2.5.0 a source that submits a request and reads its result later (`AsyncDataSource`, with a store of tickets) answers a datum not ready yet as a typed evaluation error (`DataPendingException`, `isPending()`): never approved nor refused, submitted at most once per request, nothing waits; see example 22.2.
+
+### 16.2. Reason and retry delay of a failed HTTP call (Module 46)
+
+Since v2.12.0 a failed HTTP call says why and for how long the provider asked to wait, without exposing the body of the response. `DataFetchException::getRetryAfter()` is the delay in seconds, read from `retry-after-ms` (OpenAI, Azure) or from `Retry-After` (seconds, or an HTTP-date measured from the `date` of the response), with or without anything configured. `getReason()` is a short code given by the source's `classifyError(int $status, array $headers, string $body)`: called only for a status outside 2xx, it answers a code (`/^[a-z0-9_.-]{1,64}$/`), an `HttpErrorClassification` (a code and/or a delay read from the body, which wins over the header, for a provider that puts it there) or null. This is what an LLM gateway needs to decide between waiting, retrying and switching provider: the same 429 is "slow down" or "out of quota" depending on the body.
+
+```php
+use Antevemus\ASpecification\Resolution\DataRequest;
+use Antevemus\ASpecification\Resolution\Exceptions\DataFetchException;
+use Antevemus\ASpecification\Resolution\HttpDataSource;
+
+$llmUrl = 'https://llm.example.com';               // owned by the source, never by the candidate
+
+$completion = new HttpDataSource(
+    baseUrl: $llmUrl,
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: ['Authorization' => 'Bearer llm-key', 'Content-Type' => 'application/json'],
+    body: fn(array $p): string => $p['payload'],
+    timeout: 60.0,
+    // Answer from a closed list: the code reaches the logs, the body never does
+    classifyError: function (int $status, array $headers, string $body): ?string {
+        $code = (string) (json_decode($body, true)['error']['code'] ?? '');
+
+        return match (true) {
+            $code === 'insufficient_quota' => 'insufficient_quota',   // a 429 that waiting does not fix
+            $status === 429 => 'rate_limit',
+            $status >= 500 => 'server',
+            default => null,
+        };
+    },
+);
+
+try {
+    $completion->fetch(new DataRequest('llm.chat', ['payload' => '{"model":"m","messages":[]}']));
+} catch (DataFetchException $e) {                  // the provider answers 429 with Retry-After: 2
+    $e->getStatusCode();                           // 429
+    $e->getReason();                               // 'rate_limit'
+    $e->getRetryAfter();                           // 2.0
+    $e->getMessage();                              // 'Data source "llm.chat" answered with HTTP status 429 (reason: rate_limit, retry after 2.000 s).'
+}
+```
+
+Only validated values reach the exception and its message: the code and the number. Without a reason and a delay the message is the one of 2.11. A classifier that throws or answers anything else does not change the failure: it stays the HTTP status, without a reason, and the cause goes as the previous exception (the value answered is never repeated). The core still never retries: what to do with the delay (wait, retry with backoff, move to a fallback provider) is the caller's decision. A source of its own (`IHttpDataSource`) can reuse the pieces: `RetryAfter::fromHeaders($headers)` and `DataFetchException::httpStatus($source, $status, $reason, $retryAfter)`.

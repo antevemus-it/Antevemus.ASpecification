@@ -77,7 +77,8 @@ src/
 │   ├── Exceptions/           # DataResolutionException, DataFetchException, DataSourceNotFoundException
 │   ├── ExternalDataSpecification.php # Spec::external(): a folha que declara o dado externo
 │   ├── DataResolver.php      # resolve()/evaluate(); ResolutionPolicy concurrent()/tiered()/sequential()
-│   ├── HttpDataSource.php    # Modelo de URL com parâmetros codificados, buscado por curl_multi
+│   ├── HttpDataSource.php    # Modelo de URL com parâmetros codificados, buscado por curl_multi; classifyError (v2.12.0)
+│   ├── RetryAfter.php        # retry-after-ms / Retry-After (segundos ou data HTTP) lidos de forma estrita; HttpErrorClassification (v2.12.0)
 │   ├── CallableDataSource.php # Qualquer callable síncrono; DataSourceRegistry, IDataCache, InMemoryDataCache
 │   └── AsyncDataSource.php   # Envia uma vez, consulta depois (v2.5.0): AsyncPoll, IAsyncTicketStore, stores InMemory e Callable; Exceptions/DataPendingException
 ├── Cache/                     # Cache PSR-16 compartilhado (Módulo 43, v2.8.0): CachedRuleCatalog, CachedRuleTypeCatalog, CachedFeatureFlagStore, CachedPartitionIndex, PdoCatalogVersion, CacheKeys; Exceptions/CacheFailureException

@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php (36 suites since 2.8.0).
  *
- * @version    2.9.0
+ * @version    2.12.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -44,7 +44,7 @@ final class DocumentationTreeTest extends TestCase
      * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
      * example 23 and the two of example 14.11 (new in 2.7.0: the state machine for a real consumer and the
      * deadlines in business time), plus the block of example 5.1 (new in 2.8.0: the write-behind hybrid repository)
-     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45).
+     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45), plus the block of example 16.2 (new in 2.12.0: the reason and the retry delay of a failed HTTP call, run by Module 46).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -74,7 +74,7 @@ final class DocumentationTreeTest extends TestCase
         'state-machine/real-consumer' => 3,                   // example 23 (23.1 to 23.3, 2.7.0)
         'state-machine/business-time' => 2,                   // example 14.11 (2.7.0): business-time deadlines and the holiday table
         'state-machine/adoption' => 4,                        // example 24 (24.1 to 24.4, 2.10.0): import, effect context, action panel, sendMany()
-        'resolution/concurrent' => 2,                         // example 16
+        'resolution/concurrent' => 3,                         // example 16 (2 blocks) and 16.2 (2.12.0, run by Module 46)
         'resolution/async' => 1,                              // example 22.2
         'resolution/deferred' => 1,                           // example 16.1 (2.6.0)
         'events/from-specifications' => 3,                    // example 18
@@ -107,7 +107,7 @@ final class DocumentationTreeTest extends TestCase
     private const LOCALIZED_BLOCKS = [];
 
     /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0), plus the four blocks of example 24 (2.10.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4;
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4 + 1;
 
     // (a) -----------------------------------------------------------------------------------------------
 
@@ -204,7 +204,7 @@ final class DocumentationTreeTest extends TestCase
 
     public function testEveryPageHasTheDeclaredNumberOfPhpBlocks(): void
     {
-        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11 + example 5.1 + the caching examples + examples 1.1 and 12.1 + example 24');
+        self::assertSame(self::PHP_BLOCKS_TOTAL, array_sum(self::PHP_BLOCKS), 'the table adds up to 58 + the first use + example 16.1 + example 23 + example 14.11 + example 5.1 + the caching examples + examples 1.1 and 12.1 + example 24 + example 16.2');
         foreach (self::LANGUAGES as $language) {
             $total = 0;
             foreach (self::pages($language) as $page) {

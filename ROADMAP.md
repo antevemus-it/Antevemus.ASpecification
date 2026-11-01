@@ -294,6 +294,14 @@ Forward 045, phase 2 (2026-10-20): the half of milestone 15b that belongs to the
 
 ---
 
+## ✅ v2.12.0 — Reason and Retry Delay of a Failed HTTP Call (Shipped in v2.12.0)
+
+### 15c. Reason and Retry Delay of a Failed HTTP Call 🚦 (Shipped in v2.12.0)
+- **Description:** Asked by the first real consumer (the Virttus), which is building an LLM gateway (Anthropic, OpenAI, Google, Azure and OpenAI-compatible providers, a fallback provider, retries on rate limit and server errors) and had to run the HTTP call itself because a failed `HttpDataSource` call kept only the status. `DataFetchException` gains `getRetryAfter()` (seconds, from `retry-after-ms` or `Retry-After`, read strictly by `RetryAfter::fromHeaders()`) and `getReason()` (a short code from the new `classifyError` of `HttpDataSource`, or from an `HttpErrorClassification` that may also carry a delay read from the body). The body still never reaches the exception; the core still never retries.
+- **Proof:** Module 46 against the local server (every form of the header, the classifier, a faulty classifier, the body absent from every message of the chain, the resolver and `fetch()` agreeing, example 16.2 run as written) and `RetryAfterTest` by property (random delays, random instants in the three HTTP-date formats, random noise never throwing); 719 tests / 119 661 assertions and runner 39/39, 45 803.
+
+---
+
 ## 🗓️ Scheduled (nothing: every scheduled milestone shipped on 2026-10-21)
 
 Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 was placed at v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Reordered again on 2026-10-20: the Fibers/Revolt work (milestone 15b) is the last feature before the work on the engine resumes, and its satellite package needs a hook in the core, so the hook took v2.6.0 (above) and every scheduled version slid one minor: 046 to v2.7.0, the repositories and the cache to v2.8.0, the integer leaves to v2.9.0. 046 shipped in v2.7.0, 042 + 043 in v2.8.0 and 044 in v2.9.0 and the adoption gaps in v2.10.0 (above) on 2026-10-21: **nothing is scheduled**; new work enters this file with a consumer and a written case first. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0, 048 in v2.5.0 and the core hook of 045 in v2.6.0) and goes into the version named here; the satellite package comes next, right after the hook.
@@ -308,7 +316,7 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 
 ## 🔭 Distant Future (no forward, no version)
 
-Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward.
+Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward. Milestone 15d (added on 2026-11-01) is the exception: it has a consumer, which is not blocked, and waits for its cases.
 
 ### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
@@ -317,6 +325,11 @@ Moved here on 2026-10-18: none of them has a consumer in the ecosystem the libra
 ### 18. Doctrine ORM & Laravel Eloquent Query Visitors 🌉
 - **Description:** GoF Visitor compilers for `Doctrine\ORM\QueryBuilder` and Laravel's `Illuminate\Database\Eloquent\Builder`, beside the 12 database drivers over 7 SQL dialects and Adianti TCriteria.
 - **Why it waits:** no consumer uses Doctrine or Eloquent; the `PdoRepository` (1.11.0 to 1.14.0) and the Adianti `TCriteria` visitor cover the real hosts.
+
+### 15d. A Transport for Endpoints That Come From Configuration 🛡️
+- **Description:** What the consumer of milestone 15c still does by hand around `HttpDataSource::createCall()` (`AflowEngineAiHttp` in the Virttus, 2026-11-01), each a candidate on its own: a limit on the size of the response; a connection time limit apart from the total one (an LLM answer takes a minute, a connection should not); for a base URL typed by an operator, a list of allowed hosts and the resolved address checked to be public and pinned for the connection (`CURLOPT_RESOLVE`), so that a name cannot be switched to an internal address between the check and the call; telling a time limit reached before the request was sent from one reached after it (a paid call must not be repeated in silence, as `AsyncDataSource` already guarantees since 2.5.0).
+- **Why it waits:** the consumer has its own transport and is not blocked; each item needs its case written before a forward.
+- **Also open:** `HttpDataSource` outside the Infection scope since 1.10.0 (measured on 2026-11-01: 73.47 %, 39 escaped mutants in the constructor's validation and the defensive `assertWithinBase()`; the lines changed in 2.12.0 are 22 of 22 killed).
 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.

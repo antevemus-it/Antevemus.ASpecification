@@ -40,10 +40,36 @@ use Throwable;
  * code, and the body of that response is never read into the exception. An exception of the parser
  * becomes a DataFetchException with the original as previous exception.
  *
+ * Failed responses (since 2.12.0): the exception also carries the delay the provider asked for
+ * (DataFetchException::getRetryAfter(), read by RetryAfter::fromHeaders() from `retry-after-ms` or
+ * `Retry-After`) and, when the source has an error classifier, a reason (getReason()). The classifier
+ * `classifyError(int $status, array $headers, string $body)` is called only for a status outside 2xx and
+ * answers a short code (DataFetchException::REASON_PATTERN), an HttpErrorClassification (reason and/or a
+ * delay read from the body, which wins over the header) or null. Only those validated values reach the
+ * exception, never the body. A classifier that throws or answers something else does not change the
+ * failure: it stays the HTTP status, without a reason, with the cause as previous exception.
+ *
+ * <code>
+ * $llm = new HttpDataSource(
+ *     baseUrl: 'https://api.example.com',
+ *     path: '/v1/messages',
+ *     method: 'POST',
+ *     headers: ['Authorization' => 'Bearer ' . $key, 'Content-Type' => 'application/json'],
+ *     body: fn(array $p): string => $p['payload'],
+ *     timeout: 60.0,
+ *     classifyError: fn(int $status, array $headers, string $body): ?string => match (true) {
+ *         $status === 429 && str_contains($body, '"insufficient_quota"') => 'insufficient_quota',
+ *         $status === 429 => 'rate_limit',
+ *         $status >= 500 => 'server',
+ *         default => null,
+ *     },
+ * );
+ * </code>
+ *
  * Requires `ext-curl` (a `suggest` of the package): DataSourceRegistry::register() refuses an HTTP
  * source when the extension is not loaded.
  *
- * @version    1.10.0
+ * @version    2.12.0
  * @package    Antevemus\ASpecification
  * @subpackage Resolution
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -78,6 +104,9 @@ final class HttpDataSource implements IHttpDataSource
      * @param float $timeout Time limit of one call, in seconds
      * @param int $cost Relative cost (lower is cheaper; the tiered policy fetches cheaper sources first)
      * @param int|null $ttl Seconds a value may be cached between resolutions (null or 0: never)
+     * @param (Closure(int, array<string, string>, string): (string|HttpErrorClassification|null))|null $classifyError
+     *                     Reads the reason (and optionally the delay) of a response outside 2xx (null: no reason; the
+     *                     delay still comes from the `Retry-After` header)
      * @throws InvalidArgumentException When the base URL, the template, the method, a header or a number is not valid
      */
     public function __construct(
@@ -89,7 +118,8 @@ final class HttpDataSource implements IHttpDataSource
         private readonly ?Closure $body = null,
         private readonly float $timeout = 5.0,
         private readonly int $cost = 0,
-        private readonly ?int $ttl = null
+        private readonly ?int $ttl = null,
+        private readonly ?Closure $classifyError = null
     ) {
         $parts = parse_url($baseUrl);
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
@@ -184,12 +214,13 @@ final class HttpDataSource implements IHttpDataSource
     /**
      * {@inheritdoc}
      *
-     * @throws DataFetchException For a status outside 2xx (with the status code) or a parser failure
+     * @throws DataFetchException For a status outside 2xx (with the status code, the delay asked for and the
+     *                            reason of the error classifier) or a parser failure
      */
     public function parseResponse(DataRequest $request, int $status, array $headers, string $body): mixed
     {
         if ($status < 200 || $status > 299) {
-            throw DataFetchException::httpStatus($request->source, $status);
+            throw $this->httpFailure($request->source, $status, $headers, $body);
         }
 
         try {
@@ -251,6 +282,39 @@ final class HttpDataSource implements IHttpDataSource
     public function getMethod(): string
     {
         return $this->method;
+    }
+
+    /**
+     * The failure of a response outside 2xx: the status, the delay of the headers and what the error classifier
+     * read (its delay wins over the header's). A classifier that throws or answers an invalid value leaves the
+     * failure without a reason, with the cause as previous exception; the value it answered is never repeated.
+     *
+     * @param array<string, string> $headers
+     */
+    private function httpFailure(string $sourceName, int $status, array $headers, string $body): DataFetchException
+    {
+        $retryAfter = RetryAfter::fromHeaders($headers);
+        if ($this->classifyError === null) {
+            return DataFetchException::httpStatus($sourceName, $status, null, $retryAfter);
+        }
+
+        try {
+            $answer = ($this->classifyError)($status, $headers, $body);
+            if ($answer instanceof HttpErrorClassification) {
+                return DataFetchException::httpStatus($sourceName, $status, $answer->reason, $answer->retryAfter ?? $retryAfter);
+            }
+            if ($answer === null || (is_string($answer) && preg_match(DataFetchException::REASON_PATTERN, $answer) === 1)) {
+                return DataFetchException::httpStatus($sourceName, $status, $answer, $retryAfter);
+            }
+            $cause = new InvalidArgumentException(sprintf(
+                'The error classifier of data source "%s" answered an invalid reason: a short lower-case code, an HttpErrorClassification or null is expected.',
+                $sourceName
+            ));
+        } catch (Throwable $e) {
+            $cause = $e;
+        }
+
+        return DataFetchException::httpStatus($sourceName, $status, null, $retryAfter, $cause);
     }
 
     /**

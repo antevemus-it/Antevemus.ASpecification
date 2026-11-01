@@ -10,11 +10,11 @@ declare(strict_types=1);
  * environment variable:
  * - config.json: behaviour per endpoint (the first path segment): `delay_ms`, `status`, `values`
  *   (JSON value by the last path segment, URL-decoded), `default`, `body` (raw body, overrides the
- *   JSON) and `location` (a Location header);
+ *   JSON), `location` (a Location header) and `headers` (extra response headers by name, since 2.12.0);
  * - calls.log: one JSON line per request (endpoint, raw URI, Host, method, Authorization, body),
  *   appended under an exclusive lock: the call counter of the tests.
  *
- * @version    1.10.0
+ * @version    2.12.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Support
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -84,6 +84,9 @@ if ($delay > 0) {
 }
 
 http_response_code((int) ($behaviour['status'] ?? 200));
+foreach ((array) ($behaviour['headers'] ?? []) as $name => $value) {
+    header($name . ': ' . $value);
+}
 if (isset($behaviour['location'])) {
     header('Location: ' . $behaviour['location']);
 }

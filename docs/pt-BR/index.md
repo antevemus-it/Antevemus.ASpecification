@@ -63,7 +63,7 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 
 ### Resolução de dados
 
-- [Resolução concorrente](resolution/concurrent.md) (exemplo 16): `Spec::external()` e o `DataResolver`: dados externos buscados em paralelo.
+- [Resolução concorrente](resolution/concurrent.md) (exemplos 16 e 16.2): `Spec::external()` e o `DataResolver`: dados externos buscados em paralelo; o motivo e o tempo de espera de uma chamada HTTP que falhou.
 - [Fontes assíncronas](resolution/async.md) (exemplo 22.2): `AsyncDataSource`: envia uma vez, consulta depois.
 - [Fontes adiadas](resolution/deferred.md) (exemplo 16.1): `IDeferredDataSource` e `IStageTransport`: o gancho pelo qual um pacote satélite busca juntas as fontes não HTTP de um estágio.
 

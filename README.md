@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.6.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.6.1)
+[![Latest Version](https://img.shields.io/badge/Release-v2.12.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.12.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-38%2F38%20Suites%20Pass%20(45068%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-39%2F39%20Suites%20Pass%20(45803%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -136,7 +136,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 
 **Data resolution**
 
-- [Concurrent resolution](docs/en/resolution/concurrent.md) (example 16) · [pt-BR](docs/pt-BR/resolution/concurrent.md): `Spec::external()` and the `DataResolver`: external data fetched concurrently.
+- [Concurrent resolution](docs/en/resolution/concurrent.md) (examples 16 and 16.2) · [pt-BR](docs/pt-BR/resolution/concurrent.md): `Spec::external()` and the `DataResolver`: external data fetched concurrently; the reason and the retry delay of a failed HTTP call.
 - [Asynchronous sources](docs/en/resolution/async.md) (example 22.2) · [pt-BR](docs/pt-BR/resolution/async.md): `AsyncDataSource`: submit once, poll later.
 - [Deferred sources](docs/en/resolution/deferred.md) (example 16.1) · [pt-BR](docs/pt-BR/resolution/deferred.md): `IDeferredDataSource` and `IStageTransport`: the hook through which a satellite package fetches the non-HTTP sources of a stage together.
 
@@ -174,8 +174,8 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 
 ## 🧪 Quality
 
-- **Runner:** `php tests/run_all.php`, 38/38 suites, 45 068 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 679 tests and 109 381 assertions, the Domian parity suite (230 tests) included.
+- **Runner:** `php tests/run_all.php`, 39/39 suites, 45 803 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 719 tests and 119 661 assertions, the Domian parity suite (230 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).
