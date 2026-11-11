@@ -53,3 +53,7 @@ Key highlights & upcoming roadmap:
 30. **The State Machine for a Real Consumer** (legacy state codes, definitions versioned over PDO with drafts and publication, the `spec` guard, `migrateAll()`, tenants, deadlines in business time) (Shipped in v2.7.0)
 30b. **Adopting the State Machine in a Running System** (`startAt()` for processes already under way, the event snapshot for effect handlers, `nextEvents()` classified by reason, a primary reason per rejection, wide JSON columns, `sendMany()` in batches) (Shipped in v2.10.0)
 21d. **`PdoRepository` Decomposed into Traits** (eleven traits, `PdoDriverLimits`, `PdoValueConverter::canonicalDecimal()`; the same API and bodies, measured by Reflection and by an AST gate) (Shipped in v2.11.0)
+15c. **Reason and Retry Delay of a Failed HTTP Call** (`DataFetchException::getRetryAfter()` and `getReason()`, `RetryAfter`, the error classifier of `HttpDataSource`) (Shipped in v2.12.0)
+31. **Audited, Versioned Writes to the Rule Catalog** (`RuleCatalogEditor`: one version per change with the photo of the rule, its hash and the reason; baselines, drift, a change guard, `rule_version` in the verdict, `getCompiledRules()`) (Shipped in v2.13.0)
+31b. **Drafts and Publication of a Catalog Rule** (candidate)
+31c. **Document Requirement Groups Through the Audited Path** (candidate)

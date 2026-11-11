@@ -14,7 +14,7 @@ src/
 │   ├── Repositories/         # IRepository, IPartitionRepository, IPersistent...
 │   ├── Concurrent/           # ISynchronizer
 │   ├── Helpers/              # IStopWatch, IInstrumentationUtils
-│   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog... (findRuleByCode(), getSpecJson(): v2.4.0); ILookupOnlyRuleTypes, IRuleTypeCatalog (v2.5.0)
+│   ├── Engine/               # IRuleDefinition, IDocumentRuleDefinition, IRuleCatalog... (findRuleByCode(), getSpecJson(): v2.4.0); ILookupOnlyRuleTypes, IRuleTypeCatalog (v2.5.0); IVersionedRuleDefinition, IRuleCatalogStore (v2.13.0)
 │   └── Sql/                  # ISqlDialect, IFieldMapper, ISqlWhereClause, ISqlPagination, ISqlAccentInsensitiveLike (v2.1.0), ISqlRegexRewriter (v2.3.0)
 ├── Entities/                  # Base entities, UUIDs, and random ID generators
 ├── Specifications/            # Concrete rule implementations
@@ -36,7 +36,7 @@ src/
 │   │                         # v2.11.0: Traits/ (the eleven traits of PdoRepository: statements, queries, configuration, hooks, reads, set operations, relationships, writes, removals), PdoDriverLimits
 │   └── Serialization/        # JsonEntitySerializer (the PHP-native serializer was removed in v2.0.0)
 ├── Concurrent/                # SemaphoreSynchronizer, FileLockSynchronizer
-├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders; RulePrecedence (v2.5.0)
+├── Engine/                    # DynamicSpecificationEngine, RuleEngineVerdict, RuleCompilationWarning, PdoRuleCatalog, Builders; RulePrecedence (v2.5.0); RuleCatalogEditor, PdoRuleCatalogStore, InMemoryRuleCatalogStore, RuleSnapshot, RuleRevision, RuleDrift (v2.13.0: audited writes)
 │   ├── Exceptions/           # RuleEngineException, MissingRuleHandlerException, LegacyVocabularyException (v2.0.0)
 │   ├── RuleAction.php        # Enum: BLOCK, WARN, LOG
 │   └── DocumentRequirementMode.php # Enum: ALL, ANY, ONE_OF_SET

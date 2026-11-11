@@ -31,6 +31,10 @@
 #     tenant, the event of the step in the outbox (the opt-in column event_snapshot, a database of the 2.9 DDL
 #     and its additive migration), the JSON columns refused above VARCHAR(4000) by the database and accepted
 #     by the wide variants of the DDL's header, and sendMany() == send() over random sequences;
+#   - Module47_AuditedRuleCatalogTest (2.13.0, forward 060): the audited writes to the rule catalog
+#     (RuleCatalogEditor over PdoRuleCatalogStore): the contract battery, the baseline, the drift, the change guard,
+#     the migration of a 2.12 table, the cache signal over the history, two connections changing the same rule, and
+#     the random sequences of the seeds of the module with their transcript equal to the one of memory;
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -78,7 +82,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest", "Module47_AuditedRuleCatalogTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

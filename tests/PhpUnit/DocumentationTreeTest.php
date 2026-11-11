@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php (36 suites since 2.8.0).
  *
- * @version    2.12.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -44,7 +44,7 @@ final class DocumentationTreeTest extends TestCase
      * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
      * example 23 and the two of example 14.11 (new in 2.7.0: the state machine for a real consumer and the
      * deadlines in business time), plus the block of example 5.1 (new in 2.8.0: the write-behind hybrid repository)
-     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45), plus the block of example 16.2 (new in 2.12.0: the reason and the retry delay of a failed HTTP call, run by Module 46).
+     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45), plus the block of example 16.2 (new in 2.12.0: the reason and the retry delay of a failed HTTP call, run by Module 46), plus the four blocks of examples 25 to 25.3 (new in 2.13.0: audited, versioned writes to the rule catalog, run by Module 47).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -63,6 +63,7 @@ final class DocumentationTreeTest extends TestCase
         'repositories/pdo-relationships' => 5,                // example 17.3
         'rule-engine/dynamic-rules' => 2,                     // example 7
         'rule-engine/real-consumer' => 1,                     // example 22
+        'rule-engine/audited-changes' => 4,                   // examples 25 to 25.3 (2.13.0, run by Module 47): versions and history, baseline and drift, change guard, versions that applied
         'sql/query-visitor' => 1,                             // example 8
         'sql/tcriteria' => 1,                                 // example 9
         'sql/tcriteria-accents-and-subqueries' => 1,          // example 22.1
@@ -106,8 +107,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0), plus the four blocks of example 24 (2.10.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4 + 1;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0), plus the four blocks of example 24 (2.10.0), plus example 16.2 (2.12.0), plus the four blocks of examples 25 to 25.3 (2.13.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4 + 1 + 4;
 
     // (a) -----------------------------------------------------------------------------------------------
 

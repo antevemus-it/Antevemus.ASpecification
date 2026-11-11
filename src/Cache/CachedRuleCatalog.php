@@ -8,6 +8,7 @@ use Antevemus\ASpecification\Contracts\Engine\IDocumentRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleCatalog;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
 use Antevemus\ASpecification\Contracts\Engine\IRuleTypeCatalog;
+use Antevemus\ASpecification\Contracts\Engine\IVersionedRuleDefinition;
 use Antevemus\ASpecification\Engine\DocumentRequirementMode;
 use Antevemus\ASpecification\Engine\DocumentRuleDefinition;
 use Antevemus\ASpecification\Engine\InMemoryRuleCatalog;
@@ -47,7 +48,9 @@ use UnexpectedValueException;
  * - Values: plain arrays (the getters of each definition), read back as RuleDefinition and
  *   DocumentRuleDefinition: a definition class of your own comes back as the library's, with the same
  *   getters. The `parameters` of a rule are stored as they are (scalars and arrays when they come from
- *   PdoRuleCatalog).
+ *   PdoRuleCatalog). The version of a rule (2.13.0, forward 060, D9) is stored under `version` only when the rule
+ *   has one, so that the entry of a rule without a version is the entry of 2.12.0 and an entry written by 2.12.0
+ *   reads back as a rule without a version (the format stays `s1`).
  * - Failures: a cache that throws, refuses a write or holds an entry of an unexpected shape is a miss:
  *   the call goes to the catalog, and the failure goes to the error reporter as a CacheFailureException,
  *   once per key per instance. A version that cannot be read sends the call to the catalog, reported too.
@@ -58,7 +61,7 @@ use UnexpectedValueException;
  * Loadable without psr/simple-cache, but not constructible: the cache is a Psr\SimpleCache\CacheInterface
  * (`composer require psr/simple-cache` with a PSR-16 implementation, such as a Redis or APCu adapter).
  *
- * @version    2.8.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Cache
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -377,7 +380,7 @@ class CachedRuleCatalog implements IRuleCatalog
     /** @return array<string, mixed> */
     private static function encodeRule(IRuleDefinition $rule): array
     {
-        return [
+        $encoded = [
             'code' => $rule->getCode(),
             'name' => $rule->getName(),
             'ruleType' => $rule->getRuleType(),
@@ -396,6 +399,12 @@ class CachedRuleCatalog implements IRuleCatalog
             'active' => $rule->isActive(),
             'specJson' => $rule->getSpecJson(),
         ];
+        $version = $rule instanceof IVersionedRuleDefinition ? $rule->getVersion() : null;
+        if ($version !== null) {
+            $encoded['version'] = $version;
+        }
+
+        return $encoded;
     }
 
     /** @throws UnexpectedValueException */
@@ -426,7 +435,8 @@ class CachedRuleCatalog implements IRuleCatalog
             scenario: self::field($row, 'scenario', '?string'),
             parameters: self::field($row, 'parameters', 'array'),
             active: self::field($row, 'active', 'bool'),
-            specJson: self::field($row, 'specJson', '?string')
+            specJson: self::field($row, 'specJson', '?string'),
+            version: array_key_exists('version', $row) ? self::field($row, 'version', 'int') : null
         );
     }
 

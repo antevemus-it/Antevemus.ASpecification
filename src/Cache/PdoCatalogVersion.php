@@ -27,10 +27,16 @@ use RuntimeException;
  * forRuleCatalog(). An application with a one-row version table passes it as one more table:
  * `new PdoCatalogVersion($pdo, ['business_rule' => 'updated_at', 'catalog_version' => 'version'])`.
  *
+ * A catalog written through RuleCatalogEditor (2.13.0, forward 060, D12) gives forRuleCatalog() the history table
+ * of the editor (`changeTable: 'business_rule_change'`): every change through the editor appends at least one row
+ * and its key is a ULID, so `COUNT(*), MAX(change_id)` of the history changes on every commit of the editor. The
+ * largest `version` of the rule table would not do: changing a rule whose version is not the largest leaves both
+ * the count and the maximum as they were.
+ *
  * Identifiers are validated as PdoRuleCatalog validates them (`[A-Za-z_][A-Za-z0-9_]*`, optionally
  * qualified by a schema) and never quoted; nothing of the input reaches the SQL as a value.
  *
- * @version    2.8.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Cache
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -74,11 +80,18 @@ final class PdoCatalogVersion implements ICatalogVersion
      * with the same version column in each (its real name), or the row counts only.
      *
      * @param string|null $column Real name of the update stamp or version column of the three tables (null = counts only)
-     * @throws InvalidArgumentException When the column is not a plain SQL identifier
+     * @param string|null $changeTable The history table of RuleCatalogEditor (2.13.0; `business_rule_change`, optionally
+     *                                 qualified by its schema), read as `COUNT(*), MAX(change_id)`; null = none
+     * @throws InvalidArgumentException When the column or the table is not a plain SQL identifier
      */
-    public static function forRuleCatalog(PDO $pdo, PdoRuleCatalog $catalog, ?string $column = null): self
+    public static function forRuleCatalog(PDO $pdo, PdoRuleCatalog $catalog, ?string $column = null, ?string $changeTable = null): self
     {
-        return new self($pdo, array_fill_keys($catalog->getTables(), $column));
+        $tables = array_fill_keys($catalog->getTables(), $column);
+        if ($changeTable !== null) {
+            $tables[$changeTable] = 'change_id';
+        }
+
+        return new self($pdo, $tables);
     }
 
     /**

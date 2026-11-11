@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Antevemus\ASpecification\Engine;
 
-use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Contracts\Engine\IVersionedRuleDefinition;
 use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
 
 /**
@@ -25,15 +25,18 @@ use Antevemus\ASpecification\Engine\Exceptions\LegacyVocabularyException;
  * - A body that is a serialized specification (2.4.0, forward 041, D7): `spec_json`, the JSON document of
  *   SpecificationCodec; when present, RuleSpecificationRegistry decodes it instead of using the handler of
  *   `rule_type` (a blank value is no body)
+ * - The version of the rule in the catalog (2.13.0, forward 060, D9): IVersionedRuleDefinition::getVersion(), the
+ *   `version` column written by RuleCatalogEditor, read by fromArray() (null or empty = not read); a rule built
+ *   without one answers null, and the engine stamps nothing for it (RN-01)
  *
- * @version    2.4.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final readonly class RuleDefinition implements IRuleDefinition
+final readonly class RuleDefinition implements IVersionedRuleDefinition
 {
     /**
      * Catalog row columns that restrict where a rule applies. They travel in `parameters` under the
@@ -97,6 +100,7 @@ final readonly class RuleDefinition implements IRuleDefinition
      * @param array<string, mixed> $parameters Additional parameters and metadata
      * @param bool $active Active rule indicator
      * @param string|null $specJson Serialized specification of the rule (SpecificationCodec JSON; 2.4.0)
+     * @param int|null $version Version of the rule in the catalog (2.13.0; null = not read)
      */
     public function __construct(
         public string $code,
@@ -115,7 +119,8 @@ final readonly class RuleDefinition implements IRuleDefinition
         public ?string $scenario = null,
         public array $parameters = [],
         public bool $active = true,
-        public ?string $specJson = null
+        public ?string $specJson = null,
+        public ?int $version = null
     ) {
     }
 
@@ -125,8 +130,8 @@ final readonly class RuleDefinition implements IRuleDefinition
      * Keys: `code`, `name`, `description`, `rule_type`, `violation_action`, `int_value`,
      * `decimal_value`, `text_value`, `legal_basis`, `violation_message`, `condition_expression`,
      * `priority`, `scope`, `scenario`, `parameters`, `active`, the applicability columns
-     * `product_code`, `plan_code`, `valid_from`, `valid_until` and `spec_json` (2.4.0; null, empty or
-     * blank = the rule has no serialized body). The Portuguese keys of 1.6.x (read as
+     * `product_code`, `plan_code`, `valid_from`, `valid_until`, `spec_json` (2.4.0; null, empty or
+     * blank = the rule has no serialized body) and `version` (2.13.0; null or empty = not read). The Portuguese keys of 1.6.x (read as
      * legacy up to 1.14.x: `codigo`, `nome`, `descricao`, `tipo_regra`/`tipo`, `acao_ao_violar`/`acao`,
      * `valor_inteiro`, `valor_decimal`, `valor_texto`, `fundamento_legal`, `mensagem_violacao`,
      * `condicional_expressao`, `prioridade`, `escopo`, `cenario`, `parametros`, `ativo`,
@@ -156,6 +161,7 @@ final readonly class RuleDefinition implements IRuleDefinition
 
         $intRaw = $row['int_value'] ?? null;
         $decimalRaw = $row['decimal_value'] ?? null;
+        $versionRaw = $row['version'] ?? null;
 
         $parametersRaw = $row['parameters'] ?? null;
         $parameters = is_array($parametersRaw) ? $parametersRaw : [];
@@ -190,7 +196,8 @@ final readonly class RuleDefinition implements IRuleDefinition
             scenario: self::stringOrNull($row['scenario'] ?? null),
             parameters: $parameters,
             active: $active,
-            specJson: self::specJsonOrNull($row['spec_json'] ?? null)
+            specJson: self::specJsonOrNull($row['spec_json'] ?? null),
+            version: $versionRaw !== null && $versionRaw !== '' ? (int) $versionRaw : null
         );
     }
 
@@ -328,5 +335,11 @@ final readonly class RuleDefinition implements IRuleDefinition
     public function getSpecJson(): ?string
     {
         return $this->specJson;
+    }
+
+    /** {@inheritdoc} */
+    public function getVersion(): ?int
+    {
+        return $this->version;
     }
 }

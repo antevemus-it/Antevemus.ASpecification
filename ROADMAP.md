@@ -302,6 +302,14 @@ Forward 045, phase 2 (2026-10-20): the half of milestone 15b that belongs to the
 
 ---
 
+## ✅ v2.13.0 — Audited, Versioned Writes to the Rule Catalog (Shipped in v2.13.0)
+
+### 31. Audited, Versioned Writes to the Rule Catalog 🧾 (Shipped in v2.13.0)
+- **Description:** Asked by the first real consumer (the Virttus, its feature 0012: variables of a risk profile in the rule catalog, under a legal opinion): "each write makes version N with the full photo of the rule, the hash and the reason; the analysis and the quotation record the versions of the rules that applied". The catalog had only a read path; the audited write path existed for the feature flags (milestones 24 and 24d). `RuleCatalogEditor` (`create()`, `update()`, `setActive()`, `adopt()`, `current()`, `revision()`, `history()`, `findDrift()`, `withChangeGuard()`) over `PdoRuleCatalogStore` or `InMemoryRuleCatalogStore`: compare-and-set of the new `business_rule.version`, one row of `business_rule_change` per version with the canonical photo (`RuleSnapshot`) and its sha256 hash, a baseline for the rules that existed before the migration, a change guard evaluated before writing, `rule_version` in the failures of a versioned rule and `DynamicSpecificationEngine::getCompiledRules()`. The migration is additive and optional, in the header of the reference DDL.
+- **Proof:** Module 47 (the contract battery on memory, SQLite, PostgreSQL 17, MySQL 8.4 and MariaDB 11.4; random sequences of creations, changes, activations and adoptions against a model of the test, with fixed seeds, whose transcripts are equal in memory and in every database; two connections changing the same rule; the canonical photo pinned by a golden text and hash; examples 25 to 25.3 run as written); without the migration and without the editor, every pre-existing test is unchanged; 720 tests / 166 483 assertions and runner 40/40, 92 564; Infection on the new files 97.69 %.
+
+---
+
 ## 🗓️ Scheduled (nothing: every scheduled milestone shipped on 2026-10-21)
 
 Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 was placed at v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Reordered again on 2026-10-20: the Fibers/Revolt work (milestone 15b) is the last feature before the work on the engine resumes, and its satellite package needs a hook in the core, so the hook took v2.6.0 (above) and every scheduled version slid one minor: 046 to v2.7.0, the repositories and the cache to v2.8.0, the integer leaves to v2.9.0. 046 shipped in v2.7.0, 042 + 043 in v2.8.0 and 044 in v2.9.0 and the adoption gaps in v2.10.0 (above) on 2026-10-21: **nothing is scheduled**; new work enters this file with a consumer and a written case first. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0, 048 in v2.5.0 and the core hook of 045 in v2.6.0) and goes into the version named here; the satellite package comes next, right after the hook.
@@ -316,7 +324,7 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 
 ## 🔭 Distant Future (no forward, no version)
 
-Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward. Milestone 15d (added on 2026-11-01) is the exception: it has a consumer, which is not blocked, and waits for its cases.
+Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward. Milestone 15d (added on 2026-11-01) is the exception: it has a consumer, which is not blocked, and waits for its cases. Milestones 31b and 31c (added on 2026-11-11) are candidates left by milestone 31.
 
 ### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
@@ -330,6 +338,14 @@ Moved here on 2026-10-18: none of them has a consumer in the ecosystem the libra
 - **Description:** What the consumer of milestone 15c still does by hand around `HttpDataSource::createCall()` (`AflowEngineAiHttp` in the Virttus, 2026-11-01), each a candidate on its own: a limit on the size of the response; a connection time limit apart from the total one (an LLM answer takes a minute, a connection should not); for a base URL typed by an operator, a list of allowed hosts and the resolved address checked to be public and pinned for the connection (`CURLOPT_RESOLVE`), so that a name cannot be switched to an internal address between the check and the call; telling a time limit reached before the request was sent from one reached after it (a paid call must not be repeated in silence, as `AsyncDataSource` already guarantees since 2.5.0).
 - **Why it waits:** the consumer has its own transport and is not blocked; each item needs its case written before a forward.
 - **Also open:** `HttpDataSource` outside the Infection scope since 1.10.0 (measured on 2026-11-01: 73.47 %, 39 escaped mutants in the constructor's validation and the defensive `assertWithinBase()`; the lines changed in 2.12.0 are 22 of 22 killed).
+
+### 31b. Drafts and Publication of a Catalog Rule 🧾
+- **Description:** A rule edited as a draft and published as a version, the way the definitions of the state machine are since 2.7.0 (milestone 30), so that a version waiting for its legal opinion is not in use and the one in use does not change meanwhile. Approval in two steps would ride on the same draft.
+- **Why it waits:** the change guard of 2.13.0 (milestone 31) already blocks the activation of a version without an opinion; the consumer adopts the audited path first (its task 0364) and states the case of a draft after it.
+
+### 31c. Document Requirement Groups Through the Audited Path 🧾
+- **Description:** `document_requirement_group` and `document_requirement` written with versions, photos and history, as `business_rule` is since 2.13.0.
+- **Why it waits:** no consumer asked for it; the matrix of documents changes rarely and through migrations.
 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.

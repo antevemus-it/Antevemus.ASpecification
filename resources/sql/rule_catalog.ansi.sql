@@ -6,7 +6,9 @@
 -- (forward 041) added business_rule.spec_json; PdoRuleCatalog reads it
 -- when told so (columns: PdoRuleCatalog::COLUMNS_SINCE_2_4), so that a
 -- table created by an earlier DDL keeps working untouched. The additive
--- migration for such a table is at the end of this header.
+-- migration for such a table is at the end of this header, followed by
+-- the optional migration 2.13.0 (forward 060) of the audited writes:
+-- the version of a rule and its history, written by RuleCatalogEditor.
 --
 -- Portable ANSI SQL: no schema, no dialect types, unquoted identifiers.
 -- Only the columns the engine reads are declared; a consumer table may
@@ -50,6 +52,56 @@
 -- columns: PdoRuleCatalog::COLUMNS_SINCE_2_4:
 --
 --   ALTER TABLE business_rule ADD COLUMN spec_json VARCHAR(4000);
+--
+-- Additive migration 2.13.0 (forward 060): audited, versioned writes.
+-- RuleCatalogEditor, through PdoRuleCatalogStore, writes business_rule
+-- and keeps every version of a rule in business_rule_change: one row per
+-- version, with the full photo of the rule (snapshot, the canonical JSON
+-- of RuleSnapshot), its hash ('sha256:' and 64 hexadecimal digits), the
+-- kind of the change, the columns it changed (canonical names, in
+-- alphabetical order, separated by commas; NULL for baseline and
+-- create), the reason, the origin, the instant and the actor. Optional:
+-- nothing of the library changes for an application that does not run
+-- it, and the tables below stay as they are. Run it once, on a table of
+-- this DDL or of an earlier one (PostgreSQL, MySQL 8.0.16+, MariaDB and
+-- SQLite accept the column CHECK of ADD COLUMN), then read the version
+-- with columns: PdoRuleCatalog::COLUMNS_SINCE_2_13 and write through
+-- PdoRuleCatalogStore::forCatalog(). Every existing rule gets version 1
+-- and no history: RuleCatalogEditor::adopt(), or its first change
+-- through the editor, records its baseline. snapshot is TEXT, as the JSON
+-- columns of state_machine.ansi.sql (CLOB on Oracle):
+--
+--   ALTER TABLE business_rule ADD COLUMN version INTEGER DEFAULT 1 NOT NULL CHECK (version >= 1);
+--
+--   CREATE TABLE IF NOT EXISTS business_rule_change (
+--       change_id                VARCHAR(26)    NOT NULL,
+--       rule_code                VARCHAR(80)    NOT NULL,
+--       version                  INTEGER        NOT NULL,
+--       change_kind              VARCHAR(20)    NOT NULL,
+--       snapshot                 TEXT           NOT NULL,
+--       snapshot_hash            VARCHAR(71)    NOT NULL,
+--       changed_fields           VARCHAR(2000),
+--       reason                   VARCHAR(1000)  NOT NULL,
+--       origin                   VARCHAR(20)    NOT NULL,
+--       changed_at               VARCHAR(26)    NOT NULL,
+--       changed_by               VARCHAR(120),
+--       CONSTRAINT pk_business_rule_change PRIMARY KEY (change_id),
+--       CONSTRAINT uq_brc_version UNIQUE (rule_code, version),
+--       CONSTRAINT chk_brc_version CHECK (version >= 1),
+--       CONSTRAINT chk_brc_kind CHECK (change_kind IN ('baseline', 'create', 'update', 'activate', 'deactivate'))
+--   );
+--
+-- Conventions of business_rule_change (those of feature_flags.ansi.sql):
+-- change_id is a ULID written by the library; changed_at is UTC as
+-- 'YYYY-MM-DD HH:MM:SS.ffffff'; origin is ui | migration | script, or the
+-- application's own; changed_by is the actor given by the application
+-- (NULL = a script without a user). The history is append-only: the
+-- library writes one row per version, in the transaction of the change,
+-- and never updates nor deletes it; RuleCatalogEditor::findDrift() lists
+-- the rules whose row is not the photo of its last version (an UPDATE by
+-- hand). A trigger that makes the history append-only, or that forbids
+-- writing business_rule outside the editor, is not portable: see the
+-- PostgreSQL example of the header of feature_flags.ansi.sql.
 -- =====================================================================
 
 CREATE TABLE business_rule (

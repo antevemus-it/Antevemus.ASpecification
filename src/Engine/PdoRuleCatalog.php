@@ -64,6 +64,13 @@ use PDOStatement;
  *   in ONE query (`rule_type = :rule_type`, no scenario predicate, the same scope, product/plan and
  *   withAsOf() narrowing as findRules()), then the same final pass as InMemoryRuleCatalog, so both catalogs
  *   answer the same rules in the same order (priority descending, then code by strcmp)
+ * - `version` (2.13.0, forward 060, D9): the column RuleCatalogEditor increments on every change (the additive
+ *   migration 2.13.0 of the header of the reference DDL). Absent by default, as `spec_json`, so that the SQL and
+ *   every answer stay those of 2.12.0 (RN-01); a table that has it says so with
+ *   `columns: PdoRuleCatalog::COLUMNS_SINCE_2_13` (merged with any other mapping, e.g.
+ *   `[...PdoRuleCatalog::COLUMNS_SINCE_2_4, ...PdoRuleCatalog::COLUMNS_SINCE_2_13]`), and every rule read carries it
+ *   (RuleDefinition::getVersion()); the engine then stamps it on the failures of the rule (`rule_version`). The
+ *   message that refuses an unknown column keeps listing the columns of 2.12.0
  *
  * Applicability lives in the columns `product_code`, `plan_code`, `valid_from`, `valid_until`: entries
  * under those four keys (or their Portuguese names of 1.6.x) inside the `parameters` JSON are dropped on
@@ -72,7 +79,7 @@ use PDOStatement;
  * Date columns must come back as ISO dates (`YYYY-MM-DD`), which is the default of every PDO driver
  * except Oracle (set `NLS_DATE_FORMAT` there).
  *
- * @version    2.5.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -115,6 +122,15 @@ class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
      */
     public const COLUMNS_SINCE_2_4 = ['spec_json' => 'spec_json'];
 
+    /** Canonical columns of the rule table added by the migration 2.13.0 of the reference DDL (absent by default). */
+    public const RULE_COLUMNS_SINCE_2_13 = ['version'];
+
+    /**
+     * Column map of a rule table migrated to 2.13.0 (forward 060, D9): the version of a rule, written by
+     * RuleCatalogEditor. Pass it as `$columns` (merged with any other mapping).
+     */
+    public const COLUMNS_SINCE_2_13 = ['version' => 'version'];
+
     /** Canonical columns read from the document requirement group table. */
     public const GROUP_COLUMNS = ['id', 'code', 'scope', 'scenario', 'sort_order', 'active'];
 
@@ -144,7 +160,8 @@ class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
      *                                      roles keep the default
      * @param array<string, string|null> $columns Real column names by canonical column; missing columns keep
      *                                       the canonical name (see legacyPortugueseColumns()); the columns
-     *                                       of RULE_COLUMNS_SINCE_2_4 are absent unless mapped (null = absent)
+     *                                       of RULE_COLUMNS_SINCE_2_4 and RULE_COLUMNS_SINCE_2_13 are absent unless
+     *                                       mapped (null = absent)
      * @throws InvalidArgumentException When the schema, a role, a table, a canonical column or a real
      *                                  column name is not a plain SQL identifier or is unknown
      * @throws LegacyVocabularyException When a role is one of the Portuguese roles of 1.x
@@ -192,7 +209,7 @@ class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
         $known = self::canonicalColumns();
         $map = array_combine($known, $known);
         foreach ($columns as $canonical => $real) {
-            $optional = in_array($canonical, self::RULE_COLUMNS_SINCE_2_4, true);
+            $optional = in_array($canonical, self::RULE_COLUMNS_SINCE_2_4, true) || in_array($canonical, self::RULE_COLUMNS_SINCE_2_13, true);
             if (!is_string($canonical) || (!$optional && !in_array($canonical, $known, true))) {
                 throw new InvalidArgumentException(sprintf(
                     'Unknown rule catalog column "%s". Expected one of: %s.',
@@ -317,8 +334,8 @@ class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
     }
 
     /**
-     * Returns the real column name of every canonical column (a column of RULE_COLUMNS_SINCE_2_4 only when
-     * it is mapped).
+     * Returns the real column name of every canonical column (a column of RULE_COLUMNS_SINCE_2_4 or
+     * RULE_COLUMNS_SINCE_2_13 only when it is mapped).
      *
      * @return array<string, string>
      */
@@ -504,12 +521,13 @@ class PdoRuleCatalog implements IRuleCatalog, IRuleTypeCatalog
     }
 
     /**
-     * Select list of the rule table: RULE_COLUMNS, then the columns of RULE_COLUMNS_SINCE_2_4 that are mapped.
+     * Select list of the rule table: RULE_COLUMNS, then the columns of RULE_COLUMNS_SINCE_2_4 and
+     * RULE_COLUMNS_SINCE_2_13 that are mapped.
      */
     private function ruleSelectList(): string
     {
         $columns = self::RULE_COLUMNS;
-        foreach (self::RULE_COLUMNS_SINCE_2_4 as $optional) {
+        foreach ([...self::RULE_COLUMNS_SINCE_2_4, ...self::RULE_COLUMNS_SINCE_2_13] as $optional) {
             if (isset($this->columns[$optional])) {
                 $columns[] = $optional;
             }

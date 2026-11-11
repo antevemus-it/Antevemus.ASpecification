@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.12.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.12.0)
+[![Latest Version](https://img.shields.io/badge/Release-v2.13.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.13.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-39%2F39%20Suites%20Pass%20(45803%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/pt-BR/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
@@ -113,6 +113,7 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 - [Regras dinâmicas](docs/pt-BR/rule-engine/dynamic-rules.md) (exemplo 7) · [EN](docs/en/rule-engine/dynamic-rules.md): Regras compiladas em tempo de execução a partir de catálogos relacionais, triagem por severidade e a matriz documental.
 - [Um consumidor real](docs/pt-BR/rule-engine/real-consumer.md) (exemplo 22) · [EN](docs/en/rule-engine/real-consumer.md): Tipos de regra só consulta, a regra mais específica de um tipo e rótulos do alvo.
+- [Mudanças auditadas](docs/pt-BR/rule-engine/audited-changes.md) (exemplo 25) · [EN](docs/en/rule-engine/audited-changes.md): `RuleCatalogEditor`: cada mudança de uma regra cria uma versão com foto, hash e motivo; linha de base, deriva, guarda da mudança e as versões que valeram.
 
 **SQL**
 
@@ -174,8 +175,8 @@ Uma linha por página, agrupadas como na navegação; o número entre parêntese
 
 ## 🧪 Qualidade
 
-- **Runner:** `php tests/run_all.php`, 39/39 suítes, 45 803 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 719 testes e 119.661 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
+- **Runner:** `php tests/run_all.php`, 40/40 suítes, 92 564 asserções, zero regressões (o relatório: [Testes](docs/pt-BR/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 720 testes e 166.483 asserções, a suíte de paridade com o Domian (230 testes) inclusa.
 - **Bancada de solidez:** toda promessa da álgebra conferida contra a avaliação sobre um pool de mais de 700 especificações, com uma guarda que reprova quando falta uma classe de especificação nele.
 - **Paridade SQL:** as mesmas respostas em memória e no PostgreSQL 17, no MySQL 8.4 e no MariaDB 11.4, no CI.
 - **Teste de mutação:** Infection com um mínimo que só sobe, hoje 89 (90,54% de MSI medido na 2.5.0).

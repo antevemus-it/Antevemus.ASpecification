@@ -40,8 +40,11 @@ use Antevemus\ASpecification\Specifications\SpecificationSimplifier;
  *   compilation, in catalog order. A rule of an undeclared type without handler is still a
  *   MissingRuleHandlerException, and a lookup-only type a handler supports is an "ambiguous rule type"
  *   RuleEngineException
+ * - The rules that were compiled (2.13.0, forward 060, D10): getCompiledRules() lists, after every compilation and
+ *   in catalog order, every rule bound into the specification (the skipped ones apart), so that an application
+ *   records the code and the version of every rule that applied, the satisfied ones included
  *
- * @version    2.5.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -75,6 +78,13 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
      * @var list<IRuleDefinition>
      */
     private array $skippedRules = [];
+
+    /**
+     * Rules compiled by the last compilation (2.13.0).
+     *
+     * @var list<IRuleDefinition>
+     */
+    private array $compiledRules = [];
 
     /**
      * @param IRuleCatalog $catalog Provider/repository for rule catalog
@@ -111,6 +121,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         $clone->catalogValidation = $enabled;
         $clone->compilationWarnings = [];
         $clone->skippedRules = [];
+        $clone->compiledRules = [];
 
         return $clone;
     }
@@ -181,6 +192,21 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         return $this->skippedRules;
     }
 
+    /**
+     * Rules compiled by the last compileSpecification()/validate() call (2.13.0, forward 060, D10), in catalog
+     * order: every rule bound into the compiled specification, whether its evaluation then fails or passes (the
+     * lookup-only rules of getSkippedRules() are not here). Filled by every compilation and emptied at the start
+     * of each one. With a catalog that reads the version (PdoRuleCatalog::COLUMNS_SINCE_2_13) each rule carries it
+     * (IVersionedRuleDefinition::getVersion()): the code and version of every rule that applied, to record with
+     * the analysis. A method of this class, not of IDynamicSpecificationEngine.
+     *
+     * @return list<IRuleDefinition>
+     */
+    public function getCompiledRules(): array
+    {
+        return $this->compiledRules;
+    }
+
     /** {@inheritdoc} */
     public function validate(
         object|array $target,
@@ -203,6 +229,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
         $specs = [];
         $this->compilationWarnings = [];
         $this->skippedRules = [];
+        $this->compiledRules = [];
 
         // 1. Load and compile business rules
         $rules = $this->catalog->findRules($scope, $scenario, $context);
@@ -219,6 +246,7 @@ class DynamicSpecificationEngine implements IDynamicSpecificationEngine
                 }
             }
             $specs[] = $this->bindRule($compiled, $rule);
+            $this->compiledRules[] = $rule;
         }
 
         // 2. Load and compile mandatory document requirements

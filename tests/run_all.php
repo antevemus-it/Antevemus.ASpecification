@@ -75,6 +75,7 @@ $suites = [
     'Módulo 44: Folhas Inteiras (asInteger(), Spec::int(), limites inteiros fechados entre folhas inteiras, tradução inalterada)' => new \Antevemus\ASpecification\Tests\Unit\Module44_IntegerLeavesTest(),
     'Módulo 45: Adoção da Máquina de Estados num Sistema em Produção (importação, contexto do efeito, painel de ações, motivo principal, colunas largas, sendMany())' => new \Antevemus\ASpecification\Tests\Unit\Module45_StateMachineAdoptionTest(),
     'Módulo 46: Motivo e Tempo de Espera do Erro HTTP (Retry-After, classificador de erro da fonte HTTP)' => new \Antevemus\ASpecification\Tests\Unit\Module46_HttpErrorReasonAndRetryAfterTest(),
+    'Módulo 47: Escrita Auditada e Versionada do Catálogo de Regras (RuleCatalogEditor, foto e hash, linha de base, deriva, guarda da mudança, versão no veredito)' => new \Antevemus\ASpecification\Tests\Unit\Module47_AuditedRuleCatalogTest(),
 ];
 
 $startTime = microtime(true);

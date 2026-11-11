@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\Engine;
 
 use Antevemus\ASpecification\AbstractSpecification;
 use Antevemus\ASpecification\Contracts\Engine\IRuleDefinition;
+use Antevemus\ASpecification\Contracts\Engine\IVersionedRuleDefinition;
 use Antevemus\ASpecification\Contracts\ISpecification;
 use Antevemus\ASpecification\Contracts\ISpecificationVisitor;
 use Antevemus\ASpecification\Results\FailureSeverity;
@@ -45,8 +46,11 @@ use Antevemus\ASpecification\Specifications\LabelledSpecification;
  * - Labelled targets (2.5.0, forward 048, D12): when the rule is reported once and its failures carry two
  *   or more distinct labels (LabelledSpecification), `metadata['labels']` lists them in order of
  *   appearance (the `property` of the single failure is null then)
+ * - The version of the rule (2.13.0, forward 060, D10): `metadata['rule_version']` when the rule is an
+ *   IVersionedRuleDefinition with a version (a catalog that reads the column, PdoRuleCatalog::COLUMNS_SINCE_2_13),
+ *   after the other rule keys; a rule without a version stamps the metadata of 2.12.0, byte for byte (RN-01)
  *
- * @version    2.5.0
+ * @version    2.13.0
  * @package    Antevemus\ASpecification
  * @subpackage Engine
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -223,6 +227,10 @@ final class RuleBoundSpecification extends AbstractSpecification
         $legalBasis = $this->rule->getLegalBasis();
         if ($legalBasis !== null && trim($legalBasis) !== '') {
             $ruleMetadata['legal_basis'] = $legalBasis;
+        }
+        $version = $this->rule instanceof IVersionedRuleDefinition ? $this->rule->getVersion() : null;
+        if ($version !== null) {
+            $ruleMetadata['rule_version'] = $version;
         }
 
         return $ruleMetadata;

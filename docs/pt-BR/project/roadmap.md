@@ -53,3 +53,7 @@ Principais destaques:
 30. **Máquina de Estados para um Consumidor Real** (códigos legados dos estados, definições versionadas em PDO com rascunho e publicação, guard `spec`, `migrateAll()`, tenants, prazos em tempo útil) (Entregue na v2.7.0)
 30b. **Adoção da Máquina de Estados num Sistema em Produção** (`startAt()` para processos já em andamento, o snapshot do evento para os handlers de efeito, `nextEvents()` classificado por motivo, um motivo principal por recusa, colunas JSON largas, `sendMany()` em lotes) (Entregue na v2.10.0)
 21d. **`PdoRepository` Decomposto em Traits** (onze traits, `PdoDriverLimits`, `PdoValueConverter::canonicalDecimal()`; a mesma API e os mesmos corpos, medidos por Reflection e por um gate na AST) (Entregue na v2.11.0)
+15c. **Motivo e Tempo de Espera de uma Chamada HTTP que Falhou** (`DataFetchException::getRetryAfter()` e `getReason()`, `RetryAfter`, o classificador de erro do `HttpDataSource`) (Entregue na v2.12.0)
+31. **Escrita Auditada e Versionada do Catálogo de Regras** (`RuleCatalogEditor`: uma versão por mudança com a foto da regra, o hash e o motivo; linha de base, deriva, guarda da mudança, `rule_version` no veredito, `getCompiledRules()`) (Entregue na v2.13.0)
+31b. **Rascunho e Publicação de uma Regra do Catálogo** (candidato)
+31c. **Grupos de Documentos pelo Caminho Auditado** (candidato)

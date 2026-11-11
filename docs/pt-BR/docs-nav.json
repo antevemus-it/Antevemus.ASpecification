@@ -102,6 +102,10 @@
         {
           "text": "Um consumidor real",
           "path": "rule-engine/real-consumer"
+        },
+        {
+          "text": "Mudanças auditadas",
+          "path": "rule-engine/audited-changes"
         }
       ]
     },
