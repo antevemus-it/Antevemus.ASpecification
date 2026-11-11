@@ -517,13 +517,17 @@ class Module28_AccentInsensitiveTextTest extends TestCase
                 $listed = $inRanges($cp);
                 if ($isMark && !$listed) {
                     $missing[] = sprintf('U+%04X', $cp);
-                } elseif ($listed && !$isMark && preg_match('/^\p{Cn}$/u', $character) !== 1) {
+                } elseif ($listed && !$isMark && preg_match('/^\p{Cn}$/u', $character) !== 1
+                    && !isset(UnicodeNonspacingMarks::REASSIGNED[$cp])) {
                     $strangers[] = sprintf('U+%04X', $cp);
                 }
             }
         }
         $this->assertEquals([], $missing, 'todo \p{Mn} do PCRE ' . PCRE_VERSION . ' está em UnicodeNonspacingMarks (regenere a lista)');
         $this->assertEquals([], $strangers, 'a lista só tem marcas (ou pontos ainda não atribuídos nesta versão do Unicode)');
+        foreach (array_keys(UnicodeNonspacingMarks::REASSIGNED) as $cp) {
+            $this->assertTrue($inRanges($cp), sprintf('U+%04X de REASSIGNED continua na lista (o PCRE antigo ainda a chama de marca)', $cp));
+        }
         $previous = -1;
         foreach (UnicodeNonspacingMarks::RANGES as [$first, $last]) {
             $this->assertTrue($first > $previous && $last >= $first, 'faixas ordenadas e disjuntas');

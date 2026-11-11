@@ -489,6 +489,9 @@ final class Module47_AuditedRuleCatalogTest extends TestCase
 
     private function testCachedCatalogCarriesTheVersion(): void
     {
+        if (!interface_exists(\Psr\SimpleCache\CacheInterface::class)) {
+            return; // psr/simple-cache is a suggestion (Module 43): the cached catalog needs it, the editor does not
+        }
         $cache = new ArrayCache();
         $catalog = CachedRuleCatalog::decorate(new InMemoryRuleCatalog([
             new RuleDefinition('plain', 'Plain', 'max', scope: 'contract'),
@@ -1241,6 +1244,9 @@ final class Module47_AuditedRuleCatalogTest extends TestCase
      */
     private function testCatalogVersionSeesTheChange(PDO $pdo, string $label): void
     {
+        if (!interface_exists(\Psr\SimpleCache\CacheInterface::class)) {
+            return; // the CachedRuleCatalog half needs psr/simple-cache, a suggestion of the library (Module 43)
+        }
         $catalog = new PdoRuleCatalog($pdo, columns: PdoRuleCatalog::COLUMNS_SINCE_2_13);
         $store = PdoRuleCatalogStore::forCatalog($pdo, $catalog);
         $editor = new RuleCatalogEditor($store, $this->clock());
