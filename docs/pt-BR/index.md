@@ -72,6 +72,10 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 - [A partir de especificações](events/from-specifications.md) (exemplo 18): Eventos de domínio quando uma entidade passa a satisfazer ou deixa de satisfazer uma especificação.
 - [Pela passagem do tempo](events/time-based.md) (exemplo 18.1): `SpecificationTrigger::timed()` e o `TriggerSweeper`.
 
+### Mensageria
+
+- [Entre módulos](messaging/index.md) (exemplos 26 a 26.3): `Message`, a outbox gravada na transação da escrita, o `OutboxRelay` até um broker, o `MessageConsumer` com uma inbox (uma vez por consumidor) e as pontes dos eventos de domínio e para dentro de uma máquina de estados; o gancho que os satélites Redis Streams e RabbitMQ implementam.
+
 ### Feature flags
 
 - [Feature flags](feature-flags/index.md) (exemplo 19): Flags declaradas no código e ligadas no banco, com alvo e histórico.

@@ -199,6 +199,15 @@
       ]
     },
     {
+      "text": "Mensageria",
+      "items": [
+        {
+          "text": "Entre módulos",
+          "path": "messaging/index"
+        }
+      ]
+    },
+    {
       "text": "Feature flags",
       "items": [
         {

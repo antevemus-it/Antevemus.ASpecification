@@ -57,3 +57,5 @@ Principais destaques:
 31. **Escrita Auditada e Versionada do Catálogo de Regras** (`RuleCatalogEditor`: uma versão por mudança com a foto da regra, o hash e o motivo; linha de base, deriva, guarda da mudança, `rule_version` no veredito, `getCompiledRules()`) (Entregue na v2.13.0)
 31b. **Rascunho e Publicação de uma Regra do Catálogo** (candidato)
 31c. **Grupos de Documentos pelo Caminho Auditado** (candidato)
+32. **Conversor XState para a Máquina de Estados** (candidato a satélite, congelado até depois do MVP do motor de módulos)
+33. **Mensageria Entre Módulos: o Gancho no Núcleo** (`Message`, a outbox gravada na transação da escrita, o `OutboxRelay`, o `MessageConsumer` com inbox, o transporte e a fonte em memória, as pontes dos eventos de domínio e para dentro de uma máquina de estados) (Entregue na v2.14.0 (gancho no núcleo); os satélites Redis Streams e RabbitMQ pendentes)

@@ -199,6 +199,15 @@
       ]
     },
     {
+      "text": "Messaging",
+      "items": [
+        {
+          "text": "Between modules",
+          "path": "messaging/index"
+        }
+      ]
+    },
+    {
       "text": "Feature flags",
       "items": [
         {

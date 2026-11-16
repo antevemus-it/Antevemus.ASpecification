@@ -73,6 +73,11 @@ src/
 │   ├── TriggerSweeper.php    # sweep() for the crossings caused by time alone, baseline(); SweepReport (v1.12.0)
 │   ├── DomainEventDispatcher.php # Delivery after the commit; DomainEventHandlerRegistry
 │   └── MachineEventBridge.php # A domain event sent to a MachineRunner
+├── Messaging/                 # Messaging between modules (Module 48, v2.14.0): Message, MessagePublisher, OutboxRelay, MessageConsumer, MessageHandlerRegistry, the reports, the hooks IMessageTransport/IMessageSource, ReceivedMessage, TransportSendResult, DomainEventMessageBridge, MessageMachineBridge
+│   ├── Outbox/               # IMessageOutbox, InMemory and Pdo outboxes (resources/sql/messaging.ansi.sql)
+│   ├── Inbox/                # IProcessedMessageStore, InMemory and Pdo inboxes of the consumers
+│   ├── InMemory/             # InMemoryMessageTransport, InMemoryMessageSource: the reference broker and test double
+│   └── Exceptions/           # MessagingException, InvalidMessageException, InvalidMessagePayloadException, MessagingPersistenceException
 ├── Resolution/                # Concurrent data resolution (Module 21, v1.10.0)
 │   ├── Exceptions/           # DataResolutionException, DataFetchException, DataSourceNotFoundException
 │   ├── ExternalDataSpecification.php # Spec::external(): the leaf that declares external data

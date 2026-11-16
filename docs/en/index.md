@@ -72,6 +72,10 @@ The official documentation of the library, one page per topic. The same pages ex
 - [From specifications](events/from-specifications.md) (example 18): Domain events when an entity starts or stops satisfying a specification.
 - [From the passage of time](events/time-based.md) (example 18.1): `SpecificationTrigger::timed()` and the `TriggerSweeper`.
 
+### Messaging
+
+- [Between modules](messaging/index.md) (examples 26 to 26.3): `Message`, the outbox written in the transaction of the write, `OutboxRelay` to a broker, `MessageConsumer` with an inbox (once per consumer), and the bridges from domain events and into a state machine; the hook the Redis Streams and RabbitMQ satellites implement.
+
 ### Feature flags
 
 - [Feature flags](feature-flags/index.md) (example 19): Flags declared in code and switched in the database, with targeting and an audit trail.

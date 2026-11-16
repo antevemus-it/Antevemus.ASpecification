@@ -35,6 +35,10 @@
 #     (RuleCatalogEditor over PdoRuleCatalogStore): the contract battery, the baseline, the drift, the change guard,
 #     the migration of a 2.12 table, the cache signal over the history, two connections changing the same rule, and
 #     the random sequences of the seeds of the module with their transcript equal to the one of memory;
+#   - Module48_MessagingTest (2.14.0, forward 063): the messaging hook over PDO (PdoMessageOutbox, PdoProcessedMessageStore):
+#     the contract batteries of the outbox and the inbox, the relay and the consumer over them, the column map, the failures
+#     without the driver message, the tampered rows, and the property sequences of the seeds of the module through a faulty
+#     in-memory broker, their transcript equal to the one of memory;
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -82,7 +86,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest", "Module47_AuditedRuleCatalogTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest", "Module47_AuditedRuleCatalogTest", "Module48_MessagingTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

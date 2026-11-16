@@ -57,3 +57,5 @@ Key highlights & upcoming roadmap:
 31. **Audited, Versioned Writes to the Rule Catalog** (`RuleCatalogEditor`: one version per change with the photo of the rule, its hash and the reason; baselines, drift, a change guard, `rule_version` in the verdict, `getCompiledRules()`) (Shipped in v2.13.0)
 31b. **Drafts and Publication of a Catalog Rule** (candidate)
 31c. **Document Requirement Groups Through the Audited Path** (candidate)
+32. **XState Converter for the State Machine** (satellite candidate, frozen until after the MVP of the module engine)
+33. **Messaging Between Modules: the Core Hook** (`Message`, the outbox written in the transaction of the write, `OutboxRelay`, `MessageConsumer` with an inbox, the in-memory transport and source, the bridges from domain events and into a state machine) (Shipped in v2.14.0 (core hook); the Redis Streams and RabbitMQ satellites pending)
