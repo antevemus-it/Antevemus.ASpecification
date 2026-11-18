@@ -58,4 +58,4 @@ Principais destaques:
 31b. **Rascunho e Publicação de uma Regra do Catálogo** (candidato)
 31c. **Grupos de Documentos pelo Caminho Auditado** (candidato)
 32. **Conversor XState para a Máquina de Estados** (candidato a satélite, congelado até depois do MVP do motor de módulos)
-33. **Mensageria Entre Módulos: o Gancho no Núcleo** (`Message`, a outbox gravada na transação da escrita, o `OutboxRelay`, o `MessageConsumer` com inbox, o transporte e a fonte em memória, as pontes dos eventos de domínio e para dentro de uma máquina de estados) (Entregue na v2.14.0 (gancho no núcleo); os satélites Redis Streams e RabbitMQ pendentes)
+33. **Mensageria Entre Módulos: o Gancho no Núcleo** (`Message`, a outbox gravada na transação da escrita, o `OutboxRelay`, o `MessageConsumer` com inbox, o transporte e a fonte em memória, as pontes dos eventos de domínio e para dentro de uma máquina de estados) (Entregue na v2.14.0 (gancho no núcleo); pacotes satélites `antevemus/aspecification-redis-streams` e `antevemus/aspecification-rabbitmq` entregues como v1.0.0 em 2026-11-16)

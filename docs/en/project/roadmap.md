@@ -58,4 +58,4 @@ Key highlights & upcoming roadmap:
 31b. **Drafts and Publication of a Catalog Rule** (candidate)
 31c. **Document Requirement Groups Through the Audited Path** (candidate)
 32. **XState Converter for the State Machine** (satellite candidate, frozen until after the MVP of the module engine)
-33. **Messaging Between Modules: the Core Hook** (`Message`, the outbox written in the transaction of the write, `OutboxRelay`, `MessageConsumer` with an inbox, the in-memory transport and source, the bridges from domain events and into a state machine) (Shipped in v2.14.0 (core hook); the Redis Streams and RabbitMQ satellites pending)
+33. **Messaging Between Modules: the Core Hook** (`Message`, the outbox written in the transaction of the write, `OutboxRelay`, `MessageConsumer` with an inbox, the in-memory transport and source, the bridges from domain events and into a state machine) (Shipped in v2.14.0 (core hook); satellite packages `antevemus/aspecification-redis-streams` and `antevemus/aspecification-rabbitmq` shipped as v1.0.0 on 2026-11-16)

@@ -2,7 +2,7 @@
 
 ### 26. Publishing a Fact and Relaying It to a Broker (Module 48)
 
-Since v2.14.0 the core has a hook for messages between modules, in `Antevemus\ASpecification\Messaging`: one module publishes a fact with data ("a quote was sent for analysis", "a message arrived in the live chat") and the others consume it through a broker, without one module calling another. The core ships no broker client: the transports live in satellite packages (Redis Streams, RabbitMQ), behind two interfaces of the core, `IMessageTransport` (out) and `IMessageSource` (in), and the core has an in-memory implementation of both, the reference and the test double.
+Since v2.14.0 the core has a hook for messages between modules, in `Antevemus\ASpecification\Messaging`: one module publishes a fact with data ("a quote was sent for analysis", "a message arrived in the live chat") and the others consume it through a broker, without one module calling another. The core ships no broker client: the transports live in satellite packages, [Redis Streams](https://github.com/antevemus-it/Antevemus.ASpecificationRedisStreams) and [RabbitMQ](https://github.com/antevemus-it/Antevemus.ASpecificationRabbitMQ) (both v1.0.0), behind two interfaces of the core, `IMessageTransport` (out) and `IMessageSource` (in), and the core has an in-memory implementation of both, the reference and the test double.
 
 The application never talks to the broker. It writes the message to an **outbox** table, in the same transaction as the write that produced the fact, and a **relay** sends the outbox to the broker after the commit, marking delivered only what the broker confirmed. There is no second path, so there is no dual write: the fact and its message commit or roll back together.
 
@@ -146,3 +146,12 @@ $state = $runner->load('collection-77')->snapshot->stateOf('collection'); // 'co
 - **Out of scope**: exactly-once delivery between processes (the design is at least once plus the inbox), Kafka, NATS and SQS (other satellites, on demand), and the effects of the state machine relayed by the broker (an effect handler may publish a `Message`).
 
 **Reference DDL:** `resources/sql/messaging.ansi.sql` (`message_outbox`, `message_inbox`, `CREATE TABLE IF NOT EXISTS`, portable to SQLite, PostgreSQL, MySQL and MariaDB; on MySQL and MariaDB the tables need `utf8mb4`). Nothing else of the library reads or writes these tables: a database without them answers as on 2.13.0.
+
+## Broker satellites
+
+The hook knows no broker: the relay calls `send()` and reads the confirmations it returns, and the consumer calls `receive()`, `ack()` and `reject()`; the core never references a broker client. Two satellites implement both interfaces, each against the contract battery of the in-memory transport and against a real broker in its own suite, and neither needs a PHP extension:
+
+- [`antevemus/aspecification-redis-streams`](https://github.com/antevemus-it/Antevemus.ASpecificationRedisStreams) (`RedisStreamsTransport`, `RedisStreamsSource`, over predis): one stream per message name, one consumer group per consumer, the pending entries of a dead process reclaimed with `XAUTOCLAIM`, a dead letter stream; never Pub/Sub. It needs Redis 7.0 or later.
+- [`antevemus/aspecification-rabbitmq`](https://github.com/antevemus-it/Antevemus.ASpecificationRabbitMQ) (`RabbitMqTransport`, `RabbitMqSource`, over php-amqplib): a topic exchange with publisher confirms and the mandatory flag, a durable quorum queue per consumer with manual acknowledgements and the delivery count of the broker, a dead letter exchange.
+
+A satellite for another broker (Kafka, NATS, SQS) implements `IMessageTransport` and `IMessageSource` and passes the same battery; it touches neither the core nor the two satellites above.

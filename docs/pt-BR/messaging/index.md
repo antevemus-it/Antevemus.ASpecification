@@ -2,7 +2,7 @@
 
 ### 26. Publicar um Fato e Levá-lo ao Broker (Módulo 48)
 
-Desde a v2.14.0 o núcleo tem um gancho para mensagens entre módulos, em `Antevemus\ASpecification\Messaging`: um módulo publica um fato com dados ("uma cotação foi enviada para análise", "chegou uma mensagem no live chat") e os outros o consomem por um broker, sem que um módulo chame o outro. O núcleo não traz cliente de broker: os transportes moram em pacotes satélites (Redis Streams, RabbitMQ), atrás de duas interfaces do núcleo, `IMessageTransport` (saída) e `IMessageSource` (entrada), e o núcleo tem uma implementação em memória das duas, a de referência e o dublê de teste.
+Desde a v2.14.0 o núcleo tem um gancho para mensagens entre módulos, em `Antevemus\ASpecification\Messaging`: um módulo publica um fato com dados ("uma cotação foi enviada para análise", "chegou uma mensagem no live chat") e os outros o consomem por um broker, sem que um módulo chame o outro. O núcleo não traz cliente de broker: os transportes moram em pacotes satélites, [Redis Streams](https://github.com/antevemus-it/Antevemus.ASpecificationRedisStreams) e [RabbitMQ](https://github.com/antevemus-it/Antevemus.ASpecificationRabbitMQ) (os dois na v1.0.0), atrás de duas interfaces do núcleo, `IMessageTransport` (saída) e `IMessageSource` (entrada), e o núcleo tem uma implementação em memória das duas, a de referência e o dublê de teste.
 
 A aplicação nunca fala com o broker. Ela grava a mensagem numa tabela de **outbox**, na mesma transação da escrita que produziu o fato, e um **relay** leva a outbox ao broker depois do commit, marcando como entregue só o que o broker confirmou. Não há um segundo caminho, então não há gravação dupla: o fato e a sua mensagem confirmam ou desfazem juntos.
 
@@ -146,3 +146,12 @@ $state = $runner->load('collection-77')->snapshot->stateOf('collection'); // 'co
 - **Fora do escopo**: entrega exatamente uma vez entre processos (o desenho é pelo menos uma vez mais a inbox), Kafka, NATS e SQS (outros satélites, sob demanda), e os efeitos da máquina de estados levados pelo broker (um handler de efeito pode publicar uma `Message`).
 
 **DDL de referência:** `resources/sql/messaging.ansi.sql` (`message_outbox`, `message_inbox`, `CREATE TABLE IF NOT EXISTS`, portável para SQLite, PostgreSQL, MySQL e MariaDB; no MySQL e no MariaDB as tabelas precisam de `utf8mb4`). Nada mais da biblioteca lê ou grava essas tabelas: um banco sem elas responde como na 2.13.0.
+
+## Satélites de broker
+
+O gancho não conhece broker nenhum: o relay chama `send()` e lê as confirmações que ele devolve, e o consumidor chama `receive()`, `ack()` e `reject()`; o núcleo nunca referencia um cliente de broker. Dois satélites implementam as duas interfaces, cada um contra a bateria de contrato do transporte em memória e contra um broker real na sua própria suíte, e nenhum dos dois precisa de extensão do PHP:
+
+- [`antevemus/aspecification-redis-streams`](https://github.com/antevemus-it/Antevemus.ASpecificationRedisStreams) (`RedisStreamsTransport`, `RedisStreamsSource`, sobre o predis): um stream por nome de mensagem, um consumer group por consumidor, as entradas pendentes de um processo morto recuperadas com `XAUTOCLAIM`, um stream de mensagens mortas; nunca Pub/Sub. Precisa do Redis 7.0 ou mais novo.
+- [`antevemus/aspecification-rabbitmq`](https://github.com/antevemus-it/Antevemus.ASpecificationRabbitMQ) (`RabbitMqTransport`, `RabbitMqSource`, sobre o php-amqplib): uma exchange do tipo topic com publisher confirms e a flag mandatory, uma fila quorum durável por consumidor com acknowledgements manuais e a contagem de entregas do broker, uma dead letter exchange.
+
+Um satélite para outro broker (Kafka, NATS, SQS) implementa `IMessageTransport` e `IMessageSource` e passa pela mesma bateria; não toca no núcleo nem nos dois satélites acima.

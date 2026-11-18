@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.1] - 2026-11-17
+
+A PATCH release with metadata and documentation only: the two broker satellites of the messaging hook of 2.14.0 shipped as v1.0.0 on 2026-11-16, and the core now points to them. No change in `src/`, in the tests nor in the behaviour.
+
+### Changed
+
+- **`composer.json`**: two `suggest` lines, `antevemus/aspecification-redis-streams` (`^1.0`, `RedisStreamsTransport` and `RedisStreamsSource` over predis) and `antevemus/aspecification-rabbitmq` (`^1.0`, `RabbitMqTransport` and `RabbitMqSource` over php-amqplib), the items 2.14.0 left for later.
+
+### Documentation
+
+- **`messaging/index.md`** (EN) and its pt-BR twin: the first paragraph links both satellites by their repositories, and a final section, "Broker satellites" ("Satélites de broker"), prose only, says what each one is built on, that neither needs a PHP extension, and what a satellite for another broker (Kafka, NATS, SQS) implements: `IMessageTransport`, `IMessageSource` and the same contract battery, touching neither the core nor the two satellites.
+- The satellites are no longer "pending": milestone 33 of `project/roadmap.md` (both languages) and of `ROADMAP.md` say they shipped as v1.0.0 on 2026-11-16, with their repositories and Packagist pages.
+- README (EN and pt-BR): the Release badge reads v2.14.1.
+
+### Notes
+
+- **Suite:** PHPUnit 721 tests, 181 291 assertions, 2 skipped, and the runner 41/41 suites, 107 311 assertions, both unchanged: the new links are absolute URLs, which the link check of `DocumentationTreeTest` does not count, and the new section has no PHP block.
+- **Mutation testing:** not run again; `src/` did not change.
+
 ## [2.14.0] - 2026-11-15
 
 Messaging between modules: the broker-agnostic hook of the core (forward 063, milestone 33 of the ROADMAP). Asked by the maintainer for the host of about twenty first-party modules, where the triggers of the new agents module ("a chat opened", "a quote sent for analysis", "an invoice overdue") are facts of other modules: one module publishes a fact with data and the others consume it through a broker, without one calling another. The `DomainEvent` of 1.11.0 records a specification crossing and carries no data, and the core ships no broker client (forward 029, D8); this release adds the hook that two satellite packages (Redis Streams, RabbitMQ) implement, and an in-memory implementation of it. Additive: nothing outside the new namespace `Messaging\*` changed, no dependency was added, and a database without the new tables answers as on 2.13.0.
