@@ -75,6 +75,7 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 ### Mensageria
 
 - [Entre módulos](messaging/index.md) (exemplos 26 a 26.3): `Message`, a outbox gravada na transação da escrita, o `OutboxRelay` até um broker, o `MessageConsumer` com uma inbox (uma vez por consumidor) e as pontes dos eventos de domínio e para dentro de uma máquina de estados; o gancho que os satélites Redis Streams e RabbitMQ implementam.
+- [Escrevendo um satélite](messaging/writing-a-satellite.md) (exemplos 27 a 27.4): a bateria de contrato pública do gancho (`MessagingContractTestCase`), o contrato mapeado para as primitivas de Redis Streams, RabbitMQ, SQS, Kafka, Azure Service Bus, Google Cloud Pub/Sub e NATS JetStream, e um satélite didático sobre SQLite que passa por ela.
 
 ### Feature flags
 

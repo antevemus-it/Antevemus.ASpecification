@@ -77,6 +77,7 @@ src/
 │   ├── Outbox/               # IMessageOutbox, outboxes InMemory e Pdo (resources/sql/messaging.ansi.sql)
 │   ├── Inbox/                # IProcessedMessageStore, inboxes InMemory e Pdo dos consumidores
 │   ├── InMemory/             # InMemoryMessageTransport, InMemoryMessageSource: o broker de referência e dublê de teste
+│   ├── Testing/              # MessagingContractTestCase (PHPUnit), IMessagingBench, InMemoryMessagingBench: a bateria de contrato dos satélites (Módulo 49, v2.15.0; carregada só por um teste)
 │   └── Exceptions/           # MessagingException, InvalidMessageException, InvalidMessagePayloadException, MessagingPersistenceException
 ├── Resolution/                # Resolução concorrente de dados (Módulo 21, v1.10.0)
 │   ├── Exceptions/           # DataResolutionException, DataFetchException, DataSourceNotFoundException

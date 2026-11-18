@@ -204,6 +204,10 @@
         {
           "text": "Between modules",
           "path": "messaging/index"
+        },
+        {
+          "text": "Writing a satellite",
+          "path": "messaging/writing-a-satellite"
         }
       ]
     },

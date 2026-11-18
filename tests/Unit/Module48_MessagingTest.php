@@ -2199,12 +2199,21 @@ final class Module48_MessagingTest extends TestCase
         $root = dirname(__DIR__, 2);
         $folder = $root . '/src/Messaging';
         $files = [];
+        $testing = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($folder, \FilesystemIterator::SKIP_DOTS)) as $file) {
             if ($file->getExtension() === 'php') {
-                $files[] = substr($file->getPathname(), strlen($folder) + 1, -4);
+                $relative = substr($file->getPathname(), strlen($folder) + 1, -4);
+                // 2.15.0: the contract battery (Testing/) is guarded by Module 49, which declares its files; no file escapes both.
+                if (str_starts_with($relative, 'Testing/')) {
+                    $testing[] = substr($relative, strlen('Testing/'));
+                    continue;
+                }
+                $files[] = $relative;
             }
         }
         sort($files);
+        sort($testing);
+        $this->assertEquals(Module49_MessagingContractBatteryTest::TESTING_FILES, $testing, 'every file of src/Messaging/Testing/ is declared by Module 49');
         $declared = self::MESSAGING_FILES;
         sort($declared);
         $this->assertEquals($declared, $files, 'every file of src/Messaging/ is declared here (a new one must be tested and declared)');

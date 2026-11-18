@@ -24,7 +24,7 @@ use PHPUnit\Framework\TestCase;
  *
  * It is a PHPUnit-only test, not a module of tests/run_all.php (36 suites since 2.8.0).
  *
- * @version    2.14.0
+ * @version    2.15.0
  * @package    Antevemus\ASpecification
  * @subpackage Tests\PhpUnit
  */
@@ -44,7 +44,7 @@ final class DocumentationTreeTest extends TestCase
      * block of example 16.1 (new in 2.6.0, forward 045: the stage transport hook), plus the three blocks of
      * example 23 and the two of example 14.11 (new in 2.7.0: the state machine for a real consumer and the
      * deadlines in business time), plus the block of example 5.1 (new in 2.8.0: the write-behind hybrid repository)
-     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45), plus the block of example 16.2 (new in 2.12.0: the reason and the retry delay of a failed HTTP call, run by Module 46), plus the four blocks of examples 25 to 25.3 (new in 2.13.0: audited, versioned writes to the rule catalog, run by Module 47), plus the four blocks of examples 26 to 26.3 (new in 2.14.0: the messaging hook between modules, run by Module 48).
+     * and the two blocks of examples 23 and 23.1 of the caching page (new in 2.8.0: the shared PSR-16 cache), plus the blocks of examples 1.1 and 12.1 (new in 2.9.0: the integer leaves, run by Module 44), plus the four blocks of example 24 (new in 2.10.0: adopting the state machine in a running system, run by Module 45), plus the block of example 16.2 (new in 2.12.0: the reason and the retry delay of a failed HTTP call, run by Module 46), plus the four blocks of examples 25 to 25.3 (new in 2.13.0: audited, versioned writes to the rule catalog, run by Module 47), plus the four blocks of examples 26 to 26.3 (new in 2.14.0: the messaging hook between modules, run by Module 48), plus the five blocks of examples 27 to 27.4 (new in 2.15.0: writing a broker satellite against the contract battery, run by Module 49).
      */
     private const PHP_BLOCKS = [
         'getting-started/index' => 1,                         // the first use (2.5.1), also the only block of each README
@@ -81,6 +81,7 @@ final class DocumentationTreeTest extends TestCase
         'events/from-specifications' => 3,                    // example 18
         'events/time-based' => 3,                             // example 18.1
         'messaging/index' => 4,                               // examples 26 to 26.3 (2.14.0, run by Module 48): publish and relay, consume once per consumer, failures and the dead letter queue, the bridges
+        'messaging/writing-a-satellite' => 5,                 // examples 27 to 27.4 (2.15.0, run by Module 49): the battery on the reference, the didactic SQLite transport, source, bench and test class
         'feature-flags/index' => 2,                           // example 19
         'feature-flags/window-and-rollout' => 1,              // example 19.1
         'caching/index' => 2,                                 // examples 23 and 23.1 (2.8.0), one each
@@ -108,8 +109,8 @@ final class DocumentationTreeTest extends TestCase
      */
     private const LOCALIZED_BLOCKS = [];
 
-    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0), plus the four blocks of example 24 (2.10.0), plus example 16.2 (2.12.0), plus the four blocks of examples 25 to 25.3 (2.13.0), plus the four blocks of examples 26 to 26.3 (2.14.0). */
-    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4 + 1 + 4 + 4;
+    /** The 58 blocks of the examples of the former README, plus the first use, plus example 16.1 (2.6.0), plus example 23 and the two of example 14.11 (2.7.0), plus example 5.1 and the two caching examples (2.8.0), plus examples 1.1 and 12.1 (2.9.0), plus the four blocks of example 24 (2.10.0), plus example 16.2 (2.12.0), plus the four blocks of examples 25 to 25.3 (2.13.0), plus the four blocks of examples 26 to 26.3 (2.14.0), plus the five blocks of examples 27 to 27.4 (2.15.0). */
+    private const PHP_BLOCKS_TOTAL = 58 + 1 + 1 + 3 + 2 + 1 + 2 + 2 + 4 + 1 + 4 + 4 + 5;
 
     // (a) -----------------------------------------------------------------------------------------------
 

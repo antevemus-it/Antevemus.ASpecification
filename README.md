@@ -6,9 +6,9 @@
 
 [![CI](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml/badge.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)](https://php.net)
-[![Latest Version](https://img.shields.io/badge/Release-v2.14.1-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.14.1)
+[![Latest Version](https://img.shields.io/badge/Release-v2.15.0-blue.svg)](https://github.com/antevemus-it/Antevemus.ASpecification/releases/tag/v2.15.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-41%2F41%20Suites%20Pass%20(107311%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
+[![Tests](https://img.shields.io/badge/Tests-42%2F42%20Suites%20Pass%20(154397%20Assertions)%20%2B%20Domian%20Parity%20230-success)](docs/en/quality/tests.md)
 [![Architecture](https://img.shields.io/badge/Architecture-DDD%20%7C%20Evans%20%26%20Fowler%20Specification-orange)](http://www.martinfowler.com/apsupp/spec.pdf)
 [![Upstream: Domian](https://img.shields.io/badge/Origin-Domian%20(Apache%202.0)-brightgreen)](https://domian.sourceforge.net/index.html)
 [![Synergy: ALinq](https://img.shields.io/badge/Synergy-Antevemus.AlinqCollection-purple)](https://github.com/antevemus-it/Antevemus.AlinqCollection)
@@ -149,6 +149,7 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 **Messaging**
 
 - [Between modules](docs/en/messaging/index.md) (examples 26 to 26.3) · [pt-BR](docs/pt-BR/messaging/index.md): `Message`, the outbox written in the transaction of the write, `OutboxRelay` to a broker, `MessageConsumer` with an inbox (once per consumer), and the bridges from domain events and into a state machine; the hook the Redis Streams and RabbitMQ satellites implement.
+- [Writing a satellite](docs/en/messaging/writing-a-satellite.md) (examples 27 to 27.4) · [pt-BR](docs/pt-BR/messaging/writing-a-satellite.md): the public contract battery of the hook (`MessagingContractTestCase`, v2.15.0), the contract item by item mapped to Redis Streams, RabbitMQ, SQS, Kafka, Azure Service Bus, Google Cloud Pub/Sub and NATS JetStream, and a didactic satellite over SQLite that passes it.
 
 **Feature flags**
 
@@ -179,8 +180,8 @@ One line per page, grouped as in the navigation; the number in parentheses is th
 
 ## 🧪 Quality
 
-- **Runner:** `php tests/run_all.php`, 41/41 suites, 107 311 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
-- **PHPUnit:** `vendor/bin/phpunit`, 721 tests and 181 291 assertions, the Domian parity suite (230 tests) included.
+- **Runner:** `php tests/run_all.php`, 42/42 suites, 154 397 assertions, zero regressions (the report: [Tests](docs/en/quality/tests.md)).
+- **PHPUnit:** `vendor/bin/phpunit`, 776 tests and 238 345 assertions, the Domian parity suite (230 tests) included.
 - **Soundness bench:** every promise of the algebra checked against the evaluation over a pool of over 700 specifications, with a guard that fails when a specification class is missing from it.
 - **SQL parity:** the same answers in memory and in PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, in CI.
 - **Mutation testing:** Infection with a floor that only rises, now 89 (90.54% MSI measured in 2.5.0).

@@ -20,6 +20,15 @@ abstract class TestCase
         return $this->assertionCount;
     }
 
+    /**
+     * Adds assertions made outside this class to the count (2.15.0: Module 49 counts the assertions of the
+     * PHPUnit contract battery it runs).
+     */
+    protected function addAssertions(int $count): void
+    {
+        $this->assertionCount += $count;
+    }
+
     protected function assertTrue(bool $condition, string $message = ''): void
     {
         $this->assertionCount++;

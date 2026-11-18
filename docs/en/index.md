@@ -75,6 +75,7 @@ The official documentation of the library, one page per topic. The same pages ex
 ### Messaging
 
 - [Between modules](messaging/index.md) (examples 26 to 26.3): `Message`, the outbox written in the transaction of the write, `OutboxRelay` to a broker, `MessageConsumer` with an inbox (once per consumer), and the bridges from domain events and into a state machine; the hook the Redis Streams and RabbitMQ satellites implement.
+- [Writing a satellite](messaging/writing-a-satellite.md) (examples 27 to 27.4): the public contract battery of the hook (`MessagingContractTestCase`), the contract mapped to the primitives of Redis Streams, RabbitMQ, SQS, Kafka, Azure Service Bus, Google Cloud Pub/Sub and NATS JetStream, and a didactic satellite over SQLite that passes it.
 
 ### Feature flags
 

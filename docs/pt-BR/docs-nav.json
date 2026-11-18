@@ -204,6 +204,10 @@
         {
           "text": "Entre módulos",
           "path": "messaging/index"
+        },
+        {
+          "text": "Escrevendo um satélite",
+          "path": "messaging/writing-a-satellite"
         }
       ]
     },
