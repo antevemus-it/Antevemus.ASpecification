@@ -22,7 +22,7 @@ use RuntimeException;
  * stream opened through it has no file descriptor, and proc_open() failed with "posix_spawn() failed: Bad
  * file descriptor", failing Module 21 for every mutant whatever the mutation (spurious kills).
  *
- * @version    2.6.0
+ * @version    2.14.1
  * @package    Antevemus\ASpecification
  * @subpackage Tests\Support
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -89,6 +89,7 @@ final class LocalHttpServer
             $socket = @stream_socket_client('tcp://127.0.0.1:' . $this->port, $errno, $error, 0.2);
             if ($socket !== false) {
                 fclose($socket);
+                $this->awaitWorkers($deadline);
                 return;
             }
             if (!proc_get_status($process)['running']) {
@@ -244,6 +245,24 @@ final class LocalHttpServer
         fclose($server);
 
         return (int) substr($name, strrpos($name, ':') + 1);
+    }
+
+    /**
+     * Waits until the server has forked all its workers. The built-in server listens BEFORE it forks
+     * them, so the port accepts while a worker may not exist yet; a stop() right after start() would
+     * then list the children too early and miss that worker. PHP 8.2's server does not take its
+     * workers down with it, so the missed worker survived as an orphan holding the port (PHP 8.2 leg
+     * of the Tests workflow on the 2.14.1 release commit: "the server no longer accepts
+     * connections"). Not reaching the count is not fatal: the server answers either way.
+     */
+    private function awaitWorkers(float $deadline): void
+    {
+        if ($this->workers < 2 || !is_dir('/proc')) {
+            return;
+        }
+        while (count(self::childPids($this->pid)) < $this->workers && microtime(true) < $deadline) {
+            usleep(10000);
+        }
     }
 
     /** Whether a process still runs (exists and is not a zombie). */

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.14.1] - 2026-11-17
 
-A PATCH release with metadata and documentation only: the two broker satellites of the messaging hook of 2.14.0 shipped as v1.0.0 on 2026-11-16, and the core now points to them. No change in `src/`, in the tests nor in the behaviour.
+A PATCH release with metadata and documentation, and one fix in the test support: the two broker satellites of the messaging hook of 2.14.0 shipped as v1.0.0 on 2026-11-16, and the core now points to them. No change in `src/` nor in the behaviour.
 
 ### Changed
 
@@ -21,9 +21,13 @@ A PATCH release with metadata and documentation only: the two broker satellites 
 - The satellites are no longer "pending": milestone 33 of `project/roadmap.md` (both languages) and of `ROADMAP.md` say they shipped as v1.0.0 on 2026-11-16, with their repositories and Packagist pages.
 - README (EN and pt-BR): the Release badge reads v2.14.1.
 
+### Fixed (tests)
+
+- **`tests/Support/LocalHttpServer`** (Module 21): `start()` now also waits, within its deadline, until the server has forked all its workers. PHP's built-in server listens before it forks them, so the port accepted while a worker might not exist yet, and a `stop()` right after `start()` (the test that the server never outlives a failure) listed the children too early. PHP 8.2's server does not take its workers down with it, so the missed worker lived on as an orphan holding the port, and the PHP 8.2 leg of the Tests workflow failed on the first release commit of this version: "the server no longer accepts connections". Measured before the fix: 3 of 40 starts returned with 1 of 2 workers (PHP 8.4, local), and on PHP 8.2 a worker the stop missed kept accepting on the port (on 8.4 it does not); after it, 40 of 40 starts returned with both workers, on 8.2 and on 8.4. The assertion is unchanged.
+
 ### Notes
 
-- **Suite:** PHPUnit 721 tests, 181 291 assertions, 2 skipped, and the runner 41/41 suites, 107 311 assertions, both unchanged: the new links are absolute URLs, which the link check of `DocumentationTreeTest` does not count, and the new section has no PHP block.
+- **Suite:** PHPUnit 721 tests, 181 291 assertions, 2 skipped, and the runner 41/41 suites, 107 311 assertions, both unchanged: the new links are absolute URLs, which the link check of `DocumentationTreeTest` does not count, the new section has no PHP block, and the fix in the test support adds no assertion.
 - **Mutation testing:** not run again; `src/` did not change.
 
 ## [2.14.0] - 2026-11-15
