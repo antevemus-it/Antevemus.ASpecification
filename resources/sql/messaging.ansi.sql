@@ -60,6 +60,8 @@
 --   uq_mo_pending      (status, entry_id): the open rows, in order
 --   uq_mo_ordering     (ordering_key, entry_id): the queue of one key
 --                      (queue heads, findByOrderingKey)
+--   uq_mo_delivered    (status, delivered_at, entry_id): the retention
+--                      purge, oldest delivery first (since 2.16.0)
 --   pk_message_inbox   (consumer, idempotency_key): the inbox lookup
 --   uq_mi_processed    (consumer, processed_at, idempotency_key): the
 --                      retention purge of one consumer
@@ -74,6 +76,19 @@
 -- Index size: ordering_key 190 + entry_id 26 characters, and consumer
 -- 120 + idempotency_key 190 characters, stay under the 3072-byte InnoDB
 -- key limit with utf8mb4.
+--
+-- Additive migration 2.14.x/2.15.x -> 2.16.0 (forward 065), for a
+-- table created by the DDL of 2.14.0 or 2.15.0: no column changes. The
+-- index of the retention purge (PdoMessageOutbox::purgeDeliveredBefore())
+-- is optional: the purge is correct without it, only slower on a large
+-- outbox. Run it by hand, once (PostgreSQL, MySQL, MariaDB and SQLite
+-- accept it; it is the index of the constraint uq_mo_delivered of a new
+-- table):
+--
+--   CREATE UNIQUE INDEX uq_mo_delivered ON message_outbox (status, delivered_at, entry_id);
+--
+-- The lock of the relay (one relay at a time), optional too, lives in
+-- a table of its own: resources/sql/lease_lock.ansi.sql.
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS message_outbox (
@@ -95,6 +110,7 @@ CREATE TABLE IF NOT EXISTS message_outbox (
     CONSTRAINT uq_mo_message UNIQUE (message_id),
     CONSTRAINT uq_mo_pending UNIQUE (status, entry_id),
     CONSTRAINT uq_mo_ordering UNIQUE (ordering_key, entry_id),
+    CONSTRAINT uq_mo_delivered UNIQUE (status, delivered_at, entry_id),
     CONSTRAINT chk_mo_status CHECK (status IN ('pending', 'delivered', 'failed')),
     CONSTRAINT chk_mo_attempts CHECK (attempts >= 0)
 );

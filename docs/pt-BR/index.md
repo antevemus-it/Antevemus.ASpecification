@@ -55,7 +55,7 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 
 ### Máquina de estados
 
-- [Máquina de estados](state-machine/index.md) (exemplo 14): Guards são especificações: regiões paralelas, definição em JSON, o runner e prazos persistidos.
+- [Máquina de estados](state-machine/index.md) (exemplos 14 e 14.8): Guards são especificações: regiões paralelas, definição em JSON, o runner e prazos persistidos; um despachante de efeitos por vez com trava de prazo, e a retenção da sua outbox.
 - [Prazos em tempo útil](state-machine/business-time.md) (exemplo 14.11): dias úteis, horário de trabalho e feriados; uma pausa que não gasta o fim de semana.
 - [Casos de uso](state-machine/use-cases.md) (exemplo 15): `IUseCase`, `UseCaseRunner` e o resultado comum à máquina.
 - [Um consumidor real](state-machine/real-consumer.md) (exemplo 23): códigos legados dos estados, definições versionadas no banco com rascunho e publicação, e tenants compartilhando uma máquina.
@@ -69,12 +69,12 @@ A documentação oficial da biblioteca, uma página por tema. As mesmas páginas
 
 ### Eventos de domínio
 
-- [A partir de especificações](events/from-specifications.md) (exemplo 18): Eventos de domínio quando uma entidade passa a satisfazer ou deixa de satisfazer uma especificação.
+- [A partir de especificações](events/from-specifications.md) (exemplos 18 e 18.2): Eventos de domínio quando uma entidade passa a satisfazer ou deixa de satisfazer uma especificação; um despachante por vez com trava de prazo, e a retenção da sua outbox.
 - [Pela passagem do tempo](events/time-based.md) (exemplo 18.1): `SpecificationTrigger::timed()` e o `TriggerSweeper`.
 
 ### Mensageria
 
-- [Entre módulos](messaging/index.md) (exemplos 26 a 26.3): `Message`, a outbox gravada na transação da escrita, o `OutboxRelay` até um broker, o `MessageConsumer` com uma inbox (uma vez por consumidor) e as pontes dos eventos de domínio e para dentro de uma máquina de estados; o gancho que os satélites Redis Streams e RabbitMQ implementam.
+- [Entre módulos](messaging/index.md) (exemplos 26 a 26.5): `Message`, a outbox gravada na transação da escrita, o `OutboxRelay` até um broker, o `MessageConsumer` com uma inbox (uma vez por consumidor) e as pontes dos eventos de domínio e para dentro de uma máquina de estados; um relay por vez com trava de prazo, e a retenção da outbox; o gancho que os satélites Redis Streams e RabbitMQ implementam.
 - [Escrevendo um satélite](messaging/writing-a-satellite.md) (exemplos 27 a 27.4): a bateria de contrato pública do gancho (`MessagingContractTestCase`), o contrato mapeado para as primitivas de Redis Streams, RabbitMQ, SQS, Kafka, Azure Service Bus, Google Cloud Pub/Sub e NATS JetStream, e um satélite didático sobre SQLite que passa por ela.
 
 ### Feature flags

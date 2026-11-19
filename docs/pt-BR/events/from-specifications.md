@@ -119,3 +119,35 @@ $events->count();                                 // 1
 - **A entrega** é pelo menos uma vez, na ordem de escrita por entidade: os handlers deduplicam pela chave de idempotência que recebem. Um handler que falha nunca desfaz a escrita; a entrada fica marcada como falha (sem stack trace) e é tentada de novo, segurando os eventos seguintes daquela entidade até dar certo ou, com `maxAttempts`, atingir o limite. Evento sem handler é tentativa falha, não descarte silencioso.
 - **Erros:** uma especificação que lança ao ser avaliada não emite evento; por padrão a escrita segue e o erro vai para um `IDomainEventErrorReporter`, e com `failOnEvaluationError: true` a escrita lança. Falha do publicador (a outbox) sempre propaga.
 - **A travessia causada só pela passagem do tempo**, sem escrita (uma apólice que vence à meia-noite sem ninguém gravá-la), o decorador não vê: é o varredor por tempo do exemplo 18.1. Event sourcing e cliente de barramento de mensagens estão fora do escopo: publique no Kafka ou no RabbitMQ a partir de um handler.
+
+### 18.2. Rodar o Despachante: Um por Vez, e a Retenção da Outbox
+
+O `DomainEventDispatcher` tem o desenho do relay das mensagens ([exemplo 26.4](../messaging/index.md)), e os mesmos dois custos quando dois deles rodam sobre a mesma outbox: a ordem da primeira entrega de cada entidade se mantém, porque um evento só é cabeça depois que os anteriores da sua entidade foram entregues, mas um despachante que leu uma entrada antes de o outro marcá-la a entrega de novo, depois dos eventos seguintes da sua entidade, e os dois contam a tentativa. Desde a v2.16.0 ele aceita uma trava com prazo opcional, e a sua outbox pode ser limpa.
+
+```php
+use Antevemus\ASpecification\DomainEvents\Outbox\IDomainEventOutboxRetention;
+use Antevemus\ASpecification\DomainEvents\Outbox\PdoDomainEventOutbox;
+use Antevemus\ASpecification\Persistence\PdoLeaseLock;
+
+// $pdo: as tabelas de resources/sql/domain_events.ansi.sql e de resources/sql/lease_lock.ansi.sql
+$dispatcher = new DomainEventDispatcher(
+    new PdoDomainEventOutbox($pdo),
+    $handlers,
+    maxAttempts: 10,
+    lock: new PdoLeaseLock($pdo), // um armazém de travas para todos os despachantes da aplicação
+    leaseSeconds: 60
+);
+$name = $dispatcher->getLockName();         // 'domain_events.dispatcher:domain_event_outbox'
+$report = $dispatcher->dispatchPending(100);
+$delivered = $report->deliveredCount();     // 2
+$skipped = $report->isLockDenied();         // false: nenhum outro despachante segurava a trava
+
+// Um job diário: os eventos entregues mais antigos que a janela da outbox, 1 000 por vez
+$purge = fn(IDomainEventOutboxRetention $outbox): int => $outbox->purgeDeliveredBefore(new DateTimeImmutable('-30 days'), 1000);
+$purged = $purge(new PdoDomainEventOutbox($pdo)); // 0: as entregas acima são recentes
+```
+
+- **Um despachante por outbox, ou uma trava.** Sem trava, o despachante é o da v2.15.0: rode exatamente um por outbox. Com trava (`ILeaseLock`: `PdoLeaseLock` sobre `lease_lock`, `InMemoryLeaseLock` num processo só), `dispatchPending()` a pega pelo seu nome antes da primeira rodada e não entrega nada quando outro despachante a segura (`isLockDenied()`); renova antes de cada rodada seguinte, antes de ler as cabeças, e para quando a renovação falha (`isLockLost()`); libera no fim, também quando a rodada lança. O nome padrão é o tipo mais a tabela da outbox (`getLockName()`, ou `lockName:`), então o mesmo `PdoLeaseLock` serve também ao relay e ao despachante de efeitos. O prazo (`leaseSeconds`, 60 por padrão) precisa ser maior que a rodada mais lenta, contando os handlers, e que a diferença entre os relógios das máquinas; o dono (`lockOwner`) é um ULID novo por instância, a menos que seja dado.
+- **Uma falha tardia nunca reabre uma entrega.** Desde a v2.16.0 `markFailed()` deixa uma entrada entregue como está (sem contar tentativa), em memória e em PDO: um despachante pausado além do prazo, cujo handler falhou depois de outro ter entregue o evento, não volta mais a entrada para falha para ela ser entregue mais uma vez.
+- **Retenção.** `InMemoryDomainEventOutbox` e `PdoDomainEventOutbox` implementam `IDomainEventOutboxRetention`: `purgeDeliveredBefore($before, $limit = 1000)` remove no máximo `$limit` entradas entregues anteriores a `$before`, a entrega mais antiga primeiro, nunca uma pendente ou com falha; chame de novo até devolver menos que o limite. O índice `uq_deo_delivered` serve a busca (no DDL de referência; para uma tabela criada antes da v2.16.0, um `CREATE UNIQUE INDEX` opcional no cabeçalho dele).
+- **A janela.** `enqueue()` pula um evento cuja chave de idempotência está guardada, e só enquanto ela está guardada. A chave vem do gatilho, da entidade, do tipo e do instante da travessia, então uma travessia registrada de novo (uma escrita repetida, uma varredura sobre o mesmo estado) tem a mesma chave: depois da limpeza ela é publicada de novo. Guarde a outbox por mais tempo que qualquer nova tentativa que possa registrar a mesma travessia, e guarde a deduplicação de cada handler (o store de idempotência da máquina de estados, para o `MachineEventBridge`) pelo menos esse tempo, mais o maior atraso do despachante.

@@ -17,14 +17,17 @@ use InvalidArgumentException;
  * message. It takes part in an InMemoryTransactionManager (IInMemoryTransactional), so a rolled
  * back write also rolls its events back.
  *
- * @version    1.11.0
+ * Since 2.16.0 (forward 065): a failure mark never overwrites a delivered entry (D11), and the delivered
+ * entries can be purged (IDomainEventOutboxRetention, D12).
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage DomainEvents\Outbox
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class InMemoryDomainEventOutbox implements IDomainEventOutbox, IInMemoryTransactional
+final class InMemoryDomainEventOutbox implements IDomainEventOutbox, IDomainEventOutboxRetention, IInMemoryTransactional
 {
     /** @var array<string, DomainEventOutboxEntry> event id => entry */
     private array $entries = [];
@@ -81,7 +84,36 @@ final class InMemoryDomainEventOutbox implements IDomainEventOutbox, IInMemoryTr
     /** {@inheritdoc} */
     public function markFailed(DomainEventOutboxEntry $entry, string $error, DateTimeImmutable $at): void
     {
-        $this->entries[$this->mustExist($entry)] = $this->entries[$entry->eventId]->withFailed($error, $at);
+        $stored = $this->entries[$this->mustExist($entry)];
+        if ($stored->isDelivered()) {
+            return;
+        }
+        $this->entries[$entry->eventId] = $stored->withFailed($error, $at);
+    }
+
+    /** {@inheritdoc} */
+    public function purgeDeliveredBefore(DateTimeImmutable $before, int $limit = 1000): int
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
+        }
+        $before = DomainEventSupport::toText($before);
+        $purgeable = [];
+        foreach ($this->entries as $id => $entry) {
+            // The text form of the instants, compared and ordered as the SQL of PdoDomainEventOutbox does
+            $deliveredAt = $entry->deliveredAt === null ? null : DomainEventSupport::toText($entry->deliveredAt);
+            if ($entry->isDelivered() && $deliveredAt !== null && $deliveredAt < $before) {
+                $purgeable[$deliveredAt . ' ' . $id] = $entry;
+            }
+        }
+        ksort($purgeable, SORT_STRING);
+        $purged = 0;
+        foreach (array_slice($purgeable, 0, $limit) as $entry) {
+            unset($this->entries[$entry->eventId], $this->keys[$entry->idempotencyKey()]);
+            $purged++;
+        }
+
+        return $purged;
     }
 
     /** {@inheritdoc} */

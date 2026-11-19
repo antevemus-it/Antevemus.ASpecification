@@ -15,7 +15,11 @@ use Antevemus\ASpecification\Messaging\Outbox\MessageOutboxEntry;
  * later message of the key may overtake them; RN-04 declares it here), and the number of batches
  * (forward 063, D6). No reason carries a value of the payload (RN-05).
  *
- * @version    2.14.0
+ * Since 2.16.0 (forward 065, D2), for a relay with a lock: whether the run sent nothing because another
+ * relay held the lock (isLockDenied()), and whether it stopped before a batch because the renewal of the
+ * lock failed (isLockLost(): its lease ran out and another relay took it over). toArray() is unchanged.
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage Messaging
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
@@ -29,13 +33,32 @@ final class RelayReport
      * @param array<string, string> $failures Reason by message id, in send order
      * @param list<string> $exhausted Message ids that reached the attempt limit in this run
      * @param int $batches Calls to the transport
+     * @param bool $lockDenied True when another relay held the lock: nothing was sent
+     * @param bool $lockLost True when the run stopped because the renewal of the lock failed
      */
     public function __construct(
         private readonly array $delivered = [],
         private readonly array $failures = [],
         private readonly array $exhausted = [],
-        private readonly int $batches = 0
+        private readonly int $batches = 0,
+        private readonly bool $lockDenied = false,
+        private readonly bool $lockLost = false
     ) {
+    }
+
+    /** True when the relay did not get its lock (another relay holds it): the run sent nothing. */
+    public function isLockDenied(): bool
+    {
+        return $this->lockDenied;
+    }
+
+    /**
+     * True when the run stopped before a batch because the renewal of the lock failed (its lease ran
+     * out and another relay took it over); what was marked before stays marked.
+     */
+    public function isLockLost(): bool
+    {
+        return $this->lockLost;
     }
 
     /** Number of messages confirmed by the broker. */

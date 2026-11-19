@@ -60,13 +60,13 @@ src/
 │   └── Traits/               # 8 Traits modulares (Type, Comparison, Logical, Special, String, Date, Collection, Wrapper)
 ├── Results/                   # SpecificationResult, SpecificationFailure, FailureSeverity, IOutcome
 ├── StateMachine/              # Máquina de estados dirigida por especificações (Módulos 17 e 18): builder, definição, validador, núcleo puro
-│   ├── Persistence/          # Portas, MachinePersistence, stores InMemory/ e Pdo/ (resources/sql/state_machine.ansi.sql)
+│   ├── Persistence/          # Portas, MachinePersistence, stores InMemory/ e Pdo/ (resources/sql/state_machine.ansi.sql); IEffectOutboxRetention (v2.16.0)
 │   │                         # v2.7.0: PdoMachineDefinitionRepository, rascunhos (IMachineDefinitionDrafts), tenants (ITenantScopedInstanceStore), IMachineInstanceLister (Módulo 40)
 │   └── Runner/               # MachineRunner, EffectDispatcher, EffectHandlerRegistry, migrações (v2.7.0: MachineMigrations, migrateAll())
 ├── UseCase/                   # IUseCase, UseCaseRunner, UseCaseResult, UseCaseStatus, middlewares (Módulo 19)
-├── Persistence/               # ITransactionManager, PdoTransactionManager: a porta de transação comum ao repositório, às outboxes e aos stores da máquina (v1.11.0); IQueryLogger, InMemoryQueryLogger (v1.13.0)
+├── Persistence/               # ITransactionManager, PdoTransactionManager: a porta de transação comum ao repositório, às outboxes e aos stores da máquina (v1.11.0); IQueryLogger, InMemoryQueryLogger (v1.13.0); ILeaseLock, InMemoryLeaseLock, PdoLeaseLock: um despachante de outbox por vez (resources/sql/lease_lock.ansi.sql, v2.16.0)
 ├── DomainEvents/              # Eventos de domínio a partir de especificações (Módulo 23, v1.11.0) e pela passagem do tempo (Módulo 24, v1.12.0)
-│   ├── Outbox/               # IDomainEventOutbox, outboxes InMemory e Pdo (resources/sql/domain_events.ansi.sql)
+│   ├── Outbox/               # IDomainEventOutbox, outboxes InMemory e Pdo (resources/sql/domain_events.ansi.sql); IDomainEventOutboxRetention (v2.16.0)
 │   ├── State/                # ITriggerStateStore, stores InMemory e Pdo do último estado conhecido de cada gatilho (v1.12.0)
 │   ├── SpecificationTrigger.php # Especificação ligada a um evento de entrada e um de saída (timed(): montada a partir do "agora"); TriggerSet, TriggerEvaluator
 │   ├── TriggeringRepository.php # Decorador de IRepository que publica as travessias de cada escrita
@@ -74,7 +74,7 @@ src/
 │   ├── DomainEventDispatcher.php # Entrega depois do commit; DomainEventHandlerRegistry
 │   └── MachineEventBridge.php # Evento de domínio enviado a um MachineRunner
 ├── Messaging/                 # Mensageria entre módulos (Módulo 48, v2.14.0): Message, MessagePublisher, OutboxRelay, MessageConsumer, MessageHandlerRegistry, os relatórios, os ganchos IMessageTransport/IMessageSource, ReceivedMessage, TransportSendResult, DomainEventMessageBridge, MessageMachineBridge
-│   ├── Outbox/               # IMessageOutbox, outboxes InMemory e Pdo (resources/sql/messaging.ansi.sql)
+│   ├── Outbox/               # IMessageOutbox, outboxes InMemory e Pdo (resources/sql/messaging.ansi.sql); IMessageOutboxRetention (v2.16.0)
 │   ├── Inbox/                # IProcessedMessageStore, inboxes InMemory e Pdo dos consumidores
 │   ├── InMemory/             # InMemoryMessageTransport, InMemoryMessageSource: o broker de referência e dublê de teste
 │   ├── Testing/              # MessagingContractTestCase (PHPUnit), IMessagingBench, InMemoryMessagingBench: a bateria de contrato dos satélites (Módulo 49, v2.15.0; carregada só por um teste)

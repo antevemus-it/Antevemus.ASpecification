@@ -314,3 +314,31 @@ $runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM);      // '20
 O `deliverDue()` envia contexto nulo, a menos que receba um `contextProvider` (que recebe o prazo vencido e a instância carregada): uma transição de prazo que entra num estado cujo prazo lê o contexto precisa do contexto da instância, como aqui. A condição de pausa é qualquer expressão de guard; uma que lança exceção rejeita o passo. O validador recusa `pausedWhile` com guard desconhecido ou caminho de `inState` inexistente, e avisa quando ele referencia a própria região do prazo (a pausa nunca terminaria). O snapshot guarda o saldo (`pausedRemaining()`; `paused_remaining` na forma de array só enquanto alguma região está pausada, então um snapshot da 1.8 carrega sem mudança), e o `migrate()` recusa uma migração que deixaria saldo pausado num estado cujo prazo não declara `pausedWhile`, porque ele nunca retomaria.
 
 Fora do escopo de propósito (cada um pode ser modelado sem ele): atores, `invoke`/`spawn` (trabalho assíncrono é job externo que devolve um evento), transições sem evento (`always`) e `raise` (quem chama envia o próximo evento), estados aninhados dentro de região e history state (uma região paralela, como a pendência acima, cobre os casos reais) e contexto da máquina (`assign`): o contexto é o objeto de domínio de quem chama. O histórico é trilha; o snapshot é a verdade (sem event sourcing).
+
+### 14.8. Rodar o EffectDispatcher: Um por Vez, e a Retenção da Outbox
+
+O `EffectDispatcher` de 14.5 tem o desenho do relay das mensagens ([exemplo 26.4](../messaging/index.md)): dois deles sobre a mesma outbox mantêm a ordem de cada instância, mas um despachante que leu uma entrada antes de o outro marcá-la a entrega de novo, e os dois contam a tentativa. Desde a v2.16.0 ele aceita uma trava com prazo opcional, e a sua outbox pode ser limpa.
+
+```php
+use Antevemus\ASpecification\Persistence\PdoLeaseLock;
+use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutboxRetention;
+
+// $persistence = MachinePersistence::pdo($pdo); a tabela lease_lock de resources/sql/lease_lock.ansi.sql
+$dispatcher = new EffectDispatcher(
+    $persistence->outbox,
+    $handlers,
+    lock: new PdoLeaseLock($pdo), // o mesmo armazém de travas dos outros despachantes
+    leaseSeconds: 60
+);
+$name = $dispatcher->getLockName();                             // 'state_machine.effect_dispatcher:state_machine_outbox'
+$delivered = $dispatcher->dispatchPending()->deliveredCount();  // 1
+$again = $dispatcher->dispatchPending()->isLockDenied();        // false: a trava foi solta no fim da primeira rodada
+
+$purge = fn(IEffectOutboxRetention $outbox): int => $outbox->purgeDeliveredBefore(new DateTimeImmutable('-30 days'), 1000);
+$purged = $purge($persistence->outbox); // 0: o efeito acima foi entregue agora
+```
+
+- **Um despachante por outbox, ou uma trava.** Sem trava, o despachante é o da v2.15.0: rode exatamente um por outbox. Com trava (`ILeaseLock`: `PdoLeaseLock` sobre `lease_lock`, `InMemoryLeaseLock` num processo só), `dispatchPending()` a pega pelo seu nome antes da primeira rodada e não entrega nada quando outro despachante a segura (`DispatchReport::isLockDenied()`); renova antes de cada rodada seguinte, antes de ler as cabeças, e para quando a renovação falha (`isLockLost()`); libera no fim, também quando a rodada lança. O nome padrão é o tipo mais a tabela da outbox (`getLockName()`, ou `lockName:`); o prazo (`leaseSeconds`, 60 por padrão) precisa ser maior que a rodada mais lenta, contando os handlers, e que a diferença entre os relógios.
+- **Uma falha tardia nunca reabre uma entrega.** Desde a v2.16.0 `markFailed()` deixa uma entrada entregue como está (sem contar tentativa), em memória e em PDO.
+- **Retenção.** `InMemoryEffectOutbox` e `PdoEffectOutbox` implementam `IEffectOutboxRetention`: `purgeDeliveredBefore($before, $limit = 1000)` remove no máximo `$limit` entradas entregues anteriores a `$before`, a entrega mais antiga primeiro, nunca uma pendente ou com falha. O índice `uq_smo_delivered` serve a busca (no DDL de referência; para uma tabela criada antes da v2.16.0, um `CREATE UNIQUE INDEX` opcional no cabeçalho dele).
+- **O que a limpeza pode e não pode reabrir.** Esta outbox não deduplica: um efeito é gravado uma vez, pelo passo que o produziu, com a sua chave (instância, versão, posição), e o runner nunca grava um passo duas vezes; um evento repetido é respondido pelo store de idempotência do runner (`state_machine_idempotency`) com o resultado original e nenhum efeito novo. Então limpar um efeito entregue nunca o faz rodar de novo. Quem deduplica uma entrega é o handler, pela chave do efeito que recebe: um despachante que morreu entre o handler e a marca o entrega de novo. O que pode reabrir é a deduplicação do handler, ou o store de idempotência do runner, guardados por menos tempo que o atraso das cópias que eles absorvem, não esta limpeza.

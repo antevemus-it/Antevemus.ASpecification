@@ -332,7 +332,26 @@ Forward 064 (2026-11-18): the battery the two satellites of milestone 33 kept in
 
 ---
 
-## 🗓️ Scheduled (nothing: every scheduled milestone shipped on 2026-10-21)
+## ✅ v2.16.0 — The Dispatchers of the Three Outboxes in Production (Shipped in v2.16.0)
+
+Forward 065 (2026-11-19): one dispatcher at a time and the retention, for the outbox of the messages and, by the decision of the maintainer the same day, for the other two outboxes of the library, which had the same design.
+
+### 33c. The Messaging Hook in Production: One Relay at a Time and the Retention of the Outbox, for the Three Dispatchers 📨 (Shipped in v2.16.0)
+- **Description:** Two gaps of operation, found on 2026-11-18 when the maintainer asked how complete the messaging hook is, and found on 2026-11-19 in `DomainEventDispatcher` (1.11.0) and `EffectDispatcher` (1.8.0) as well.
+  - **One at a time.** Nothing kept two dispatchers off the same outbox. The order of the first delivery of each queue held, but two at once cost a late duplicate after the later entries of its queue (which an inbox no longer absorbs once it was purged), attempts counted twice, and a delivered entry turned back into a failed one by the slower dispatcher.
+  - **Shipped.** A generic lease lock, `Persistence\ILeaseLock` (`InMemoryLeaseLock`, `PdoLeaseLock` over one table, `resources/sql/lease_lock.ansi.sql`), taken by `OutboxRelay`, `DomainEventDispatcher` and `EffectDispatcher` as an optional parameter, each under its own name (the kind and the table of its outbox): taken before the first batch or round, renewed before every further one, a run that stops when the renewal fails, released in a `finally`; the reports say "not run, the lock is held by another" (`isLockDenied()`) and "lost" (`isLockLost()`). Portable acquisition, without `SKIP LOCKED`: a conditional `UPDATE`, an `INSERT` protected by the primary key inside a savepoint of its own. As a defence in depth, a failure mark never overwrites a delivered entry, on the three outboxes.
+  - **Retention.** `IMessageOutboxRetention`, `IDomainEventOutboxRetention` and `IEffectOutboxRetention` purge the delivered entries in batches (keys read with the row limit of the dialect, deleted by list), never the pending, failed or exhausted ones; an optional index per DDL. The pages state the windows: the outbox longer than any retry of a producer, the inbox at least the outbox plus the longest delay of the relay; for the effects, what the purge cannot reopen (the deduplication lives in the handler and in `state_machine_idempotency`).
+  - **Compatibility.** Everything enters through new interfaces and optional parameters; without a lock and a purge the three dispatchers are those of 2.15.0, except the failure mark, which shows only in a race.
+- **Proof:** Module 50 (for each of the three: the lock battery and its random sequences, the dispatcher with and without the lock, the failure mark, the retention and its random sequences, a table of the 2.15 DDL, on memory, SQLite, PostgreSQL 17, MySQL 8.4 and MariaDB 11.4, the transcripts equal; property sequences of two and three dispatchers interleaved on fibers, with deaths, restarts, refusals and leases run out while one is paused, with the lock and without it, against a model of what was published: with the lock, every delivery by the holder, the attempts exact and no duplicate without a death; always, no delivered entry reopened and the order of each queue kept; the same generator over the failure mark of 2.15.0 reopens deliveries; the race of the first acquisition between two connections, inside a transaction that goes on; two PHP processes racing for the three locks on the four databases, never in the same critical section; examples 26.4, 26.5, 18.2 and 14.8 run as written); ROADMAP_COUNTS
+- **Goal:** Several workers per outbox without the costs of a race, and outboxes that do not grow forever, with nothing changed for an application that runs one worker and never purges.
+
+---
+
+## 🗓️ Scheduled
+
+Nothing is scheduled: milestone 33c shipped in v2.16.0 (above); milestone 33d waits for its consumer (below).
+
+### Previously scheduled (every one shipped on 2026-10-21)
 
 Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, when the first real consumer (the Virttus) put two forwards ahead of the queue: 048 shipped in v2.5.0 (above) and 046 was placed at v2.6.0, so the repository and cache work slid to v2.7.0 and the integer leaves to v2.8.0. Reordered again on 2026-10-20: the Fibers/Revolt work (milestone 15b) is the last feature before the work on the engine resumes, and its satellite package needs a hook in the core, so the hook took v2.6.0 (above) and every scheduled version slid one minor: 046 to v2.7.0, the repositories and the cache to v2.8.0, the integer leaves to v2.9.0. 046 shipped in v2.7.0, 042 + 043 in v2.8.0 and 044 in v2.9.0 and the adoption gaps in v2.10.0 (above) on 2026-10-21: **nothing is scheduled**; new work enters this file with a consumer and a written case first. Each milestone has its forward specification in the Reversa of this repository (`_reversa_forward/042` to `046`; 039 and 040 shipped in v2.3.0, 041 in v2.4.0, 048 in v2.5.0 and the core hook of 045 in v2.6.0) and goes into the version named here; the satellite package comes next, right after the hook.
 
@@ -350,7 +369,7 @@ Planned on 2026-10-18 from the unscheduled list and reordered on 2026-10-19, whe
 
 ## 🔭 Distant Future (no forward, no version)
 
-Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward. Milestone 15d (added on 2026-11-01) is the exception: it has a consumer, which is not blocked, and waits for its cases. Milestones 31b and 31c (added on 2026-11-11) are candidates left by milestone 31. Milestone 32 (added on 2026-11-15) is a satellite candidate frozen until after the MVP of the module engine; milestone 33, added the same day, left this list when its core hook shipped in v2.14.0 (above).
+Moved here on 2026-10-18: none of them has a consumer in the ecosystem the library serves (Adianti hosts, the `PdoRepository`, the Virttus applications), and a milestone without a consumer is a promise the README cannot keep. Each one needs a written use case before it gets a forward. Milestone 15d (added on 2026-11-01) is the exception: it has a consumer, which is not blocked, and waits for its cases. Milestones 31b and 31c (added on 2026-11-11) are candidates left by milestone 31. Milestone 32 (added on 2026-11-15) is a satellite candidate frozen until after the MVP of the module engine; milestone 33, added the same day, left this list when its core hook shipped in v2.14.0 (above). Milestone 33d (added on 2026-11-19) holds the operations of the messaging hook left after 33c, which wait for their consumer.
 
 ### 17. GraphQL AST & OpenAPI 3.1 Query Compilers 🔍
 - **Description:** Bidirectional AST compilers translating GraphQL query filters and OpenAPI 3.1 query parameter syntax directly into pure domain `ISpecification` trees.
@@ -376,6 +395,15 @@ Moved here on 2026-10-18: none of them has a consumer in the ecosystem the libra
 ### 32. XState Converter for the State Machine (satellite) 🔁
 - **Description:** A satellite package that converts between the XState v5 machine configuration (the JSON the Stately editor exports) and `MachineDefinition`, in both directions, for the part both have: parallel regions of atomic states, events, named guards and actions with parameters, final states, entry and exit, simple delays. Import refuses, with a report listing every unsupported construct, what the state machine leaves out on purpose (nested states inside a region, history states, `always`, `raise`, actors, `invoke`/`spawn`, machine context) and validates the result; export declares every loss (calendars, paused deadlines, deadlines read from the context, internal events) instead of dropping it in silence. Guards stay names in the browser: the decision and its reason keep coming from `can()`/`nextEvents()` on the server.
 - **Why it waits:** evaluated (forward 062) and frozen by the maintainer on 2026-11-15 until after the MVP of the module engine.
+
+### 33d. Operations of the Messaging Hook That Wait for Their Consumer 📨
+- **Description:** What the hook (milestones 33 to 33c) still leaves to the application, each a candidate on its own:
+  - **A delay between attempts, and a growing one.** Today a rejected delivery comes back at once, until `maxDeliveries`, so a service that is down burns the attempts in seconds. The candidate is a delay per rejection, with a growing backoff, on the source and on the relay.
+  - **Sending dead letters back.** The dead letter queue can be read but not put back on the normal queue once the defect is fixed. The candidate is a redrive that keeps the inbox and the order of the key.
+  - **Observability.** The reports (`RelayReport`, `ConsumeReport`) exist, but there is no hook for metrics and no correlation or trace carried from the publication to the consumption. The candidate is an observer port, and a correlation and W3C `traceparent` carried in the headers.
+  - **A long-running worker.** The loop that relays and consumes, with a clean stop on SIGTERM, is left to the application (supervisor, systemd). The candidate is a worker with signals, limits on memory and runs, and a documented example.
+  - **More satellites.** AWS SQS FIFO, Apache Kafka and Azure Service Bus exist only as guidance in [Writing a satellite](docs/en/messaging/writing-a-satellite.md). Each would be a package of its own that passes the contract battery of v2.15.0.
+- **Why it waits:** the first consumer is the module engine (events between its modules), which will say which of these it needs. Each item needs its case written before a forward.
 
 ### 20. AI-Assisted Specification Synthesizer 🤖
 - **Description:** Rule synthesis assistant that generates optimized, non-contradictory specification trees (milestone 10 as the checker) from plain-text business requirements.

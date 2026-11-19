@@ -32,14 +32,24 @@ use PDO;
  * Share the PDO connection (and its transaction) with the write that produces the facts, so that the
  * write and its messages commit or roll back together (RN-02).
  *
- * @version    2.14.0
+ * Since 2.16.0 (forward 065):
+ * - markFailed() never overwrites a delivered entry (D3): its UPDATE also requires `status <>
+ *   'delivered'`, and when it changes no row the entry is looked up, so that a delivered entry is left as
+ *   it is (no attempt counted) and a missing one still throws
+ * - purgeDeliveredBefore() (IMessageOutboxRetention, D4) reads the ids of a batch with the row limit of
+ *   the dialect and deletes them by list, in chunks of PURGE_CHUNK (MySQL refuses a LIMIT inside an IN
+ *   subquery, and older SQLite builds take at most 999 parameters); the lookup is served by the index
+ *   uq_mo_delivered (status, delivered_at, entry_id) of the reference DDL, a CREATE UNIQUE INDEX for the
+ *   tables created before 2.16.0 (its header)
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage Messaging\Outbox
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class PdoMessageOutbox implements IMessageOutbox
+final class PdoMessageOutbox implements IMessageOutbox, IMessageOutboxRetention
 {
     /** Default table name, mirroring the reference DDL. */
     public const DEFAULT_TABLE = 'message_outbox';
@@ -49,6 +59,9 @@ final class PdoMessageOutbox implements IMessageOutbox
         'entry_id', 'message_id', 'message_name', 'ordering_key', 'tenant', 'headers', 'payload', 'occurred_at',
         'status', 'attempts', 'last_error', 'enqueued_at', 'delivered_at', 'last_attempt_at',
     ];
+
+    /** Largest list of ids of one DELETE of purgeDeliveredBefore(). */
+    public const PURGE_CHUNK = 500;
 
     private readonly PdoMessagingTable $table;
 
@@ -171,7 +184,44 @@ final class PdoMessageOutbox implements IMessageOutbox
             'status' => MessageOutboxStatus::FAILED->value,
             'last_error' => MessagingSupport::truncate($reason),
             'last_attempt_at' => MessagingSupport::toText($at),
-        ]);
+        ], true);
+    }
+
+    /** {@inheritdoc} */
+    public function purgeDeliveredBefore(DateTimeImmutable $before, int $limit = 1000): int
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
+        }
+        $t = $this->table;
+        $delivered = sprintf("%s = 'delivered'", $t->column('status'));
+        $ids = array_map(static fn(array $row): string => (string) $row['entry_id'], $t->fetchAll(
+            $t->limit(sprintf(
+                'SELECT %s AS entry_id FROM %s WHERE %s AND %s < :before ORDER BY %s, %s',
+                $t->column('entry_id'),
+                $t->table(),
+                $delivered,
+                $t->column('delivered_at'),
+                $t->column('delivered_at'),
+                $t->column('entry_id')
+            ), $limit),
+            [':before' => MessagingSupport::toText($before)],
+            'purge delivered'
+        ));
+        $purged = 0;
+        foreach (array_chunk($ids, self::PURGE_CHUNK) as $chunk) {
+            $params = [];
+            foreach ($chunk as $i => $id) {
+                $params[':entry_' . $i] = $id;
+            }
+            $purged += $t->execute(
+                sprintf('DELETE FROM %s WHERE %s AND %s IN (%s)', $t->table(), $delivered, $t->column('entry_id'), implode(', ', array_keys($params))),
+                $params,
+                'purge delivered'
+            )->rowCount();
+        }
+
+        return $purged;
     }
 
     /** {@inheritdoc} */
@@ -208,9 +258,10 @@ final class PdoMessageOutbox implements IMessageOutbox
 
     /**
      * @param array<string, string> $set Canonical column => value (attempts is always incremented)
+     * @param bool $unlessDelivered True: a delivered entry is left as it is (D3, 2.16.0)
      * @throws MessagingPersistenceException
      */
-    private function update(MessageOutboxEntry $entry, string $operation, array $set): void
+    private function update(MessageOutboxEntry $entry, string $operation, array $set, bool $unlessDelivered = false): void
     {
         $t = $this->table;
         $assignments = [sprintf('%1$s = %1$s + 1', $t->column('attempts'))];
@@ -221,14 +272,36 @@ final class PdoMessageOutbox implements IMessageOutbox
         }
         $params[':entry_id'] = $entry->entryId;
         $statement = $t->execute(
-            sprintf('UPDATE %s SET %s WHERE %s = :entry_id', $t->table(), implode(', ', $assignments), $t->column('entry_id')),
+            sprintf(
+                'UPDATE %s SET %s WHERE %s = :entry_id%s',
+                $t->table(),
+                implode(', ', $assignments),
+                $t->column('entry_id'),
+                $unlessDelivered ? sprintf(" AND %s <> 'delivered'", $t->column('status')) : ''
+            ),
             $params,
             $operation,
             $entry->messageId()
         );
         if ($statement->rowCount() !== 1) {
+            if ($unlessDelivered && $this->exists($entry)) {
+                return;
+            }
             throw new MessagingPersistenceException(sprintf('Message outbox entry %s (%s) does not exist.', $entry->entryId, $entry->message->describe()));
         }
+    }
+
+    /** True when the row of the entry exists. */
+    private function exists(MessageOutboxEntry $entry): bool
+    {
+        $t = $this->table;
+
+        return (int) $t->execute(
+            sprintf('SELECT COUNT(*) FROM %s WHERE %s = :entry_id', $t->table(), $t->column('entry_id')),
+            [':entry_id' => $entry->entryId],
+            'find',
+            $entry->messageId()
+        )->fetchColumn() > 0;
     }
 
     /**

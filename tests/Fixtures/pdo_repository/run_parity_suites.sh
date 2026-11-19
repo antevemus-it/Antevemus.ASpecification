@@ -39,6 +39,11 @@
 #     the contract batteries of the outbox and the inbox, the relay and the consumer over them, the column map, the failures
 #     without the driver message, the tampered rows, and the property sequences of the seeds of the module through a faulty
 #     in-memory broker, their transcript equal to the one of memory;
+#   - Module50_OutboxLockAndRetentionTest (2.16.0, forward 065): the dispatchers of the three outboxes in
+#     production over PDO (PdoLeaseLock: its battery and random sequences equal to memory, two connections racing for the
+#     first acquisition, inside a transaction that goes on, two PHP processes racing for the three locks; the failure mark
+#     that never reopens a delivery; the retention of the three PDO outboxes and a table of the 2.15 DDL; the property
+#     sequences of dispatchers interleaved, their transcript equal to the one of memory);
 #   - DateSqlParityTest and the soundness bench (AlgebraSoundnessTest, AlgebraSoundnessCasesTest), forward
 #     037 D2/D5.
 #
@@ -86,7 +91,7 @@ cd "$ROOT"
 "${PHP[@]}" -r '
 require "tests/bootstrap.php";
 foreach (glob("tests/Unit/*.php") as $f) { require_once $f; }
-foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest", "Module47_AuditedRuleCatalogTest", "Module48_MessagingTest"] as $suite) {
+foreach (["Module22_PdoRepositoryTest", "Module25_PdoRepositoryComplementsTest", "Module26_PdoRelationshipsTest", "Module27_FeatureFlagsTest", "Module28_AccentInsensitiveTextTest", "Module29_WildcardRegexAccentInsensitiveTest", "Module30_FeatureFlagsIITest", "Module31_SpecificationSerializationTest", "Module36_RuleEngineCriteriaAndAsyncDataTest", "Module40_StateMachineRealConsumerTest", "Module45_StateMachineAdoptionTest", "Module47_AuditedRuleCatalogTest", "Module48_MessagingTest", "Module50_OutboxLockAndRetentionTest"] as $suite) {
     $class = "Antevemus\\ASpecification\\Tests\\Unit\\" . $suite;
     $t = new $class();
     $t->run();

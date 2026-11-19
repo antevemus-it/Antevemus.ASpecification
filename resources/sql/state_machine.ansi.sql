@@ -122,6 +122,20 @@
 --
 --   ALTER TABLE state_machine_outbox ADD COLUMN event_snapshot TEXT;
 --
+-- Additive migration -> 2.16.0 (forward 065), for a table created by an
+-- older script: no column changes. The index of the retention purge of
+-- the outbox (PdoEffectOutbox::purgeDeliveredBefore()) is optional: the
+-- purge is correct without it, only slower on a large outbox. Run it by
+-- hand, once (PostgreSQL, MySQL, MariaDB and SQLite accept it; it is the
+-- index of the constraint uq_smo_delivered of a new table; instance_id
+-- 120 characters + status 10 + delivered_at 26 stay under the 3072-byte
+-- InnoDB key limit with utf8mb4):
+--
+--   CREATE UNIQUE INDEX uq_smo_delivered ON state_machine_outbox (status, delivered_at, instance_id, instance_version, sort_order);
+--
+-- The lock of the dispatcher (one EffectDispatcher at a time), optional
+-- too, lives in a table of its own: resources/sql/lease_lock.ansi.sql.
+--
 -- Wide JSON columns (since 2.10.0, documented, not applied here): the
 -- JSON columns are VARCHAR(4000) so the script runs everywhere, and the
 -- PDO stores neither truncate nor validate their length: a longer value
@@ -253,6 +267,7 @@ CREATE TABLE IF NOT EXISTS state_machine_outbox (
     event_snapshot           TEXT,
     CONSTRAINT pk_state_machine_outbox PRIMARY KEY (instance_id, instance_version, sort_order),
     CONSTRAINT uq_smo_pending UNIQUE (status, enqueued_at, instance_id, instance_version, sort_order),
+    CONSTRAINT uq_smo_delivered UNIQUE (status, delivered_at, instance_id, instance_version, sort_order),
     CONSTRAINT chk_smo_status CHECK (status IN ('pending', 'delivered', 'failed')),
     CONSTRAINT chk_smo_phase CHECK (phase IN ('exit', 'transition', 'entry')),
     CONSTRAINT chk_smo_attempts CHECK (attempts >= 0)

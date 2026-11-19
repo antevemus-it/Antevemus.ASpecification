@@ -2200,6 +2200,7 @@ final class Module48_MessagingTest extends TestCase
         $folder = $root . '/src/Messaging';
         $files = [];
         $testing = [];
+        $born = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($folder, \FilesystemIterator::SKIP_DOTS)) as $file) {
             if ($file->getExtension() === 'php') {
                 $relative = substr($file->getPathname(), strlen($folder) + 1, -4);
@@ -2208,12 +2209,20 @@ final class Module48_MessagingTest extends TestCase
                     $testing[] = substr($relative, strlen('Testing/'));
                     continue;
                 }
+                // 2.16.0: the files born in 2.16.0 (the retention of the outbox) are guarded by Module 50.
+                if (in_array('Messaging/' . $relative, Module50_OutboxLockAndRetentionTest::NEW_FILES, true)) {
+                    $born[] = $relative;
+                    continue;
+                }
                 $files[] = $relative;
             }
         }
         sort($files);
         sort($testing);
         $this->assertEquals(Module49_MessagingContractBatteryTest::TESTING_FILES, $testing, 'every file of src/Messaging/Testing/ is declared by Module 49');
+        sort($born);
+        $bornHere = array_values(array_map(static fn(string $f): string => substr($f, strlen('Messaging/')), array_filter(Module50_OutboxLockAndRetentionTest::NEW_FILES, static fn(string $f): bool => str_starts_with($f, 'Messaging/'))));
+        $this->assertEquals($bornHere, $born, 'every file of src/Messaging/ Module 50 declares as born in 2.16.0 exists');
         $declared = self::MESSAGING_FILES;
         sort($declared);
         $this->assertEquals($declared, $files, 'every file of src/Messaging/ is declared here (a new one must be tested and declared)');
@@ -2224,7 +2233,9 @@ final class Module48_MessagingTest extends TestCase
             $pdoOnly = str_contains($file, 'Pdo');
             $this->assertTrue((!$withPdo && $pdoOnly) || class_exists($class, false) || interface_exists($class, false) || enum_exists($class, false), "{$class} was loaded by the battery");
             $code = (string) file_get_contents("{$folder}/{$file}.php");
-            $this->assertTrue(str_contains($code, "declare(strict_types=1);") && str_contains($code, '@version    2.14.0') && str_contains($code, '@subpackage Messaging'), "{$file}: strict types, @version 2.14.0, @subpackage");
+            // 2.16.0: the files changed by forward 065 (declared by Module 50) carry its version; the others stay at 2.14.0
+            $version = in_array('Messaging/' . $file, Module50_OutboxLockAndRetentionTest::CHANGED_FILES, true) ? '2.16.0' : '2.14.0';
+            $this->assertTrue(str_contains($code, "declare(strict_types=1);") && str_contains($code, '@version    ' . $version) && str_contains($code, '@subpackage Messaging'), "{$file}: strict types, @version {$version}, @subpackage");
         }
         $infection = (string) file_get_contents($root . '/infection.json5');
         $this->assertTrue(str_contains($infection, '|Messaging/'), 'src/Messaging/ is in the mutation scope');

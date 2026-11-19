@@ -314,3 +314,31 @@ $runner->load('claim-7')->snapshot->dueAt('sla')->format(DATE_ATOM);      // '20
 `deliverDue()` sends a null context unless given a `contextProvider` (it receives the due deadline and the loaded instance): a deadline transition entering a state whose deadline reads the context needs the instance's context, as here. A pause condition is any guard expression; one that throws rejects the step. The validator refuses a `pausedWhile` with an unknown guard or an `inState` path that does not exist, and warns when it references the deadline's own region (the pause would never end). The snapshot keeps the balance (`pausedRemaining()`, `paused_remaining` in its array form only while some region is paused, so a 1.8 snapshot loads unchanged), and `migrate()` refuses a migration that would leave a paused balance in a state whose deadline declares no `pausedWhile`, since it could never resume.
 
 Deliberately out of scope (each can be modelled without it): actors, `invoke`/`spawn` (asynchronous work is an external job that sends an event back), eventless (`always`) transitions and `raise` (the caller sends the next event), nested states inside a region and history states (a parallel region, like the pending flag above, covers the real cases), and a machine-owned context (`assign`): the context is the caller's domain object. The history is a trail; the snapshot is the source of truth (no event sourcing).
+
+### 14.8. Running the EffectDispatcher: One at a Time, and the Retention of the Outbox
+
+The `EffectDispatcher` of 14.5 has the design of the relay of the messages ([example 26.4](../messaging/index.md)): two of them over the same outbox keep the order of each instance, but a dispatcher that read an entry before the other one marked it delivers it again, and both count the attempt. Since v2.16.0 it takes an optional lease lock, and its outbox can be purged.
+
+```php
+use Antevemus\ASpecification\Persistence\PdoLeaseLock;
+use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutboxRetention;
+
+// $persistence = MachinePersistence::pdo($pdo); the table lease_lock of resources/sql/lease_lock.ansi.sql
+$dispatcher = new EffectDispatcher(
+    $persistence->outbox,
+    $handlers,
+    lock: new PdoLeaseLock($pdo), // the same lease lock store as the other dispatchers
+    leaseSeconds: 60
+);
+$name = $dispatcher->getLockName();                             // 'state_machine.effect_dispatcher:state_machine_outbox'
+$delivered = $dispatcher->dispatchPending()->deliveredCount();  // 1
+$again = $dispatcher->dispatchPending()->isLockDenied();        // false: the lock was released at the end of the first run
+
+$purge = fn(IEffectOutboxRetention $outbox): int => $outbox->purgeDeliveredBefore(new DateTimeImmutable('-30 days'), 1000);
+$purged = $purge($persistence->outbox); // 0: the effect above was delivered now
+```
+
+- **One dispatcher per outbox, or a lock.** Without a lock the dispatcher is the one of v2.15.0: run exactly one per outbox. With a lock (`ILeaseLock`: `PdoLeaseLock` over `lease_lock`, `InMemoryLeaseLock` in one process), `dispatchPending()` takes it under its name before its first round and delivers nothing when another dispatcher holds it (`DispatchReport::isLockDenied()`); renews it before every further round, before reading the heads, and stops when the renewal fails (`isLockLost()`); releases it at the end, also when the run throws. The name defaults to the kind and the table of the outbox (`getLockName()`, or `lockName:`); the lease (`leaseSeconds`, 60 by default) must be longer than the slowest round, the handlers included, and than the skew between the clocks.
+- **A late failure never reopens a delivery.** Since v2.16.0 `markFailed()` leaves a delivered entry as it is (no attempt counted), in memory and over PDO.
+- **Retention.** `InMemoryEffectOutbox` and `PdoEffectOutbox` implement `IEffectOutboxRetention`: `purgeDeliveredBefore($before, $limit = 1000)` removes at most `$limit` delivered entries older than `$before`, the oldest delivery first, never a pending or failed one. The index `uq_smo_delivered` serves it (in the reference DDL; for a table created before v2.16.0, an optional `CREATE UNIQUE INDEX` in its header).
+- **What the purge can and cannot reopen.** This outbox does not deduplicate: an effect is written once, by the step that produced it, under its key (instance, version, position), and the runner never writes a step twice; a repeated event is answered by the idempotency store of the runner (`state_machine_idempotency`) with the original result and no new effect. So purging a delivered effect never makes it run again. What deduplicates a delivery is the handler, by the effect key it receives: a dispatcher that died between the handler and the mark delivers it again. What can reopen is the deduplication of the handler, or the idempotency store of the runner, kept for less time than the delay of the copies they absorb, not this purge.

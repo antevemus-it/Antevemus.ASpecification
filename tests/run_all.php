@@ -78,6 +78,7 @@ $suites = [
     'Módulo 47: Escrita Auditada e Versionada do Catálogo de Regras (RuleCatalogEditor, foto e hash, linha de base, deriva, guarda da mudança, versão no veredito)' => new \Antevemus\ASpecification\Tests\Unit\Module47_AuditedRuleCatalogTest(),
     'Módulo 48: Mensageria Entre Módulos (Message, outbox e inbox em memória e PDO, relay, consumidor idempotente, transporte e fonte em memória, pontes)' => new \Antevemus\ASpecification\Tests\Unit\Module48_MessagingTest(),
     'Módulo 49: Bateria de Contrato da Mensageria (MessagingContractTestCase contra a referência em memória e o satélite didático em SQLite, falhas plantadas, guarda de cobertura, exemplos 27 a 27.4)' => new \Antevemus\ASpecification\Tests\Unit\Module49_MessagingContractBatteryTest(),
+    'Módulo 50: Despachantes das Três Outboxes em Produção (trava com prazo para o relay, os eventos de domínio e os efeitos, marca de falha que não reabre entrega, retenção, propriedades com despachantes intercalados, exemplos 26.4, 26.5, 18.2 e 14.8)' => new \Antevemus\ASpecification\Tests\Unit\Module50_OutboxLockAndRetentionTest(),
 ];
 
 $startTime = microtime(true);

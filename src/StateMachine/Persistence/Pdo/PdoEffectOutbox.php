@@ -9,6 +9,7 @@ use Antevemus\ASpecification\StateMachine\EffectPhase;
 use Antevemus\ASpecification\StateMachine\Exceptions\MachinePersistenceException;
 use Antevemus\ASpecification\StateMachine\Persistence\EventSnapshot;
 use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutbox;
+use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutboxRetention;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxEntry;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxStatus;
 use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
@@ -26,17 +27,38 @@ use DateTimeImmutable;
  * each entry is written and read back with the event of its step (EventSnapshot, JSON); unmapped, the
  * column is never touched and an entry read back has no event.
  *
- * @version    2.10.0
+ * Since 2.16.0 (forward 065):
+ * - markFailed() never overwrites a delivered entry (D11): its UPDATE also requires `status <>
+ *   'delivered'`, and when it changes no row the entry is looked up, so that a delivered entry is left as
+ *   it is (no attempt counted) and a missing one still throws
+ * - purgeDeliveredBefore() (IEffectOutboxRetention, D12) reads the keys of a batch with the row limit of
+ *   the dialect and deletes them by list of (instance, version, position), in chunks of PURGE_CHUNK (MySQL
+ *   refuses a LIMIT inside an IN subquery, and older SQLite builds take at most 999 parameters); the
+ *   lookup is served by the index uq_smo_delivered (status, delivered_at, instance_id, instance_version,
+ *   sort_order) of the reference DDL, a CREATE UNIQUE INDEX for the tables created before 2.16.0 (its
+ *   header)
+ * - getTable(): the table of the outbox, for the default name of the lock of EffectDispatcher
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\Pdo
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class PdoEffectOutbox implements IEffectOutbox
+final class PdoEffectOutbox implements IEffectOutbox, IEffectOutboxRetention
 {
+    /** Largest number of entries of one DELETE of purgeDeliveredBefore() (three parameters each). */
+    public const PURGE_CHUNK = 300;
+
     public function __construct(private readonly PdoMachineSchema $schema)
     {
+    }
+
+    /** Schema-qualified table of the outbox. */
+    public function getTable(): string
+    {
+        return $this->schema->table('outbox');
     }
 
     /** {@inheritdoc} */
@@ -139,7 +161,46 @@ final class PdoEffectOutbox implements IEffectOutbox
             ':status' => OutboxStatus::FAILED->value,
             ':last_error' => $error,
             ':last_attempt_at' => PersistenceSupport::toText($at),
-        ]);
+        ], true);
+    }
+
+    /** {@inheritdoc} */
+    public function purgeDeliveredBefore(DateTimeImmutable $before, int $limit = 1000): int
+    {
+        if ($limit < 1) {
+            throw new \InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
+        }
+        $s = $this->schema;
+        [$instance, $version, $order] = [$s->column('instance_id'), $s->column('instance_version'), $s->column('sort_order')];
+        $delivered = sprintf("%s = 'delivered'", $s->column('status'));
+        $keys = $s->fetchAll($s->limit(sprintf(
+            'SELECT %s FROM %s WHERE %s AND %s < :before ORDER BY %s, %s, %s, %s',
+            $s->selectList(['instance_id', 'instance_version', 'sort_order']),
+            $s->table('outbox'),
+            $delivered,
+            $s->column('delivered_at'),
+            $s->column('delivered_at'),
+            $instance,
+            $version,
+            $order
+        ), $limit), [':before' => PersistenceSupport::toText($before)]);
+        $purged = 0;
+        foreach (array_chunk($keys, self::PURGE_CHUNK) as $chunk) {
+            $params = [];
+            $matches = [];
+            foreach ($chunk as $i => $key) {
+                $matches[] = sprintf('(%s = :instance_%d AND %s = :version_%d AND %s = :order_%d)', $instance, $i, $version, $i, $order, $i);
+                $params[':instance_' . $i] = (string) $key['instance_id'];
+                $params[':version_' . $i] = (int) $key['instance_version'];
+                $params[':order_' . $i] = (int) $key['sort_order'];
+            }
+            $purged += $s->execute(
+                sprintf('DELETE FROM %s WHERE %s AND (%s)', $s->table('outbox'), $delivered, implode(' OR ', $matches)),
+                $params
+            )->rowCount();
+        }
+
+        return $purged;
     }
 
     /** {@inheritdoc} */
@@ -159,23 +220,28 @@ final class PdoEffectOutbox implements IEffectOutbox
 
     /**
      * @param array<string, mixed> $params
+     * @param bool $unlessDelivered True: a delivered entry is left as it is (D11, 2.16.0)
      */
-    private function update(OutboxEntry $entry, string $set, array $params): void
+    private function update(OutboxEntry $entry, string $set, array $params, bool $unlessDelivered = false): void
     {
         $s = $this->schema;
-        $statement = $s->execute(sprintf(
-            'UPDATE %s SET %s WHERE %s = :instance_id AND %s = :instance_version AND %s = :sort_order',
-            $s->table('outbox'),
-            $set,
-            $s->column('instance_id'),
-            $s->column('instance_version'),
-            $s->column('sort_order')
-        ), $params + [
+        $key = sprintf('%s = :instance_id AND %s = :instance_version AND %s = :sort_order', $s->column('instance_id'), $s->column('instance_version'), $s->column('sort_order'));
+        $keyParams = [
             ':instance_id' => $entry->instanceId,
             ':instance_version' => $entry->instanceVersion,
             ':sort_order' => $entry->sortOrder,
-        ]);
+        ];
+        $statement = $s->execute(sprintf(
+            'UPDATE %s SET %s WHERE %s%s',
+            $s->table('outbox'),
+            $set,
+            $key,
+            $unlessDelivered ? sprintf(" AND %s <> 'delivered'", $s->column('status')) : ''
+        ), $params + $keyParams);
         if ($statement->rowCount() !== 1) {
+            if ($unlessDelivered && (int) $s->execute(sprintf('SELECT COUNT(*) FROM %s WHERE %s', $s->table('outbox'), $key), $keyParams)->fetchColumn() > 0) {
+                return;
+            }
             throw new MachinePersistenceException(sprintf('Outbox entry %s does not exist.', $entry->effectKey()));
         }
     }

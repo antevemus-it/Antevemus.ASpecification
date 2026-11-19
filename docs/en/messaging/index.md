@@ -145,7 +145,78 @@ $state = $runner->load('collection-77')->snapshot->stateOf('collection'); // 'co
 - **Into the machine**, the event has the instant of the message, its payload as is, the EXTERNAL origin by default and the idempotency key of the message, so a redelivery returns the original result of the runner and does not move the instance again. The tenant of the message is handed to the runner (`scopeByTenant`, true by default), which then loads the instance of that tenant only.
 - **Out of scope**: exactly-once delivery between processes (the design is at least once plus the inbox), Kafka, NATS and SQS (other satellites, on demand), and the effects of the state machine relayed by the broker (an effect handler may publish a `Message`).
 
-**Reference DDL:** `resources/sql/messaging.ansi.sql` (`message_outbox`, `message_inbox`, `CREATE TABLE IF NOT EXISTS`, portable to SQLite, PostgreSQL, MySQL and MariaDB; on MySQL and MariaDB the tables need `utf8mb4`). Nothing else of the library reads or writes these tables: a database without them answers as on 2.13.0.
+### 26.4. Running the Relay: One at a Time
+
+Run `relayPending()` from a worker or a cron, outside any transaction of the application. **One relay per outbox, or a lock.** Two relays over the same outbox keep the order of the first delivery of each ordering key, because a message is a head only once the earlier ones of its key were confirmed. They still cost two things: a relay that read an entry before the other one marked it sends it again, after the later messages of its key (a late duplicate, which an inbox absorbs only while it keeps the row), and both count the attempt, so `maxAttempts` runs out early. Since v2.16.0 a lock keeps the relays of an outbox to one at a time.
+
+```php
+use Antevemus\ASpecification\Persistence\PdoLeaseLock;
+use DateTimeImmutable;
+
+$lock = new PdoLeaseLock($pdo); // the table lease_lock: one row per lock name
+$relay = new OutboxRelay(
+    new PdoMessageOutbox($pdo),
+    $transport,
+    maxAttempts: 10,
+    lock: $lock,
+    leaseSeconds: 60,                                      // longer than the slowest batch
+    lockOwner: 'relay@' . gethostname() . ':' . getmypid() // who holds it, for whoever reads the table
+);
+$name = $relay->getLockName(); // 'messaging.outbox_relay:message_outbox'
+
+$transactions->transactional(fn(): int => $publisher->publish(
+    new Message('underwriting.quote_approved.v1', ['quote_id' => 123], orderingKey: 'quote:123', tenant: 'acme')
+));
+
+$lock->tryAcquire($name, 'relay@other-host:4242', new DateTimeImmutable(), 60); // another process holds the lock
+$denied = $relay->relayPending(100)->isLockDenied();                            // true: nothing was sent
+$lock->release($name, 'relay@other-host:4242');
+
+$report = $relay->relayPending(100); // takes the lock, renews it before each batch, releases it at the end
+$sent = $report->deliveredCount();   // 1
+$lost = $report->isLockLost();       // false: no other relay took the lock over
+```
+
+- **Without a lock** the relay is the one of v2.15.0: run exactly one per outbox (one cron entry, one replica of the worker).
+- **With a lock** (`ILeaseLock`, in `Antevemus\ASpecification\Persistence`: `PdoLeaseLock` over the table `lease_lock` of `resources/sql/lease_lock.ansi.sql`, or `InMemoryLeaseLock` for the relays of one process), `relayPending()` takes it under its name before its first batch; when another relay holds it, the run sends nothing and the report says so (`isLockDenied()`). It renews the lock before every further batch, before reading the heads, and stops when the renewal fails (`isLockLost()`: its lease ran out and another relay took over). It releases the lock at the end, also when the run throws.
+- **The name.** One lock store serves every dispatcher of the application: the relay, the dispatcher of the domain events ([example 18.2](../events/from-specifications.md)) and the one of the effects of the state machine ([example 14.8](../state-machine/index.md)) take the same `PdoLeaseLock`, each under its own name, so two outboxes never hold each other back. The default name is the kind of the dispatcher and the table of its outbox (`messaging.outbox_relay:message_outbox`; `getLockName()`); every relay process of one outbox gets the same one, and `lockName:` gives another.
+- **The lease** (`leaseSeconds`, 60 by default) is how long a relay that died keeps the others out. Choose it longer than the slowest batch, the time the transport may take to answer included, and than the skew between the clocks of the machines (each relay compares its own instants). A relay paused for longer than its lease may resume while another one works: what it had sent may then reach the broker twice (still at least once), and a failure mark never turns a delivered entry back into a failed one, so a delivered message is not sent again.
+- **The owner** (`lockOwner`) names the relay in the table; without it, each instance gets a new ULID. Give every process its own (the host and the pid). Owners and lock names that differ only by case are the same on MySQL and MariaDB.
+- **The connection** may be the one of the outbox. Take the lock outside a long transaction, so the other relays see it at once (on MySQL and MariaDB the conditional `UPDATE` of a transaction also holds a gap lock that makes another relay wait for its commit); when the connection is in a transaction anyway, the first acquisition inserts the row inside a savepoint, so a lost race does not abort the transaction of the caller (on PostgreSQL a failed statement would).
+- **Acquiring is portable**, without `SKIP LOCKED`: a conditional `UPDATE` of the row of the lock (free, past its lease, or already the caller's), and an `INSERT` protected by the primary key when there is no row. The database serializes two of them, on SQLite, PostgreSQL, MySQL and MariaDB.
+
+### 26.5. Retention of the Outbox
+
+The outbox keeps every entry, delivered or not. `PdoMessageOutbox` and `InMemoryMessageOutbox` implement `IMessageOutboxRetention`: `purgeDeliveredBefore($before, $limit = 1000)` removes at most `$limit` delivered entries whose delivery is older than `$before`, the oldest delivery first, and returns how many it removed. A separate interface, because a method added to `IMessageOutbox` would break the implementations outside the library.
+
+```php
+use Antevemus\ASpecification\Messaging\Outbox\IMessageOutboxRetention;
+
+// A daily job: the delivered entries older than the window of the outbox, 1 000 at a time
+$purge = function (IMessageOutboxRetention $outbox, DateTimeImmutable $before): int {
+    $total = 0;
+    do {
+        $purged = $outbox->purgeDeliveredBefore($before, 1000);
+        $total += $purged;
+    } while ($purged === 1000);
+
+    return $total;
+};
+
+$purged = $purge(new PdoMessageOutbox($pdo), new DateTimeImmutable('-7 days')); // 2: the deliveries of last year
+$left = (new PdoMessageOutbox($pdo))->count();                                // 1: the pending message stays
+
+// The inbox of each consumer keeps its rows longer: the window of the outbox plus the longest delay of the relay
+(new PdoProcessedMessageStore($pdo))->purgeProcessedBefore('agents', new DateTimeImmutable('-8 days'));
+```
+
+- **Only delivered entries.** A pending or failed entry, exhausted or not, is never removed: it is a message that did not reach the broker, a dead message on the side of the producer, kept for an investigation.
+- **In batches, portably.** The ids of a batch are read with the row limit of the dialect and deleted by list, 500 per `DELETE` (MySQL refuses a `LIMIT` inside an `IN` subquery, and older SQLite builds take at most 999 parameters), so one call never becomes a huge `DELETE`. The lookup is served by the index `uq_mo_delivered` (`status`, `delivered_at`, `entry_id`) of the reference DDL; for a table created before v2.16.0 the header of the DDL has its `CREATE UNIQUE INDEX`, optional: the purge is correct without it, only slower on a large outbox.
+- **The windows.** `enqueue()` skips a message id only while its row exists: after the purge, a producer that writes the same message id again publishes it again. So:
+  - the window of the outbox must be longer than any retry of a producer that may write the same message again (a domain event redelivered by its dispatcher, a job retried by its queue);
+  - the retention of the inbox of each consumer (`purgeProcessedBefore()`) must be at least the window of the outbox plus the longest delay of the relay, so that a copy sent late still finds its row.
+
+**Reference DDL:** `resources/sql/messaging.ansi.sql` (`message_outbox`, `message_inbox`, `CREATE TABLE IF NOT EXISTS`, portable to SQLite, PostgreSQL, MySQL and MariaDB; on MySQL and MariaDB the tables need `utf8mb4`). Nothing else of the library reads or writes these tables: a database without them answers as on 2.13.0. The lock of the relay is in `resources/sql/lease_lock.ansi.sql` (`lease_lock`, since v2.16.0), needed only with a lock.
 
 ## Broker satellites
 

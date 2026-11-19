@@ -55,7 +55,7 @@ The official documentation of the library, one page per topic. The same pages ex
 
 ### State machine
 
-- [State machine](state-machine/index.md) (example 14): Guards are specifications: parallel regions, JSON definitions, the runner and persisted deadlines.
+- [State machine](state-machine/index.md) (examples 14 and 14.8): Guards are specifications: parallel regions, JSON definitions, the runner and persisted deadlines; one effect dispatcher at a time with a lease lock, and the retention of its outbox.
 - [Deadlines in business time](state-machine/business-time.md) (example 14.11): business days, working hours and holidays; a pause that does not spend the weekend.
 - [Use cases](state-machine/use-cases.md) (example 15): `IUseCase`, `UseCaseRunner` and the result shared with the machine.
 - [A real consumer](state-machine/real-consumer.md) (example 23): legacy state codes, definitions versioned in the database with drafts and publication, and tenants sharing one machine.
@@ -69,12 +69,12 @@ The official documentation of the library, one page per topic. The same pages ex
 
 ### Domain events
 
-- [From specifications](events/from-specifications.md) (example 18): Domain events when an entity starts or stops satisfying a specification.
+- [From specifications](events/from-specifications.md) (examples 18 and 18.2): Domain events when an entity starts or stops satisfying a specification; one dispatcher at a time with a lease lock, and the retention of its outbox.
 - [From the passage of time](events/time-based.md) (example 18.1): `SpecificationTrigger::timed()` and the `TriggerSweeper`.
 
 ### Messaging
 
-- [Between modules](messaging/index.md) (examples 26 to 26.3): `Message`, the outbox written in the transaction of the write, `OutboxRelay` to a broker, `MessageConsumer` with an inbox (once per consumer), and the bridges from domain events and into a state machine; the hook the Redis Streams and RabbitMQ satellites implement.
+- [Between modules](messaging/index.md) (examples 26 to 26.5): `Message`, the outbox written in the transaction of the write, `OutboxRelay` to a broker, `MessageConsumer` with an inbox (once per consumer), and the bridges from domain events and into a state machine; one relay at a time with a lease lock, and the retention of the outbox; the hook the Redis Streams and RabbitMQ satellites implement.
 - [Writing a satellite](messaging/writing-a-satellite.md) (examples 27 to 27.4): the public contract battery of the hook (`MessagingContractTestCase`), the contract mapped to the primitives of Redis Streams, RabbitMQ, SQS, Kafka, Azure Service Bus, Google Cloud Pub/Sub and NATS JetStream, and a didactic satellite over SQLite that passes it.
 
 ### Feature flags

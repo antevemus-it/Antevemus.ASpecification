@@ -51,9 +51,24 @@
 --   uq_deo_pending     (status, event_id): the open rows, in order
 --   uq_deo_entity      (entity_class, entity_id, event_id): the queue of
 --                      one entity (queue heads, findByEntity)
+--   uq_deo_delivered   (status, delivered_at, event_id): the retention
+--                      purge, oldest delivery first (since 2.16.0)
 --
 -- Index size: entity_class 255 + entity_id 190 + event_id 26 characters
 -- stay under the 3072-byte InnoDB key limit with utf8mb4.
+--
+-- Additive migration -> 2.16.0 (forward 065), for a table created by an
+-- older script: no column changes. The index of the retention purge
+-- (PdoDomainEventOutbox::purgeDeliveredBefore()) is optional: the purge
+-- is correct without it, only slower on a large outbox. Run it by hand,
+-- once (PostgreSQL, MySQL, MariaDB and SQLite accept it; it is the index
+-- of the constraint uq_deo_delivered of a new table):
+--
+--   CREATE UNIQUE INDEX uq_deo_delivered ON domain_event_outbox (status, delivered_at, event_id);
+--
+-- The lock of the dispatcher (one DomainEventDispatcher at a time),
+-- optional too, lives in a table of its own:
+-- resources/sql/lease_lock.ansi.sql.
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS domain_event_outbox (
@@ -75,6 +90,7 @@ CREATE TABLE IF NOT EXISTS domain_event_outbox (
     CONSTRAINT uq_deo_idempotency UNIQUE (idempotency_key),
     CONSTRAINT uq_deo_pending UNIQUE (status, event_id),
     CONSTRAINT uq_deo_entity UNIQUE (entity_class, entity_id, event_id),
+    CONSTRAINT uq_deo_delivered UNIQUE (status, delivered_at, event_id),
     CONSTRAINT chk_deo_kind CHECK (kind IN ('enter', 'exit')),
     CONSTRAINT chk_deo_status CHECK (status IN ('pending', 'delivered', 'failed')),
     CONSTRAINT chk_deo_attempts CHECK (attempts >= 0)

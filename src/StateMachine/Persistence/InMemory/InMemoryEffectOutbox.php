@@ -6,6 +6,7 @@ namespace Antevemus\ASpecification\StateMachine\Persistence\InMemory;
 
 use Antevemus\ASpecification\StateMachine\Exceptions\MachinePersistenceException;
 use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutbox;
+use Antevemus\ASpecification\StateMachine\Persistence\IEffectOutboxRetention;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxEntry;
 use Antevemus\ASpecification\StateMachine\Persistence\OutboxStatus;
 use Antevemus\ASpecification\StateMachine\Persistence\PersistenceSupport;
@@ -18,14 +19,17 @@ use InvalidArgumentException;
  * Same contract as PdoEffectOutbox (forward 023, D12, RN-10): entries keyed by their position,
  * queue heads per instance, delivered/failed marks with attempts and the last error message.
  *
- * @version    1.8.0
+ * Since 2.16.0 (forward 065): a failure mark never overwrites a delivered entry (D11), and the delivered
+ * entries can be purged (IEffectOutboxRetention, D12).
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage StateMachine\Persistence\InMemory
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class InMemoryEffectOutbox implements IEffectOutbox, IInMemoryTransactional
+final class InMemoryEffectOutbox implements IEffectOutbox, IEffectOutboxRetention, IInMemoryTransactional
 {
     /** @var array<string, array<string, OutboxEntry>> instance id => "version:order" => entry */
     private array $entries = [];
@@ -73,7 +77,40 @@ final class InMemoryEffectOutbox implements IEffectOutbox, IInMemoryTransactiona
     /** {@inheritdoc} */
     public function markFailed(OutboxEntry $entry, string $error, DateTimeImmutable $at): void
     {
-        $this->replace($entry, fn(OutboxEntry $stored): OutboxEntry => $stored->withFailed($error, $at));
+        $this->replace($entry, fn(OutboxEntry $stored): OutboxEntry => $stored->isDelivered() ? $stored : $stored->withFailed($error, $at));
+    }
+
+    /** {@inheritdoc} */
+    public function purgeDeliveredBefore(DateTimeImmutable $before, int $limit = 1000): int
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
+        }
+        $before = PersistenceSupport::toText($before);
+        $purgeable = [];
+        foreach ($this->entries as $positions) {
+            foreach ($positions as $entry) {
+                // The text form of the instants, compared as the SQL of PdoEffectOutbox does
+                $deliveredAt = $entry->deliveredAt === null ? null : PersistenceSupport::toText($entry->deliveredAt);
+                if ($entry->isDelivered() && $deliveredAt !== null && $deliveredAt < $before) {
+                    $purgeable[] = [$deliveredAt, $entry];
+                }
+            }
+        }
+        // ORDER BY delivered_at, instance_id, instance_version, sort_order: texts in binary order, numbers as numbers
+        usort($purgeable, static fn(array $a, array $b): int => strcmp($a[0], $b[0])
+            ?: strcmp($a[1]->instanceId, $b[1]->instanceId)
+            ?: [$a[1]->instanceVersion, $a[1]->sortOrder] <=> [$b[1]->instanceVersion, $b[1]->sortOrder]);
+        $purged = 0;
+        foreach (array_slice($purgeable, 0, $limit) as [, $entry]) {
+            unset($this->entries[$entry->instanceId][self::position($entry)]);
+            if ($this->entries[$entry->instanceId] === []) {
+                unset($this->entries[$entry->instanceId]);
+            }
+            $purged++;
+        }
+
+        return $purged;
     }
 
     /** {@inheritdoc} */

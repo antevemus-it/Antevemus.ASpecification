@@ -37,14 +37,24 @@ use Throwable;
  * Share the PDO connection (and its transaction manager) with the repository that is written, so
  * that the write and its events commit or roll back together.
  *
- * @version    1.11.0
+ * Since 2.16.0 (forward 065):
+ * - markFailed() never overwrites a delivered entry (D11): its UPDATE also requires `status <>
+ *   'delivered'`, and when it changes no row the entry is looked up, so that a delivered entry is left as
+ *   it is (no attempt counted) and a missing one still throws
+ * - purgeDeliveredBefore() (IDomainEventOutboxRetention, D12) reads the ids of a batch with the row limit
+ *   of the dialect and deletes them by list, in chunks of PURGE_CHUNK (MySQL refuses a LIMIT inside an IN
+ *   subquery, and older SQLite builds take at most 999 parameters); the lookup is served by the index
+ *   uq_deo_delivered (status, delivered_at, event_id) of the reference DDL, a CREATE UNIQUE INDEX for the
+ *   tables created before 2.16.0 (its header)
+ *
+ * @version    2.16.0
  * @package    Antevemus\ASpecification
  * @subpackage DomainEvents\Outbox
  * @author     Heliton Junior (CTO) - <contato@antevemus.com.br>
  * @copyright  Copyright (c) 2025-2026 Antevemus Soluções Inovadoras em TI Ltda.
  * @license    MIT
  */
-final class PdoDomainEventOutbox implements IDomainEventOutbox
+final class PdoDomainEventOutbox implements IDomainEventOutbox, IDomainEventOutboxRetention
 {
     /** Default table name, mirroring the reference DDL. */
     public const DEFAULT_TABLE = 'domain_event_outbox';
@@ -54,6 +64,9 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
         'event_id', 'idempotency_key', 'event_name', 'trigger_name', 'kind', 'entity_class', 'entity_id',
         'payload', 'occurred_at', 'status', 'attempts', 'last_error', 'delivered_at', 'last_attempt_at',
     ];
+
+    /** Largest list of ids of one DELETE of purgeDeliveredBefore(). */
+    public const PURGE_CHUNK = 500;
 
     private const IDENTIFIER = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
@@ -183,7 +196,35 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
             ':status' => DomainEventOutboxStatus::FAILED->value,
             ':last_error' => DomainEventSupport::truncate($error),
             ':last_attempt_at' => DomainEventSupport::toText($at),
-        ]);
+        ], true);
+    }
+
+    /** {@inheritdoc} */
+    public function purgeDeliveredBefore(DateTimeImmutable $before, int $limit = 1000): int
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException(sprintf('The limit must be at least 1, %d given.', $limit));
+        }
+        $ids = array_map(static fn(array $row): string => (string) $row['event_id'], $this->fetchAll(
+            $this->dialect->paginate(sprintf(
+                "SELECT event_id FROM %s WHERE status = 'delivered' AND delivered_at < :before ORDER BY delivered_at, event_id",
+                $this->table
+            ), $limit),
+            [':before' => DomainEventSupport::toText($before)]
+        ));
+        $purged = 0;
+        foreach (array_chunk($ids, self::PURGE_CHUNK) as $chunk) {
+            $params = [];
+            foreach ($chunk as $i => $id) {
+                $params[':event_' . $i] = $id;
+            }
+            $purged += $this->execute(
+                sprintf("DELETE FROM %s WHERE status = 'delivered' AND event_id IN (%s)", $this->table, implode(', ', array_keys($params))),
+                $params
+            )->rowCount();
+        }
+
+        return $purged;
     }
 
     /** {@inheritdoc} */
@@ -216,14 +257,18 @@ final class PdoDomainEventOutbox implements IDomainEventOutbox
 
     /**
      * @param array<string, mixed> $params
+     * @param bool $unlessDelivered True: a delivered entry is left as it is (D11, 2.16.0)
      */
-    private function update(DomainEventOutboxEntry $entry, string $set, array $params): void
+    private function update(DomainEventOutboxEntry $entry, string $set, array $params, bool $unlessDelivered = false): void
     {
         $statement = $this->execute(
-            sprintf('UPDATE %s SET %s WHERE event_id = :event_id', $this->table, $set),
+            sprintf('UPDATE %s SET %s WHERE event_id = :event_id%s', $this->table, $set, $unlessDelivered ? " AND status <> 'delivered'" : ''),
             $params + [':event_id' => $entry->eventId]
         );
         if ($statement->rowCount() !== 1) {
+            if ($unlessDelivered && (int) $this->execute(sprintf('SELECT COUNT(*) FROM %s WHERE event_id = :event_id', $this->table), [':event_id' => $entry->eventId])->fetchColumn() > 0) {
+                return;
+            }
             throw new DomainEventPersistenceException(sprintf('Domain event outbox entry %s does not exist.', $entry->eventId));
         }
     }

@@ -119,3 +119,35 @@ $events->count();                                 // 1
 - **Delivery** is at-least-once, in write order per entity: handlers deduplicate by the idempotency key they receive. A failing handler never undoes the write; the entry is marked failed (no stack trace) and retried, holding that entity's later events back until it succeeds or, with `maxAttempts`, reaches the limit. An event without a handler is a failed attempt, not a silent drop.
 - **Errors:** a specification that throws while being evaluated emits no event; by default the write goes on and the error goes to an `IDomainEventErrorReporter`, and with `failOnEvaluationError: true` the write throws instead. A failure of the publisher (the outbox) always propagates.
 - **A crossing caused by time alone**, with no write (a policy that becomes overdue at midnight while nobody writes it), is not seen by the decorator: that is the time-based sweeper of example 18.1. Event sourcing and a message bus client are out of scope: publish to Kafka or RabbitMQ from a handler.
+
+### 18.2. Running the Dispatcher: One at a Time, and the Retention of the Outbox
+
+`DomainEventDispatcher` has the design of the relay of the messages ([example 26.4](../messaging/index.md)), and the same two costs when two of them run over the same outbox: the order of the first delivery of each entity holds, because an event is a head only once the earlier ones of its entity were delivered, but a dispatcher that read an entry before the other one marked it delivers it again, after the later events of its entity, and both count the attempt. Since v2.16.0 it takes an optional lease lock, and its outbox can be purged.
+
+```php
+use Antevemus\ASpecification\DomainEvents\Outbox\IDomainEventOutboxRetention;
+use Antevemus\ASpecification\DomainEvents\Outbox\PdoDomainEventOutbox;
+use Antevemus\ASpecification\Persistence\PdoLeaseLock;
+
+// $pdo: the tables of resources/sql/domain_events.ansi.sql and resources/sql/lease_lock.ansi.sql
+$dispatcher = new DomainEventDispatcher(
+    new PdoDomainEventOutbox($pdo),
+    $handlers,
+    maxAttempts: 10,
+    lock: new PdoLeaseLock($pdo), // one lease lock store for every dispatcher of the application
+    leaseSeconds: 60
+);
+$name = $dispatcher->getLockName();         // 'domain_events.dispatcher:domain_event_outbox'
+$report = $dispatcher->dispatchPending(100);
+$delivered = $report->deliveredCount();     // 2
+$skipped = $report->isLockDenied();         // false: no other dispatcher held the lock
+
+// A daily job: the delivered events older than the window of the outbox, 1 000 at a time
+$purge = fn(IDomainEventOutboxRetention $outbox): int => $outbox->purgeDeliveredBefore(new DateTimeImmutable('-30 days'), 1000);
+$purged = $purge(new PdoDomainEventOutbox($pdo)); // 0: the deliveries above are recent
+```
+
+- **One dispatcher per outbox, or a lock.** Without a lock the dispatcher is the one of v2.15.0: run exactly one per outbox. With a lock (`ILeaseLock`: `PdoLeaseLock` over `lease_lock`, `InMemoryLeaseLock` in one process), `dispatchPending()` takes it under its name before its first round and delivers nothing when another dispatcher holds it (`isLockDenied()`); renews it before every further round, before reading the heads, and stops when the renewal fails (`isLockLost()`); releases it at the end, also when the run throws. The name defaults to the kind and the table of the outbox (`getLockName()`, or `lockName:`), so the same `PdoLeaseLock` serves the relay and the effect dispatcher too. The lease (`leaseSeconds`, 60 by default) must be longer than the slowest round, the handlers included, and than the skew between the clocks of the machines; the owner (`lockOwner`) is a new ULID per instance unless given.
+- **A late failure never reopens a delivery.** Since v2.16.0 `markFailed()` leaves a delivered entry as it is (no attempt counted), in memory and over PDO: a dispatcher paused past its lease, whose handler failed after another one delivered the event, no longer turns it back into a failed entry delivered once more.
+- **Retention.** `InMemoryDomainEventOutbox` and `PdoDomainEventOutbox` implement `IDomainEventOutboxRetention`: `purgeDeliveredBefore($before, $limit = 1000)` removes at most `$limit` delivered entries older than `$before`, the oldest delivery first, never a pending or failed one; call it again until it returns less than the limit. The index `uq_deo_delivered` serves it (in the reference DDL; for a table created before v2.16.0, an optional `CREATE UNIQUE INDEX` in its header).
+- **The window.** `enqueue()` skips an event whose idempotency key is stored, and only while it is stored. The key comes from the trigger, the entity, the kind and the instant of the crossing, so a crossing recorded again (a write retried, a sweep over the same state) has the same key: after the purge it is published again. Keep the outbox longer than any retry that may record the same crossing again, and keep the deduplication of each handler (the idempotency store of the state machine, for `MachineEventBridge`) at least as long, plus the longest delay of the dispatcher.
